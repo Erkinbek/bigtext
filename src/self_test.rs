@@ -40,6 +40,8 @@ pub struct Ctx {
     log: Vec<String>,
     shot: Option<PathBuf>,
     pending_shot: Option<PathBuf>,
+    /// Theme to switch to on the next frame (true = dark).
+    theme: Option<bool>,
 }
 
 type StepFn = Box<dyn FnMut(&mut BigTextApp, &mut Ctx) -> Step>;
@@ -198,6 +200,77 @@ fn open_step(name: &'static str) -> StepFn {
             Step::Wait
         }
     })
+}
+
+/// Saves the window to `file` in the screenshot directory once animations have settled.
+fn shot_step(file: &'static str) -> StepFn {
+    Box::new(move |_app, c| {
+        let Some(path) = c.shot.clone().map(|d| d.join(file)) else { return Step::Skip("no screenshot dir".into()) };
+        if c.first() {
+            let _ = std::fs::remove_file(&path);
+        }
+        if c.mark == 0 && c.waited() > Duration::from_millis(900) {
+            c.mark = 1;
+            c.pending_shot = Some(path.clone());
+        }
+        if c.mark == 1 && path.exists() {
+            Step::Next
+        } else {
+            Step::Wait
+        }
+    })
+}
+
+/// Demo files for the screenshot tour: two logs cut from the big file that differ in a few
+/// lines, and a pretty-printed JSON document.
+fn setup_tour_files(dir: &Path, big: &Path) -> std::io::Result<()> {
+    use std::fmt::Write as _;
+    use std::io::Read as _;
+    std::fs::create_dir_all(dir)?;
+    let mut head = vec![0u8; 48 << 20];
+    let mut f = std::fs::File::open(big)?;
+    let mut got = 0;
+    while got < head.len() {
+        match f.read(&mut head[got..])? {
+            0 => break,
+            k => got += k,
+        }
+    }
+    head.truncate(got);
+    if let Some(p) = memchr::memrchr(b'\n', &head) {
+        head.truncate(p + 1);
+    }
+    std::fs::write(dir.join("server-a.log"), &head)?;
+    let mut lines: Vec<&[u8]> = head.split_inclusive(|&b| b == b'\n').collect();
+    let n = lines.len();
+    if n > 300_000 {
+        lines[250_000] = b"2026-10-01 03:21:07.412 [ERROR] id=250001 payment gateway timeout after 30000 ms\n";
+        lines.remove(90_000);
+        lines.insert(51_000, b"2026-10-01 00:42:17.003 [WARN] id=51000 retry scheduled: upstream returned 503\n");
+        lines[1_200] = b"2026-10-01 00:01:13.551 [ERROR] id=1200 database connection refused (pool exhausted)\n";
+    }
+    std::fs::write(dir.join("server-b.log"), lines.concat())?;
+
+    let tags = ["express", "gift", "priority", "wholesale", "returning", "promo"];
+    let cities = ["Tashkent", "Samarkand", "Bukhara", "Almaty", "Istanbul", "Berlin", "Seoul"];
+    let mut j = String::from("[\n");
+    for i in 0..40_000u64 {
+        let _ = write!(
+            j,
+            "  {{\n    \"order_id\": {},\n    \"customer\": \"customer-{:05}\",\n    \"city\": \"{}\",\n    \"total\": {}.{:02},\n    \"paid\": {},\n    \"tags\": [\"{}\", \"{}\"],\n    \"coupon\": null\n  }}{}\n",
+            100_000 + i,
+            (i * 7_919) % 100_000,
+            cities[(i % 7) as usize],
+            (i * 37) % 900 + 10,
+            (i * 13) % 100,
+            i % 5 != 0,
+            tags[(i % 6) as usize],
+            tags[((i / 6) % 6) as usize],
+            if i + 1 < 40_000 { "," } else { "" }
+        );
+    }
+    j.push_str("]\n");
+    std::fs::write(dir.join("orders.json"), j)
 }
 
 impl SelfTest {
@@ -934,11 +1007,135 @@ impl SelfTest {
                 None => Step::Wait,
             }
         }));
+        SelfTest::build(steps, report, dir, shot_dir)
+    }
+
+    /// Screenshot tour for the README and website: `bigtext --screenshots DIR [BIG_FILE]`.
+    /// Opens a huge file and a few generated demo files, sets up each feature and saves PNGs.
+    pub fn tour(shot_dir: PathBuf, big: PathBuf) -> SelfTest {
+        use crate::view::highlight::Lang;
+        let dir = std::env::current_dir().unwrap_or_default().join("target").join("screens-data");
+        let mut steps: Vec<(&'static str, StepFn)> = Vec::new();
+        let mut s = |name: &'static str, f: StepFn| steps.push((name, f));
+
+        let src = big.clone();
+        s("create demo files", Box::new(move |_, c| match setup_tour_files(&c.dir, &src) {
+            Ok(()) => Step::Next,
+            Err(e) => Step::Fail(e.to_string()),
+        }));
+        s("open big file", Box::new(move |app, c| {
+            if c.first() {
+                app.open_path(big.clone());
+                return Step::Wait;
+            }
+            if wait_ready(app) {
+                Step::Next
+            } else {
+                Step::Wait
+            }
+        }));
+        s("log view with performance overlay", Box::new(|app, _c| {
+            app.settings.show_perf = true;
+            let d = doc(app);
+            d.lang = Some(Lang::Log);
+            let (n, _) = d.buf.line_count();
+            d.goto_line(n / 2 + 1_337);
+            Step::Next
+        }));
+        s("shot hero.png", shot_step("hero.png"));
+        s("regex Find All over the whole file", Box::new(|app, c| {
+            if c.first() {
+                app.settings.show_perf = false;
+                app.search.query = bigtext::search::Query {
+                    pattern: r"\[ERROR\] id=7777\d\b".into(),
+                    regex: true,
+                    case_sensitive: true,
+                    whole_word: false,
+                    dot_all: false,
+                };
+                app.search.open = true;
+                app.find_all();
+                return Step::Wait;
+            }
+            let d = doc(app);
+            let Some(r) = &d.results else { return Step::Fail("no results".into()) };
+            let done = r.data.lock().unwrap().done;
+            if done {
+                Step::Next
+            } else {
+                Step::Wait
+            }
+        }));
+        s("shot search.png", shot_step("search.png"));
+        s("hex view in the middle of the file", Box::new(|app, _c| {
+            app.search.open = false;
+            app.search.show_results = false;
+            let d = doc(app);
+            d.goto_offset(d.buf.len() / 2 / 16 * 16);
+            d.hex = true;
+            Step::Next
+        }));
+        s("shot hex.png", shot_step("hex.png"));
+        s("compare two logs", Box::new(|app, c| {
+            if c.first() {
+                doc(app).hex = false;
+                app.open_path(c.file("server-a.log"));
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if !wait_ready(app) {
+                    return Step::Wait;
+                }
+                c.mark = 1;
+                app.start_diff(c.file("server-b.log"));
+                return Step::Wait;
+            }
+            let Some(r) = &app.diff else { return Step::Fail("no diff results".into()) };
+            let done = r.data.lock().unwrap().done;
+            if done {
+                Step::Next
+            } else {
+                Step::Wait
+            }
+        }));
+        s("shot compare.png", shot_step("compare.png"));
+        s("JSON, light theme, split view, bookmarks", Box::new(|app, c| {
+            if c.first() {
+                app.diff = None;
+                c.theme = Some(false);
+                app.open_path(c.file("orders.json"));
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if !wait_ready(app) {
+                    return Step::Wait;
+                }
+                c.mark = 1;
+                c.key(Key::Backslash, CTRL);
+                c.push(vec![], NONE);
+                c.push(vec![], NONE);
+                return Step::Wait;
+            }
+            let d = doc(app);
+            let line = |n: u64| d.buf.line_start(n).map(|x| x.0).unwrap_or(0);
+            let (top2, b1, b2, caret) = (line(1_204), line(4), line(15), line(7));
+            let Some(sp) = d.split.as_mut() else { return Step::Fail("split did not open".into()) };
+            sp.top = top2;
+            d.bookmarks = vec![b1, b2];
+            d.set_caret(caret + 4, false);
+            Step::Next
+        }));
+        s("shot json.png", shot_step("json.png"));
+        let report = shot_dir.join("screenshots-report.txt");
+        SelfTest::build(steps, report, dir, Some(shot_dir))
+    }
+
+    fn build(steps: Vec<(&'static str, StepFn)>, report: PathBuf, dir: PathBuf, shot_dir: Option<PathBuf>) -> SelfTest {
         SelfTest {
             steps,
             idx: 0,
             settle: 0,
-            ctx: Ctx { queue: VecDeque::new(), copied: Vec::new(), dir, frames: 0, t0: Instant::now(), mark: 0, mark_time: Instant::now(), log: Vec::new(), shot: shot_dir.clone(), pending_shot: None },
+            ctx: Ctx { queue: VecDeque::new(), copied: Vec::new(), dir, frames: 0, t0: Instant::now(), mark: 0, mark_time: Instant::now(), log: Vec::new(), shot: shot_dir, pending_shot: None, theme: None },
             report,
             results: Vec::new(),
             finished: false,
@@ -980,6 +1177,10 @@ impl SelfTest {
         ctx.request_repaint();
         if self.finished {
             return;
+        }
+        if let Some(dark) = self.ctx.theme.take() {
+            app.settings.dark = dark;
+            ctx.set_theme(if dark { egui::Theme::Dark } else { egui::Theme::Light });
         }
         if let Some(path) = self.ctx.pending_shot.take() {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));

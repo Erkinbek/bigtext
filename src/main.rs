@@ -16,6 +16,7 @@ fn main() -> eframe::Result {
     let mut screenshot: Option<PathBuf> = None;
     let mut scenario = bench_ui::Scenario::Scroll;
     let mut self_test: Option<PathBuf> = None;
+    let mut tour: Option<PathBuf> = None;
     let mut args = std::env::args_os().skip(1);
     while let Some(a) = args.next() {
         match a.to_str() {
@@ -25,6 +26,7 @@ fn main() -> eframe::Result {
             }
             Some("--screenshot") => screenshot = args.next().map(PathBuf::from),
             Some("--self-test") => self_test = Some(PathBuf::from("self-test-report.txt")),
+            Some("--screenshots") => tour = Some(args.next().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("docs/img"))),
             Some("--scenario") => {
                 let s = args.next().and_then(|s| s.into_string().ok()).unwrap_or_default();
                 scenario = match s.split_once(':') {
@@ -48,6 +50,9 @@ fn main() -> eframe::Result {
         }
     }
 
+    // The screenshot tour opens its big file itself, after the demo files are created.
+    let tour_file = tour.as_ref().map(|_| files.pop().unwrap_or_else(|| PathBuf::from("testdata/random-lines-10g.txt")));
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("BigText")
@@ -59,7 +64,7 @@ fn main() -> eframe::Result {
         "BigText",
         options,
         Box::new(move |cc| {
-            let persist = bench.is_none() && self_test.is_none();
+            let persist = bench.is_none() && self_test.is_none() && tour.is_none();
             let mut app = app::BigTextApp::new(cc, files, process_start, persist);
             if let Some((file, report)) = bench {
                 let mut b = bench_ui::BenchUi::new(file, report);
@@ -70,6 +75,10 @@ fn main() -> eframe::Result {
             if let Some(report) = self_test {
                 let dir = screenshot.as_ref().and_then(|p| p.parent().map(|d| d.to_path_buf()));
                 app.self_test = Some(self_test::SelfTest::new(report, dir));
+            }
+            if let (Some(dir), Some(file)) = (tour, tour_file) {
+                let _ = std::fs::create_dir_all(&dir);
+                app.self_test = Some(self_test::SelfTest::tour(dir, file));
             }
             Ok(Box::new(app))
         }),
