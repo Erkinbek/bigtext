@@ -1,10 +1,19 @@
-# BigText
+# BigText — fast text editor for huge files (1–50+ GB)
 
 [![build](https://github.com/Erkinbek/bigtext/actions/workflows/build.yml/badge.svg)](https://github.com/Erkinbek/bigtext/actions/workflows/build.yml)
+[![release](https://img.shields.io/github/v/release/Erkinbek/bigtext?sort=semver)](https://github.com/Erkinbek/bigtext/releases/latest)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![website](https://img.shields.io/badge/website-erkinbek.github.io%2Fbigtext-2dd4bf)](https://erkinbek.github.io/bigtext/)
 
-A desktop text editor for **huge files** that never freezes and never loads a whole file into
-memory. 1 GB, 10 GB and 50 GB files open instantly and stay responsive; search, replace, light
-edits and saving all run on background threads with progress and cancellation.
+**Open, search and edit 1 GB, 10 GB and 50 GB text and log files instantly.** BigText is a free,
+open-source desktop text editor for **huge files** — logs, CSV exports, SQL dumps, JSON — that
+never freezes and never loads a whole file into memory. Files of any size open in milliseconds
+and stay responsive; search, replace, edits and saving run on background threads with progress
+and cancellation.
+
+**[Website](https://erkinbek.github.io/bigtext/)** · **[Download](#download)** · [Русский](https://erkinbek.github.io/bigtext/ru/) · [O'zbekcha](https://erkinbek.github.io/bigtext/uz/)
+
+![BigText with a 10 GB log file open at line 45,357,933, log highlighting and the performance overlay showing 99 MB of memory](docs/img/hero.webp)
 
 Written in Rust with a custom virtualized text view on top of `egui`/`eframe` (glow renderer).
 Single self-contained binary, no runtime dependencies.
@@ -60,6 +69,28 @@ Single self-contained binary, no runtime dependencies.
   0.6 s, ~2 MB of memory). Click a difference to jump there in either file.
 - **Recent files and session restore**: tabs, positions, bookmarks and settings come back on
   the next start (state in `%APPDATA%\BigText\state.txt` / `~/.config/bigtext`).
+
+## Screenshots
+
+| Regex search over 10 GB (2.5 GB/s) | Comparing two logs |
+| --- | --- |
+| ![Find All with a regular expression over a 10 GB log: 166 matches in 4 seconds](docs/img/search.webp) | ![Streaming diff of two log files with the differences listed below the text](docs/img/compare.webp) |
+| **Hex view in the middle of a 10 GB file** | **Light theme, JSON, split view, bookmarks** |
+| ![Hex view at offset 0x140000000 of a 10 GB file](docs/img/hex.webp) | ![JSON file with syntax highlighting in a split view with bookmarks](docs/img/json.webp) |
+
+The screenshots are made by the app itself: `bigtext --screenshots DIR testdata/random-lines-10g.txt`.
+
+## Download
+
+Latest release: [all files and release notes](https://github.com/Erkinbek/bigtext/releases/latest)
+
+| Platform | Download |
+| --- | --- |
+| Windows 10 / 11 | [Installer](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-setup-windows-x64.exe) (adds “Open with” and an Explorer context-menu entry) · [portable .zip](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-windows-x64.zip) |
+| Linux x64 | [bigtext-linux-x64.tar.gz](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.tar.gz) |
+| macOS | [Apple Silicon](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-arm64.tar.gz) · [Intel](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-x64.tar.gz) (unsigned: right-click → Open on first launch) |
+
+Or build it yourself (see [Building](#building)).
 
 ## Usage
 
@@ -196,6 +227,18 @@ The generator writes `random-lines-1g.txt`, `random-lines-10g.txt`, `single-line
 `utf16le.txt`, `cp1251.txt`, `binary.bin`, `mixed-eol.txt`, `short-lines-100m.txt` and small
 edge cases (empty file, no trailing newline, CR-only, BOM in the middle, NUL + invalid UTF-8,
 Unicode path).
+
+## Website
+
+The project website ([erkinbek.github.io/bigtext](https://erkinbek.github.io/bigtext/)) lives in `docs/` and is served by
+GitHub Pages from the `main` branch. It is generated in English, Russian and Uzbek by
+`python scripts/build-site.py` (needs Pillow), which also converts the screenshots in
+`target/shots` to WebP and draws the logo, favicons and the social preview image:
+
+```
+target/release/bigtext --screenshots target/shots testdata/random-lines-10g.txt
+python scripts/build-site.py
+```
 
 ## Measured performance
 

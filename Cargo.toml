@@ -2,10 +2,13 @@
 name = "bigtext"
 version = "0.1.0"
 edition = "2021"
-description = "A fast, non-freezing large-file text editor"
+description = "Fast text editor for huge files (1-50+ GB): opens instantly, never freezes, streaming search/replace and atomic save"
 authors = ["Erkin Pardayev <erkin.pardayev@gmail.com>"]
 repository = "https://github.com/Erkinbek/bigtext"
-homepage = "https://github.com/Erkinbek/bigtext"
+homepage = "https://erkinbek.github.io/bigtext/"
+readme = "README.md"
+keywords = ["text-editor", "large-files", "log-viewer", "mmap", "egui"]
+categories = ["text-editors", "gui"]
 license = "MIT"
 default-run = "bigtext"
 

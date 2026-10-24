@@ -1,0 +1,21 @@
+{
+  "name": "BigText",
+  "short_name": "BigText",
+  "description": "Open, search and edit 1 GB, 10 GB or 50 GB text and log files instantly. Free, open-source editor for Windows, Linux and macOS that never freezes.",
+  "start_url": "/bigtext/",
+  "display": "browser",
+  "background_color": "#0b0f17",
+  "theme_color": "#0b0f17",
+  "icons": [
+    {
+      "src": "img/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "img/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

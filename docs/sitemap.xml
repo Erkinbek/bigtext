@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://erkinbek.github.io/bigtext/</loc>
+    <lastmod>2026-10-24</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://erkinbek.github.io/bigtext/"/>
+    <xhtml:link rel="alternate" hreflang="ru" href="https://erkinbek.github.io/bigtext/ru/"/>
+    <xhtml:link rel="alternate" hreflang="uz" href="https://erkinbek.github.io/bigtext/uz/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://erkinbek.github.io/bigtext/"/>
+  </url>
+  <url>
+    <loc>https://erkinbek.github.io/bigtext/ru/</loc>
+    <lastmod>2026-10-24</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://erkinbek.github.io/bigtext/"/>
+    <xhtml:link rel="alternate" hreflang="ru" href="https://erkinbek.github.io/bigtext/ru/"/>
+    <xhtml:link rel="alternate" hreflang="uz" href="https://erkinbek.github.io/bigtext/uz/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://erkinbek.github.io/bigtext/"/>
+  </url>
+  <url>
+    <loc>https://erkinbek.github.io/bigtext/uz/</loc>
+    <lastmod>2026-10-24</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://erkinbek.github.io/bigtext/"/>
+    <xhtml:link rel="alternate" hreflang="ru" href="https://erkinbek.github.io/bigtext/ru/"/>
+    <xhtml:link rel="alternate" hreflang="uz" href="https://erkinbek.github.io/bigtext/uz/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://erkinbek.github.io/bigtext/"/>
+  </url>
+</urlset>
