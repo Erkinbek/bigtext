@@ -35,7 +35,7 @@ jobs:
             target: x86_64-apple-darwin
             test: false # cross-compiled on an arm64 runner
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -87,7 +87,7 @@ jobs:
              target/${{ matrix.target }}/release/gen-testfiles README.md "$out/"
           tar -C dist -czf "dist/bigtext-${{ matrix.name }}.tar.gz" "bigtext-${{ matrix.name }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bigtext-${{ matrix.name }}
           path: |

@@ -1,5 +1,7 @@
 # BigText
 
+[![build](https://github.com/Erkinbek/bigtext/actions/workflows/build.yml/badge.svg)](https://github.com/Erkinbek/bigtext/actions/workflows/build.yml)
+
 A desktop text editor for **huge files** that never freezes and never loads a whole file into
 memory. 1 GB, 10 GB and 50 GB files open instantly and stay responsive; search, replace, light
 edits and saving all run on background threads with progress and cancellation.
@@ -119,7 +121,11 @@ Install the Xcode command line tools, then `cargo build --release` (Apple silico
 ### CI
 
 [.github/workflows/build.yml](.github/workflows/build.yml) builds Windows x64, Linux x64 and
-macOS arm64/x64, runs the unit tests and uploads the binaries (plus the Windows installer).
+macOS arm64/x64, runs the unit tests and uploads the binaries plus the Windows installer
+(`bigtext-0.1.0-setup.exe`) as artifacts of every run. The installer was checked with a silent
+per-user install (`/VERYSILENT /CURRENTUSER`): files, "Open with" and Explorer context-menu
+entries and the Start-menu shortcut are created, the installed exe runs, and the uninstaller
+removes all of it.
 
 ## Architecture
 

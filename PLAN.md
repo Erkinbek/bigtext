@@ -100,6 +100,9 @@ Har bosqichdan keyin: `cargo test`, `bigtext-bench` test fayllarida, natijalar R
 | M4 | `feat(m4): …` | tahrirlash, undo/redo, Save/Save As protokoli, tashqi o'zgarishlar |
 | Perf | `perf: windowed mmap views …` | 50 GB bo'sh holat xotirasi 205 MB → 107 MB |
 | M5/M6 | `fix(app): …`, `docs: …` | chekka holatlar, CI, installer, README |
+| Self-test | `test(gui): …` | 56 ta GUI tekshiruvi (sintetik sichqoncha/klaviatura), topilgan 4 ta xato tuzatildi, About oynasi |
+| Nice-to-have | `feat: bookmarks, split view, …` | xatcho'plar, split view, sintaksis rang berish, oqimli diff, so'nggi fayllar, sessiya |
+| Repo | — | https://github.com/Erkinbek/bigtext (public), CI: Windows/Linux/macOS |
 
 ### Rejadan og'ishlar (o'lchovlar asosida)
 
