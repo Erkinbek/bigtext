@@ -34,6 +34,7 @@ pub enum Scenario {
     Scroll,
     Search(String),
     Edit,
+    View { hex: bool, wrap: bool },
 }
 
 pub struct BenchUi {
@@ -127,6 +128,11 @@ impl BenchUi {
                             Scenario::Scroll => Phase::GotoBeforeIndex,
                             Scenario::Search(_) => Phase::SearchStart,
                             Scenario::Edit => Phase::EditInsert,
+                            Scenario::View { hex, wrap } => {
+                                d.hex = hex;
+                                d.view.wrap = wrap;
+                                Phase::Idle
+                            }
                         };
                         self.set(next);
                     }

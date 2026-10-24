@@ -113,6 +113,7 @@ pub struct BigTextApp {
     pub first_frame: Option<Duration>,
     pub bench: Option<crate::bench_ui::BenchUi>,
     exit_confirmed: bool,
+    exit_after_jobs: bool,
     show_about: bool,
     pub search: search_panel::SearchUi,
     pending_replace: Option<(u64, Arc<Matcher>, Template, std::ops::Range<u64>)>,
@@ -168,6 +169,7 @@ impl BigTextApp {
             first_frame: None,
             bench: None,
             exit_confirmed: false,
+            exit_after_jobs: false,
             show_about: false,
             search: search_panel::SearchUi::default(),
             pending_replace: None,
@@ -620,7 +622,7 @@ impl BigTextApp {
                 ui.label(d.line_ending.name());
                 ui.separator();
                 ui.label(d.buf.codec.enc.name());
-                if d.is_ready() && !d.buf.index.is_done() && d.buf.len() > 0 {
+                if d.is_ready() && !d.buf.index.is_done() && !d.buf.is_empty() {
                     ui.separator();
                     ui.add(egui::ProgressBar::new(d.buf.index.progress()).desired_width(120.0).text(format!("Indexing {:.0}%", d.buf.index.progress() * 100.0)));
                 } else if let Some(t) = d.buf.index.finished_after() {
@@ -635,6 +637,9 @@ impl BigTextApp {
 
     fn banner(&mut self, ui: &mut egui::Ui) {
         let Some(d) = self.docs.get_mut(self.active) else { return };
+        if d.hex && d.banner == Some(Banner::Binary) {
+            d.banner = None;
+        }
         let Some(b) = d.banner.clone() else { return };
         egui::Frame::new().fill(ui.visuals().faint_bg_color).inner_margin(6.0).show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -878,7 +883,29 @@ impl BigTextApp {
         });
     }
 
+    fn writes_in_progress(&self) -> bool {
+        self.docs.iter().any(|d| d.save_job.is_some() || matches!(d.state, DocState::Finalizing(_)))
+    }
+
     fn handle_close_request(&mut self, ctx: &egui::Context) {
+        if self.exit_after_jobs && !self.writes_in_progress() {
+            self.exit_after_jobs = false;
+            self.exit_confirmed = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        }
+        if ctx.input(|i| i.viewport().close_requested()) && self.writes_in_progress() {
+            // Let a running save/replace cancel cleanly (temp file removed) or finish its
+            // atomic swap before the process exits.
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            for d in &self.docs {
+                if let (Some(j), false) = (&d.save_job, matches!(d.state, DocState::Finalizing(_))) {
+                    j.cancel.cancel();
+                }
+            }
+            self.exit_after_jobs = true;
+            return;
+        }
         if ctx.input(|i| i.viewport().close_requested()) && !self.exit_confirmed {
             let n = self.docs.iter().filter(|d| d.is_modified()).count();
             if n > 0 {

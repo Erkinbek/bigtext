@@ -27,6 +27,9 @@ fn main() -> eframe::Result {
                 scenario = match s.split_once(':') {
                     Some(("search", p)) => bench_ui::Scenario::Search(p.to_string()),
                     _ if s == "edit" => bench_ui::Scenario::Edit,
+                    _ if s == "view" => bench_ui::Scenario::View { hex: false, wrap: false },
+                    _ if s == "wrap" => bench_ui::Scenario::View { hex: false, wrap: true },
+                    _ if s == "hex" => bench_ui::Scenario::View { hex: true, wrap: false },
                     _ => bench_ui::Scenario::Scroll,
                 };
             }

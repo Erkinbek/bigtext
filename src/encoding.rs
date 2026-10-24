@@ -251,7 +251,7 @@ impl Codec {
                 let mut from = 0;
                 while let Some(i) = memchr::memchr(c, &hay[from..]) {
                     let p = from + i;
-                    if (base + p as u64) % 2 == 0 && p + 1 < hay.len() && hay[p + 1] == 0 {
+                    if (base + p as u64).is_multiple_of(2) && p + 1 < hay.len() && hay[p + 1] == 0 {
                         return Some(p);
                     }
                     from = p + 1;
@@ -280,7 +280,7 @@ impl Codec {
             Encoding::Utf16Le => {
                 let mut to = hay.len();
                 while let Some(p) = memchr::memrchr(c, &hay[..to]) {
-                    if (base + p as u64) % 2 == 0 && p + 1 < hay.len() && hay[p + 1] == 0 {
+                    if (base + p as u64).is_multiple_of(2) && p + 1 < hay.len() && hay[p + 1] == 0 {
                         return Some(p);
                     }
                     to = p;

@@ -134,7 +134,7 @@ fn gen_utf16le(path: &Path, size: u64) -> io::Result<u64> {
             }
             s.push(' ');
         }
-        if n % 1000 == 0 {
+        if n.is_multiple_of(1000) {
             s.push_str("😀 ");
         }
         s.push_str("\r\n");

@@ -451,7 +451,7 @@ impl Document {
             None if hi == len => (len, len),
             None => return None,
         };
-        Some((start.max(self.min_caret().min(start.max(0))), ce, next))
+        Some((start, ce, next))
     }
 
     pub fn duplicate_line(&mut self) {
