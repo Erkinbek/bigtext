@@ -1,0 +1,5 @@
+/target
+/testdata
+*.bigtext.tmp
+*.pdb
+/dist
