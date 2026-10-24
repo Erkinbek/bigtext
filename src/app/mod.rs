@@ -46,6 +46,7 @@ pub struct Settings {
     pub font_size: f32,
     pub dark: bool,
     pub show_perf: bool,
+    pub backup_on_save: bool,
 }
 
 struct GotoDialog {
@@ -160,7 +161,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, dark: true, show_perf: false },
+            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false },
             goto: None,
             confirm: None,
             error: None,
@@ -419,6 +420,7 @@ impl BigTextApp {
                 if ui.button("Save As…\tCtrl+Shift+S").clicked() {
                     self.save(true);
                 }
+                ui.checkbox(&mut self.settings.backup_on_save, "Keep backup (.bak) on save");
                 if let Some(d) = self.docs.get_mut(self.active) {
                     ui.menu_button("Line endings on save", |ui| {
                         ui.radio_value(&mut d.eol_on_save, None, "Keep as is");
@@ -580,7 +582,7 @@ impl BigTextApp {
                 let caret = d.view.caret;
                 let (line, exact) = d.buf.line_of(caret);
                 let col = match d.buf.line_start(line) {
-                    Some((ls, true)) if caret >= ls && caret - ls <= 1 << 20 => {
+                    Some((ls, true)) if caret >= ls && caret - ls <= 128 * 1024 => {
                         let b = d.buf.read(ls..caret);
                         b.map(|b| format!("{}", bigtext::text::rows::cell_width(&d.buf.codec, &b, ls) + 1)).unwrap_or_else(|| "…".into())
                     }
@@ -609,6 +611,13 @@ impl BigTextApp {
                 }
                 if d.follow {
                     ui.label(RichText::new("FOLLOW").color(Color32::from_rgb(90, 180, 90)));
+                    ui.separator();
+                }
+                if let Some(r) = d.results.as_ref().filter(|r| r.is_running()) {
+                    ui.add(egui::ProgressBar::new(r.progress.fraction()).desired_width(140.0).text(format!("Searching {:.0}%", r.progress.fraction() * 100.0)));
+                    ui.separator();
+                } else if d.find_job.is_some() {
+                    ui.label("Searching…");
                     ui.separator();
                 }
                 if d.read_only {

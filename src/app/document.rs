@@ -11,6 +11,10 @@ use bigtext::jobs::{CancelToken, Waker};
 use bigtext::text::rows;
 use bigtext::text::{Swap, TextBuf};
 
+/// Line commands (duplicate/delete line) scan at most this far on the UI thread; longer lines
+/// can still be selected and edited.
+const LINE_CMD_LIMIT: u64 = 8 * 1024 * 1024;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EditKind {
     Typing,
@@ -465,7 +469,7 @@ impl Document {
             self.record(swap, (e, e + (e - s)));
             return;
         }
-        let Some((ls, _ce, next)) = self.line_bounds(self.view.caret, 64 * 1024 * 1024) else {
+        let Some((ls, _ce, next)) = self.line_bounds(self.view.caret, LINE_CMD_LIMIT) else {
             self.banner = Some(Banner::Info("Line is too long to duplicate".into()));
             return;
         };
@@ -502,7 +506,7 @@ impl Document {
         if !self.editable() {
             return;
         }
-        let Some((ls, _ce, next)) = self.line_bounds(self.view.caret, 64 * 1024 * 1024) else {
+        let Some((ls, _ce, next)) = self.line_bounds(self.view.caret, LINE_CMD_LIMIT) else {
             self.banner = Some(Banner::Info("Line is too long to delete with this command; select it instead".into()));
             return;
         };

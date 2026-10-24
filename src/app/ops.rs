@@ -82,7 +82,8 @@ impl BigTextApp {
             None => WriteSpec::Identity,
         };
         let id = d.id;
-        self.start_write(id, target, spec, false);
+        let backup = self.settings.backup_on_save;
+        self.start_write(id, target, spec, backup);
     }
 
     pub(super) fn start_write(&mut self, id: u64, target: PathBuf, spec: WriteSpec, backup: bool) {
