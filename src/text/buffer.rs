@@ -3,12 +3,11 @@
 //! The original file is never modified. A `TextBuf` is cheap to clone (all heavy parts are
 //! `Arc`s), so workers get consistent snapshots; edits on the UI side copy-on-write.
 
-use std::borrow::Cow;
 use std::ops::Range;
 use std::sync::Arc;
 
 use crate::encoding::Codec;
-use crate::file::Source;
+use crate::file::{Bytes, Source};
 use crate::index::LineIndex;
 
 /// Pieces of an original range shorter than this get exact newline counts by direct scanning
@@ -140,22 +139,22 @@ impl TextBuf {
         pp.saturating_sub(1).min(n - 1)
     }
 
-    fn piece_bytes(&self, p: &Piece, rel: Range<u64>) -> Option<Cow<'_, [u8]>> {
+    fn piece_bytes(&self, p: &Piece, rel: Range<u64>) -> Option<Bytes<'_>> {
         let s = p.start + rel.start;
         let e = p.start + rel.end;
         match p.buf {
             Buf::Orig => self.source.get(s..e, self.blocking),
-            Buf::Add => Some(Cow::Borrowed(&self.add[s as usize..e as usize])),
+            Buf::Add => Some(Bytes::borrowed(&self.add[s as usize..e as usize])),
         }
     }
 
     /// Reads a document range. `None` if (non-blocking) data is not available yet.
-    pub fn read(&self, range: Range<u64>) -> Option<Cow<'_, [u8]>> {
+    pub fn read(&self, range: Range<u64>) -> Option<Bytes<'_>> {
         let len = self.len();
         let end = range.end.min(len);
         let start = range.start.min(end);
         if start == end {
-            return Some(Cow::Borrowed(&[]));
+            return Some(Bytes::borrowed(&[]));
         }
         let k = self.piece_at(start);
         let pstart = self.cum_bytes[k];
@@ -173,20 +172,50 @@ impl TextBuf {
             out.extend_from_slice(&self.piece_bytes(&p, s..e)?);
             i += 1;
         }
-        Some(Cow::Owned(out))
+        Some(Bytes::owned(out))
     }
 
-    /// Calls `f` with consecutive chunks covering `range` (zero-copy for mmap pieces).
-    pub fn for_each_chunk(&self, range: Range<u64>, mut f: impl FnMut(u64, &[u8]) -> bool) -> Option<()> {
+    /// Reads `range` into `out`, reusing its allocation, and returns the byte count. Original
+    /// bytes are fetched with positional reads in blocking snapshots (workers), which on a
+    /// cached file beats first-touch page faults and keeps private memory flat.
+    pub fn read_to(&self, range: Range<u64>, out: &mut Vec<u8>) -> Option<usize> {
         let end = range.end.min(self.len());
-        let mut pos = range.start.min(end);
+        let start = range.start.min(end);
+        let n = (end - start) as usize;
+        if out.len() < n {
+            out.resize(n, 0);
+        }
+        let mut pos = start;
+        let mut w = 0usize;
         while pos < end {
             let k = self.piece_at(pos);
             let p = self.pieces[k];
             let ps = self.cum_bytes[k];
             let e = end.min(ps + p.len);
-            let bytes = self.piece_bytes(&p, pos - ps..e - ps)?;
-            if !f(pos, &bytes) {
+            let len = (e - pos) as usize;
+            let s = p.start + (pos - ps);
+            let dst = &mut out[w..w + len];
+            match p.buf {
+                Buf::Orig if self.blocking => self.source.read_into(s, dst).ok()?,
+                Buf::Orig => dst.copy_from_slice(&self.source.get(s..s + len as u64, false)?),
+                Buf::Add => dst.copy_from_slice(&self.add[s as usize..s as usize + len]),
+            }
+            w += len;
+            pos = e;
+        }
+        Some(n)
+    }
+
+    /// Calls `f` with consecutive chunks (at most 4 MB each) covering `range`.
+    pub fn for_each_chunk(&self, range: Range<u64>, mut f: impl FnMut(u64, &[u8]) -> bool) -> Option<()> {
+        const STEP: u64 = 4 * 1024 * 1024;
+        let end = range.end.min(self.len());
+        let mut pos = range.start.min(end);
+        let mut buf = Vec::new();
+        while pos < end {
+            let e = (pos + STEP).min(end);
+            let n = self.read_to(pos..e, &mut buf)?;
+            if !f(pos, &buf[..n]) {
                 return Some(());
             }
             pos = e;

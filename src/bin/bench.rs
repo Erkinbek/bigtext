@@ -95,6 +95,10 @@ fn main() {
         }
     }
     let file = file.expect("usage: bigtext-bench FILE [--literal T] [--regex R] [--replace A=B]");
+    if std::env::var_os("BIGTEXT_IO_TEST").is_some() {
+        io_test(&file);
+        return;
+    }
     if literals.is_empty() {
         literals.push("timeout connection".into());
     }
@@ -113,6 +117,7 @@ fn main() {
     let n = src.len().min(1 << 20);
     let det = encoding::detect(&src.read(0..n).unwrap(), n == src.len());
     let open_ms = ms(t.elapsed());
+    println!("private memory right after open (mapping created, nothing read): {}", mem());
     println!(
         "size: {} ({} bytes), backing: {}, encoding: {}, line endings: {}",
         human_bytes(src.len()),
@@ -228,4 +233,42 @@ fn main() {
         }
     }
     println!("private memory at end (file open, idle): {}", mem());
+}
+
+/// Compares ways of streaming a cached file: pread into a reused buffer vs fresh mmap views.
+fn io_test(path: &std::path::Path) {
+    use std::io::Read;
+    let f = std::fs::File::open(path).unwrap();
+    let len = f.metadata().unwrap().len().min(8 << 30);
+    let step = 16u64 << 20;
+    let mut buf = vec![0u8; step as usize];
+    let t = Instant::now();
+    let mut pos = 0;
+    let mut n = 0u64;
+    while pos < len {
+        let k = step.min(len - pos) as usize;
+        bigtext::file::read_exact_at(&f, &mut buf[..k], pos).unwrap();
+        n += bigtext::encoding::count_byte(&buf[..k], b'\n');
+        pos += k as u64;
+    }
+    println!("pread 16MB reused buffer + count: {:.2} GB/s ({n})", len as f64 / 1073741824.0 / t.elapsed().as_secs_f64());
+    for view in [64u64 << 20, 1u64 << 30] {
+        let t = Instant::now();
+        let mut pos = 0;
+        let mut n = 0u64;
+        while pos < len {
+            let k = view.min(len - pos);
+            let m = unsafe { memmap2::MmapOptions::new().offset(pos).len(k as usize).map(&f).unwrap() };
+            n += bigtext::encoding::count_byte(&m, b'\n');
+            pos += k;
+        }
+        println!("fresh mmap views of {} MB + count: {:.2} GB/s ({n})", view >> 20, len as f64 / 1073741824.0 / t.elapsed().as_secs_f64());
+    }
+    let m = unsafe { memmap2::Mmap::map(&f).unwrap() };
+    for pass in 0..2 {
+        let t = Instant::now();
+        let n = bigtext::encoding::count_byte(&m[..len as usize], b'\n');
+        println!("global mmap pass {pass} + count: {:.2} GB/s ({n})", len as f64 / 1073741824.0 / t.elapsed().as_secs_f64());
+    }
+    let _ = (&f).read(&mut [0u8; 0]);
 }

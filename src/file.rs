@@ -1,14 +1,18 @@
-//! File access: memory-mapped when possible, buffered chunked reads otherwise.
+//! File access: windowed memory mapping when possible, buffered chunked reads otherwise.
 //!
-//! The UI thread only ever calls [`Source::get`] with `blocking = false`. For mmap sources this
-//! borrows straight from the mapping; for chunked sources it serves from a block cache and, on a
-//! miss, queues the blocks for a background loader and returns `None` ("not yet available").
+//! * The UI thread only calls [`Source::get`] with `blocking = false`. For mapped sources the
+//!   bytes are borrowed from a small cache of mapped *views* (never the whole file: on Windows
+//!   mapping a view commits page-table memory proportional to its size, ~100 MB for a 50 GB
+//!   file, which would make memory O(file size)). For chunked sources it serves from a block
+//!   cache and, on a miss, queues the blocks for a background loader and returns `None`.
+//! * Workers stream large ranges with [`Source::read_into`] (positional reads into a reused
+//!   buffer). On a cached file this is faster than first-touch page faults of a mapping and keeps
+//!   the process's private memory flat.
 
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io;
-use std::ops::Range;
+use std::ops::{Deref, Range};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -23,18 +27,121 @@ pub const CHUNK_BLOCK: u64 = 64 * 1024;
 const CACHE_BLOCKS: usize = 1024;
 /// Reads larger than this bypass the block cache (workers streaming through the file).
 const DIRECT_READ_MIN: u64 = 1024 * 1024;
+/// Mapped views start every `VIEW_STRIDE` bytes and extend `VIEW_OVERLAP` beyond the next start,
+/// so any read of up to `VIEW_OVERLAP` bytes fits inside a single view.
+const VIEW_STRIDE: u64 = 256 * 1024 * 1024;
+const VIEW_OVERLAP: u64 = 32 * 1024 * 1024;
+const MAX_VIEWS: usize = 6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OpenMode {
-    /// mmap unless the path is on a network/removable drive or mapping fails.
+    /// Memory-mapped unless the path is on a network/removable drive or mapping fails.
     Auto,
     /// Always use chunked reads.
     Chunked,
 }
 
+/// Bytes read from a [`Source`]: borrowed, owned, or a slice of a cached mapped view.
+pub struct Bytes<'a>(Repr<'a>);
+
+enum Repr<'a> {
+    Borrowed(&'a [u8]),
+    Owned(Vec<u8>),
+    View(Arc<memmap2::Mmap>, usize, usize),
+}
+
+impl<'a> Bytes<'a> {
+    pub fn borrowed(b: &'a [u8]) -> Bytes<'a> {
+        Bytes(Repr::Borrowed(b))
+    }
+    pub fn owned(v: Vec<u8>) -> Bytes<'a> {
+        Bytes(Repr::Owned(v))
+    }
+    pub fn into_owned(self) -> Vec<u8> {
+        match self.0 {
+            Repr::Owned(v) => v,
+            _ => self.to_vec(),
+        }
+    }
+}
+
+impl Deref for Bytes<'_> {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        match &self.0 {
+            Repr::Borrowed(b) => b,
+            Repr::Owned(v) => v,
+            Repr::View(m, s, l) => &m[*s..*s + *l],
+        }
+    }
+}
+
+impl AsRef<[u8]> for Bytes<'_> {
+    fn as_ref(&self) -> &[u8] {
+        self
+    }
+}
+
+impl std::fmt::Debug for Bytes<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Bytes({} bytes)", self.len())
+    }
+}
+
+impl PartialEq for Bytes<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
+}
+
+/// Lazily mapped, LRU-cached views of a file.
+struct Mapped {
+    file: File,
+    len: u64,
+    views: Mutex<Vec<(u64, Arc<memmap2::Mmap>, u64)>>,
+    tick: AtomicU64,
+}
+
+impl Mapped {
+    fn view(&self, k: u64) -> io::Result<Arc<memmap2::Mmap>> {
+        let tick = self.tick.fetch_add(1, Ordering::Relaxed);
+        let mut views = self.views.lock().unwrap();
+        if let Some(v) = views.iter_mut().find(|v| v.0 == k) {
+            v.2 = tick;
+            return Ok(v.1.clone());
+        }
+        let start = k * VIEW_STRIDE;
+        let len = (self.len - start).min(VIEW_STRIDE + VIEW_OVERLAP);
+        // SAFETY: read-only mapping. Another process truncating the file while it is mapped is
+        // not possible on Windows (ERROR_USER_MAPPED_FILE); on Unix it is a known limitation of
+        // every mmap-based viewer.
+        let map = Arc::new(unsafe { memmap2::MmapOptions::new().offset(start).len(len as usize).map(&self.file)? });
+        if views.len() >= MAX_VIEWS {
+            if let Some(i) = views.iter().enumerate().min_by_key(|(_, v)| v.2).map(|(i, _)| i) {
+                views.swap_remove(i);
+            }
+        }
+        views.push((k, map.clone(), tick));
+        Ok(map)
+    }
+
+    fn read(&self, r: Range<u64>) -> io::Result<Bytes<'static>> {
+        let k = r.start / VIEW_STRIDE;
+        let vstart = k * VIEW_STRIDE;
+        if r.end <= vstart + VIEW_STRIDE + VIEW_OVERLAP {
+            let v = self.view(k)?;
+            Ok(Bytes(Repr::View(v, (r.start - vstart) as usize, (r.end - r.start) as usize)))
+        } else {
+            let mut buf = vec![0u8; (r.end - r.start) as usize];
+            read_exact_at(&self.file, &mut buf, r.start)?;
+            Ok(Bytes::owned(buf))
+        }
+    }
+}
+
 enum Backing {
     Empty,
-    Mmap(memmap2::Mmap),
+    Mapped(Mapped),
     Chunked(Chunked),
 }
 
@@ -68,14 +175,13 @@ impl Source {
             || std::env::var_os("BIGTEXT_FORCE_CHUNKED").is_some()
             || prefers_chunked(path);
         if !force_chunked {
-            // SAFETY: the mapping is read-only. Another process truncating the file while it is
-            // mapped is not possible on Windows (ERROR_USER_MAPPED_FILE); on Unix it is a known
-            // limitation of every mmap-based viewer.
-            match unsafe { memmap2::MmapOptions::new().len(len as usize).map(&file) } {
-                Ok(map) => {
-                    return Ok(Source { path: path_buf, len, backing: Backing::Mmap(map), modified })
+            let m = Mapped { file, len, views: Mutex::new(Vec::new()), tick: AtomicU64::new(0) };
+            // Map the first view now so that a file which cannot be mapped falls back here.
+            match m.view(0) {
+                Ok(_) => return Ok(Source { path: path_buf, len, backing: Backing::Mapped(m), modified }),
+                Err(_) => {
+                    return Ok(Source { path: path_buf, len, backing: Backing::Chunked(Chunked::new(m.file, len)), modified })
                 }
-                Err(_) => { /* fall through to chunked reads */ }
             }
         }
         Ok(Source { path: path_buf, len, backing: Backing::Chunked(Chunked::new(file, len)), modified })
@@ -100,22 +206,13 @@ impl Source {
     pub fn kind_name(&self) -> &'static str {
         match self.backing {
             Backing::Empty => "empty",
-            Backing::Mmap(_) => "mmap",
+            Backing::Mapped(_) => "mmap",
             Backing::Chunked(_) => "chunked",
         }
     }
 
     pub fn is_mmap(&self) -> bool {
-        matches!(self.backing, Backing::Mmap(_))
-    }
-
-    /// The whole mapping, if memory-mapped.
-    pub fn as_slice(&self) -> Option<&[u8]> {
-        match &self.backing {
-            Backing::Mmap(m) => Some(&m[..]),
-            Backing::Empty => Some(&[]),
-            Backing::Chunked(_) => None,
-        }
+        matches!(self.backing, Backing::Mapped(_))
     }
 
     /// Registers the function used to wake the UI when queued chunked reads complete.
@@ -139,31 +236,57 @@ impl Source {
     }
 
     /// Blocking read (worker threads).
-    pub fn read(&self, r: Range<u64>) -> io::Result<Cow<'_, [u8]>> {
+    pub fn read(&self, r: Range<u64>) -> io::Result<Bytes<'_>> {
         let r = self.clamp(r);
+        if r.is_empty() {
+            return Ok(Bytes::borrowed(&[]));
+        }
         match &self.backing {
-            Backing::Empty => Ok(Cow::Borrowed(&[])),
-            Backing::Mmap(m) => Ok(Cow::Borrowed(&m[r.start as usize..r.end as usize])),
-            Backing::Chunked(c) => c.read_blocking(r).map(Cow::Owned),
+            Backing::Empty => Ok(Bytes::borrowed(&[])),
+            Backing::Mapped(m) => m.read(r),
+            Backing::Chunked(c) => c.read_blocking(r).map(Bytes::owned),
         }
     }
 
     /// Non-blocking read for the UI thread. `None` means "not available yet" (queued) or failed.
-    pub fn try_read(&self, r: Range<u64>) -> Option<Cow<'_, [u8]>> {
+    pub fn try_read(&self, r: Range<u64>) -> Option<Bytes<'_>> {
         let r = self.clamp(r);
+        if r.is_empty() {
+            return Some(Bytes::borrowed(&[]));
+        }
         match &self.backing {
-            Backing::Empty => Some(Cow::Borrowed(&[])),
-            Backing::Mmap(m) => Some(Cow::Borrowed(&m[r.start as usize..r.end as usize])),
-            Backing::Chunked(c) => c.try_read(r).map(Cow::Owned),
+            Backing::Empty => Some(Bytes::borrowed(&[])),
+            Backing::Mapped(m) => m.read(r).ok(),
+            Backing::Chunked(c) => c.try_read(r).map(Bytes::owned),
+        }
+    }
+
+    /// Positional bulk read into a caller buffer (workers streaming through the file).
+    pub fn read_into(&self, offset: u64, buf: &mut [u8]) -> io::Result<()> {
+        if offset + buf.len() as u64 > self.len {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "read past end of source"));
+        }
+        match &self.backing {
+            Backing::Empty => Ok(()),
+            Backing::Mapped(m) => read_exact_at(&m.file, buf, offset),
+            Backing::Chunked(c) => read_exact_at(&c.inner.file, buf, offset),
         }
     }
 
     /// Read with the given blocking behaviour; I/O errors map to `None`.
-    pub fn get(&self, r: Range<u64>, blocking: bool) -> Option<Cow<'_, [u8]>> {
+    pub fn get(&self, r: Range<u64>, blocking: bool) -> Option<Bytes<'_>> {
         if blocking {
             self.read(r).ok()
         } else {
             self.try_read(r)
+        }
+    }
+
+    /// Number of currently mapped views (diagnostics).
+    pub fn mapped_views(&self) -> usize {
+        match &self.backing {
+            Backing::Mapped(m) => m.views.lock().unwrap().len(),
+            _ => 0,
         }
     }
 }

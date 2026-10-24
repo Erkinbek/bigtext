@@ -281,6 +281,20 @@ pub fn search_forward(
     progress: Option<&Progress>,
     mut on_match: impl FnMut(u64, u64) -> bool,
 ) -> SearchEnd {
+    search_forward_ctx(buf, m, range, cancel, progress, |s, e, _, _| on_match(s, e))
+}
+
+/// Like [`search_forward`], but also passes the current window (`hay`, starting at absolute
+/// offset `base`) so callers can copy surrounding bytes without re-reading them. For matches
+/// found by extending past the window, `hay` is empty.
+pub fn search_forward_ctx(
+    buf: &TextBuf,
+    m: &Matcher,
+    range: Range<u64>,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut on_match: impl FnMut(u64, u64, &[u8], u64) -> bool,
+) -> SearchEnd {
     let len = buf.len();
     let unit = buf.codec.unit() as u64;
     let end = range.end.min(len);
@@ -290,6 +304,7 @@ pub fn search_forward(
     }
     let mut pos = start;
     let mut last_end: Option<u64> = None;
+    let mut window = Vec::new();
     loop {
         if cancel.is_cancelled() {
             return SearchEnd::Cancelled;
@@ -298,7 +313,8 @@ pub fn search_forward(
         let span_end = (win_end + m.overlap()).min(end);
         let read_start = align_down(pos.saturating_sub(CTX), unit);
         let read_end = (span_end + CTX).min(len);
-        let Some(hay) = buf.read(read_start..read_end) else { return SearchEnd::Unavailable };
+        let Some(n) = buf.read_to(read_start..read_end, &mut window) else { return SearchEnd::Unavailable };
+        let hay = &window[..n];
         let final_window = win_end >= end;
         let rel = |x: u64| (x - read_start) as usize;
         let accept = if final_window { rel(win_end) + 1 } else { rel(win_end) };
@@ -306,19 +322,18 @@ pub fn search_forward(
         let mut stopped = false;
         let mut max_end = win_end;
         let literal = m.is_literal();
-        m.find_in(&hay, read_start, rel(pos), accept, rel(span_end), &mut last_end, &mut |s, e| {
+        m.find_in(hay, read_start, rel(pos), accept, rel(span_end), &mut last_end, &mut |s, e| {
             if !literal && e == span_end && span_end < end {
                 truncated = Some(s);
                 return false;
             }
-            if !on_match(s, e) {
+            if !on_match(s, e, hay, read_start) {
                 stopped = true;
                 return false;
             }
             max_end = max_end.max(e);
             true
         });
-        drop(hay);
         if stopped {
             return SearchEnd::Stopped;
         }
@@ -327,7 +342,7 @@ pub fn search_forward(
             match extend_match(buf, m, s, end, cancel) {
                 Some((s2, e2)) => {
                     last_end = Some(e2);
-                    if !on_match(s2, e2) {
+                    if !on_match(s2, e2, &[], 0) {
                         return SearchEnd::Stopped;
                     }
                     pos = if e2 > s2 { e2 } else { buf.next_char(s2) };

@@ -131,25 +131,28 @@ pub fn replace_all_to<W: Write>(
     let mut stats = ReplaceStats { bytes_in: buf.len(), ..Default::default() };
     let mut pos = 0u64;
     let mut err: Option<io::Error> = None;
-    let copy = |from: u64, to: u64, out: &mut W, stats: &mut ReplaceStats| -> io::Result<()> {
-        let mut res = Ok(());
-        let ok = buf.for_each_chunk(from..to, |_, b| match out.write_all(b) {
-            Ok(()) => {
-                stats.bytes_out += b.len() as u64;
-                true
-            }
-            Err(e) => {
-                res = Err(e);
-                false
-            }
-        });
-        if ok.is_none() {
-            return Err(io::Error::other("could not read the document"));
+    let mut scratch = Vec::new();
+    // Copies [from, to) to `out`, straight from the search window when it holds those bytes.
+    let mut copy = |from: u64, to: u64, hay: &[u8], base: u64, out: &mut W, stats: &mut ReplaceStats| -> io::Result<()> {
+        if from >= to {
+            return Ok(());
         }
-        res
+        stats.bytes_out += to - from;
+        if from >= base && to <= base + hay.len() as u64 {
+            return out.write_all(&hay[(from - base) as usize..(to - base) as usize]);
+        }
+        const STEP: u64 = 4 * 1024 * 1024;
+        let mut p = from;
+        while p < to {
+            let e = (p + STEP).min(to);
+            let n = buf.read_to(p..e, &mut scratch).ok_or_else(|| io::Error::other("could not read the document"))?;
+            out.write_all(&scratch[..n])?;
+            p = e;
+        }
+        Ok(())
     };
-    let end = search::search_forward(buf, m, range, cancel, progress, |s, e| {
-        let r = copy(pos, s, out, &mut stats).and_then(|_| {
+    let end = search::search_forward_ctx(buf, m, range, cancel, progress, |s, e, hay, base| {
+        let r = copy(pos, s, hay, base, out, &mut stats).and_then(|_| {
             let rep = tpl.expand(buf, m, s, e);
             stats.bytes_out += rep.len() as u64;
             out.write_all(&rep)
@@ -171,7 +174,7 @@ pub fn replace_all_to<W: Write>(
         _ => {}
     }
     let len = buf.len();
-    copy(pos, len, out, &mut stats)?;
+    copy(pos, len, &[], 0, out, &mut stats)?;
     Ok(Some(stats))
 }
 

@@ -208,19 +208,19 @@ pub fn spawn_indexer(
         };
         let mut throttle = Throttle::new(Duration::from_millis(100));
         let mut entries = Vec::with_capacity((BATCH / BLOCK) as usize);
+        let mut buf = vec![0u8; BATCH as usize];
         while pos < len {
             if cancel.is_cancelled() {
                 return;
             }
             let end = (pos + BATCH).min(len);
-            let bytes = match src.read(pos..end) {
-                Ok(b) => b,
-                Err(_) => {
-                    index.failed.store(true, Ordering::Relaxed);
-                    waker();
-                    return;
-                }
-            };
+            let bytes = &mut buf[..(end - pos) as usize];
+            if src.read_into(pos, bytes).is_err() {
+                index.failed.store(true, Ordering::Relaxed);
+                waker();
+                return;
+            }
+            let bytes = &*bytes;
             entries.clear();
             let mut c = pos;
             while c < end {

@@ -53,7 +53,7 @@ impl Row {
     }
 }
 
-fn read(buf: &TextBuf, r: std::ops::Range<u64>) -> Result<std::borrow::Cow<'_, [u8]>, Pending> {
+fn read(buf: &TextBuf, r: std::ops::Range<u64>) -> Result<crate::file::Bytes<'_>, Pending> {
     buf.read(r).ok_or(Pending)
 }
 
@@ -400,7 +400,7 @@ mod tests {
     fn all_segs(t: &TextBuf) -> Vec<Seg> {
         let mut v = vec![seg_at(t, 0).unwrap()];
         while let Some(s) = next_seg(t, v.last().unwrap()).unwrap() {
-            assert!(s.start > v.last().unwrap().start || t.len() == 0);
+            assert!(s.start > v.last().unwrap().start || t.is_empty());
             v.push(s);
         }
         v
