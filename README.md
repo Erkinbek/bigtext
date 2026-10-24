@@ -240,6 +240,27 @@ target/release/bigtext --screenshots target/shots testdata/random-lines-10g.txt
 python scripts/build-site.py
 ```
 
+## Releasing
+
+1. Bump the version in `Cargo.toml`, `installer/bigtext.iss` and `scripts/build-site.py`, run
+   `python scripts/build-site.py --no-images` and commit.
+2. Push a tag: `git tag -a v0.1.2 -m "BigText 0.1.2"` and `git push origin v0.1.2`.
+3. CI builds every platform and publishes a GitHub release with version-free asset names
+   (so `releases/latest/download/<file>` links keep working), then:
+   - **crates.io** (`crates-io` job) publishes the crate with
+     [trusted publishing](https://crates.io/docs/trusted-publishing), so no token is stored.
+     It runs when the repository variable `CRATES_IO_PUBLISH` is `true`. One-time setup: the
+     first version is published by hand (`cargo login`, then `cargo publish`); then on crates.io
+     → bigtext → Settings → Trusted Publishing add the repository `Erkinbek/bigtext` with the
+     workflow `build.yml`.
+   - **winget** (`winget` job) opens a pull request with the new version at
+     [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs) through
+     [WinGet Releaser](https://github.com/vedantmgoyal9/winget-releaser). It needs the secret
+     `WINGET_TOKEN` (a classic token with the `public_repo` scope) and a fork of winget-pkgs
+     under the repository owner, and it only updates a package that is already in winget: the
+     first version is submitted by hand from the manifests in `packaging/winget/`, which pass
+     `winget validate`.
+
 ## Measured performance
 
 Measured on Windows 11 Pro, Intel Core Ultra 9 285 (24 cores), 191 GB RAM, release build,

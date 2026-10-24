@@ -11,6 +11,11 @@ keywords = ["text-editor", "large-files", "log-viewer", "mmap", "egui"]
 categories = ["text-editors", "gui"]
 license = "MIT"
 default-run = "bigtext"
+# Only what `cargo install bigtext` needs; the website, test data and CI stay out of the crate.
+include = ["/src/", "/build.rs", "/assets/bigtext.ico", "/assets/icon-256.png", "/README.md", "/LICENSE"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [lib]
 name = "bigtext"
