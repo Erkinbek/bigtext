@@ -351,9 +351,18 @@ impl BigTextApp {
                     if ui.small_button("B").on_hover_text("Open the other file at this line").clicked() {
                         open_other = Some(h.b_line + 1);
                     }
-                    ui.colored_label(egui::Color32::from_rgb(220, 110, 110), egui::RichText::new(a_text).font(font.clone()));
-                    ui.label("→");
-                    ui.colored_label(egui::Color32::from_rgb(110, 190, 110), egui::RichText::new(b_text).font(font.clone()));
+                    // Both sides get half of the remaining width so B stays visible next to a long A line.
+                    let w = ((ui.available_width() - 2.0 * ui.spacing().item_spacing.x - 16.0) / 2.0).max(40.0);
+                    let side = |ui: &mut egui::Ui, text: String, color: egui::Color32| {
+                        ui.allocate_ui_with_layout(egui::vec2(w, row_h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            ui.set_width(w);
+                            ui.add(egui::Label::new(egui::RichText::new(text).font(font.clone()).color(color)).truncate());
+                        });
+                    };
+                    side(ui, a_text, egui::Color32::from_rgb(220, 110, 110));
+                    // The arrow is in the monospace font only.
+                    ui.monospace("→");
+                    side(ui, b_text, egui::Color32::from_rgb(110, 190, 110));
                 });
             }
         });

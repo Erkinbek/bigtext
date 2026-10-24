@@ -948,9 +948,10 @@ impl BigTextApp {
                             if ui.link(format!("{}", lines.get(i).copied().unwrap_or(0))).clicked() {
                                 jump = Some(*off);
                             }
-                            ui.monospace(before.replace('\n', "⏎"));
-                            ui.label("→");
-                            ui.monospace(after.replace('\n', "⏎"));
+                            // ↵ and → exist in the monospace font only.
+                            ui.monospace(before.replace('\n', "↵"));
+                            ui.monospace("→");
+                            ui.monospace(after.replace('\n', "↵"));
                             ui.end_row();
                         }
                     });
