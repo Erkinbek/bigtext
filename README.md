@@ -49,6 +49,15 @@ Single self-contained binary, no runtime dependencies.
 - **Other**: line numbers, zoom (Ctrl+wheel), word wrap (off by default), light/dark theme,
   read-only toggle (auto for read-only files), external change detection with Reload, and a
   **follow (tail) mode** for growing logs that resumes indexing where it stopped.
+- **Bookmarks** (Ctrl+F2, F2 / Shift+F2) that stay on their lines while you edit.
+- **Split view** (Ctrl+\\): two panes over one document with independent scrolling.
+- **Syntax highlighting** for logs, JSON, XML/HTML, CSV/TSV, SQL and INI/TOML/YAML — computed
+  only for the visible slice of the visible rows; View → Highlight as overrides the extension.
+- **Compare files** (File → Compare with…): streaming line diff of two huge files with bounded
+  memory; identical stretches are skipped at memory speed (1 GB vs 1 GB with two changed lines:
+  0.6 s, ~2 MB of memory). Click a difference to jump there in either file.
+- **Recent files and session restore**: tabs, positions, bookmarks and settings come back on
+  the next start (state in `%APPDATA%\BigText\state.txt` / `~/.config/bigtext`).
 
 ## Usage
 
@@ -72,10 +81,14 @@ bigtext [FILE ...]
 | Home / End, Ctrl+Home / Ctrl+End | Line start (smart) / end, document start / end |
 | Ctrl+wheel, Ctrl+= / Ctrl+- / Ctrl+0 | Zoom |
 | Alt+Z | Toggle word wrap |
+| Ctrl+F2 / F2 / Shift+F2 | Toggle / next / previous bookmark |
+| Ctrl+\\ | Split view |
+| Double / triple click | Select word / line |
 | F12 | Performance overlay (frame time, private memory, index size) |
 
-View → Hex view, View → Follow (tail), File → Reopen with encoding, File → Line endings on save,
-Edit → Read-only.
+View → Hex view, View → Follow (tail), View → Syntax highlighting, File → Open recent,
+File → Compare with…, File → Reopen with encoding, File → Line endings on save,
+File → Keep backup (.bak) on save, Edit → Read-only, Help → About.
 
 ## Building
 
@@ -120,9 +133,12 @@ src/
   search.rs         Matcher (memmem / regex-automata / decoded), windowed streaming search
   replace.rs        templates, batch edits, streaming replace-all
   save.rs           temp file + fsync + atomic replace (ReplaceFileW), EOL conversion
+  diff.rs           streaming line diff (chunk compare + hashed re-synchronisation)
   jobs.rs           cancel tokens, progress, wakers
-  app/              egui shell: tabs, menus, search panel, results list, dialogs, save protocol
-  view/             custom virtualized text view and hex view
+  app/              egui shell: tabs, menus, search panel, results list, dialogs, save protocol,
+                    session/recent files, compare panel
+  view/             custom virtualized text view, hex view, syntax highlighting
+  self_test.rs      in-app GUI self-test driven by synthetic input
   bin/              gen-testfiles, bigtext-bench
 ```
 
@@ -139,16 +155,36 @@ Key decisions (details in [PLAN.md](PLAN.md)):
   writes and fsyncs the temp file from a snapshot, the UI then drops its mapping, and a
   finalize worker waits until no snapshot holds the old file, swaps it in and reopens it. If
   that fails the original (untouched) file is reopened and the edits are re-attached.
-- Undo history is cleared after a save (the old mapping it refers to is released).
+- Undo history is cleared after a save (the old mapping it refers to is released). Undoing
+  back to the last saved state clears the modified marker.
 
 ## Tests and benchmarks
 
 ```
-cargo test --lib                     # unit tests: index, piece table, rows, search, replace, save, encodings
+cargo test --lib --bins              # 65 unit tests: index, piece table, rows, search, replace, save,
+                                     # encodings, diff, highlighting, session file
+target/release/bigtext --self-test --report report.txt [--screenshot shots/x.png]
+                                     # 56 GUI checks with synthetic mouse/keyboard/clipboard input
 scripts/gen-testfiles.ps1            # or scripts/gen-testfiles.sh; -SkipBig / --skip-big avoids the 10 GB file
 target/release/bigtext-bench FILE    # core benchmarks (open, first screen, go-to, index, search, replace, memory)
-target/release/bigtext --bench-ui FILE --report out.txt [--screenshot out.png] [--scenario search:TEXT|edit|view|wrap|hex]
+target/release/bigtext --bench-ui FILE --report out.txt [--screenshot out.png]
+        [--scenario search:TEXT|edit|view|wrap|hex|close-search|close-replace]
 ```
+
+The **GUI self-test** drives the real window through `App::raw_input_hook`: clicks, drags,
+double/triple clicks, shift-click, keys and shortcuts, typing, copy/paste, Ctrl+wheel. It checks
+selection, smart Home/End, auto-indent, undo/redo back to the unmodified state, clipboard,
+duplicate/delete line, zoom, find / F3 / Shift+F3 / Find All, replace all + undo, go to line and
+offset, atomic save (no temp files left), the unsaved-changes prompt, wrap/hex/overlay toggles,
+bookmarks, split view, highlighting, file comparison, the About window, and these edge cases:
+read-only files (edits blocked; saving over one fails cleanly and keeps the edits), a file
+appended to while open (banner, then follow mode), a file renamed or deleted while open, a
+path longer than 260 characters (open, edit, save), a Unicode path, the chunked read path
+(forced, and via `\\localhost\E$` UNC), empty / no-trailing-newline / CR-only / BOM-in-the-middle
+/ UTF-16 / Windows-1251 files, a binary file, and a 6 MB copy on a worker. Every run: 56/56
+passed, max UI frame time 3–5 ms. The `close-search` / `close-replace` scenarios close the window
+mid-job: the process exits within a second, no temp file is left and the original file's hash
+is unchanged.
 
 The generator writes `random-lines-1g.txt`, `random-lines-10g.txt`, `single-line-2g.txt`,
 `utf16le.txt`, `cp1251.txt`, `binary.bin`, `mixed-eol.txt`, `short-lines-100m.txt` and small
@@ -213,5 +249,18 @@ from `bigtext-bench`. Raw reports: `scripts/bench.ps1` reproduces them.
   include CJK glyphs.
 - On Linux/macOS, another process truncating a file while it is mapped can raise SIGBUS
   (inherent to mmap; Windows forbids truncating mapped files). Network drives use chunked reads.
-- Nice-to-haves not implemented: bookmarks, split view, syntax highlighting, diff, recent
-  files and session restore (tail/follow mode is implemented).
+- Syntax highlighting is row-local: a string or comment that spans lines is not tracked.
+- The file comparison compares lines by 64-bit hash + length (a collision would hide a
+  difference; astronomically unlikely) and re-synchronises within 4,096 lines / 16 MB; it
+  compares the files on disk, not unsaved edits.
+
+## Author
+
+**Erkin Pardayev**
+
+- GitHub: [github.com/Erkinbek](https://github.com/Erkinbek)
+- Repository: [github.com/Erkinbek/bigtext](https://github.com/Erkinbek/bigtext)
+- Telegram: [@ErkinPardayev](https://t.me/ErkinPardayev)
+- E-mail: [erkin.pardayev@gmail.com](mailto:erkin.pardayev@gmail.com)
+
+Licensed under the [MIT license](LICENSE).
