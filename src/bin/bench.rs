@@ -99,6 +99,32 @@ fn main() {
         io_test(&file);
         return;
     }
+    if let Some(other) = std::env::var_os("BIGTEXT_DIFF_WITH") {
+        let a = Source::open(&file, OpenMode::Auto).expect("open A");
+        let b = Source::open(std::path::Path::new(&other), OpenMode::Auto).expect("open B");
+        let t = Instant::now();
+        let mut hunks = 0u64;
+        let mut changed = (0u64, 0u64);
+        let end = bigtext::diff::diff(&a, &b, &CancelToken::new(), None, |h| {
+            hunks += 1;
+            changed.0 += h.a_count;
+            changed.1 += h.b_count;
+            hunks < 100_000
+        });
+        let s = t.elapsed().as_secs_f64();
+        println!(
+            "diff {} vs {}: {:?}, {hunks} hunks ({} lines of A, {} lines of B differ) in {:.2} s = {:.0} MB/s of input, private memory {}",
+            file.display(),
+            std::path::Path::new(&other).display(),
+            end,
+            changed.0,
+            changed.1,
+            s,
+            (a.len() + b.len()) as f64 / 1048576.0 / s.max(1e-9),
+            mem()
+        );
+        return;
+    }
     if literals.is_empty() {
         literals.push("timeout connection".into());
     }

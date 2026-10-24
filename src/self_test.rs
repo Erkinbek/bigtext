@@ -37,6 +37,7 @@ pub struct Ctx {
     t0: Instant,
     pub mark: u64,
     mark_time: Instant,
+    log: Vec<String>,
     shot: Option<PathBuf>,
     pending_shot: Option<PathBuf>,
 }
@@ -211,6 +212,15 @@ impl SelfTest {
             Err(e) => Step::Fail(e.to_string()),
         }));
         s("open edit.txt", open_step("edit.txt"));
+        s("screenshot: initial view", Box::new(|_app, c| {
+            if c.first() {
+                c.pending_shot = c.shot.clone().map(|d| d.join("selftest-start.png"));
+            }
+            if c.waited() < Duration::from_millis(500) {
+                return Step::Wait;
+            }
+            Step::Next
+        }));
         s("mouse: click places caret", Box::new(|app, c| {
             if c.first() {
                 let p = pos(app, 0, 6.0);
@@ -570,18 +580,32 @@ impl SelfTest {
             d.hex = false;
             check(caret == 11 && !d.view.wrap, format!("hex caret {caret}"))
         }));
+        s("screenshot: after wrap/hex toggles", Box::new(|_app, c| {
+            if c.first() {
+                c.pending_shot = c.shot.clone().map(|d| d.join("selftest-before-about.png"));
+            }
+            if c.waited() < Duration::from_millis(500) {
+                return Step::Wait;
+            }
+            Step::Next
+        }));
         s("About window shows author", Box::new(|app, c| {
             if c.first() {
                 app.show_about = true;
-                c.pending_shot = c.shot.clone().map(|d| d.join("selftest-about.png"));
-                c.push(vec![], NONE);
-                c.push(vec![], NONE);
                 return Step::Wait;
             }
-            if c.frames < 8 {
+            // Screenshot once the window's fade-in animation has finished.
+            if c.mark == 0 && c.waited() > Duration::from_millis(600) {
+                c.mark = 1;
+                c.pending_shot = c.shot.clone().map(|d| d.join("selftest-about.png"));
+            }
+            if c.waited() < Duration::from_millis(1200) {
                 return Step::Wait;
             }
             app.show_about = false;
+            let d = doc(app);
+            let state = format!("top {} caret {} len {} hex {} wrap {} rows {}", d.view.top, d.view.caret, d.buf.len(), d.hex, d.view.wrap, d.view.rows_on_screen);
+            c.log.push(format!("about step view state: {state}"));
             check(crate::app::AUTHOR_LINKS.iter().any(|l| l.2.contains("Erkinbek/bigtext")), "missing repository link")
         }));
         s("bookmarks: Ctrl+F2 toggles, F2 / Shift+F2 navigate", Box::new(|app, c| {
@@ -914,7 +938,7 @@ impl SelfTest {
             steps,
             idx: 0,
             settle: 0,
-            ctx: Ctx { queue: VecDeque::new(), copied: Vec::new(), dir, frames: 0, t0: Instant::now(), mark: 0, mark_time: Instant::now(), shot: shot_dir.clone(), pending_shot: None },
+            ctx: Ctx { queue: VecDeque::new(), copied: Vec::new(), dir, frames: 0, t0: Instant::now(), mark: 0, mark_time: Instant::now(), log: Vec::new(), shot: shot_dir.clone(), pending_shot: None },
             report,
             results: Vec::new(),
             finished: false,
@@ -1045,7 +1069,7 @@ impl SelfTest {
         for (name, status, msg) in &self.results {
             out.push_str(&format!("[{status}] {name}{}\n", if msg.is_empty() { String::new() } else { format!(" — {msg}") }));
         }
-        for l in &self.shot_log {
+        for l in self.ctx.log.iter().chain(&self.shot_log) {
             out.push_str(&format!("note: {l}
 "));
         }

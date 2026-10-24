@@ -685,7 +685,7 @@ impl BigTextApp {
                 for (i, d) in self.docs.iter().enumerate() {
                     let mut label = d.title.clone();
                     if d.is_modified() {
-                        label.push_str(" ●");
+                        label.push_str(" *");
                     }
                     let r = ui.selectable_label(i == self.active, label);
                     if r.clicked() {
