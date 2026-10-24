@@ -241,6 +241,10 @@ pub fn for_each_cell(codec: &Codec, bytes: &[u8], base: u64, mut f: impl FnMut(C
 
 /// Total cell width of `bytes`.
 pub fn cell_width(codec: &Codec, bytes: &[u8], base: u64) -> u32 {
+    // Fast path: ASCII without tabs is one cell per byte (controls are one cell too).
+    if codec.unit() == 1 && bytes.is_ascii() && memchr::memchr(b'\t', bytes).is_none() {
+        return bytes.len() as u32;
+    }
     let mut w = 0;
     for_each_cell(codec, bytes, base, |c| {
         w = c.cell + c.width;

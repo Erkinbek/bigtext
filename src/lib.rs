@@ -5,4 +5,5 @@ pub mod encoding;
 pub mod file;
 pub mod index;
 pub mod jobs;
+pub mod sysinfo;
 pub mod text;

@@ -1,0 +1,566 @@
+//! An open document: text buffer, undo history, view state and its background jobs.
+
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use bigtext::encoding::{Detected, LineEnding};
+use bigtext::file::{self, Source};
+use bigtext::index::{self, LineIndex};
+use bigtext::jobs::{CancelToken, Waker};
+use bigtext::text::rows;
+use bigtext::text::{Swap, TextBuf};
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum EditKind {
+    Typing,
+    Delete,
+    Other,
+}
+
+pub struct UndoGroup {
+    pub swaps: Vec<Swap>,
+    pub sel_before: (u64, u64),
+    pub sel_after: (u64, u64),
+    pub kind: EditKind,
+    pub at: Instant,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DocState {
+    Loading,
+    Ready,
+    /// Saving/replacing: the source is released while the file is being swapped on disk.
+    Finalizing(String),
+    Failed(String),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Banner {
+    Binary,
+    ChangedOnDisk { deleted: bool, grown: bool },
+    Info(String),
+    Error(String),
+}
+
+/// Per-document view state (positions are byte offsets in the document).
+pub struct ViewState {
+    pub top: u64,
+    pub scroll_x: f32,
+    pub caret: u64,
+    pub anchor: u64,
+    pub desired_cell: Option<u32>,
+    pub wrap: bool,
+    pub rows_on_screen: usize,
+    pub text_cols: usize,
+    pub max_cells: u32,
+    pub scroll_to_caret: bool,
+    pub center_caret: bool,
+    pub pending_goto_line: Option<(u64, u64)>,
+    pub wheel_rem: f32,
+    pub hex_top: u64,
+    pub first_paint: Option<Instant>,
+    pub dragging: bool,
+    pub width_cache: std::collections::HashMap<u64, u32>,
+    pub width_cache_version: u64,
+}
+
+impl Default for ViewState {
+    fn default() -> Self {
+        ViewState {
+            top: 0,
+            scroll_x: 0.0,
+            caret: 0,
+            anchor: 0,
+            desired_cell: None,
+            wrap: false,
+            rows_on_screen: 40,
+            text_cols: 120,
+            max_cells: 0,
+            scroll_to_caret: false,
+            center_caret: false,
+            pending_goto_line: None,
+            wheel_rem: 0.0,
+            hex_top: 0,
+            first_paint: None,
+            dragging: false,
+            width_cache: std::collections::HashMap::new(),
+            width_cache_version: 0,
+        }
+    }
+}
+
+pub struct Document {
+    pub id: u64,
+    pub path: Option<PathBuf>,
+    pub title: String,
+    pub buf: TextBuf,
+    pub line_ending: LineEnding,
+    pub eol_on_save: Option<LineEnding>,
+    pub looks_binary: bool,
+    pub read_only: bool,
+    pub hex: bool,
+    pub undo: Vec<UndoGroup>,
+    pub redo: Vec<UndoGroup>,
+    pub version: u64,
+    pub saved_version: u64,
+    pub view: ViewState,
+    pub state: DocState,
+    pub banner: Option<Banner>,
+    pub index_cancel: CancelToken,
+    pub watch_cancel: CancelToken,
+    pub opened_at: Instant,
+    pub open_elapsed: Option<Duration>,
+    pub follow: bool,
+    last_indexed: u64,
+}
+
+impl Document {
+    pub fn loading(id: u64, path: PathBuf) -> Document {
+        let title = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| file::display_path(&path));
+        let src = Arc::new(Source::empty());
+        let idx = LineIndex::new(0);
+        Document {
+            id,
+            path: Some(path),
+            title,
+            buf: TextBuf::new(src, idx, bigtext::encoding::Codec::utf8()),
+            line_ending: LineEnding::Unknown,
+            eol_on_save: None,
+            looks_binary: false,
+            read_only: false,
+            hex: false,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            version: 0,
+            saved_version: 0,
+            view: ViewState::default(),
+            state: DocState::Loading,
+            banner: None,
+            index_cancel: CancelToken::new(),
+            watch_cancel: CancelToken::new(),
+            opened_at: Instant::now(),
+            open_elapsed: None,
+            follow: false,
+            last_indexed: 0,
+        }
+    }
+
+    pub fn untitled(id: u64, n: usize) -> Document {
+        let mut d = Document::loading(id, PathBuf::new());
+        d.path = None;
+        d.title = format!("Untitled-{n}");
+        d.state = DocState::Ready;
+        d
+    }
+
+    /// Installs a freshly opened source (initial open, reload or after save).
+    pub fn install(&mut self, source: Arc<Source>, det: Detected, prefix: Option<Vec<u64>>, waker: Waker) {
+        self.index_cancel.cancel();
+        self.index_cancel = CancelToken::new();
+        source.set_waker(waker.clone());
+        let index = match prefix {
+            Some(p) => LineIndex::with_prefix(source.len(), p),
+            None => LineIndex::new(source.len()),
+        };
+        if !index.is_done() {
+            index::spawn_indexer(source.clone(), det.codec, index.clone(), self.index_cancel.clone(), waker);
+        }
+        self.buf = TextBuf::new(source, index, det.codec);
+        self.line_ending = det.line_ending;
+        self.looks_binary = det.looks_binary;
+        if det.looks_binary && self.banner.is_none() {
+            self.banner = Some(Banner::Binary);
+        }
+        self.undo.clear();
+        self.redo.clear();
+        self.version += 1;
+        self.saved_version = self.version;
+        self.last_indexed = 0;
+        let min = self.min_caret();
+        self.view.caret = self.view.caret.clamp(min, self.buf.len());
+        self.view.anchor = self.view.caret;
+        self.view.top = self.view.top.min(self.buf.len());
+        self.state = DocState::Ready;
+    }
+
+    pub fn is_modified(&self) -> bool {
+        self.version != self.saved_version
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.state == DocState::Ready
+    }
+
+    pub fn editable(&self) -> bool {
+        self.is_ready() && !self.read_only && !self.hex
+    }
+
+    pub fn min_caret(&self) -> u64 {
+        (self.buf.codec.bom_len as u64).min(self.buf.len())
+    }
+
+    pub fn selection(&self) -> (u64, u64) {
+        let (a, b) = (self.view.anchor, self.view.caret);
+        (a.min(b), a.max(b))
+    }
+
+    pub fn has_selection(&self) -> bool {
+        self.view.anchor != self.view.caret
+    }
+
+    pub fn set_caret(&mut self, off: u64, extend: bool) {
+        let off = off.clamp(self.min_caret(), self.buf.len());
+        self.view.caret = off;
+        if !extend {
+            self.view.anchor = off;
+        }
+        self.view.scroll_to_caret = true;
+    }
+
+    pub fn select(&mut self, start: u64, end: u64) {
+        self.view.anchor = start.clamp(self.min_caret(), self.buf.len());
+        self.view.caret = end.clamp(self.min_caret(), self.buf.len());
+        self.view.scroll_to_caret = true;
+        self.view.desired_cell = None;
+    }
+
+    /// Called every frame: lets line counts catch up with the background indexer.
+    pub fn tick(&mut self) -> bool {
+        let idx = self.buf.index.indexed_bytes();
+        let mut changed = false;
+        if idx != self.last_indexed {
+            self.last_indexed = idx;
+            if self.buf.has_inexact() {
+                changed |= self.buf.refresh_counts(512);
+            }
+        }
+        changed
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Editing.
+
+    fn push_undo(&mut self, swaps: Vec<Swap>, sel_before: (u64, u64), sel_after: (u64, u64), kind: EditKind) {
+        self.redo.clear();
+        let now = Instant::now();
+        if let Some(last) = self.undo.last_mut() {
+            let coalesce = kind != EditKind::Other
+                && last.kind == kind
+                && now.duration_since(last.at) < Duration::from_millis(1500)
+                && last.sel_after == sel_before;
+            if coalesce {
+                last.swaps.extend(swaps);
+                last.sel_after = sel_after;
+                last.at = now;
+                return;
+            }
+        }
+        self.undo.push(UndoGroup { swaps, sel_before, sel_after, kind, at: now });
+        if self.undo.len() > 10_000 {
+            self.undo.remove(0);
+        }
+    }
+
+    /// Replaces `range` with `bytes` (already encoded) and moves the caret after the insertion.
+    pub fn edit(&mut self, range: std::ops::Range<u64>, bytes: &[u8], kind: EditKind) {
+        if !self.editable() {
+            return;
+        }
+        let sel_before = (self.view.anchor, self.view.caret);
+        let swap = self.buf.replace(range.clone(), bytes);
+        let caret = range.start.min(self.buf.len()) + bytes.len() as u64;
+        self.version += 1;
+        self.view.anchor = caret;
+        self.view.caret = caret;
+        self.view.desired_cell = None;
+        self.view.scroll_to_caret = true;
+        self.push_undo(vec![swap], sel_before, (caret, caret), kind);
+    }
+
+    /// Records an externally built swap (batch replace, duplicate line) as one undo step.
+    pub fn record(&mut self, swap: Swap, sel_after: (u64, u64)) {
+        let sel_before = (self.view.anchor, self.view.caret);
+        self.version += 1;
+        self.view.anchor = sel_after.0;
+        self.view.caret = sel_after.1;
+        self.view.scroll_to_caret = true;
+        self.push_undo(vec![swap], sel_before, sel_after, EditKind::Other);
+    }
+
+    pub fn insert_text(&mut self, text: &str) {
+        let (s, e) = self.selection();
+        let bytes = self.buf.codec.encode(text);
+        let kind = if text.chars().count() <= 2 && !text.contains('\n') { EditKind::Typing } else { EditKind::Other };
+        self.edit(s..e, &bytes, kind);
+    }
+
+    pub fn delete_selection(&mut self) -> bool {
+        let (s, e) = self.selection();
+        if s == e {
+            return false;
+        }
+        self.edit(s..e, &[], EditKind::Other);
+        true
+    }
+
+    /// Length of a CRLF pair ending at `off`, if any.
+    fn crlf_before(&self, off: u64) -> Option<u64> {
+        let codec = self.buf.codec;
+        let cr = codec.cr_unit();
+        let nl = codec.nl_unit();
+        let n = (cr.len() + nl.len()) as u64;
+        if off < n || codec.nl != bigtext::encoding::NlByte::Lf {
+            return None;
+        }
+        let b = self.buf.read(off - n..off)?;
+        (b.starts_with(cr) && b[cr.len()..] == *nl).then_some(n)
+    }
+
+    pub fn backspace(&mut self) {
+        if self.delete_selection() {
+            return;
+        }
+        let c = self.view.caret;
+        if c <= self.min_caret() {
+            return;
+        }
+        let start = match self.crlf_before(c) {
+            Some(n) => c - n,
+            None => self.buf.prev_char(c),
+        };
+        self.edit(start.max(self.min_caret())..c, &[], EditKind::Delete);
+    }
+
+    pub fn delete_forward(&mut self) {
+        if self.delete_selection() {
+            return;
+        }
+        let c = self.view.caret;
+        if c >= self.buf.len() {
+            return;
+        }
+        let mut end = self.buf.next_char(c);
+        let cr = self.buf.codec.cr_unit().len() as u64;
+        let nl = self.buf.codec.nl_unit().len() as u64;
+        if let Some(n) = self.crlf_before((c + cr + nl).min(self.buf.len())) {
+            if c + n == (c + cr + nl).min(self.buf.len()) {
+                end = c + n;
+            }
+        }
+        let sel = (self.view.anchor, self.view.caret);
+        let swap = self.buf.replace(c..end, &[]);
+        self.version += 1;
+        self.view.scroll_to_caret = true;
+        self.push_undo(vec![swap], sel, sel, EditKind::Delete);
+    }
+
+    pub fn undo(&mut self) {
+        if !self.is_ready() {
+            return;
+        }
+        if let Some(g) = self.undo.pop() {
+            for s in g.swaps.iter().rev() {
+                self.buf.apply(s, false);
+            }
+            self.version += 1;
+            self.view.anchor = g.sel_before.0.min(self.buf.len());
+            self.view.caret = g.sel_before.1.min(self.buf.len());
+            self.view.scroll_to_caret = true;
+            self.redo.push(g);
+        }
+    }
+
+    pub fn redo(&mut self) {
+        if !self.is_ready() {
+            return;
+        }
+        if let Some(g) = self.redo.pop() {
+            for s in &g.swaps {
+                self.buf.apply(s, true);
+            }
+            self.version += 1;
+            self.view.anchor = g.sel_after.0.min(self.buf.len());
+            self.view.caret = g.sel_after.1.min(self.buf.len());
+            self.view.scroll_to_caret = true;
+            self.undo.push(g);
+        }
+    }
+
+    /// Bounds of the real line containing `off`: (start, content_end, next_line_start).
+    /// Scans at most `limit` bytes in each direction.
+    pub fn line_bounds(&self, off: u64, limit: u64) -> Option<(u64, u64, u64)> {
+        let codec = self.buf.codec;
+        let unit = codec.unit() as u64;
+        let len = self.buf.len();
+        let lo = off.saturating_sub(limit);
+        let lo = lo - lo % unit;
+        let before = self.buf.read(lo..off)?;
+        let start = match codec.rfind_nl(&before, lo) {
+            Some(i) => lo + i as u64 + unit,
+            None if lo == 0 => 0,
+            None => return None,
+        };
+        let hi = (off + limit).min(len);
+        let after = self.buf.read(off..hi)?;
+        let (ce, next) = match codec.find_nl(&after, off) {
+            Some(i) => {
+                let nl = off + i as u64;
+                let cr = codec.cr_unit();
+                let mut ce = nl;
+                if codec.nl == bigtext::encoding::NlByte::Lf && i >= cr.len() && &after[i - cr.len()..i] == cr {
+                    ce -= cr.len() as u64;
+                }
+                (ce, nl + unit)
+            }
+            None if hi == len => (len, len),
+            None => return None,
+        };
+        Some((start.max(self.min_caret().min(start.max(0))), ce, next))
+    }
+
+    pub fn duplicate_line(&mut self) {
+        if !self.editable() {
+            return;
+        }
+        let (s, e) = self.selection();
+        if s != e {
+            let pieces = self.buf.copy_pieces(s..e);
+            let swap = self.buf.insert_pieces(e, pieces);
+            self.record(swap, (e, e + (e - s)));
+            return;
+        }
+        let Some((ls, _ce, next)) = self.line_bounds(self.view.caret, 64 * 1024 * 1024) else {
+            self.banner = Some(Banner::Info("Line is too long to duplicate".into()));
+            return;
+        };
+        let caret = self.view.caret;
+        let len = self.buf.len();
+        if next == len && !self.ends_with_nl() {
+            // Last line without newline: insert "\n" + line.
+            let nl = self.buf.codec.line_break(self.line_ending);
+            let mut pieces = self.buf.copy_pieces(ls..len);
+            let sel = (self.view.anchor, self.view.caret);
+            let s1 = self.buf.replace(len..len, &nl);
+            let at = self.buf.len();
+            let s2 = self.buf.insert_pieces(at, std::mem::take(&mut pieces));
+            self.version += 1;
+            let nc = caret + (len - ls) + nl.len() as u64;
+            self.view.anchor = nc;
+            self.view.caret = nc;
+            self.push_undo(vec![s1, s2], sel, (nc, nc), EditKind::Other);
+        } else {
+            let pieces = self.buf.copy_pieces(ls..next);
+            let swap = self.buf.insert_pieces(next, pieces);
+            let nc = caret + (next - ls);
+            self.record(swap, (nc, nc));
+        }
+    }
+
+    fn ends_with_nl(&self) -> bool {
+        let len = self.buf.len();
+        let u = self.buf.codec.nl_unit();
+        len >= u.len() as u64 && self.buf.read(len - u.len() as u64..len).is_some_and(|b| *b == *u)
+    }
+
+    pub fn delete_line(&mut self) {
+        if !self.editable() {
+            return;
+        }
+        let Some((ls, _ce, next)) = self.line_bounds(self.view.caret, 64 * 1024 * 1024) else {
+            self.banner = Some(Banner::Info("Line is too long to delete with this command; select it instead".into()));
+            return;
+        };
+        let start = if next == self.buf.len() && ls > 0 && !self.ends_with_nl() {
+            // Last line: also remove the preceding line break.
+            self.crlf_before(ls).map(|n| ls - n).unwrap_or(ls.saturating_sub(self.buf.codec.unit() as u64))
+        } else {
+            ls
+        };
+        self.edit(start..next, &[], EditKind::Other);
+        let c = self.view.caret.min(self.buf.len());
+        self.set_caret(c, false);
+    }
+
+    /// Leading whitespace of the line containing `off` (for auto-indent).
+    pub fn indent_of_line(&self, off: u64) -> Vec<u8> {
+        let Ok(seg) = rows::seg_containing(&self.buf, off) else { return Vec::new() };
+        if !seg.line_start {
+            return Vec::new();
+        }
+        let end = off.min(seg.content_end).min(seg.start + 256);
+        let Some(b) = self.buf.read(seg.start..end) else { return Vec::new() };
+        let codec = self.buf.codec;
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < b.len() {
+            let (c, l) = codec.decode_char(&b[i..]);
+            if c == ' ' || c == '\t' {
+                out.extend_from_slice(&b[i..i + l]);
+                i += l;
+            } else {
+                break;
+            }
+        }
+        out
+    }
+
+    pub fn newline(&mut self) {
+        let mut bytes = self.buf.codec.line_break(self.line_ending);
+        bytes.extend(self.indent_of_line(self.view.caret));
+        let (s, e) = self.selection();
+        self.edit(s..e, &bytes, EditKind::Other);
+    }
+
+    /// Selection text for the clipboard if it is small enough to copy synchronously.
+    pub fn selection_text(&self, max: u64) -> Option<Result<String, u64>> {
+        let (s, e) = self.selection();
+        if s == e {
+            return None;
+        }
+        if e - s > max {
+            return Some(Err(e - s));
+        }
+        let b = self.buf.read(s..e)?;
+        Some(Ok(self.buf.codec.decode_lossy(&b)))
+    }
+
+    /// Goes to 1-based `line`; estimated positions are refined once the index catches up.
+    pub fn goto_line(&mut self, line: u64) {
+        let target = line.max(1) - 1;
+        let (off, exact) = match self.buf.line_start(target) {
+            Some(x) => x,
+            None => {
+                let (n, _) = self.buf.line_count();
+                self.buf.line_start(n.saturating_sub(1)).unwrap_or((self.buf.len(), false))
+            }
+        };
+        let off = if exact { off } else { rows::seg_start(&self.buf, off).unwrap_or(off) };
+        let off = off.max(self.min_caret());
+        self.set_caret(off, false);
+        self.view.center_caret = true;
+        self.view.pending_goto_line = if exact { None } else { Some((target, off)) };
+    }
+
+    /// Refines an estimated go-to once the index covers the requested line.
+    pub fn refine_goto(&mut self) {
+        if let Some((target, off)) = self.view.pending_goto_line {
+            if self.view.caret != off || self.has_selection() {
+                self.view.pending_goto_line = None;
+                return;
+            }
+            if let Some((o, true)) = self.buf.line_start(target) {
+                let o = o.max(self.min_caret());
+                self.set_caret(o, false);
+                self.view.center_caret = true;
+                self.view.pending_goto_line = None;
+            }
+        }
+    }
+
+    pub fn goto_offset(&mut self, off: u64) {
+        let off = self.buf.snap_char(off.min(self.buf.len()));
+        self.set_caret(off, false);
+        self.view.center_caret = true;
+    }
+}
