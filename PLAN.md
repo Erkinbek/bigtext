@@ -88,3 +88,26 @@ Har bosqichdan keyin: `cargo test`, `bigtext-bench` test fayllarida, natijalar R
 | Replace All 10 GB, private xotira | < 300 MB |
 | 50 GB fayl ochiq, bo'sh holat private xotira | < 200 MB |
 | Startdan birinchi chizishgacha | < 300 ms |
+
+## 7. Holat (bajarildi)
+
+| Bosqich | Commit | Natija |
+|---|---|---|
+| M0 Skelet | `chore: add task prompt and implementation plan` | reja, git |
+| Yadro | `feat(core): …` | file, encoding, index, piece table, rows + unit testlar |
+| M1 | `feat(m1): …` | virtual ko'rinish, hex, go-to, test-fayl generatori, GUI bench |
+| M2+M3 | `feat(m2,m3): …` | oqimli qidiruv, Find All, replace, atomik saqlash moduli |
+| M4 | `feat(m4): …` | tahrirlash, undo/redo, Save/Save As protokoli, tashqi o'zgarishlar |
+| Perf | `perf: windowed mmap views …` | 50 GB bo'sh holat xotirasi 205 MB → 107 MB |
+| M5/M6 | `fix(app): …`, `docs: …` | chekka holatlar, CI, installer, README |
+
+### Rejadan og'ishlar (o'lchovlar asosida)
+
+- **Butun faylni map qilish o'rniga view-lar keshi.** Windows'da 50 GB faylni bitta view qilib
+  map qilishning o'zi ~100 MB commit (fayl/512) oladi — bu O(fayl hajmi) xotira va qoida 2 ga zid.
+  Endi UI 288 MB'lik view-lar keshidan (≤6 ta) o'qiydi.
+- **Ishchilar `pread` bilan o'qiydi** (indeks, qidiruv, saqlash, replace). Keshdagi faylda bu
+  birinchi marta tegilgan mmap'dan tezroq (2.35 vs 1.58 GB/s) va xotirani tekis saqlaydi.
+  Narxi: takroriy qidiruvlar ~2.4 GB/s (oldindan "isitilgan" global mmap'da 10 GB/s edi).
+  Maqsad (≥1 GB/s literal, ≥200 MB/s regex) bajariladi.
+- Renderer: `glow` (wgpu o'rniga) — kichikroq binar va tezroq start.
