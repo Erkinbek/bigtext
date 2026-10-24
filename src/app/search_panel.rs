@@ -73,7 +73,7 @@ impl SearchUi {
 }
 
 impl BigTextApp {
-    pub(super) fn open_search(&mut self, replace: bool) {
+    pub(crate) fn open_search(&mut self, replace: bool) {
         self.search.open = true;
         self.search.replace_open = replace || self.search.replace_open && self.search.open;
         if replace {
@@ -95,7 +95,7 @@ impl BigTextApp {
     }
 
     /// Starts a streaming "Find All" over the document (or the selection).
-    pub(super) fn find_all(&mut self) {
+    pub(crate) fn find_all(&mut self) {
         let Some(d) = self.docs.get(self.active) else { return };
         if !d.is_ready() {
             return;
@@ -164,7 +164,7 @@ impl BigTextApp {
 
     /// Find next/previous from the caret. Uses complete "Find All" results when they are valid,
     /// otherwise runs a directed search on a worker (works before any full search finishes).
-    pub(super) fn find_next(&mut self, forward: bool) {
+    pub(crate) fn find_next(&mut self, forward: bool) {
         if self.search.query.pattern.is_empty() {
             self.open_search(false);
             return;
@@ -407,6 +407,7 @@ impl BigTextApp {
         let buf = &d.buf;
         let caret = d.view.caret;
         egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, row_h, n, |ui, range| {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
             let g = data.lock().unwrap();
             for i in range {
                 let Some(&(s, e)) = g.matches.get(i) else { break };

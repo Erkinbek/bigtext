@@ -114,7 +114,7 @@ pub struct BigTextApp {
     pub bench: Option<crate::bench_ui::BenchUi>,
     exit_confirmed: bool,
     show_about: bool,
-    search: search_panel::SearchUi,
+    pub search: search_panel::SearchUi,
     pending_replace: Option<(u64, Arc<Matcher>, Template, std::ops::Range<u64>)>,
     preview: Option<(u64, Vec<(u64, String, String)>, Vec<u64>)>,
 }

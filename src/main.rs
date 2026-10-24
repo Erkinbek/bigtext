@@ -13,6 +13,7 @@ fn main() -> eframe::Result {
     let mut files = Vec::new();
     let mut bench: Option<(PathBuf, PathBuf)> = None;
     let mut screenshot: Option<PathBuf> = None;
+    let mut scenario = bench_ui::Scenario::Scroll;
     let mut args = std::env::args_os().skip(1);
     while let Some(a) = args.next() {
         match a.to_str() {
@@ -21,6 +22,14 @@ fn main() -> eframe::Result {
                 bench = Some((file, PathBuf::from("bench-ui-report.txt")));
             }
             Some("--screenshot") => screenshot = args.next().map(PathBuf::from),
+            Some("--scenario") => {
+                let s = args.next().and_then(|s| s.into_string().ok()).unwrap_or_default();
+                scenario = match s.split_once(':') {
+                    Some(("search", p)) => bench_ui::Scenario::Search(p.to_string()),
+                    _ if s == "edit" => bench_ui::Scenario::Edit,
+                    _ => bench_ui::Scenario::Scroll,
+                };
+            }
             Some("--report") => {
                 if let (Some(b), Some(p)) = (bench.as_mut(), args.next()) {
                     b.1 = PathBuf::from(p);
@@ -45,6 +54,7 @@ fn main() -> eframe::Result {
             if let Some((file, report)) = bench {
                 let mut b = bench_ui::BenchUi::new(file, report);
                 b.screenshot = screenshot;
+                b.scenario = scenario;
                 app.bench = Some(b);
             }
             Ok(Box::new(app))

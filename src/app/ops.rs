@@ -59,7 +59,7 @@ pub struct Finalized {
 }
 
 impl BigTextApp {
-    pub(super) fn save(&mut self, save_as: bool) {
+    pub(crate) fn save(&mut self, save_as: bool) {
         let Some(d) = self.docs.get(self.active) else { return };
         if !d.is_ready() || d.save_job.is_some() {
             return;
@@ -266,7 +266,7 @@ impl BigTextApp {
         self.find_next(true);
     }
 
-    pub(super) fn replace_all(&mut self) {
+    pub(crate) fn replace_all(&mut self) {
         let Some((id, m, tpl, range)) = self.replace_setup() else { return };
         let d = &mut self.docs[self.active];
         if d.save_job.is_some() {

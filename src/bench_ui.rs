@@ -22,6 +22,18 @@ enum Phase {
     ScrollAfterIndex,
     Idle,
     Done,
+    SearchStart,
+    SearchWait,
+    FindNext,
+    EditInsert,
+    SaveWait,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Scenario {
+    Scroll,
+    Search(String),
+    Edit,
 }
 
 pub struct BenchUi {
@@ -43,6 +55,8 @@ pub struct BenchUi {
     index_time: Option<Duration>,
     index_mem: usize,
     pub screenshot: Option<PathBuf>,
+    pub scenario: Scenario,
+    t_phase: Option<Instant>,
 }
 
 fn stats(v: &[f32]) -> String {
@@ -77,6 +91,8 @@ impl BenchUi {
             index_time: None,
             index_mem: 0,
             screenshot: None,
+            scenario: Scenario::Scroll,
+            t_phase: None,
         }
     }
 
@@ -107,7 +123,12 @@ impl BenchUi {
                     if let (Some(fp), Some(o)) = (d.view.first_paint, self.open_at) {
                         self.first_paint = Some(fp.duration_since(o));
                         self.open_worker = d.open_elapsed;
-                        self.set(Phase::GotoBeforeIndex);
+                        let next = match self.scenario {
+                            Scenario::Scroll => Phase::GotoBeforeIndex,
+                            Scenario::Search(_) => Phase::SearchStart,
+                            Scenario::Edit => Phase::EditInsert,
+                        };
+                        self.set(next);
                     }
                 }
             }
@@ -181,6 +202,65 @@ impl BenchUi {
                 }
             }
             Phase::Done => {}
+            Phase::SearchStart => {
+                let Scenario::Search(p) = self.scenario.clone() else { return };
+                app.search.query.pattern = p;
+                app.open_search(false);
+                self.t_phase = Some(Instant::now());
+                app.find_all();
+                self.set(Phase::SearchWait);
+            }
+            Phase::SearchWait => {
+                let Some(d) = app.active_doc() else { return };
+                let Some(r) = &d.results else { return };
+                let g = r.data.lock().unwrap();
+                if g.done {
+                    let n = g.matches.len();
+                    drop(g);
+                    let t = self.t_phase.map(|t| t.elapsed()).unwrap_or_default();
+                    let mb = d.buf.len() as f64 / 1048576.0;
+                    let _ = writeln!(self.log, "find all: {n} matches in {:.3} s ({:.0} MB/s, through the GUI job)", t.as_secs_f64(), mb / t.as_secs_f64().max(1e-9));
+                    self.set(Phase::FindNext);
+                }
+            }
+            Phase::FindNext => {
+                if self.n <= 5 {
+                    app.find_next(true);
+                    self.act = true;
+                } else {
+                    let caret = app.active_doc().map(|d| d.view.caret).unwrap_or(0);
+                    let _ = writeln!(self.log, "after 5x F3 caret at offset {caret}");
+                    self.set(Phase::Idle);
+                }
+            }
+            Phase::EditInsert => {
+                let Some(d) = app.active_doc() else { return };
+                let indexing = !d.buf.index.is_done();
+                d.set_caret(d.min_caret(), false);
+                d.insert_text("EDITED BY BIGTEXT BENCH\n");
+                let _ = writeln!(self.log, "inserted text at start (index still running: {indexing}); saving");
+                self.t_phase = Some(Instant::now());
+                app.save(false);
+                self.set(Phase::SaveWait);
+            }
+            Phase::SaveWait => {
+                let Some(d) = app.active_doc() else { return };
+                if d.save_job.is_none() && d.is_ready() && !d.is_modified() {
+                    let t = self.t_phase.map(|t| t.elapsed()).unwrap_or_default();
+                    let head = d.path.as_ref().and_then(|p| std::fs::read(p).ok().map(|b| b[..b.len().min(24)].to_vec()));
+                    let _ = writeln!(
+                        self.log,
+                        "save finished in {:.3} s; file now starts with {:?}; new size {}",
+                        t.as_secs_f64(),
+                        head.map(|h| String::from_utf8_lossy(&h).into_owned()),
+                        d.buf.len()
+                    );
+                    self.set(Phase::Idle);
+                } else if self.n > 20_000 {
+                    let _ = writeln!(self.log, "save did not finish; state {:?}", d.state);
+                    self.set(Phase::Idle);
+                }
+            }
         }
     }
 
@@ -193,6 +273,7 @@ impl BenchUi {
             Phase::ScrollWhileIndexing => self.scroll_indexing.push(ms),
             Phase::GotoAfterIndex => self.goto_post.push(ms),
             Phase::ScrollAfterIndex => self.scroll_idle.push(ms),
+            Phase::FindNext => self.goto_post.push(ms),
             _ => {}
         }
     }
