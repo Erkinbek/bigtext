@@ -112,6 +112,11 @@ pub struct Document {
     pub opened_at: Instant,
     pub open_elapsed: Option<Duration>,
     pub follow: bool,
+    pub results: Option<super::search_panel::SearchResults>,
+    pub find_job: Option<super::search_panel::FindJob>,
+    pub save_job: Option<super::ops::SaveJob>,
+    pub close_after_save: bool,
+    pub reload_prefix: Option<Vec<u64>>,
     last_indexed: u64,
 }
 
@@ -142,6 +147,11 @@ impl Document {
             opened_at: Instant::now(),
             open_elapsed: None,
             follow: false,
+            results: None,
+            find_job: None,
+            save_job: None,
+            close_after_save: false,
+            reload_prefix: None,
             last_indexed: 0,
         }
     }
@@ -193,7 +203,29 @@ impl Document {
     }
 
     pub fn editable(&self) -> bool {
-        self.is_ready() && !self.read_only && !self.hex
+        self.is_ready() && !self.read_only && !self.hex && self.save_job.is_none()
+    }
+
+    /// Cancels every background job that holds a snapshot of the source.
+    pub fn cancel_jobs(&mut self) {
+        self.index_cancel.cancel();
+        if let Some(r) = &self.results {
+            r.cancel.cancel();
+        }
+        if let Some(j) = self.find_job.take() {
+            j.cancel.cancel();
+        }
+    }
+
+    /// Re-attaches the buffer (keeping all edits) to a byte-identical reopened source.
+    pub fn rebind(&mut self, source: Arc<Source>, waker: Waker) {
+        self.index_cancel = CancelToken::new();
+        source.set_waker(waker.clone());
+        let index = LineIndex::new(source.len());
+        index::spawn_indexer(source.clone(), self.buf.codec, index.clone(), self.index_cancel.clone(), waker);
+        self.buf = self.buf.with_source(source, index);
+        self.last_indexed = 0;
+        self.state = DocState::Ready;
     }
 
     pub fn min_caret(&self) -> u64 {
@@ -227,6 +259,9 @@ impl Document {
 
     /// Called every frame: lets line counts catch up with the background indexer.
     pub fn tick(&mut self) -> bool {
+        if self.is_ready() && (self.buf.index.failed() || self.buf.source.has_io_error()) && self.banner.is_none() {
+            self.banner = Some(Banner::Error("Reading the file failed (was it removed, truncated or is the drive unavailable?). Display may be incomplete.".into()));
+        }
         let idx = self.buf.index.indexed_bytes();
         let mut changed = false;
         if idx != self.last_indexed {
