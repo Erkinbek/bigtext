@@ -53,13 +53,15 @@ fn main() -> eframe::Result {
     // The screenshot tour opens its big file itself, after the demo files are created.
     let tour_file = tour.as_ref().map(|_| files.pop().unwrap_or_else(|| PathBuf::from("testdata/random-lines-10g.txt")));
 
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("BigText")
-            .with_inner_size([1200.0, 800.0])
-            .with_drag_and_drop(true),
-        ..Default::default()
-    };
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("BigText")
+        .with_inner_size([1200.0, 800.0])
+        .with_drag_and_drop(true);
+    // Without an icon eframe shows its own egui logo in the title bar and taskbar.
+    if let Ok(icon) = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon-256.png")) {
+        viewport = viewport.with_icon(icon);
+    }
+    let options = eframe::NativeOptions { viewport, ..Default::default() };
     eframe::run_native(
         "BigText",
         options,

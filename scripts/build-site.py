@@ -6,7 +6,8 @@
 Writes docs/index.html (English), docs/ru/ and docs/uz/, sitemap.xml and 404.html. Unless
 --no-images is given it also converts the app screenshots (made with
 `bigtext --screenshots target/shots testdata/random-lines-10g.txt`) to WebP and draws the
-logo, favicons and the social preview image (needs Pillow; fonts from Windows if available).
+logo, favicons, the social preview image and the app icons in assets/ (bigtext.ico for the
+exe and installer, icon-256.png for the window). Needs Pillow; fonts from Windows if available.
 """
 
 import argparse
@@ -30,6 +31,15 @@ SHOTS = ["hero", "search", "compare", "hex", "json"]
 # Logo: four "text lines" on a rounded square, on a 512 grid (shared by the SVG and PNGs).
 LOGO_BG = "#0f172a"
 LOGO_LINES = [(96, 118, 300, "#2dd4bf"), (96, 206, 416, "#e2e8f0"), (96, 294, 352, "#f59e0b"), (96, 382, 256, "#e2e8f0")]
+# Pixel-snapped variants for small icon sizes (menus, title bars): x0 and (y0, y1, x1) per
+# line, end-exclusive. 16 and 20 px keep three lines so each stays 2 px tall.
+LOGO_HINTED = {
+    16: (3, [(3, 5, 10), (7, 9, 13), (11, 13, 11)]),
+    20: (4, [(4, 6, 12), (9, 11, 16), (14, 16, 13)]),
+    24: (5, [(3, 6, 14), (8, 11, 20), (13, 16, 17), (18, 21, 12)]),
+    32: (6, [(5, 8, 19), (11, 14, 26), (17, 20, 22), (23, 26, 16)]),
+}
+ICON_SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 
 
 def url(lang):
@@ -762,9 +772,32 @@ def draw_logo(size):
     im = Image.new("RGBA", (size * k, size * k), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
     d.rounded_rectangle([0, 0, size * k - 1, size * k - 1], radius=112 * s, fill=LOGO_BG)
-    for x, y, w, c in LOGO_LINES:
-        d.rounded_rectangle([x * s, y * s, w * s, (y + 44) * s], radius=22 * s, fill=c)
-    return im.resize((size, size), Image.LANCZOS)
+    hinted = LOGO_HINTED.get(size)
+    if not hinted:
+        for x, y, w, c in LOGO_LINES:
+            d.rounded_rectangle([x * s, y * s, w * s, (y + 44) * s], radius=22 * s, fill=c)
+    im = im.resize((size, size), Image.LANCZOS)
+    if hinted:
+        # Lines on whole pixels stay sharp at 16-32 px, where anti-aliased ones blur.
+        x0, rows = hinted
+        d = ImageDraw.Draw(im)
+        for (y0, y1, x1), (_, _, _, c) in zip(rows, LOGO_LINES):
+            d.rectangle([x0, y0, x1 - 1, y1 - 1], fill=c)
+    return im
+
+
+def write_ico(path, sizes):
+    """Multi-size .ico with an individually drawn image per size (BMP entries for old APIs)."""
+    imgs = [draw_logo(n) for n in sizes]
+    imgs[-1].save(path, format="ICO", sizes=[(n, n) for n in sizes], append_images=imgs[:-1], bitmap_format="bmp")
+
+
+def build_app_icons():
+    """Icon embedded in bigtext.exe (build.rs) and the installer, plus the window icon PNG."""
+    assets = ROOT / "assets"
+    assets.mkdir(exist_ok=True)
+    write_ico(assets / "bigtext.ico", ICON_SIZES)
+    draw_logo(256).save(assets / "icon-256.png", optimize=True)
 
 
 def build_images(shots):
@@ -786,7 +819,8 @@ def build_images(shots):
     draw_logo(180).save(img / "apple-touch-icon.png", optimize=True)
     draw_logo(192).save(img / "icon-192.png", optimize=True)
     draw_logo(512).save(img / "icon-512.png", optimize=True)
-    draw_logo(256).save(DOCS / "favicon.ico", sizes=[(16, 16), (32, 32), (48, 48)])
+    write_ico(DOCS / "favicon.ico", [16, 32, 48])
+    build_app_icons()
 
     # Social preview (Open Graph / Twitter / GitHub): 1280x640.
     W, H = 1280, 640

@@ -27,6 +27,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequiredOverridesAllowed=dialog
 ChangesAssociations=yes
 UninstallDisplayIcon={app}\bigtext.exe
+SetupIconFile=..\assets\bigtext.ico
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop icon"; Flags: unchecked
