@@ -243,8 +243,10 @@
     <p class="intro">Free for personal and commercial use. No account, no telemetry, one executable.</p>
     <div class="grid downloads"><article class="card dl"><h3>Windows 10 / 11</h3><p>Installer with “Open with” and Explorer context-menu integration, or a portable build.</p><div class="btns"><a class="btn primary" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-setup-windows-x64.exe">Installer (.exe)</a><a class="btn" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-windows-x64.zip">Portable (.zip)</a></div></article><article class="card dl"><h3>Linux x64</h3><p>Portable .tar.gz for X11 and Wayland desktops.</p><div class="btns"><a class="btn primary" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.tar.gz">Download .tar.gz</a></div></article><article class="card dl"><h3>macOS</h3><p>Builds for Apple Silicon and Intel. The app is not signed: right-click → Open on first launch.</p><div class="btns"><a class="btn primary" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-arm64.tar.gz">Apple Silicon</a><a class="btn" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-x64.tar.gz">Intel</a></div></article></div>
     <p class="all"><a href="https://github.com/Erkinbek/bigtext/releases">All releases and release notes</a></p>
-    <h3 class="src">Build from source</h3>
+    <h3 class="src">Install with Cargo</h3>
     <p>Install Rust from rustup.rs, then run:</p>
+    <pre><code>cargo install bigtext</code></pre>
+    <p>Or build it from source:</p>
     <pre><code>git clone https://github.com/Erkinbek/bigtext.git
 cd bigtext
 cargo build --release</code></pre>

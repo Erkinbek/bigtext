@@ -140,8 +140,9 @@ T = {
              [("Apple Silicon", "bigtext-macos-arm64.tar.gz"), ("Intel", "bigtext-macos-x64.tar.gz")]),
         ],
         "dl_all": "All releases and release notes",
-        "dl_source": "Build from source",
+        "dl_source": "Install with Cargo",
         "dl_source_text": "Install Rust from rustup.rs, then run:",
+        "dl_source_text2": "Or build it from source:",
         "faq_h2": "Frequently asked questions",
         "faq": [
             ("How do I open a 50 GB text file?",
@@ -270,8 +271,9 @@ T = {
              [("Apple Silicon", "bigtext-macos-arm64.tar.gz"), ("Intel", "bigtext-macos-x64.tar.gz")]),
         ],
         "dl_all": "Все релизы и примечания к ним",
-        "dl_source": "Сборка из исходников",
+        "dl_source": "Установка через Cargo",
         "dl_source_text": "Установите Rust с rustup.rs и выполните:",
+        "dl_source_text2": "Или соберите из исходников:",
         "faq_h2": "Частые вопросы",
         "faq": [
             ("Как открыть текстовый файл на 50 ГБ?",
@@ -400,8 +402,9 @@ T = {
              [("Apple Silicon", "bigtext-macos-arm64.tar.gz"), ("Intel", "bigtext-macos-x64.tar.gz")]),
         ],
         "dl_all": "Barcha relizlar va ular haqida",
-        "dl_source": "Manba koddan yig'ish",
+        "dl_source": "Cargo orqali o'rnatish",
         "dl_source_text": "rustup.rs dan Rust'ni o'rnating, so'ng bajaring:",
+        "dl_source_text2": "Yoki manba koddan yig'ing:",
         "faq_h2": "Ko'p beriladigan savollar",
         "faq": [
             ("50 GB matn faylini qanday ochaman?",
@@ -672,6 +675,8 @@ def page(lang):
     <p class="all"><a href="{REPO}/releases">{e(t['dl_all'])}</a></p>
     <h3 class="src">{e(t['dl_source'])}</h3>
     <p>{e(t['dl_source_text'])}</p>
+    <pre><code>cargo install bigtext</code></pre>
+    <p>{e(t['dl_source_text2'])}</p>
     <pre><code>git clone {REPO}.git
 cd bigtext
 cargo build --release</code></pre>

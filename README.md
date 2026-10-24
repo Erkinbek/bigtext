@@ -90,7 +90,9 @@ Latest release: [all files and release notes](https://github.com/Erkinbek/bigtex
 | Linux x64 | [bigtext-linux-x64.tar.gz](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.tar.gz) |
 | macOS | [Apple Silicon](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-arm64.tar.gz) · [Intel](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-x64.tar.gz) (unsigned: right-click → Open on first launch) |
 
-Or build it yourself (see [Building](#building)).
+With Rust installed, on any platform: `cargo install bigtext`
+([crates.io/crates/bigtext](https://crates.io/crates/bigtext); on Linux, first install the
+packages listed under [Building](#building)). Or build it yourself (see [Building](#building)).
 
 ## Usage
 

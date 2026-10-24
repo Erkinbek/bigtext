@@ -243,8 +243,10 @@
     <p class="intro">Бесплатно для личного и коммерческого использования. Без аккаунта, без телеметрии, один исполняемый файл.</p>
     <div class="grid downloads"><article class="card dl"><h3>Windows 10 / 11</h3><p>Установщик с пунктом «Открыть с помощью» и контекстным меню Проводника или портативная версия.</p><div class="btns"><a class="btn primary" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-setup-windows-x64.exe">Установщик (.exe)</a><a class="btn" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-windows-x64.zip">Портативная (.zip)</a></div></article><article class="card dl"><h3>Linux x64</h3><p>Портативный архив .tar.gz для X11 и Wayland.</p><div class="btns"><a class="btn primary" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.tar.gz">Скачать .tar.gz</a></div></article><article class="card dl"><h3>macOS</h3><p>Сборки для Apple Silicon и Intel. Приложение не подписано: при первом запуске — правый щелчок → Открыть.</p><div class="btns"><a class="btn primary" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-arm64.tar.gz">Apple Silicon</a><a class="btn" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-x64.tar.gz">Intel</a></div></article></div>
     <p class="all"><a href="https://github.com/Erkinbek/bigtext/releases">Все релизы и примечания к ним</a></p>
-    <h3 class="src">Сборка из исходников</h3>
+    <h3 class="src">Установка через Cargo</h3>
     <p>Установите Rust с rustup.rs и выполните:</p>
+    <pre><code>cargo install bigtext</code></pre>
+    <p>Или соберите из исходников:</p>
     <pre><code>git clone https://github.com/Erkinbek/bigtext.git
 cd bigtext
 cargo build --release</code></pre>
