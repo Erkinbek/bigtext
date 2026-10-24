@@ -3,6 +3,7 @@
 
 mod app;
 mod bench_ui;
+mod self_test;
 mod view;
 
 use std::path::PathBuf;
@@ -14,6 +15,7 @@ fn main() -> eframe::Result {
     let mut bench: Option<(PathBuf, PathBuf)> = None;
     let mut screenshot: Option<PathBuf> = None;
     let mut scenario = bench_ui::Scenario::Scroll;
+    let mut self_test: Option<PathBuf> = None;
     let mut args = std::env::args_os().skip(1);
     while let Some(a) = args.next() {
         match a.to_str() {
@@ -22,6 +24,7 @@ fn main() -> eframe::Result {
                 bench = Some((file, PathBuf::from("bench-ui-report.txt")));
             }
             Some("--screenshot") => screenshot = args.next().map(PathBuf::from),
+            Some("--self-test") => self_test = Some(PathBuf::from("self-test-report.txt")),
             Some("--scenario") => {
                 let s = args.next().and_then(|s| s.into_string().ok()).unwrap_or_default();
                 scenario = match s.split_once(':') {
@@ -33,6 +36,7 @@ fn main() -> eframe::Result {
                     _ => bench_ui::Scenario::Scroll,
                 };
             }
+            Some("--report") if self_test.is_some() => self_test = args.next().map(PathBuf::from),
             Some("--report") => {
                 if let (Some(b), Some(p)) = (bench.as_mut(), args.next()) {
                     b.1 = PathBuf::from(p);
@@ -56,9 +60,13 @@ fn main() -> eframe::Result {
             let mut app = app::BigTextApp::new(cc, files, process_start);
             if let Some((file, report)) = bench {
                 let mut b = bench_ui::BenchUi::new(file, report);
-                b.screenshot = screenshot;
+                b.screenshot = screenshot.clone();
                 b.scenario = scenario;
                 app.bench = Some(b);
+            }
+            if let Some(report) = self_test {
+                let dir = screenshot.as_ref().and_then(|p| p.parent().map(|d| d.to_path_buf()));
+                app.self_test = Some(self_test::SelfTest::new(report, dir));
             }
             Ok(Box::new(app))
         }),

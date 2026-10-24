@@ -13,7 +13,9 @@
 AppId={{7B0C2A51-3E2B-4C55-9C3A-6B3F8E1D2B10}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=BigText
+AppPublisher=Erkin Pardayev
+AppPublisherURL=https://github.com/Erkinbek/bigtext
+AppSupportURL=https://github.com/Erkinbek/bigtext/issues
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes

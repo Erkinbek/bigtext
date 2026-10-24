@@ -82,6 +82,8 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     let gutter_rect = Rect::from_min_max(full.min, pos2(full.left() + gutter_w, text_rect.bottom()));
     let vbar = Rect::from_min_max(pos2(text_rect.right(), full.top()), pos2(full.right(), text_rect.bottom()));
     let hbar = Rect::from_min_max(pos2(text_rect.left(), text_rect.bottom()), pos2(text_rect.right(), full.bottom()));
+    doc.view.text_rect = Some(text_rect);
+    doc.view.cell = egui::vec2(m.cw, m.rh);
     doc.view.rows_on_screen = ((text_rect.height() / m.rh).floor() as usize).max(1);
     doc.view.text_cols = ((text_rect.width() / m.cw).floor() as usize).max(4);
     let wrap = doc.view.wrap.then_some(doc.view.text_cols.saturating_sub(1).max(1));
@@ -422,13 +424,14 @@ fn hit_test(doc: &Document, rows: &[Row], text_rect: Rect, m: Metrics, pos: Pos2
 
 #[allow(clippy::too_many_arguments)]
 fn handle_mouse(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, text_rect: Rect, m: Metrics, wrap: Option<usize>, rows: &[Row]) {
-    let (pressed, down, mods, pos, dbl) = ui.input(|i| {
+    let (pressed, down, mods, pos, dbl, tpl) = ui.input(|i| {
         (
             i.pointer.primary_pressed(),
             i.pointer.primary_down(),
             i.modifiers,
             i.pointer.interact_pos(),
             i.pointer.button_double_clicked(PointerButton::Primary),
+            i.pointer.button_triple_clicked(PointerButton::Primary),
         )
     });
     let Some(pos) = pos else { return };
@@ -440,9 +443,13 @@ fn handle_mouse(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, text_rec
             doc.view.scroll_to_caret = false;
         }
     }
-    if dbl && text_rect.contains(pos) {
+    if (dbl || tpl) && text_rect.contains(pos) {
         if let Some(off) = hit_test(doc, rows, text_rect, m, pos) {
-            select_word(doc, off, wrap);
+            if tpl {
+                doc.select_line(off);
+            } else {
+                select_word(doc, off, wrap);
+            }
             doc.view.dragging = false;
         }
     }

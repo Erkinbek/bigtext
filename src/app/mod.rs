@@ -27,6 +27,9 @@ pub struct Opened {
     pub source: Arc<Source>,
     pub detected: Detected,
     pub elapsed: Duration,
+    /// Canonical path (resolved on the worker; can be slow on network drives).
+    pub path: PathBuf,
+    pub read_only: bool,
 }
 
 pub enum Msg {
@@ -113,9 +116,11 @@ pub struct BigTextApp {
     pub process_start: Instant,
     pub first_frame: Option<Duration>,
     pub bench: Option<crate::bench_ui::BenchUi>,
+    pub self_test: Option<crate::self_test::SelfTest>,
     exit_confirmed: bool,
     exit_after_jobs: bool,
-    show_about: bool,
+    pub show_about: bool,
+    pub show_shortcuts: bool,
     pub search: search_panel::SearchUi,
     pending_replace: Option<(u64, Arc<Matcher>, Template, std::ops::Range<u64>)>,
     preview: Option<(u64, Vec<(u64, String, String)>, Vec<u64>)>,
@@ -134,7 +139,10 @@ pub fn friendly_io(e: &std::io::Error, path: &Path) -> String {
 
 fn open_worker(path: &Path, forced: Option<Encoding>) -> Result<Opened, String> {
     let t = Instant::now();
+    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let path = canonical.as_path();
     let src = Source::open(path, OpenMode::Auto).map_err(|e| friendly_io(&e, path))?;
+    let read_only = std::fs::metadata(path).map(|m| m.permissions().readonly()).unwrap_or(false);
     let n = src.len().min(1 << 20);
     let whole = n == src.len();
     let det = {
@@ -144,7 +152,22 @@ fn open_worker(path: &Path, forced: Option<Encoding>) -> Result<Opened, String> 
             None => encoding::detect(&sample, whole),
         }
     };
-    Ok(Opened { source: Arc::new(src), detected: det, elapsed: t.elapsed() })
+    Ok(Opened { source: Arc::new(src), detected: det, elapsed: t.elapsed(), path: canonical.clone(), read_only })
+}
+
+/// Lexical path comparison (no file-system access, so it is safe on the UI thread):
+/// ignores the `\\?\` prefix, and case and separators on Windows.
+pub fn same_path(a: &Path, b: &Path) -> bool {
+    fn norm(p: &Path) -> String {
+        let s = file::display_path(p);
+        let s = std::path::absolute(&s).map(|p| p.to_string_lossy().into_owned()).unwrap_or(s);
+        if cfg!(windows) {
+            s.replace('/', "\\").to_lowercase()
+        } else {
+            s
+        }
+    }
+    norm(a) == norm(b)
 }
 
 impl BigTextApp {
@@ -169,9 +192,11 @@ impl BigTextApp {
             process_start,
             first_frame: None,
             bench: None,
+            self_test: None,
             exit_confirmed: false,
             exit_after_jobs: false,
             show_about: false,
+            show_shortcuts: false,
             search: search_panel::SearchUi::default(),
             pending_replace: None,
             preview: None,
@@ -200,8 +225,8 @@ impl BigTextApp {
     }
 
     pub fn open_path(&mut self, path: PathBuf) {
-        let canon = std::fs::canonicalize(&path).unwrap_or(path);
-        if let Some(i) = self.docs.iter().position(|d| d.path.as_deref() == Some(canon.as_path())) {
+        let canon = std::path::absolute(&path).unwrap_or(path);
+        if let Some(i) = self.docs.iter().position(|d| d.path.as_deref().is_some_and(|p| same_path(p, &canon))) {
             self.active = i;
             return;
         }
@@ -243,7 +268,8 @@ impl BigTextApp {
                         match result {
                             Ok(o) => {
                                 d.open_elapsed = Some(o.elapsed);
-                                d.read_only = d.read_only || is_read_only(d.path.as_deref());
+                                d.read_only = d.read_only || o.read_only;
+                                d.path = Some(o.path.clone());
                                 let prefix = d.reload_prefix.take();
                                 let follow_end = d.follow && prefix.is_some();
                                 d.install(o.source, o.detected, prefix, waker.clone());
@@ -376,11 +402,12 @@ impl BigTextApp {
         if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::NONE, Key::F3))) {
             self.find_next(true);
         }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::G))) {
-            self.goto = Some(GotoDialog { text: String::new(), by_offset: false, error: None, focus: true });
-        }
+        // egui ignores extra Shift when matching, so the Shift variant must be tested first.
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::G))) {
             self.goto = Some(GotoDialog { text: String::new(), by_offset: true, error: None, focus: true });
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::G))) {
+            self.goto = Some(GotoDialog { text: String::new(), by_offset: false, error: None, focus: true });
         }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::Equals)) || i.consume_shortcut(&sc(cmd, Key::Plus))) {
             self.settings.font_size = (self.settings.font_size + 1.0).min(72.0);
@@ -525,7 +552,10 @@ impl BigTextApp {
                 ui.checkbox(&mut self.settings.show_perf, "Performance overlay\tF12");
             });
             ui.menu_button("Help", |ui| {
-                if ui.button("Keyboard shortcuts / About").clicked() {
+                if ui.button("Keyboard shortcuts").clicked() {
+                    self.show_shortcuts = true;
+                }
+                if ui.button("About BigText").clicked() {
                     self.show_about = true;
                 }
             });
@@ -844,9 +874,12 @@ impl BigTextApp {
         }
 
         if self.show_about {
-            egui::Window::new("BigText").open(&mut self.show_about).collapsible(false).show(ctx, |ui| {
-                ui.label("A fast, non-freezing large-file text editor.");
-                ui.separator();
+            egui::Window::new("About BigText").open(&mut self.show_about).collapsible(false).resizable(false).show(ctx, |ui| {
+                about_contents(ui);
+            });
+        }
+        if self.show_shortcuts {
+            egui::Window::new("Keyboard shortcuts").open(&mut self.show_shortcuts).collapsible(false).show(ctx, |ui| {
                 egui::Grid::new("keys").striped(true).show(ui, |ui| {
                     for (k, v) in SHORTCUTS {
                         ui.monospace(*k);
@@ -990,8 +1023,35 @@ thread_local! {
     static CTX: std::cell::RefCell<Option<egui::Context>> = const { std::cell::RefCell::new(None) };
 }
 
-fn is_read_only(path: Option<&Path>) -> bool {
-    path.and_then(|p| std::fs::metadata(p).ok()).map(|m| m.permissions().readonly()).unwrap_or(false)
+
+/// Author and project links shown in Help > About.
+pub const AUTHOR: &str = "Erkin Pardayev";
+pub const AUTHOR_LINKS: &[(&str, &str, &str)] = &[
+    ("GitHub", "github.com/Erkinbek", "https://github.com/Erkinbek"),
+    ("Repository", "github.com/Erkinbek/bigtext", "https://github.com/Erkinbek/bigtext"),
+    ("Telegram", "@ErkinPardayev", "https://t.me/ErkinPardayev"),
+    ("E-mail", "erkin.pardayev@gmail.com", "mailto:erkin.pardayev@gmail.com"),
+];
+
+fn about_contents(ui: &mut egui::Ui) {
+    ui.vertical_centered(|ui| {
+        ui.heading("BigText");
+        ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+        ui.label("A fast, non-freezing large-file text editor.");
+    });
+    ui.separator();
+    egui::Grid::new("author").num_columns(2).spacing([16.0, 6.0]).show(ui, |ui| {
+        ui.strong("Author");
+        ui.label(AUTHOR);
+        ui.end_row();
+        for (label, text, url) in AUTHOR_LINKS {
+            ui.strong(*label);
+            ui.hyperlink_to(*text, *url);
+            ui.end_row();
+        }
+    });
+    ui.separator();
+    ui.small("Licensed under the MIT license. Built with Rust and egui.");
 }
 
 pub const SHORTCUTS: &[(&str, &str)] = &[
@@ -1009,7 +1069,30 @@ pub const SHORTCUTS: &[(&str, &str)] = &[
     ("F12", "Performance overlay"),
 ];
 
+impl BigTextApp {
+    pub(crate) fn test_has_confirm(&self) -> bool {
+        self.confirm.is_some()
+    }
+    pub(crate) fn test_error(&self) -> Option<String> {
+        self.error.clone()
+    }
+    pub(crate) fn test_force_exit(&mut self) {
+        self.exit_confirmed = true;
+        self.confirm = None;
+    }
+    pub(crate) fn test_dismiss(&mut self) {
+        self.error = None;
+        self.confirm = None;
+    }
+}
+
 impl eframe::App for BigTextApp {
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        if let Some(t) = &mut self.self_test {
+            t.inject(raw_input);
+        }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let t0 = Instant::now();
         let ctx = ui.ctx().clone();
@@ -1026,6 +1109,10 @@ impl eframe::App for BigTextApp {
         if let Some(mut b) = self.bench.take() {
             b.before_frame(self, &ctx);
             self.bench = Some(b);
+        }
+        if let Some(mut t) = self.self_test.take() {
+            t.before_frame(self, &ctx);
+            self.self_test = Some(t);
         }
 
         let modal_open = self.goto.is_some() || self.confirm.is_some() || self.error.is_some();
@@ -1116,6 +1203,9 @@ impl eframe::App for BigTextApp {
         if let Some(mut b) = self.bench.take() {
             b.after_frame(self, &ctx, ms);
             self.bench = Some(b);
+        }
+        if let Some(t) = &mut self.self_test {
+            t.after_frame(&ctx, ms);
         }
     }
 }

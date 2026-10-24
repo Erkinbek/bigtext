@@ -19,7 +19,7 @@ use bigtext::search::Matcher;
 use bigtext::text::Piece;
 
 use super::document::{Banner, DocState};
-use super::{open_worker, BigTextApp, Confirm, ConfirmAction, Msg, Opened};
+use super::{open_worker, same_path, BigTextApp, Confirm, ConfirmAction, Msg, Opened};
 
 /// Replacements up to this count are applied as undoable piece-table edits.
 pub const UNDO_THRESHOLD: usize = 50_000;
@@ -50,7 +50,6 @@ pub struct TempWritten {
 
 pub struct Finalized {
     pub doc: u64,
-    pub target: PathBuf,
     pub prefix: Option<Vec<u64>>,
     pub result: Result<Opened, (String, Result<Opened, String>)>,
     pub stats: ReplaceStats,
@@ -154,7 +153,6 @@ impl BigTextApp {
             };
             let _ = tx.send(Msg::Finalized(Box::new(Finalized {
                 doc: tw.doc,
-                target: tw.target,
                 prefix: tw.prefix,
                 result,
                 stats: tw.stats,
@@ -173,7 +171,7 @@ impl BigTextApp {
         d.save_job = None;
         match f.result {
             Ok(o) => {
-                let target = std::fs::canonicalize(&f.target).unwrap_or(f.target.clone());
+                let target = o.path.clone();
                 let same = d.path.as_deref().is_some_and(|p| same_path(p, &target));
                 d.title = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                 d.path = Some(target);
@@ -359,8 +357,3 @@ impl BigTextApp {
     }
 }
 
-fn same_path(a: &std::path::Path, b: &std::path::Path) -> bool {
-    let ca = std::fs::canonicalize(a).unwrap_or_else(|_| a.to_path_buf());
-    let cb = std::fs::canonicalize(b).unwrap_or_else(|_| b.to_path_buf());
-    ca == cb
-}

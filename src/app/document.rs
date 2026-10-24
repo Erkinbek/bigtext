@@ -28,6 +28,9 @@ pub struct UndoGroup {
     pub sel_after: (u64, u64),
     pub kind: EditKind,
     pub at: Instant,
+    /// Content state ids before and after this group (see `Document::is_modified`).
+    pub state_before: u64,
+    pub state_after: u64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -67,6 +70,9 @@ pub struct ViewState {
     pub dragging: bool,
     pub width_cache: std::collections::HashMap<u64, u32>,
     pub width_cache_version: u64,
+    /// Geometry of the last painted text area (hit testing in the self-test).
+    pub text_rect: Option<egui::Rect>,
+    pub cell: egui::Vec2,
 }
 
 impl Default for ViewState {
@@ -90,6 +96,8 @@ impl Default for ViewState {
             dragging: false,
             width_cache: std::collections::HashMap::new(),
             width_cache_version: 0,
+            text_rect: None,
+            cell: egui::Vec2::ZERO,
         }
     }
 }
@@ -108,6 +116,10 @@ pub struct Document {
     pub redo: Vec<UndoGroup>,
     pub version: u64,
     pub saved_version: u64,
+    /// Identifies the current content; undoing back to the saved state clears "modified".
+    content_state: u64,
+    saved_content_state: u64,
+    next_content_state: u64,
     pub view: ViewState,
     pub state: DocState,
     pub banner: Option<Banner>,
@@ -143,6 +155,9 @@ impl Document {
             redo: Vec::new(),
             version: 0,
             saved_version: 0,
+            content_state: 0,
+            saved_content_state: 0,
+            next_content_state: 1,
             view: ViewState::default(),
             state: DocState::Loading,
             banner: None,
@@ -190,6 +205,9 @@ impl Document {
         self.redo.clear();
         self.version += 1;
         self.saved_version = self.version;
+        self.content_state = self.next_content_state;
+        self.saved_content_state = self.content_state;
+        self.next_content_state += 1;
         self.last_indexed = 0;
         let min = self.min_caret();
         self.view.caret = self.view.caret.clamp(min, self.buf.len());
@@ -199,7 +217,7 @@ impl Document {
     }
 
     pub fn is_modified(&self) -> bool {
-        self.version != self.saved_version
+        self.content_state != self.saved_content_state
     }
 
     pub fn is_ready(&self) -> bool {
@@ -283,6 +301,9 @@ impl Document {
     fn push_undo(&mut self, swaps: Vec<Swap>, sel_before: (u64, u64), sel_after: (u64, u64), kind: EditKind) {
         self.redo.clear();
         let now = Instant::now();
+        let state_before = self.content_state;
+        self.content_state = self.next_content_state;
+        self.next_content_state += 1;
         if let Some(last) = self.undo.last_mut() {
             let coalesce = kind != EditKind::Other
                 && last.kind == kind
@@ -292,10 +313,11 @@ impl Document {
                 last.swaps.extend(swaps);
                 last.sel_after = sel_after;
                 last.at = now;
+                last.state_after = self.content_state;
                 return;
             }
         }
-        self.undo.push(UndoGroup { swaps, sel_before, sel_after, kind, at: now });
+        self.undo.push(UndoGroup { swaps, sel_before, sel_after, kind, at: now, state_before, state_after: self.content_state });
         if self.undo.len() > 10_000 {
             self.undo.remove(0);
         }
@@ -406,6 +428,7 @@ impl Document {
             self.view.anchor = g.sel_before.0.min(self.buf.len());
             self.view.caret = g.sel_before.1.min(self.buf.len());
             self.view.scroll_to_caret = true;
+            self.content_state = g.state_before;
             self.redo.push(g);
         }
     }
@@ -422,6 +445,7 @@ impl Document {
             self.view.anchor = g.sel_after.0.min(self.buf.len());
             self.view.caret = g.sel_after.1.min(self.buf.len());
             self.view.scroll_to_caret = true;
+            self.content_state = g.state_after;
             self.undo.push(g);
         }
     }
@@ -456,6 +480,14 @@ impl Document {
             None => return None,
         };
         Some((start, ce, next))
+    }
+
+    /// Selects the whole line containing `off` including its line break (triple click).
+    pub fn select_line(&mut self, off: u64) {
+        if let Some((ls, _ce, next)) = self.line_bounds(off, LINE_CMD_LIMIT) {
+            self.select(ls.max(self.min_caret()), next);
+            self.view.scroll_to_caret = false;
+        }
     }
 
     pub fn duplicate_line(&mut self) {
