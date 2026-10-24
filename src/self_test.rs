@@ -36,6 +36,7 @@ pub struct Ctx {
     pub frames: u32,
     t0: Instant,
     pub mark: u64,
+    mark_time: Instant,
     shot: Option<PathBuf>,
     pending_shot: Option<PathBuf>,
 }
@@ -169,6 +170,11 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(&long)?;
     std::fs::write(long.join("deep.txt"), "long path file\n")?;
     std::fs::write(dir.join("long-path.txt"), long.join("deep.txt").to_string_lossy().as_bytes())?;
+    std::fs::write(dir.join("data.json"), "{\"name\": \"bigtext\", \"size\": 42, \"ok\": true}\n")?;
+    std::fs::write(dir.join("app.log"), "2026-10-24 10:00:00.000 [ERROR] failed\n2026-10-24 10:00:01.000 [INFO] ok\n")?;
+    let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
+    std::fs::write(dir.join("diff-a.txt"), &base)?;
+    std::fs::write(dir.join("diff-b.txt"), base.replace("row 100\n", "row one hundred\n").replace("row 1500\n", "row 1500\nextra line\n"))?;
     Ok(())
 }
 
@@ -381,11 +387,12 @@ impl SelfTest {
                 c.event(Event::MouseWheel { unit: MouseWheelUnit::Line, delta: egui::vec2(0.0, 3.0), phase: TouchPhase::Move, modifiers: CTRL }, CTRL);
                 return Step::Wait;
             }
-            // egui animates ctrl+wheel zoom over a few frames; let it settle.
-            if c.frames < 40 {
+            // egui animates ctrl+wheel zoom over time; let it settle.
+            if c.mark == 0 && c.waited() < Duration::from_millis(1500) {
                 return Step::Wait;
             }
-            if c.frames == 40 {
+            if c.mark == 0 {
+                c.mark = 1;
                 if app.settings.font_size <= 14.0 {
                     return Step::Fail(format!("ctrl+wheel font {}", app.settings.font_size));
                 }
@@ -393,7 +400,8 @@ impl SelfTest {
                 c.key(Key::Equals, CTRL);
                 return Step::Wait;
             }
-            if c.frames == 41 {
+            if c.mark == 1 {
+                c.mark = 2;
                 if app.settings.font_size != 15.0 {
                     return Step::Fail(format!("ctrl+= font {}", app.settings.font_size));
                 }
@@ -575,6 +583,132 @@ impl SelfTest {
             }
             app.show_about = false;
             check(crate::app::AUTHOR_LINKS.iter().any(|l| l.2.contains("Erkinbek/bigtext")), "missing repository link")
+        }));
+        s("bookmarks: Ctrl+F2 toggles, F2 / Shift+F2 navigate", Box::new(|app, c| {
+            if c.first() {
+                let p1 = pos(app, 1, 3.0);
+                let p3 = pos(app, 3, 3.0);
+                c.click(p1, NONE);
+                c.key(Key::F2, CTRL);
+                c.click(p3, NONE);
+                c.key(Key::F2, CTRL);
+                c.key(Key::Home, CTRL);
+                c.key(Key::F2, NONE);
+                return Step::Wait;
+            }
+            if c.frames == 2 {
+                let d = doc(app);
+                if d.bookmarks != vec![17, 51] || d.view.caret != 17 {
+                    return Step::Fail(format!("bookmarks {:?} caret {}", d.bookmarks, d.view.caret));
+                }
+                c.key(Key::F2, NONE);
+                return Step::Wait;
+            }
+            if c.frames == 3 {
+                if doc(app).view.caret != 51 {
+                    return Step::Fail(format!("F2 caret {}", doc(app).view.caret));
+                }
+                c.key(Key::F2, SHIFT);
+                return Step::Wait;
+            }
+            if c.frames == 4 {
+                if doc(app).view.caret != 17 {
+                    return Step::Fail(format!("Shift+F2 caret {}", doc(app).view.caret));
+                }
+                // Typing above a bookmark keeps it on its line.
+                c.key(Key::Home, CTRL);
+                c.typed("ab");
+                return Step::Wait;
+            }
+            let b = doc(app).bookmarks.clone();
+            let ok = b == vec![19, 53];
+            c.key(Key::Z, CTRL);
+            check(ok, format!("bookmarks after typing {b:?}"))
+        }));
+        s("split view: two panes, shared caret, independent scroll", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("big.txt"));
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if !wait_ready(app) {
+                    return Step::Wait;
+                }
+                c.mark = 1;
+                c.key(Key::Backslash, CTRL);
+                c.push(vec![], NONE);
+                c.push(vec![], NONE);
+                return Step::Wait;
+            }
+            if c.mark == 1 {
+                let d = doc(app);
+                let Some(sp) = d.split.clone() else { return Step::Fail("split did not open".into()) };
+                let Some(r) = sp.text_rect else { return Step::Wait };
+                // Scroll the lower pane and click into it.
+                let p = Pos2::new(r.left() + 40.0, r.top() + d.view.cell.y * 2.5);
+                c.mark = 2;
+                c.mark_time = Instant::now();
+                c.event(Event::PointerMoved(p), NONE);
+                c.event(Event::MouseWheel { unit: MouseWheelUnit::Line, delta: egui::vec2(0.0, -20.0), phase: TouchPhase::Move, modifiers: NONE }, NONE);
+                return Step::Wait;
+            }
+            if c.mark == 2 {
+                // Let egui's smooth scrolling finish before clicking.
+                if c.mark_time.elapsed() < Duration::from_millis(1500) {
+                    return Step::Wait;
+                }
+                let d = doc(app);
+                let r = d.split.as_ref().and_then(|s| s.text_rect).unwrap_or(egui::Rect::NOTHING);
+                let p = Pos2::new(r.left() + 40.0, r.top() + d.view.cell.y * 2.5);
+                c.mark = 3;
+                c.click(p, NONE);
+                return Step::Wait;
+            }
+            let d = doc(app);
+            let sp = d.split.clone().unwrap_or_default();
+            let ok = d.active_pane == 1 && sp.top > 0 && d.view.top == 0 && d.view.caret > sp.top;
+            let msg = format!("active {} pane2 top {} pane1 top {} caret {}", d.active_pane, sp.top, d.view.top, d.view.caret);
+            if ok {
+                c.key(Key::Backslash, CTRL);
+            }
+            check(ok, msg)
+        }));
+        s("syntax highlighting by extension (JSON, log)", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("data.json"));
+                app.open_path(c.file("app.log"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) {
+                return Step::Wait;
+            }
+            use crate::view::highlight::Lang;
+            let log = Lang::from_path(doc(app).path.as_deref());
+            let json = Lang::from_path(Some(&c.file("data.json")));
+            check(log == Lang::Log && json == Lang::Json && app.settings.syntax, format!("log {log:?} json {json:?}"))
+        }));
+        s("compare files (streaming diff)", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("diff-a.txt"));
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if !wait_ready(app) {
+                    return Step::Wait;
+                }
+                c.mark = 1;
+                app.start_diff(c.file("diff-b.txt"));
+                return Step::Wait;
+            }
+            let Some(r) = &app.diff else { return Step::Fail("no diff results".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let got: Vec<(u64, u64, u64, u64)> = g.hunks.iter().map(|h| (h.a_line, h.a_count, h.b_line, h.b_count)).collect();
+            drop(g);
+            app.diff = None;
+            check(got == vec![(100, 1, 100, 1), (1501, 0, 1501, 1)], format!("{got:?}"))
         }));
         s("open read-only file", open_step("ro.txt"));
         s("read-only file blocks edits", Box::new(|app, c| {
@@ -780,7 +914,7 @@ impl SelfTest {
             steps,
             idx: 0,
             settle: 0,
-            ctx: Ctx { queue: VecDeque::new(), copied: Vec::new(), dir, frames: 0, t0: Instant::now(), mark: 0, shot: shot_dir.clone(), pending_shot: None },
+            ctx: Ctx { queue: VecDeque::new(), copied: Vec::new(), dir, frames: 0, t0: Instant::now(), mark: 0, mark_time: Instant::now(), shot: shot_dir.clone(), pending_shot: None },
             report,
             results: Vec::new(),
             finished: false,

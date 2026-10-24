@@ -334,7 +334,7 @@ impl BigTextApp {
         });
     }
 
-    pub(super) fn replace_on_disk(&mut self, doc: u64, backup: bool) {
+    pub(crate) fn replace_on_disk(&mut self, doc: u64, backup: bool) {
         let Some((id, matcher, template, range)) = self.pending_replace.take() else { return };
         if id != doc {
             return;

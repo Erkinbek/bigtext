@@ -33,6 +33,8 @@ fn main() -> eframe::Result {
                     _ if s == "view" => bench_ui::Scenario::View { hex: false, wrap: false },
                     _ if s == "wrap" => bench_ui::Scenario::View { hex: false, wrap: true },
                     _ if s == "hex" => bench_ui::Scenario::View { hex: true, wrap: false },
+                    _ if s == "close-search" => bench_ui::Scenario::CloseDuring { replace: false },
+                    _ if s == "close-replace" => bench_ui::Scenario::CloseDuring { replace: true },
                     _ => bench_ui::Scenario::Scroll,
                 };
             }
@@ -57,7 +59,8 @@ fn main() -> eframe::Result {
         "BigText",
         options,
         Box::new(move |cc| {
-            let mut app = app::BigTextApp::new(cc, files, process_start);
+            let persist = bench.is_none() && self_test.is_none();
+            let mut app = app::BigTextApp::new(cc, files, process_start, persist);
             if let Some((file, report)) = bench {
                 let mut b = bench_ui::BenchUi::new(file, report);
                 b.screenshot = screenshot.clone();

@@ -29,6 +29,10 @@ pub struct ViewEnv<'a> {
     pub highlight: &'a dyn Fn(&TextBuf, Range<u64>) -> Vec<(u64, u64)>,
     pub actions: &'a mut Vec<ViewAction>,
     pub focus: bool,
+    /// Syntax highlighting for the visible rows.
+    pub lang: super::highlight::Lang,
+    /// Which split pane this is (0 = primary).
+    pub pane: u8,
 }
 
 #[derive(Clone, Copy)]
@@ -59,11 +63,15 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     let m = Metrics { cw: cw.max(1.0), rh: rh.max(1.0) };
 
     let full = ui.available_rect_before_wrap();
-    let id = ui.id().with(("textview", doc.id));
+    let id = ui.id().with(("textview", doc.id, env.pane));
     let resp = ui.interact(full, id, Sense::click_and_drag());
-    if env.focus && (resp.clicked() || resp.drag_started() || ui.memory(|mem| mem.focused().is_none())) {
+    if env.focus && (resp.clicked() || resp.drag_started() || resp.is_pointer_button_down_on() || (env.pane == doc.active_pane && ui.memory(|mem| mem.focused().is_none()))) {
         resp.request_focus();
     }
+    if resp.is_pointer_button_down_on() || resp.has_focus() {
+        doc.active_pane = env.pane;
+    }
+    let active_pane = doc.active_pane == env.pane;
     ui.memory_mut(|mem| {
         mem.set_focus_lock_filter(id, EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: false })
     });
@@ -97,7 +105,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         // Input is handled against the current layout, then the layout is rebuilt for painting.
         if let Ok(rows) = layout_rows(&doc.buf, doc.view.top, doc.view.rows_on_screen + 1, wrap) {
             handle_wheel(ui, doc, &resp, m, wrap, env);
-            handle_mouse(ui, doc, &resp, text_rect, m, wrap, &rows);
+            handle_mouse(ui, doc, &resp, text_rect, m, wrap, &rows, active_pane);
             if focused {
                 handle_keys(ui, doc, wrap, env);
                 ime_output(ui, text_rect);
@@ -105,7 +113,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         } else {
             pending = true;
         }
-        if doc.view.scroll_to_caret || doc.view.center_caret {
+        if active_pane && (doc.view.scroll_to_caret || doc.view.center_caret) {
             let center = doc.view.center_caret;
             if ensure_caret_visible(doc, wrap, center, m, text_rect.width()).is_ok() {
                 doc.view.scroll_to_caret = false;
@@ -176,16 +184,9 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         let mut cur = first_cell;
         let mut reached_end = true;
         let mut end_cell = 0u32;
-        let normal = TextFormat { font_id: font.clone(), color: text_color, ..Default::default() };
-        let special = TextFormat { font_id: font.clone(), color: weak, ..Default::default() };
+        // Visible text of the row plus the byte ranges of placeholder (special) glyphs.
         let mut run = String::new();
-        let mut run_special = false;
-        let flush = |job: &mut LayoutJob, run: &mut String, sp: bool| {
-            if !run.is_empty() {
-                job.append(run, 0.0, if sp { special.clone() } else { normal.clone() });
-                run.clear();
-            }
-        };
+        let mut specials: Vec<(usize, usize)> = Vec::new();
         rows::for_each_cell(&codec, &bytes, row.start, |c| {
             end_cell = c.cell + c.width;
             if c.cell + c.width <= first_cell {
@@ -208,15 +209,14 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                 CellKind::Invalid => ('\u{FFFD}'.to_string(), true),
                 CellKind::Normal => (c.ch.to_string(), false),
             };
-            if sp != run_special {
-                flush(&mut job, &mut run, run_special);
-                run_special = sp;
+            if sp {
+                specials.push((run.len(), run.len() + s.len()));
             }
             run.push_str(&s);
             cur = c.cell.max(first_cell) + c.width;
             true
         });
-        flush(&mut job, &mut run, run_special);
+        build_job(&mut job, &run, &specials, env.lang, &font, text_color, weak, visuals.dark_mode);
 
         // Row width for the horizontal scrollbar (cached; rows are bounded so this is cheap).
         if show_h {
@@ -290,6 +290,10 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         if !label.is_empty() {
             painter.text(pos2(gutter_rect.right() - 8.0, y), Align2::RIGHT_TOP, label, font.clone(), weak);
         }
+        if starts_line && doc.bookmarks.binary_search(&row.start).is_ok() {
+            let r = Rect::from_min_size(pos2(gutter_rect.left() + 3.0, y + m.rh * 0.2), egui::vec2(5.0, m.rh * 0.6));
+            painter.rect_filled(r, 2.0, visuals.selection.stroke.color);
+        }
     }
     doc.view.max_cells = max_w;
 
@@ -320,6 +324,39 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             horizontal_scrollbar(ui, doc, id, hbar, m, text_rect.width());
         }
     }
+}
+
+/// Turns the visible text of a row into layout sections: syntax colours, with placeholder
+/// glyphs (controls, invalid bytes) always dimmed.
+#[allow(clippy::too_many_arguments)]
+fn build_job(job: &mut LayoutJob, text: &str, specials: &[(usize, usize)], lang: super::highlight::Lang, font: &FontId, normal: Color32, weak: Color32, dark: bool) {
+    if text.is_empty() {
+        return;
+    }
+    let mut colors = vec![normal; text.len()];
+    let mut spans = Vec::new();
+    super::highlight::spans(lang, text, &mut spans);
+    for (a, b, k) in spans {
+        let c = super::highlight::color(k, dark);
+        for x in &mut colors[a.min(text.len())..b.min(text.len())] {
+            *x = c;
+        }
+    }
+    for &(a, b) in specials {
+        for x in &mut colors[a..b] {
+            *x = weak;
+        }
+    }
+    let mut start = 0;
+    let mut cur = colors[0];
+    for (i, _) in text.char_indices().skip(1) {
+        if colors[i] != cur {
+            job.append(&text[start..i], 0.0, TextFormat { font_id: font.clone(), color: cur, ..Default::default() });
+            start = i;
+            cur = colors[i];
+        }
+    }
+    job.append(&text[start..], 0.0, TextFormat { font_id: font.clone(), color: cur, ..Default::default() });
 }
 
 fn control_glyph(c: char) -> char {
@@ -423,7 +460,7 @@ fn hit_test(doc: &Document, rows: &[Row], text_rect: Rect, m: Metrics, pos: Pos2
 }
 
 #[allow(clippy::too_many_arguments)]
-fn handle_mouse(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, text_rect: Rect, m: Metrics, wrap: Option<usize>, rows: &[Row]) {
+fn handle_mouse(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, text_rect: Rect, m: Metrics, wrap: Option<usize>, rows: &[Row], active_pane: bool) {
     let (pressed, down, mods, pos, dbl, tpl) = ui.input(|i| {
         (
             i.pointer.primary_pressed(),
@@ -453,7 +490,7 @@ fn handle_mouse(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, text_rec
             doc.view.dragging = false;
         }
     }
-    if doc.view.dragging {
+    if doc.view.dragging && active_pane {
         if !down {
             doc.view.dragging = false;
         } else {

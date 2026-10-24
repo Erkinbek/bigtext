@@ -133,7 +133,48 @@ pub struct Document {
     pub save_job: Option<super::ops::SaveJob>,
     pub close_after_save: bool,
     pub reload_prefix: Option<Vec<u64>>,
+    /// Bookmarked line starts (sorted byte offsets).
+    pub bookmarks: Vec<u64>,
+    /// Second pane of a split view (shares caret and selection, scrolls independently).
+    pub split: Option<PaneView>,
+    pub active_pane: u8,
+    /// Syntax highlighting override (None = from the file extension).
+    pub lang: Option<crate::view::highlight::Lang>,
+    /// Position to restore once the file has opened (session restore, diff jumps).
+    pub restore: Option<Restore>,
     last_indexed: u64,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Restore {
+    pub caret: u64,
+    pub top: u64,
+    pub wrap: bool,
+    pub bookmarks: Vec<u64>,
+    pub line: Option<u64>,
+}
+
+/// Scroll state of the secondary split pane.
+#[derive(Clone, Debug, Default)]
+pub struct PaneView {
+    pub top: u64,
+    pub scroll_x: f32,
+    pub wheel_rem: f32,
+    pub rows_on_screen: usize,
+    pub text_cols: usize,
+    pub text_rect: Option<egui::Rect>,
+}
+
+impl PaneView {
+    /// Exchanges the scroll state with the document's primary view state.
+    pub fn swap_with(&mut self, v: &mut ViewState) {
+        std::mem::swap(&mut self.top, &mut v.top);
+        std::mem::swap(&mut self.scroll_x, &mut v.scroll_x);
+        std::mem::swap(&mut self.wheel_rem, &mut v.wheel_rem);
+        std::mem::swap(&mut self.rows_on_screen, &mut v.rows_on_screen);
+        std::mem::swap(&mut self.text_cols, &mut v.text_cols);
+        std::mem::swap(&mut self.text_rect, &mut v.text_rect);
+    }
 }
 
 impl Document {
@@ -171,6 +212,11 @@ impl Document {
             save_job: None,
             close_after_save: false,
             reload_prefix: None,
+            bookmarks: Vec::new(),
+            split: None,
+            active_pane: 0,
+            lang: None,
+            restore: None,
             last_indexed: 0,
         }
     }
@@ -330,6 +376,7 @@ impl Document {
         }
         let sel_before = (self.view.anchor, self.view.caret);
         let swap = self.buf.replace(range.clone(), bytes);
+        self.shift_bookmarks(range.clone(), bytes.len() as u64);
         let caret = range.start.min(self.buf.len()) + bytes.len() as u64;
         self.version += 1;
         self.view.anchor = caret;
@@ -342,6 +389,7 @@ impl Document {
     /// Records an externally built swap (batch replace, duplicate line) as one undo step.
     pub fn record(&mut self, swap: Swap, sel_after: (u64, u64)) {
         let sel_before = (self.view.anchor, self.view.caret);
+        self.clamp_bookmarks();
         self.version += 1;
         self.view.anchor = sel_after.0;
         self.view.caret = sel_after.1;
@@ -416,6 +464,55 @@ impl Document {
         self.push_undo(vec![swap], sel, sel, EditKind::Delete);
     }
 
+    /// Keeps bookmarks on their lines across an edit of `range` replaced by `inserted` bytes.
+    fn shift_bookmarks(&mut self, range: std::ops::Range<u64>, inserted: u64) {
+        if self.bookmarks.is_empty() {
+            return;
+        }
+        let removed = range.end - range.start;
+        for b in &mut self.bookmarks {
+            if *b >= range.end && (*b > range.start || removed > 0) {
+                *b = *b - removed + inserted;
+            } else if *b > range.start {
+                *b = range.start;
+            }
+        }
+        self.bookmarks.dedup();
+    }
+
+    /// Drops bookmarks that no longer fit (after batch edits or undo/redo).
+    fn clamp_bookmarks(&mut self) {
+        let len = self.buf.len();
+        self.bookmarks.retain(|&b| b <= len);
+    }
+
+    /// Toggles a bookmark on the line containing the caret.
+    pub fn toggle_bookmark(&mut self) {
+        let Some((ls, _, _)) = self.line_bounds(self.view.caret, LINE_CMD_LIMIT) else { return };
+        match self.bookmarks.binary_search(&ls) {
+            Ok(i) => {
+                self.bookmarks.remove(i);
+            }
+            Err(i) => self.bookmarks.insert(i, ls),
+        }
+    }
+
+    /// Moves to the next (or previous) bookmark, wrapping around.
+    pub fn goto_bookmark(&mut self, forward: bool) {
+        if self.bookmarks.is_empty() {
+            return;
+        }
+        let c = self.view.caret;
+        let line_start = self.line_bounds(c, LINE_CMD_LIMIT).map(|b| b.0).unwrap_or(c);
+        let target = if forward {
+            self.bookmarks.iter().copied().find(|&b| b > line_start).unwrap_or(self.bookmarks[0])
+        } else {
+            self.bookmarks.iter().rev().copied().find(|&b| b < line_start).unwrap_or(*self.bookmarks.last().unwrap())
+        };
+        self.set_caret(target, false);
+        self.view.center_caret = true;
+    }
+
     pub fn undo(&mut self) {
         if !self.is_ready() {
             return;
@@ -430,6 +527,7 @@ impl Document {
             self.view.scroll_to_caret = true;
             self.content_state = g.state_before;
             self.redo.push(g);
+            self.clamp_bookmarks();
         }
     }
 
@@ -447,6 +545,7 @@ impl Document {
             self.view.scroll_to_caret = true;
             self.content_state = g.state_after;
             self.undo.push(g);
+            self.clamp_bookmarks();
         }
     }
 

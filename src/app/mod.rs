@@ -1,6 +1,7 @@
 //! Application shell: tabs, menus, dialogs, status bar and background-job plumbing.
 
 pub mod document;
+pub mod extras;
 pub mod ops;
 pub mod search_panel;
 
@@ -50,6 +51,7 @@ pub struct Settings {
     pub dark: bool,
     pub show_perf: bool,
     pub backup_on_save: bool,
+    pub syntax: bool,
 }
 
 struct GotoDialog {
@@ -121,6 +123,10 @@ pub struct BigTextApp {
     exit_after_jobs: bool,
     pub show_about: bool,
     pub show_shortcuts: bool,
+    pub recent: Vec<PathBuf>,
+    /// Session state is saved and restored (off for benchmarks and the self-test).
+    pub persist: bool,
+    pub diff: Option<extras::DiffResults>,
     pub search: search_panel::SearchUi,
     pending_replace: Option<(u64, Arc<Matcher>, Template, std::ops::Range<u64>)>,
     preview: Option<(u64, Vec<(u64, String, String)>, Vec<u64>)>,
@@ -171,7 +177,7 @@ pub fn same_path(a: &Path, b: &Path) -> bool {
 }
 
 impl BigTextApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, files: Vec<PathBuf>, process_start: Instant) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, files: Vec<PathBuf>, process_start: Instant, persist: bool) -> Self {
         let (tx, rx) = mpsc::channel();
         let ctx = cc.egui_ctx.clone();
         let waker: Waker = Arc::new(move || ctx.request_repaint());
@@ -184,7 +190,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false },
+            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true },
             goto: None,
             confirm: None,
             error: None,
@@ -197,12 +203,26 @@ impl BigTextApp {
             exit_after_jobs: false,
             show_about: false,
             show_shortcuts: false,
+            recent: Vec::new(),
+            persist,
+            diff: None,
             search: search_panel::SearchUi::default(),
             pending_replace: None,
             preview: None,
         };
         app.search.query.case_sensitive = true;
-        cc.egui_ctx.set_theme(egui::Theme::Dark);
+        if persist {
+            let state = extras::load();
+            if files.is_empty() {
+                app.restore_session(state);
+            } else {
+                app.recent = state.recent;
+                app.settings.font_size = state.font_size.unwrap_or(14.0).clamp(6.0, 72.0);
+                app.settings.dark = state.dark.unwrap_or(true);
+                app.settings.syntax = state.syntax.unwrap_or(true);
+            }
+        }
+        cc.egui_ctx.set_theme(if app.settings.dark { egui::Theme::Dark } else { egui::Theme::Light });
         for f in files {
             app.open_path(f);
         }
@@ -277,7 +297,22 @@ impl BigTextApp {
                                     let len = d.buf.len();
                                     d.set_caret(len, false);
                                 }
+                                if let Some(r) = d.restore.take() {
+                                    let len = d.buf.len();
+                                    d.view.wrap = r.wrap;
+                                    d.bookmarks = r.bookmarks.into_iter().filter(|&b| b <= len).collect();
+                                    match r.line {
+                                        Some(line) => d.goto_line(line),
+                                        None => {
+                                            d.set_caret(r.caret.min(len), false);
+                                            d.view.top = r.top.min(len);
+                                            d.view.scroll_to_caret = false;
+                                        }
+                                    }
+                                }
                                 watch(d, tx, waker);
+                                let p = o.path.clone();
+                                self.add_recent(&p);
                             }
                             Err(e) => d.state = DocState::Failed(e),
                         }
@@ -418,6 +453,26 @@ impl BigTextApp {
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::Num0))) {
             self.settings.font_size = 14.0;
         }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::F2))) {
+            if let Some(d) = self.active_doc() {
+                d.toggle_bookmark();
+            }
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::F2))) {
+            if let Some(d) = self.active_doc() {
+                d.goto_bookmark(false);
+            }
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::NONE, Key::F2))) {
+            if let Some(d) = self.active_doc() {
+                d.goto_bookmark(true);
+            }
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::Backslash))) {
+            if let Some(d) = self.active_doc() {
+                toggle_split(d);
+            }
+        }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::NONE, Key::F12))) {
             self.settings.show_perf = !self.settings.show_perf;
         }
@@ -463,6 +518,24 @@ impl BigTextApp {
                         }
                     }
                 });
+                let recent = self.recent.clone();
+                ui.add_enabled_ui(!recent.is_empty(), |ui| {
+                    ui.menu_button("Open recent", |ui| {
+                        for p in recent {
+                            if ui.button(file::display_path(&p)).clicked() {
+                                self.open_path(p);
+                            }
+                        }
+                        ui.separator();
+                        if ui.button("Clear list").clicked() {
+                            self.recent.clear();
+                            self.persist_state();
+                        }
+                    });
+                });
+                if ui.button("Compare with…").clicked() {
+                    self.compare_dialog();
+                }
                 ui.separator();
                 if ui.button("Close tab\tCtrl+W").clicked() {
                     if let Some(id) = self.docs.get(self.active).map(|d| d.id) {
@@ -493,6 +566,19 @@ impl BigTextApp {
                     }
                     if ui.button("Delete line\tCtrl+Shift+K").clicked() {
                         d.delete_line();
+                    }
+                    ui.separator();
+                    if ui.button("Toggle bookmark\tCtrl+F2").clicked() {
+                        d.toggle_bookmark();
+                    }
+                    if ui.button("Next bookmark\tF2").clicked() {
+                        d.goto_bookmark(true);
+                    }
+                    if ui.button("Previous bookmark\tShift+F2").clicked() {
+                        d.goto_bookmark(false);
+                    }
+                    if ui.add_enabled(!d.bookmarks.is_empty(), egui::Button::new("Clear bookmarks")).clicked() {
+                        d.bookmarks.clear();
                     }
                     ui.separator();
                     let mut r = ro;
@@ -535,6 +621,23 @@ impl BigTextApp {
                         d.view.scroll_to_caret = true;
                     }
                     ui.checkbox(&mut d.follow, "Follow (tail) file changes");
+                    let mut split = d.split.is_some();
+                    if ui.checkbox(&mut split, "Split view\tCtrl+\\").changed() {
+                        toggle_split(d);
+                    }
+                    ui.separator();
+                    ui.checkbox(&mut self.settings.syntax, "Syntax highlighting");
+                    let auto = crate::view::highlight::Lang::from_path(d.path.as_deref());
+                    ui.menu_button("Highlight as", |ui| {
+                        if ui.radio(d.lang.is_none(), format!("Auto ({})", auto.name())).clicked() {
+                            d.lang = None;
+                        }
+                        for l in crate::view::highlight::Lang::ALL {
+                            if ui.radio(d.lang == Some(l), l.name()).clicked() {
+                                d.lang = Some(l);
+                            }
+                        }
+                    });
                 }
                 if ui.checkbox(&mut self.settings.dark, "Dark theme").changed() {
                     ui.ctx().set_theme(if self.settings.dark { egui::Theme::Dark } else { egui::Theme::Light });
@@ -959,6 +1062,7 @@ impl BigTextApp {
                     checkbox: None,
                 });
             } else {
+                self.persist_state();
                 for d in &mut self.docs {
                     d.cancel_jobs();
                     d.watch_cancel.cancel();
@@ -970,6 +1074,14 @@ impl BigTextApp {
             }
         }
     }
+}
+
+/// Turns the split view on (second pane starts at the same position) or off.
+pub(super) fn toggle_split(d: &mut Document) {
+    if d.split.take().is_none() {
+        d.split = Some(document::PaneView { top: d.view.top, scroll_x: d.view.scroll_x, ..Default::default() });
+    }
+    d.active_pane = 0;
 }
 
 /// Starts a background watcher that reports size/mtime changes and deletion of the file.
@@ -1066,6 +1178,8 @@ pub const SHORTCUTS: &[(&str, &str)] = &[
     ("Ctrl+A", "Select all (large-file safe)"),
     ("Ctrl+wheel, Ctrl+= / Ctrl+-", "Zoom"),
     ("Alt+Z", "Toggle word wrap"),
+    ("Ctrl+F2 / F2 / Shift+F2", "Toggle / next / previous bookmark"),
+    ("Ctrl+\\", "Split view"),
     ("F12", "Performance overlay"),
 ];
 
@@ -1134,6 +1248,9 @@ impl eframe::App for BigTextApp {
         if self.search.show_results && self.docs.get(self.active).is_some_and(|d| d.results.is_some()) {
             egui::Panel::bottom("results").resizable(true).default_size(220.0).show(ui, |ui| self.results_panel(ui));
         }
+        if self.diff.is_some() {
+            egui::Panel::bottom("diff").resizable(true).default_size(200.0).show(ui, |ui| self.diff_panel(ui));
+        }
         if self.docs.get(self.active).is_some_and(|d| d.banner.is_some()) {
             egui::Panel::top("banner").show_separator_line(false).show(ui, |ui| self.banner(ui));
         }
@@ -1141,6 +1258,7 @@ impl eframe::App for BigTextApp {
         let mut actions = Vec::new();
         let matcher = self.view_highlighter();
         let font_size = &mut self.settings.font_size;
+        let syntax = self.settings.syntax;
         egui::CentralPanel::no_frame().show(ui, |ui| {
             if let Some(d) = self.docs.get_mut(self.active) {
                 if d.hex && d.is_ready() {
@@ -1150,8 +1268,32 @@ impl eframe::App for BigTextApp {
                         Some(m) => bigtext::search::matches_in_view(b, m, r, 2000),
                         None => Vec::new(),
                     };
-                    let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open };
-                    text_view::show(ui, d, &mut env);
+                    let lang = if syntax { d.lang.unwrap_or_else(|| crate::view::highlight::Lang::from_path(d.path.as_deref())) } else { crate::view::highlight::Lang::Plain };
+                    match d.split.take() {
+                        None => {
+                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0 };
+                            text_view::show(ui, d, &mut env);
+                        }
+                        Some(mut pane) => {
+                            // Two panes over the same document: independent scrolling, shared caret.
+                            let full = ui.available_rect_before_wrap();
+                            let mid = full.center().y;
+                            let top = egui::Rect::from_min_max(full.min, egui::pos2(full.right(), mid - 2.0));
+                            let bottom = egui::Rect::from_min_max(egui::pos2(full.left(), mid + 2.0), full.max);
+                            ui.painter().hline(full.x_range(), mid, ui.visuals().widgets.noninteractive.bg_stroke);
+                            ui.scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
+                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0 };
+                                text_view::show(ui, d, &mut env);
+                            });
+                            pane.swap_with(&mut d.view);
+                            ui.scope_builder(egui::UiBuilder::new().max_rect(bottom), |ui| {
+                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 1 };
+                                text_view::show(ui, d, &mut env);
+                            });
+                            pane.swap_with(&mut d.view);
+                            d.split = Some(pane);
+                        }
+                    }
                 }
             }
         });

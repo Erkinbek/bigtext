@@ -27,6 +27,7 @@ enum Phase {
     FindNext,
     EditInsert,
     SaveWait,
+    CloseDuring,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +36,8 @@ pub enum Scenario {
     Search(String),
     Edit,
     View { hex: bool, wrap: bool },
+    /// Close the window while a Find All (`replace == false`) or an on-disk Replace All runs.
+    CloseDuring { replace: bool },
 }
 
 pub struct BenchUi {
@@ -133,6 +136,7 @@ impl BenchUi {
                                 d.view.wrap = wrap;
                                 Phase::Idle
                             }
+                            Scenario::CloseDuring { .. } => Phase::CloseDuring,
                         };
                         self.set(next);
                     }
@@ -208,6 +212,41 @@ impl BenchUi {
                 }
             }
             Phase::Done => {}
+            Phase::CloseDuring => {
+                let Scenario::CloseDuring { replace } = self.scenario.clone() else { return };
+                if self.n == 1 {
+                    // Rare enough that Find All is not capped early.
+                    app.search.query.pattern = if replace { "timeout".into() } else { "timeout connection".into() };
+                    app.search.query.case_sensitive = true;
+                    if replace {
+                        app.search.replace_with = "TIMEOUT!".into();
+                        app.replace_all();
+                    } else {
+                        app.find_all();
+                    }
+                    return;
+                }
+                if replace && app.test_has_confirm() {
+                    // "More than 50,000 matches" prompt: accept the on-disk replace.
+                    let id = app.active_doc().map(|d| d.id).unwrap_or(0);
+                    app.test_dismiss();
+                    app.replace_on_disk(id, false);
+                    return;
+                }
+                let progress = app.active_doc().map(|d| match (&d.save_job, &d.results) {
+                    (Some(j), _) if j.label == "Replacing" => j.progress.fraction(),
+                    (_, Some(r)) if !replace => r.progress.fraction(),
+                    _ => 0.0,
+                });
+                if let Some(p) = progress {
+                    if p > 0.05 {
+                        let _ = writeln!(self.log, "closing at {:.0}% of the {}", p * 100.0, if replace { "replace" } else { "search" });
+                        self.write_report(app);
+                        self.set(Phase::Done);
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                }
+            }
             Phase::SearchStart => {
                 let Scenario::Search(p) = self.scenario.clone() else { return };
                 app.search.query.pattern = p;
