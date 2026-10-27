@@ -22,7 +22,7 @@ use bigtext::replace::Template;
 use bigtext::search::Matcher;
 use bigtext::text::Piece;
 
-use crate::view::{hex_view, text_view};
+use crate::view::{hex_view, table_view, text_view};
 use document::{Banner, DocState, Document};
 
 pub struct Opened {
@@ -480,6 +480,12 @@ impl BigTextApp {
                 toggle_split(d);
             }
         }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::T))) {
+            if let Some(d) = self.active_doc() {
+                d.table = !d.table;
+                d.view.scroll_to_caret = true;
+            }
+        }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::NONE, Key::F12))) {
             self.settings.show_perf = !self.settings.show_perf;
         }
@@ -627,6 +633,9 @@ impl BigTextApp {
                     if ui.checkbox(&mut d.hex, "Hex view").changed() {
                         d.view.scroll_to_caret = true;
                     }
+                    if ui.checkbox(&mut d.table, "Table view (CSV / TSV)\tCtrl+T").changed() {
+                        d.view.scroll_to_caret = true;
+                    }
                     ui.checkbox(&mut d.follow, "Follow (tail) file changes");
                     let mut split = d.split.is_some();
                     if ui.checkbox(&mut split, "Split view\tCtrl+\\").changed() {
@@ -758,6 +767,11 @@ impl BigTextApp {
                 }
                 if d.follow {
                     ui.label(RichText::new("FOLLOW").color(Color32::from_rgb(90, 180, 90)));
+                    ui.separator();
+                }
+                if d.table && !d.hex {
+                    let delim = d.table_state.dialect.map(|x| x.name()).unwrap_or("…");
+                    ui.label(RichText::new(format!("TABLE · {delim}")).color(Color32::from_rgb(90, 160, 220)));
                     ui.separator();
                 }
                 if let Some(r) = d.results.as_ref().filter(|r| r.is_running()) {
@@ -1199,6 +1213,7 @@ pub const SHORTCUTS: &[(&str, &str)] = &[
     ("Alt+Z", "Toggle word wrap"),
     ("Ctrl+F2 / F2 / Shift+F2", "Toggle / next / previous bookmark"),
     ("Ctrl+\\", "Split view"),
+    ("Ctrl+T", "Table view for CSV / TSV"),
     ("F12", "Performance overlay"),
 ];
 
@@ -1283,6 +1298,9 @@ impl eframe::App for BigTextApp {
             if let Some(d) = self.docs.get_mut(self.active) {
                 if d.hex && d.is_ready() {
                     hex_view::show(ui, d, *font_size, !modal_open);
+                } else if d.table && d.is_ready() {
+                    let mut env = table_view::TableEnv { font_size, focus: !modal_open };
+                    table_view::show(ui, d, &mut env);
                 } else {
                     let hl = |b: &bigtext::text::TextBuf, r: std::ops::Range<u64>| match &matcher {
                         Some(m) => bigtext::search::matches_in_view(b, m, r, 2000),

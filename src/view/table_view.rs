@@ -1,0 +1,513 @@
+//! Table view for CSV / TSV documents.
+//!
+//! Virtualized like the text view: only the rows on screen are read (each bounded by the
+//! segment length, see `bigtext::text::rows`) and only the visible columns are decoded. A row
+//! is a line, so a quoted field that spans lines shows as several rows; the text itself is
+//! never changed by the view.
+
+use std::ops::Range;
+
+use egui::{pos2, vec2, Align, Align2, Color32, CursorIcon, Event, EventFilter, FontId, Key, Layout, Painter, Rect, Sense, Stroke, Ui, UiBuilder};
+
+use bigtext::csv::{self, Dialect, DELIMITERS};
+use bigtext::text::rows::{self, Pending, Row};
+
+use super::highlight::Lang;
+use super::text_view;
+use crate::app::document::Document;
+
+const SCROLLBAR: f32 = 14.0;
+const TOOLBAR_H: f32 = 30.0;
+/// Columns size themselves to their content up to this many characters; drag the border in
+/// the header for more.
+const MAX_AUTO_CHARS: usize = 40;
+const MIN_CHARS: usize = 3;
+/// Width of a column that has not been on screen yet, in characters.
+const DEFAULT_CHARS: usize = 12;
+const PAD: f32 = 6.0;
+
+pub struct TableState {
+    /// Detected from the file the first time the table is shown.
+    pub dialect: Option<Dialect>,
+    /// The first row holds the column names.
+    pub header: bool,
+    /// Column widths in points (0 = not measured yet). They grow to fit what has been on
+    /// screen, except for columns whose border the user dragged (`fixed`).
+    pub widths: Vec<f32>,
+    pub fixed: Vec<bool>,
+    pub scroll_x: f32,
+}
+
+impl Default for TableState {
+    fn default() -> Self {
+        TableState { dialect: None, header: true, widths: Vec::new(), fixed: Vec::new(), scroll_x: 0.0 }
+    }
+}
+
+impl TableState {
+    /// Forgets the column layout (after the delimiter changed).
+    pub fn reset_columns(&mut self) {
+        self.widths.clear();
+        self.fixed.clear();
+        self.scroll_x = 0.0;
+    }
+}
+
+pub struct TableEnv<'a> {
+    pub font_size: &'a mut f32,
+    pub focus: bool,
+}
+
+/// One visible row split into fields.
+struct Line {
+    row: Row,
+    /// Document offset of `bytes[0]` (after the BOM on the first line).
+    base: u64,
+    bytes: Vec<u8>,
+    fields: Vec<Range<usize>>,
+}
+
+impl Line {
+    fn value(&self, codec: &bigtext::encoding::Codec, d: Dialect, col: usize) -> Option<String> {
+        let r = self.fields.get(col)?;
+        Some(display(&csv::field_value(codec, d, &self.bytes[r.clone()])))
+    }
+
+    /// Index of the field holding document offset `off`.
+    fn field_at(&self, off: u64) -> Option<usize> {
+        let rel = off.checked_sub(self.base)? as usize;
+        self.fields.iter().position(|r| rel >= r.start && rel <= r.end)
+    }
+}
+
+/// Control characters (tabs, line breaks inside quotes) show as spaces.
+fn display(s: &str) -> String {
+    s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect()
+}
+
+fn is_number(s: &str) -> bool {
+    let t = s.trim();
+    t.bytes().any(|b| b.is_ascii_digit()) && t.bytes().all(|b| b.is_ascii_digit() || b"+-.eE".contains(&b)) && t.parse::<f64>().is_ok()
+}
+
+fn read_line(doc: &Document, d: Dialect, row: Row) -> Option<Line> {
+    let base = row.start.max(doc.min_caret());
+    let bytes = doc.buf.read(base..row.end.max(base))?.to_vec();
+    let mut fields = Vec::new();
+    csv::split_fields(&doc.buf.codec, d, &bytes, &mut fields);
+    Some(Line { row, base, bytes, fields })
+}
+
+fn detect_dialect(doc: &mut Document) {
+    if !doc.is_ready() {
+        return;
+    }
+    let start = doc.min_caret();
+    let end = (start + 64 * 1024).min(doc.buf.len());
+    // Not loaded yet (slow drive): try again on the next frame.
+    let Some(sample) = doc.buf.read(start..end) else { return };
+    let preferred = match doc.lang.unwrap_or_else(|| Lang::from_path(doc.path.as_deref())) {
+        Lang::Csv(sep) => sep,
+        _ => b',',
+    };
+    let d = csv::detect(&doc.buf.codec, &sample, end == doc.buf.len(), preferred).unwrap_or(Dialect::new(preferred));
+    doc.table_state.dialect = Some(d);
+}
+
+/// Moves the first visible row by `n` rows.
+fn step(doc: &mut Document, n: i64) {
+    if let Ok(top) = rows::row_at(&doc.buf, doc.view.top, None) {
+        if let Ok(r) = rows::step_rows(&doc.buf, top, n, None) {
+            doc.view.top = r.start;
+        }
+    }
+}
+
+pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
+    let font = FontId::monospace(*env.font_size);
+    let (cw, fh) = ui.ctx().fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
+    let cw = cw.max(1.0);
+    let rh = (fh + 8.0).round();
+    let full = ui.available_rect_before_wrap();
+    let id = ui.id().with(("tableview", doc.id));
+    let visuals = ui.visuals().clone();
+    if doc.table_state.dialect.is_none() {
+        detect_dialect(doc);
+    }
+    let dialect = doc.table_state.dialect.unwrap_or(Dialect::new(b','));
+    let codec = doc.buf.codec;
+    let len = doc.buf.len();
+
+    let toolbar_rect = Rect::from_min_max(full.min, pos2(full.right(), full.top() + TOOLBAR_H));
+    ui.painter().rect_filled(toolbar_rect, 0.0, visuals.faint_bg_color);
+    toolbar(ui, doc, toolbar_rect);
+
+    let area = Rect::from_min_max(pos2(full.left(), toolbar_rect.bottom()), full.max);
+    let (line_est, _) = doc.buf.line_count();
+    let gutter_w = text_view::digits(line_est).max(3) as f32 * cw + 16.0;
+    let header_rect = Rect::from_min_max(pos2(area.left() + gutter_w, area.top()), pos2(area.right() - SCROLLBAR, area.top() + rh));
+    let body = Rect::from_min_max(pos2(header_rect.left(), header_rect.bottom()), pos2(header_rect.right(), area.bottom() - SCROLLBAR));
+    let gutter = Rect::from_min_max(area.min, pos2(header_rect.left(), body.bottom()));
+    let vbar = Rect::from_min_max(pos2(body.right(), area.top()), pos2(area.right(), body.bottom()));
+    let hbar = Rect::from_min_max(pos2(body.left(), body.bottom()), pos2(body.right(), area.bottom()));
+    let n_rows = ((body.height() / rh).ceil() as usize).max(1);
+
+    let mut pending = false;
+    let head = match rows::row_at(&doc.buf, doc.min_caret(), None) {
+        Ok(r) => Some(r),
+        Err(Pending) => {
+            pending = true;
+            None
+        }
+    };
+    let data_start = match (doc.table_state.header, head) {
+        (true, Some(h)) if h.seg.is_last(len) => len,
+        (true, Some(h)) => h.seg.next,
+        _ => 0,
+    };
+
+    // Input, against the current layout.
+    let resp = ui.interact(body, id, Sense::click_and_drag());
+    if env.focus && (resp.clicked() || resp.is_pointer_button_down_on() || ui.memory(|m| m.focused().is_none())) {
+        resp.request_focus();
+    }
+    ui.memory_mut(|m| m.set_focus_lock_filter(id, EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }));
+    if doc.is_ready() {
+        if ui.rect_contains_pointer(area) {
+            handle_wheel(ui, doc, rh, env);
+        }
+        if resp.has_focus() {
+            handle_keys(ui, doc, n_rows, data_start, cw);
+        }
+        if doc.view.scroll_to_caret || doc.view.center_caret {
+            match scroll_to_caret(doc, n_rows) {
+                Ok(()) => {
+                    doc.view.scroll_to_caret = false;
+                    doc.view.center_caret = false;
+                }
+                Err(Pending) => pending = true,
+            }
+        }
+        doc.view.top = doc.view.top.max(data_start);
+        // Never scroll past the last row (an empty line after the final line break is not one).
+        if len > 0 && doc.view.top >= len && data_start < len {
+            if let Ok(r) = rows::row_at(&doc.buf, len - 1, None) {
+                doc.view.top = r.start.max(data_start);
+            }
+        }
+    }
+
+    // Rows on screen.
+    let rows: Vec<Row> = if doc.is_ready() && doc.view.top < len {
+        match text_view::layout_rows(&doc.buf, doc.view.top, n_rows, None) {
+            Ok(r) => r.into_iter().filter(|r| r.start < len).collect(),
+            Err(Pending) => {
+                pending = true;
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+    let mut lines = Vec::with_capacity(rows.len());
+    for &row in &rows {
+        match read_line(doc, dialect, row) {
+            Some(l) => lines.push(l),
+            None => {
+                pending = true;
+                break;
+            }
+        }
+    }
+    let head_line = if doc.table_state.header { head.and_then(|h| read_line(doc, dialect, h)) } else { None };
+
+    // Columns: measure the visible ones, then lay out.
+    let ncols = lines.iter().chain(head_line.as_ref()).map(|l| l.fields.len()).max().unwrap_or(0).max(doc.table_state.widths.len());
+    let st = &mut doc.table_state;
+    st.widths.resize(ncols, 0.0);
+    st.fixed.resize(ncols, false);
+    let default_w = (DEFAULT_CHARS as f32 + 1.0) * cw + 2.0 * PAD;
+    let name = |col: usize| -> String {
+        match &head_line {
+            Some(h) => h.value(&codec, dialect, col).filter(|s| !s.trim().is_empty()).unwrap_or_else(|| format!("({})", col + 1)),
+            None => format!("Column {}", col + 1),
+        }
+    };
+    let measure: Vec<usize> = visible_columns(&st.widths, default_w, st.scroll_x, body.width()).collect();
+    for col in measure {
+        if st.fixed[col] {
+            continue;
+        }
+        let chars = lines.iter().filter_map(|l| l.value(&codec, dialect, col)).map(|v| v.chars().count()).chain([name(col).chars().count() + 1]).max().unwrap_or(0);
+        let want = (chars.clamp(MIN_CHARS, MAX_AUTO_CHARS) as f32 + 1.0) * cw + 2.0 * PAD;
+        st.widths[col] = st.widths[col].max(want);
+    }
+    let width = |st: &TableState, col: usize| if st.widths[col] > 0.0 { st.widths[col] } else { default_w };
+    let mut xs = Vec::with_capacity(ncols + 1);
+    xs.push(0.0f32);
+    for col in 0..ncols {
+        xs.push(xs[col] + width(st, col));
+    }
+    let total = xs[ncols];
+    let max_scroll = (total - body.width() + 2.0 * cw).max(0.0);
+    st.scroll_x = st.scroll_x.clamp(0.0, max_scroll);
+    let scroll_x = st.scroll_x;
+    let x_of = |col: usize| body.left() + xs[col] - scroll_x;
+    let visible: Vec<usize> = visible_columns(&st.widths, default_w, scroll_x, body.width()).collect();
+
+    // Paint.
+    let painter = ui.painter_at(area);
+    let grid = visuals.widgets.noninteractive.bg_stroke.color;
+    let zebra = if visuals.dark_mode { Color32::from_white_alpha(6) } else { Color32::from_black_alpha(8) };
+    let text_color = visuals.text_color();
+    let weak = visuals.weak_text_color();
+    painter.rect_filled(area, 0.0, visuals.extreme_bg_color);
+    painter.rect_filled(gutter, 0.0, visuals.faint_bg_color);
+    painter.rect_filled(header_rect.union(Rect::from_min_max(pos2(gutter.left(), header_rect.top()), header_rect.max)), 0.0, visuals.faint_bg_color);
+    let body_painter = painter.with_clip_rect(body);
+    let caret = doc.view.caret;
+    let (mut line, line_exact) = lines.first().map(|l| doc.buf.line_of(l.row.start)).unwrap_or((0, true));
+    for (i, l) in lines.iter().enumerate() {
+        let y = body.top() + i as f32 * rh;
+        let row_rect = Rect::from_min_max(pos2(body.left(), y), pos2(body.right(), y + rh));
+        let starts_line = l.row.is_first_in_seg() && l.row.seg.line_start;
+        if i > 0 && starts_line {
+            line += 1;
+        }
+        if i % 2 == 1 {
+            body_painter.rect_filled(row_rect, 0.0, zebra);
+        }
+        for &col in &visible {
+            let Some(v) = l.value(&codec, dialect, col) else { continue };
+            let cell = Rect::from_min_max(pos2(x_of(col), y), pos2(x_of(col + 1), y + rh));
+            paint_text(&body_painter.with_clip_rect(cell.intersect(body)), cell, &v, &font, text_color, cw, is_number(&v));
+        }
+        if caret >= l.row.start && caret <= l.row.end.max(l.row.start) {
+            if let Some(col) = l.field_at(caret) {
+                let cell = Rect::from_min_max(pos2(x_of(col), y), pos2(x_of(col + 1), y + rh)).shrink(1.0);
+                body_painter.rect_stroke(cell, 2.0, Stroke::new(1.5, visuals.selection.stroke.color), egui::StrokeKind::Inside);
+            }
+        }
+        let label = match (starts_line, line_exact, l.row.seg.line_start) {
+            (true, true, _) => format!("{}", line + 1),
+            (true, false, _) => format!("~{}", line + 1),
+            (false, _, false) if l.row.is_first_in_seg() => "↪".into(),
+            _ => String::new(),
+        };
+        painter.text(pos2(gutter.right() - 8.0, y + rh / 2.0), Align2::RIGHT_CENTER, label, font.clone(), weak);
+        body_painter.hline(body.x_range(), y + rh, Stroke::new(0.5, grid));
+    }
+    for &col in &visible {
+        let x = x_of(col + 1);
+        painter.with_clip_rect(header_rect.union(body)).vline(x, header_rect.top()..=body.top() + lines.len() as f32 * rh, Stroke::new(1.0, grid));
+    }
+    painter.hline(gutter.left()..=header_rect.right(), header_rect.bottom(), Stroke::new(1.0, grid));
+    painter.text(pos2(gutter.right() - 8.0, header_rect.center().y), Align2::RIGHT_CENTER, "#", font.clone(), weak);
+
+    // Header cells: names, tooltips and resize handles.
+    let header_painter = painter.with_clip_rect(header_rect);
+    let strong = visuals.strong_text_color();
+    for &col in &visible {
+        let cell = Rect::from_min_max(pos2(x_of(col), header_rect.top()), pos2(x_of(col + 1), header_rect.bottom()));
+        let n = name(col);
+        paint_text(&header_painter.with_clip_rect(cell.intersect(header_rect)), cell, &n, &font, strong, cw, false);
+        let r = ui.interact(cell.intersect(header_rect), id.with(("head", col)), Sense::click());
+        r.on_hover_text(format!("{n}\nColumn {}", col + 1));
+    }
+    for &col in &visible {
+        let x = x_of(col + 1);
+        let handle = Rect::from_min_max(pos2(x - 4.0, header_rect.top()), pos2(x + 4.0, header_rect.bottom()));
+        if !header_rect.intersects(handle) {
+            continue;
+        }
+        let r = ui.interact(handle, id.with(("resize", col)), Sense::click_and_drag());
+        if r.hovered() || r.dragged() {
+            ui.ctx().set_cursor_icon(CursorIcon::ResizeColumn);
+        }
+        let st = &mut doc.table_state;
+        if r.dragged() {
+            st.widths[col] = (width(st, col) + r.drag_delta().x).max((MIN_CHARS as f32 + 1.0) * cw);
+            st.fixed[col] = true;
+        }
+        if r.double_clicked() {
+            // Back to fitting the content.
+            st.widths[col] = 0.0;
+            st.fixed[col] = false;
+        }
+    }
+
+    // Clicks in the body: a click puts the caret in the cell, a double click opens it in the
+    // text view.
+    if let Some(pos) = resp.interact_pointer_pos().filter(|_| resp.clicked() || resp.double_clicked()) {
+        let double = resp.double_clicked();
+        let i = ((pos.y - body.top()) / rh).floor().max(0.0) as usize;
+        let col = (0..ncols).find(|&c| pos.x >= x_of(c) && pos.x < x_of(c + 1));
+        if let (Some(l), Some(col)) = (lines.get(i), col) {
+            let off = l.fields.get(col).map(|r| l.base + r.start as u64).unwrap_or(l.row.end);
+            doc.set_caret(off, false);
+            doc.view.desired_cell = None;
+            if double {
+                doc.table = false;
+                doc.view.center_caret = true;
+            } else {
+                doc.view.scroll_to_caret = false;
+            }
+        }
+    }
+
+    if lines.is_empty() && !pending && doc.is_ready() {
+        let msg = if len == 0 { "Empty file" } else { "No data rows" };
+        painter.text(body.center(), Align2::CENTER_CENTER, msg, FontId::proportional(16.0), weak);
+    }
+    if pending {
+        painter.text(body.right_top() + vec2(-8.0, 4.0), Align2::RIGHT_TOP, "Loading…", FontId::proportional(13.0), weak);
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(30));
+    }
+
+    if doc.is_ready() {
+        text_view::vertical_scrollbar(ui, doc, id, vbar, &rows, None);
+        horizontal_scrollbar(ui, doc, id, hbar, total, body.width(), max_scroll);
+    }
+}
+
+/// Columns that overlap the visible width.
+fn visible_columns(widths: &[f32], default_w: f32, scroll_x: f32, view_w: f32) -> impl Iterator<Item = usize> + '_ {
+    let mut x = 0.0f32;
+    widths.iter().enumerate().filter_map(move |(col, &w)| {
+        let w = if w > 0.0 { w } else { default_w };
+        let (a, b) = (x, x + w);
+        x = b;
+        (b > scroll_x && a < scroll_x + view_w).then_some(col)
+    })
+}
+
+/// Draws `text` in `cell`, cut to fit with an ellipsis; numbers align right.
+#[allow(clippy::too_many_arguments)]
+fn paint_text(painter: &Painter, cell: Rect, text: &str, font: &FontId, color: Color32, cw: f32, right: bool) {
+    let max = ((cell.width() - 2.0 * PAD) / cw).floor().max(1.0) as usize;
+    let shown: String = if text.chars().count() > max { text.chars().take(max.saturating_sub(1)).chain(['…']).collect() } else { text.to_string() };
+    if shown.is_empty() {
+        return;
+    }
+    let y = cell.center().y;
+    if right {
+        painter.text(pos2(cell.right() - PAD, y), Align2::RIGHT_CENTER, shown, font.clone(), color);
+    } else {
+        painter.text(pos2(cell.left() + PAD, y), Align2::LEFT_CENTER, shown, font.clone(), color);
+    }
+}
+
+fn toolbar(ui: &mut Ui, doc: &mut Document, rect: Rect) {
+    let ncols = doc.table_state.widths.len();
+    let doc_id = doc.id;
+    ui.scope_builder(UiBuilder::new().max_rect(rect.shrink2(vec2(8.0, 3.0))).layout(Layout::left_to_right(Align::Center)), |ui| {
+        let st = &mut doc.table_state;
+        let cur = st.dialect.unwrap_or(Dialect::new(b','));
+        ui.label("Delimiter");
+        egui::ComboBox::from_id_salt(("delimiter", doc_id)).selected_text(cur.name()).show_ui(ui, |ui| {
+            for delim in DELIMITERS {
+                if ui.selectable_label(cur.delim == delim, Dialect::new(delim).name()).clicked() && cur.delim != delim {
+                    st.dialect = Some(Dialect::new(delim));
+                    st.reset_columns();
+                }
+            }
+        });
+        ui.checkbox(&mut st.header, "First row is header");
+        ui.separator();
+        ui.weak(format!("{ncols} columns"));
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            if ui.button("Text view").on_hover_text("Show the file as text (Ctrl+T)").clicked() {
+                doc.table = false;
+            }
+        });
+    });
+}
+
+fn handle_wheel(ui: &mut Ui, doc: &mut Document, rh: f32, env: &mut TableEnv) {
+    let (delta, zoom) = ui.input(|i| (i.smooth_scroll_delta(), i.zoom_delta()));
+    if zoom != 1.0 {
+        *env.font_size = (*env.font_size * zoom).clamp(6.0, 72.0);
+        return;
+    }
+    if delta.y != 0.0 {
+        let rows_f = -delta.y / rh + doc.view.wheel_rem;
+        let n = rows_f.trunc() as i64;
+        doc.view.wheel_rem = rows_f - n as f32;
+        if n != 0 {
+            step(doc, n);
+        }
+    }
+    if delta.x != 0.0 {
+        doc.table_state.scroll_x = (doc.table_state.scroll_x - delta.x).max(0.0);
+    }
+}
+
+fn handle_keys(ui: &mut Ui, doc: &mut Document, n_rows: usize, data_start: u64, cw: f32) {
+    let page = n_rows.saturating_sub(2).max(1) as i64;
+    let events = ui.input(|i| i.events.clone());
+    for ev in events {
+        let Event::Key { key, pressed: true, modifiers, .. } = ev else { continue };
+        match key {
+            Key::ArrowDown => step(doc, 1),
+            Key::ArrowUp => step(doc, -1),
+            Key::PageDown => step(doc, page),
+            Key::PageUp => step(doc, -page),
+            Key::ArrowRight => doc.table_state.scroll_x += 8.0 * cw,
+            Key::ArrowLeft => doc.table_state.scroll_x = (doc.table_state.scroll_x - 8.0 * cw).max(0.0),
+            Key::Home if modifiers.command => {
+                doc.view.top = data_start;
+                doc.table_state.scroll_x = 0.0;
+            }
+            Key::End if modifiers.command => {
+                let len = doc.buf.len();
+                if let Ok(last) = rows::row_at(&doc.buf, len.saturating_sub(1), None) {
+                    if let Ok(r) = rows::step_rows(&doc.buf, last, -page, None) {
+                        doc.view.top = r.start;
+                    }
+                }
+            }
+            Key::Home => doc.table_state.scroll_x = 0.0,
+            Key::End => doc.table_state.scroll_x = f32::MAX,
+            _ => {}
+        }
+    }
+}
+
+/// Brings the row with the caret on screen (after go to line, find next, a click elsewhere).
+fn scroll_to_caret(doc: &mut Document, n_rows: usize) -> Result<(), Pending> {
+    let row = rows::row_at(&doc.buf, doc.view.caret, None)?;
+    let top = doc.view.top;
+    let on_screen = row.start >= top && {
+        let shown = text_view::layout_rows(&doc.buf, top, n_rows.saturating_sub(1).max(1), None)?;
+        shown.iter().any(|r| r.start == row.start)
+    };
+    if doc.view.center_caret || !on_screen {
+        let back = if doc.view.center_caret || row.start < top { (n_rows / 2) as i64 } else { n_rows.saturating_sub(2) as i64 };
+        doc.view.top = rows::step_rows(&doc.buf, row, -back, None)?.start;
+    }
+    Ok(())
+}
+
+fn horizontal_scrollbar(ui: &mut Ui, doc: &mut Document, id: egui::Id, bar: Rect, content: f32, view_w: f32, max_scroll: f32) {
+    let painter = ui.painter_at(bar);
+    let v = ui.visuals();
+    painter.rect_filled(bar, 0.0, v.faint_bg_color);
+    if max_scroll <= 0.0 {
+        return;
+    }
+    let st = &mut doc.table_state;
+    let track_w = bar.width();
+    let thumb_w = (track_w * view_w / content.max(1.0)).clamp(24.0_f32.min(track_w), track_w);
+    let x = bar.left() + (track_w - thumb_w) * (st.scroll_x / max_scroll).clamp(0.0, 1.0);
+    let thumb = Rect::from_min_max(pos2(x, bar.top() + 2.0), pos2(x + thumb_w, bar.bottom() - 2.0));
+    let r = ui.interact(bar, id.with("hbar"), Sense::click_and_drag());
+    let color = if r.dragged() || r.hovered() { v.widgets.hovered.bg_fill } else { v.widgets.inactive.bg_fill };
+    painter.rect_filled(thumb, 4.0, color);
+    if r.dragged() || r.is_pointer_button_down_on() {
+        if let Some(p) = r.interact_pointer_pos() {
+            let f = ((p.x - bar.left() - thumb_w / 2.0) / (track_w - thumb_w).max(1.0)).clamp(0.0, 1.0);
+            st.scroll_x = f * max_scroll;
+        }
+    }
+}
+

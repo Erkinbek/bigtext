@@ -41,7 +41,7 @@ struct Metrics {
     rh: f32,
 }
 
-fn layout_rows(buf: &TextBuf, top: u64, n: usize, wrap: Option<usize>) -> Result<Vec<Row>, Pending> {
+pub(crate) fn layout_rows(buf: &TextBuf, top: u64, n: usize, wrap: Option<usize>) -> Result<Vec<Row>, Pending> {
     let mut v = Vec::with_capacity(n + 1);
     v.push(rows::row_at(buf, top, wrap)?);
     while v.len() < n {
@@ -53,7 +53,7 @@ fn layout_rows(buf: &TextBuf, top: u64, n: usize, wrap: Option<usize>) -> Result
     Ok(v)
 }
 
-fn digits(n: u64) -> usize {
+pub(crate) fn digits(n: u64) -> usize {
     n.max(1).ilog10() as usize + 1
 }
 
@@ -368,7 +368,7 @@ fn control_glyph(c: char) -> char {
     }
 }
 
-fn vertical_scrollbar(ui: &mut Ui, doc: &mut Document, id: egui::Id, bar: Rect, rows: &[Row], wrap: Option<usize>) {
+pub(crate) fn vertical_scrollbar(ui: &mut Ui, doc: &mut Document, id: egui::Id, bar: Rect, rows: &[Row], wrap: Option<usize>) {
     let len = doc.buf.len().max(1);
     let visible = rows.last().map(|r| r.seg.next.max(r.end)).unwrap_or(doc.view.top).saturating_sub(doc.view.top).max(1);
     let track_h = bar.height();

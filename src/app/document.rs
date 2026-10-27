@@ -140,6 +140,9 @@ pub struct Document {
     pub active_pane: u8,
     /// Syntax highlighting override (None = from the file extension).
     pub lang: Option<crate::view::highlight::Lang>,
+    /// Shown as a table (CSV / TSV); on by default for .csv and .tsv files.
+    pub table: bool,
+    pub table_state: crate::view::table_view::TableState,
     /// Position to restore once the file has opened (session restore, diff jumps).
     pub restore: Option<Restore>,
     last_indexed: u64,
@@ -180,6 +183,7 @@ impl PaneView {
 impl Document {
     pub fn loading(id: u64, path: PathBuf) -> Document {
         let title = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| file::display_path(&path));
+        let table = matches!(crate::view::highlight::Lang::from_path(Some(&path)), crate::view::highlight::Lang::Csv(_));
         let src = Arc::new(Source::empty());
         let idx = LineIndex::new(0);
         Document {
@@ -216,6 +220,8 @@ impl Document {
             split: None,
             active_pane: 0,
             lang: None,
+            table,
+            table_state: Default::default(),
             restore: None,
             last_indexed: 0,
         }
