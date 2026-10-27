@@ -11,6 +11,7 @@ use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::csv::{self, Dialect};
 use crate::encoding::{Codec, LineEnding, NlByte};
 use crate::jobs::{CancelToken, Progress};
 use crate::replace::{self, ReplaceStats, Template};
@@ -25,6 +26,8 @@ pub enum Transform<'a> {
     Eol(LineEnding),
     /// Replace every match in the range.
     Replace { matcher: &'a Matcher, template: &'a Template, range: std::ops::Range<u64> },
+    /// Delete the columns `cols` (sorted, distinct) of a CSV document.
+    DeleteColumns { dialect: Dialect, cols: &'a [usize] },
 }
 
 #[derive(Debug)]
@@ -187,6 +190,10 @@ pub fn write_temp(buf: &TextBuf, target: &Path, transform: Transform, cancel: &C
                     None => return Err(SaveError::Cancelled),
                 }
             }
+            Transform::DeleteColumns { dialect, cols } => match csv::delete_columns_to(buf, dialect, cols, &mut w, cancel, Some(progress)).map_err(io)? {
+                Some(s) => s,
+                None => return Err(SaveError::Cancelled),
+            },
             Transform::Identity | Transform::Eol(_) => {
                 let mut sink = match &transform {
                     Transform::Eol(style) => Sink::Eol(EolWriter { out: &mut w, codec: buf.codec, target: buf.codec.line_break(*style), pending_cr: false, written: 0 }),
@@ -451,6 +458,22 @@ mod tests {
         finalize(&temp, &path, false).unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"1 two 1 two");
         assert!(!backup_path_for(&path).exists());
+    }
+
+    #[test]
+    fn delete_columns_on_disk_with_edits() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.csv");
+        fs::write(&path, b"id,name,age\n1,ann,30\n2,bob,41\n").unwrap();
+        let mut t = open(&path, Codec::utf8());
+        t.replace(12..13, b"7"); // unsaved edit: id 1 -> 7
+        let cols = [1];
+        let (temp, stats) = write_temp(&t, &path, Transform::DeleteColumns { dialect: Dialect::new(b','), cols: &cols }, &CancelToken::new(), &Progress::default()).unwrap();
+        assert_eq!(stats.count, 3);
+        drop(t);
+        finalize(&temp, &path, true).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"id,age\n7,30\n2,41\n");
+        assert_eq!(fs::read(backup_path_for(&path)).unwrap(), b"id,name,age\n1,ann,30\n2,bob,41\n");
     }
 
     #[test]
