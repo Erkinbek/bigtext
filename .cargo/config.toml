@@ -1,0 +1,4 @@
+# Link the C runtime statically on Windows so bigtext.exe does not need VCRUNTIME140.dll,
+# which a clean Windows install (and the winget validation machine) does not have.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]

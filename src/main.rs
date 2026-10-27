@@ -62,7 +62,7 @@ fn main() -> eframe::Result {
         viewport = viewport.with_icon(icon);
     }
     let options = eframe::NativeOptions { viewport, ..Default::default() };
-    eframe::run_native(
+    let result = eframe::run_native(
         "BigText",
         options,
         Box::new(move |cc| {
@@ -84,5 +84,17 @@ fn main() -> eframe::Result {
             }
             Ok(Box::new(app))
         }),
-    )
+    );
+    if let Err(e) = &result {
+        // A release build on Windows has no console, so without this the window just never appears.
+        rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Error)
+            .set_title("BigText")
+            .set_description(format!(
+                "BigText could not open its window:\n\n{e}\n\nBigText draws with OpenGL 2.0 or newer; updating the graphics driver usually helps."
+            ))
+            .set_buttons(rfd::MessageButtons::Ok)
+            .show();
+    }
+    result
 }
