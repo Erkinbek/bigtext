@@ -1,5 +1,6 @@
 //! Application shell: tabs, menus, dialogs, status bar and background-job plumbing.
 
+pub mod columns;
 pub mod document;
 pub mod extras;
 pub mod ops;
@@ -46,6 +47,7 @@ pub enum Msg {
     Preview { doc: u64, items: Vec<(u64, String, String)>, lines: Vec<u64> },
     FileChanged { doc: u64, deleted: bool, grown: bool },
     Update(update::Event),
+    ColumnsDeleted(Box<columns::ColumnsDeleted>),
 }
 
 pub struct Settings {
@@ -76,6 +78,7 @@ enum ConfirmAction {
     Exit,
     CopyLarge { doc: u64, cut: bool },
     ReplaceOnDisk { doc: u64 },
+    DeleteColumns { doc: u64, dialect: bigtext::csv::Dialect, cols: Vec<usize>, on_disk: bool },
 }
 
 #[derive(Default)]
@@ -356,6 +359,7 @@ impl BigTextApp {
                     Err(e) => self.error = Some(e),
                 },
                 Msg::Update(e) => self.on_update_event(e),
+                Msg::ColumnsDeleted(c) => self.on_columns_deleted(*c),
             }
         }
     }
@@ -930,6 +934,7 @@ impl BigTextApp {
                         ConfirmAction::CloseTab(_) | ConfirmAction::Exit => "Discard",
                         ConfirmAction::ReplaceOnDisk { .. } => "Replace on disk",
                         ConfirmAction::CopyLarge { .. } => "Copy",
+                        ConfirmAction::DeleteColumns { .. } => "Delete",
                     };
                     if ui.button(primary).clicked() {
                         decision = Some(1);
@@ -941,28 +946,7 @@ impl BigTextApp {
             });
             if let Some(dec) = decision {
                 let c = self.confirm.take().unwrap();
-                let checked = c.checkbox.as_ref().map(|x| x.1).unwrap_or(false);
-                match (dec, c.action) {
-                    (2, ConfirmAction::CloseTab(id)) => {
-                        if let Some(i) = self.docs.iter().position(|d| d.id == id) {
-                            self.active = i;
-                            self.docs[i].close_after_save = true;
-                            self.save(false);
-                        }
-                    }
-                    (1, ConfirmAction::CloseTab(id)) => self.close_tab(id, true),
-                    (1, ConfirmAction::Exit) => {
-                        self.exit_confirmed = true;
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                    (1, ConfirmAction::CopyLarge { doc, cut }) => self.start_copy_job(doc, cut),
-                    (1, ConfirmAction::ReplaceOnDisk { doc }) => self.replace_on_disk(doc, checked),
-                    _ => {
-                        self.pending_replace = None;
-                        // Exit was cancelled: "Restart now" for an update no longer applies.
-                        self.update.restart = false;
-                    }
-                }
+                self.apply_confirm(ctx, dec, c);
             }
         }
 
@@ -1024,6 +1008,33 @@ impl BigTextApp {
                     }
                 });
             });
+        }
+    }
+
+    /// Carries out the answer to a confirmation: 0 = cancel, 1 = primary, 2 = save.
+    fn apply_confirm(&mut self, ctx: &egui::Context, dec: u8, c: Confirm) {
+        let checked = c.checkbox.as_ref().map(|x| x.1).unwrap_or(false);
+        match (dec, c.action) {
+            (2, ConfirmAction::CloseTab(id)) => {
+                if let Some(i) = self.docs.iter().position(|d| d.id == id) {
+                    self.active = i;
+                    self.docs[i].close_after_save = true;
+                    self.save(false);
+                }
+            }
+            (1, ConfirmAction::CloseTab(id)) => self.close_tab(id, true),
+            (1, ConfirmAction::Exit) => {
+                self.exit_confirmed = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            (1, ConfirmAction::CopyLarge { doc, cut }) => self.start_copy_job(doc, cut),
+            (1, ConfirmAction::ReplaceOnDisk { doc }) => self.replace_on_disk(doc, checked),
+            (1, ConfirmAction::DeleteColumns { doc, dialect, cols, on_disk }) => self.delete_columns(doc, dialect, cols, on_disk, checked),
+            _ => {
+                self.pending_replace = None;
+                // Exit was cancelled: "Restart now" for an update no longer applies.
+                self.update.restart = false;
+            }
         }
     }
 
@@ -1228,6 +1239,12 @@ impl BigTextApp {
         self.exit_confirmed = true;
         self.confirm = None;
     }
+    /// Answers the open confirmation with its primary button.
+    pub(crate) fn test_accept_confirm(&mut self) {
+        if let (Some(c), Some(ctx)) = (self.confirm.take(), self.ctx_clone()) {
+            self.apply_confirm(&ctx, 1, c);
+        }
+    }
     pub(crate) fn test_dismiss(&mut self) {
         self.error = None;
         self.confirm = None;
@@ -1291,6 +1308,7 @@ impl eframe::App for BigTextApp {
         }
 
         let mut actions = Vec::new();
+        let mut table_actions = Vec::new();
         let matcher = self.view_highlighter();
         let font_size = &mut self.settings.font_size;
         let syntax = self.settings.syntax;
@@ -1299,7 +1317,7 @@ impl eframe::App for BigTextApp {
                 if d.hex && d.is_ready() {
                     hex_view::show(ui, d, *font_size, !modal_open);
                 } else if d.table && d.is_ready() {
-                    let mut env = table_view::TableEnv { font_size, focus: !modal_open };
+                    let mut env = table_view::TableEnv { font_size, focus: !modal_open, actions: &mut table_actions };
                     table_view::show(ui, d, &mut env);
                 } else {
                     let hl = |b: &bigtext::text::TextBuf, r: std::ops::Range<u64>| match &matcher {
@@ -1335,6 +1353,11 @@ impl eframe::App for BigTextApp {
                 }
             }
         });
+        for a in table_actions {
+            match a {
+                table_view::TableAction::DeleteColumns { cols, names } => self.ask_delete_columns(cols, names),
+            }
+        }
         for a in actions {
             match a {
                 text_view::ViewAction::CopyLarge { cut, len } => {

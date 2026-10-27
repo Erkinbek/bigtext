@@ -581,7 +581,7 @@ mod tests {
         let vals: Vec<String> = f.iter().map(|r| field_value(&c, d, &line[r.clone()])).collect();
         assert_eq!(vals, ["a", "b,\"c\"", "", "d\"e"]);
         split_fields(&c, d, b"", &mut f);
-        assert_eq!(f, [0..0]);
+        assert_eq!((f.len(), f[0].clone()), (1, 0..0));
         assert_eq!(field_value(&c, d, br#""ab"cd"#), "abcd");
     }
 

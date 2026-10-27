@@ -63,6 +63,8 @@ pub struct SelfTest {
 }
 
 const ORIGINAL: &str = "alpha beta gamma\n    indented line\nthird line here\nfoo bar foo baz\nlast line\n";
+const CSV: &str = "id;name;age;city\r\n1;Ann;30;Tashkent\r\n2;\"Bob; Jr\";41;Samarkand\r\n3;Cy;25;Bukhara\r\n";
+const CSV_WITHOUT_NAME_CITY: &str = "id;age\r\n1;30\r\n2;41\r\n3;25\r\n";
 
 fn doc(app: &mut BigTextApp) -> &mut Document {
     app.active_doc().expect("active document")
@@ -173,7 +175,8 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(&long)?;
     std::fs::write(long.join("deep.txt"), "long path file\n")?;
     std::fs::write(dir.join("long-path.txt"), long.join("deep.txt").to_string_lossy().as_bytes())?;
-    std::fs::write(dir.join("data.json"), "{\"name\": \"bigtext\", \"size\": 42, \"ok\": true}\n")?;
+    std::fs::write(dir.join("table.csv"), CSV)?;
+    std::fs::write(dir.join("data.json"),"{\"name\": \"bigtext\", \"size\": 42, \"ok\": true}\n")?;
     std::fs::write(dir.join("app.log"), "2026-10-24 10:00:00.000 [ERROR] failed\n2026-10-24 10:00:01.000 [INFO] ok\n")?;
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
@@ -806,6 +809,71 @@ impl SelfTest {
             drop(g);
             app.diff = None;
             check(got == vec![(100, 1, 100, 1), (1501, 0, 1501, 1)], format!("{got:?}"))
+        }));
+        s("CSV opens as a table (semicolon detected)", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("table.csv"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) || doc(app).table_state.header_cells.is_empty() {
+                return Step::Wait;
+            }
+            let d = doc(app);
+            let delim = d.table_state.dialect.map(|x| x.delim);
+            let cols = d.table_state.header_cells.len();
+            check(d.table && delim == Some(b';') && cols == 4, format!("table {} delimiter {delim:?} columns {cols}", d.table))
+        }));
+        s("CSV: click and Ctrl+click select columns", Box::new(|app, c| {
+            if c.first() {
+                let cells = &doc(app).table_state.header_cells;
+                let at = |col: usize| cells.iter().find(|(c, _)| *c == col).map(|(_, r)| r.center());
+                let (Some(a), Some(b)) = (at(1), at(3)) else { return Step::Fail("header cells missing".into()) };
+                c.click(a, NONE);
+                c.click(b, CTRL);
+                return Step::Wait;
+            }
+            let sel: Vec<usize> = doc(app).table_state.selected.iter().copied().collect();
+            check(sel == vec![1, 3], format!("selected {sel:?}"))
+        }));
+        s("CSV: Delete asks, removes the columns and their values; Ctrl+Z restores", Box::new(|app, c| {
+            if c.first() {
+                c.key(Key::Delete, NONE);
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if !app.test_has_confirm() {
+                    return Step::Fail("no confirmation".into());
+                }
+                // Screenshot of the selection and the question once the dialog has faded in.
+                if c.waited() < Duration::from_millis(600) {
+                    return Step::Wait;
+                }
+                c.pending_shot = c.shot.clone().map(|d| d.join("selftest-csv-delete.png"));
+                c.mark = 3;
+                return Step::Wait;
+            }
+            if c.mark == 3 {
+                let shot = c.shot.clone().map(|d| d.join("selftest-csv-delete.png"));
+                if shot.is_some_and(|p| !p.exists()) && c.waited() < Duration::from_secs(3) {
+                    return Step::Wait;
+                }
+                app.test_accept_confirm();
+                c.mark = 1;
+                return Step::Wait;
+            }
+            if c.mark == 1 {
+                if doc(app).save_job.is_some() {
+                    return Step::Wait;
+                }
+                let t = text(app);
+                if t != CSV_WITHOUT_NAME_CITY || !doc(app).table_state.selected.is_empty() {
+                    return Step::Fail(format!("after delete {t:?}"));
+                }
+                c.mark = 2;
+                c.key(Key::Z, CTRL);
+                return Step::Wait;
+            }
+            check(text(app) == CSV && !doc(app).is_modified(), format!("after undo {:?}", text(app)))
         }));
         s("open read-only file", open_step("ro.txt"));
         s("read-only file blocks edits", Box::new(|app, c| {

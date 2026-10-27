@@ -5,6 +5,8 @@
 //! is a line, so a quoted field that spans lines shows as several rows; the text itself is
 //! never changed by the view.
 
+use std::collections::BTreeSet;
+use std::hash::{Hash, Hasher};
 use std::ops::Range;
 
 use egui::{pos2, vec2, Align, Align2, Color32, CursorIcon, Event, EventFilter, FontId, Key, Layout, Painter, Rect, Sense, Stroke, Ui, UiBuilder};
@@ -36,26 +38,91 @@ pub struct TableState {
     pub widths: Vec<f32>,
     pub fixed: Vec<bool>,
     pub scroll_x: f32,
+    /// Selected columns: click a header; Ctrl+click adds or removes one, Shift+click a range.
+    pub selected: BTreeSet<usize>,
+    anchor: Option<usize>,
+    /// Hash of the first line. When it changes (an edit, undo, another delimiter) the columns
+    /// may have moved, so the layout and the selection start over.
+    first_line: Option<u64>,
+    /// Header cells drawn in the last frame (the self-test clicks them).
+    pub header_cells: Vec<(usize, Rect)>,
 }
 
 impl Default for TableState {
     fn default() -> Self {
-        TableState { dialect: None, header: true, widths: Vec::new(), fixed: Vec::new(), scroll_x: 0.0 }
+        TableState {
+            dialect: None,
+            header: true,
+            widths: Vec::new(),
+            fixed: Vec::new(),
+            scroll_x: 0.0,
+            selected: BTreeSet::new(),
+            anchor: None,
+            first_line: None,
+            header_cells: Vec::new(),
+        }
     }
 }
 
 impl TableState {
-    /// Forgets the column layout (after the delimiter changed).
+    /// Forgets the column layout and the selection.
     pub fn reset_columns(&mut self) {
         self.widths.clear();
         self.fixed.clear();
         self.scroll_x = 0.0;
+        self.selected.clear();
+        self.anchor = None;
     }
+
+    /// After `cols` were deleted from the document: the other columns keep their widths.
+    pub fn columns_deleted(&mut self, cols: &[usize]) {
+        for &c in cols.iter().rev() {
+            if c < self.widths.len() {
+                self.widths.remove(c);
+                self.fixed.remove(c);
+            }
+        }
+        self.selected.clear();
+        self.anchor = None;
+        // The first line changed on purpose; take the new one as it is.
+        self.first_line = None;
+    }
+
+    fn click_header(&mut self, col: usize, m: egui::Modifiers) {
+        match self.anchor {
+            Some(a) if m.shift => {
+                if !m.command {
+                    self.selected.clear();
+                }
+                self.selected.extend(a.min(col)..=a.max(col));
+            }
+            _ if m.command => {
+                if !self.selected.remove(&col) {
+                    self.selected.insert(col);
+                }
+                self.anchor = Some(col);
+            }
+            _ => {
+                let only = self.selected.len() == 1 && self.selected.contains(&col);
+                self.selected.clear();
+                if !only {
+                    self.selected.insert(col);
+                }
+                self.anchor = Some(col);
+            }
+        }
+    }
+}
+
+pub enum TableAction {
+    /// Delete these columns (sorted) with their values from every row, after asking.
+    DeleteColumns { cols: Vec<usize>, names: Vec<String> },
 }
 
 pub struct TableEnv<'a> {
     pub font_size: &'a mut f32,
     pub focus: bool,
+    pub actions: &'a mut Vec<TableAction>,
 }
 
 /// One visible row split into fields.
@@ -139,9 +206,6 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     let len = doc.buf.len();
 
     let toolbar_rect = Rect::from_min_max(full.min, pos2(full.right(), full.top() + TOOLBAR_H));
-    ui.painter().rect_filled(toolbar_rect, 0.0, visuals.faint_bg_color);
-    toolbar(ui, doc, toolbar_rect);
-
     let area = Rect::from_min_max(pos2(full.left(), toolbar_rect.bottom()), full.max);
     let (line_est, _) = doc.buf.line_count();
     let gutter_w = text_view::digits(line_est).max(3) as f32 * cw + 16.0;
@@ -165,6 +229,18 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         (true, Some(h)) => h.seg.next,
         _ => 0,
     };
+    if let Some(first) = head.and_then(|h| doc.buf.read(h.start..h.end)) {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        first.hash(&mut hasher);
+        let sig = Some(hasher.finish());
+        let st = &mut doc.table_state;
+        if st.first_line.is_some() && st.first_line != sig {
+            let scroll_x = st.scroll_x;
+            st.reset_columns();
+            st.scroll_x = scroll_x;
+        }
+        st.first_line = sig;
+    }
 
     // Input, against the current layout.
     let resp = ui.interact(body, id, Sense::click_and_drag());
@@ -172,12 +248,13 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         resp.request_focus();
     }
     ui.memory_mut(|m| m.set_focus_lock_filter(id, EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }));
+    let mut delete_key = false;
     if doc.is_ready() {
         if ui.rect_contains_pointer(area) {
             handle_wheel(ui, doc, rh, env);
         }
         if resp.has_focus() {
-            handle_keys(ui, doc, n_rows, data_start, cw);
+            delete_key = handle_keys(ui, doc, n_rows, data_start, cw);
         }
         if doc.view.scroll_to_caret || doc.view.center_caret {
             match scroll_to_caret(doc, n_rows) {
@@ -254,6 +331,18 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     let scroll_x = st.scroll_x;
     let x_of = |col: usize| body.left() + xs[col] - scroll_x;
     let visible: Vec<usize> = visible_columns(&st.widths, default_w, scroll_x, body.width()).collect();
+    st.selected.retain(|&c| c < ncols);
+    let selected = st.selected.clone();
+
+    // Toolbar (it may ask to delete the selected columns), and the Delete key.
+    ui.painter().rect_filled(toolbar_rect, 0.0, visuals.faint_bg_color);
+    let can_delete = !selected.is_empty() && selected.len() < ncols && doc.editable();
+    let request = toolbar(ui, doc, toolbar_rect, ncols, can_delete) || (delete_key && can_delete);
+    if request {
+        let cols: Vec<usize> = selected.iter().copied().collect();
+        let names = cols.iter().map(|&c| name(c)).collect();
+        env.actions.push(TableAction::DeleteColumns { cols, names });
+    }
 
     // Paint.
     let painter = ui.painter_at(area);
@@ -265,6 +354,11 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     painter.rect_filled(gutter, 0.0, visuals.faint_bg_color);
     painter.rect_filled(header_rect.union(Rect::from_min_max(pos2(gutter.left(), header_rect.top()), header_rect.max)), 0.0, visuals.faint_bg_color);
     let body_painter = painter.with_clip_rect(body);
+    let sel_tint = visuals.selection.bg_fill.gamma_multiply(0.35);
+    for &col in visible.iter().filter(|c| selected.contains(c)) {
+        let r = Rect::from_min_max(pos2(x_of(col), body.top()), pos2(x_of(col + 1), body.top() + lines.len() as f32 * rh));
+        body_painter.rect_filled(r, 0.0, sel_tint);
+    }
     let caret = doc.view.caret;
     let (mut line, line_exact) = lines.first().map(|l| doc.buf.line_of(l.row.start)).unwrap_or((0, true));
     for (i, l) in lines.iter().enumerate() {
@@ -304,16 +398,30 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     painter.hline(gutter.left()..=header_rect.right(), header_rect.bottom(), Stroke::new(1.0, grid));
     painter.text(pos2(gutter.right() - 8.0, header_rect.center().y), Align2::RIGHT_CENTER, "#", font.clone(), weak);
 
-    // Header cells: names, tooltips and resize handles.
+    // Header cells: names, selection, tooltips and resize handles.
     let header_painter = painter.with_clip_rect(header_rect);
     let strong = visuals.strong_text_color();
+    let mut header_cells = Vec::with_capacity(visible.len());
     for &col in &visible {
         let cell = Rect::from_min_max(pos2(x_of(col), header_rect.top()), pos2(x_of(col + 1), header_rect.bottom()));
+        let on = selected.contains(&col);
+        if on {
+            header_painter.rect_filled(cell.shrink2(vec2(0.5, 0.0)), 0.0, visuals.selection.bg_fill);
+        }
         let n = name(col);
-        paint_text(&header_painter.with_clip_rect(cell.intersect(header_rect)), cell, &n, &font, strong, cw, false);
-        let r = ui.interact(cell.intersect(header_rect), id.with(("head", col)), Sense::click());
-        r.on_hover_text(format!("{n}\nColumn {}", col + 1));
+        let color = if on { visuals.selection.stroke.color } else { strong };
+        paint_text(&header_painter.with_clip_rect(cell.intersect(header_rect)), cell, &n, &font, color, cw, false);
+        let hit = cell.intersect(header_rect);
+        let r = ui.interact(hit, id.with(("head", col)), Sense::click());
+        if r.clicked() {
+            let m = ui.input(|i| i.modifiers);
+            doc.table_state.click_header(col, m);
+            resp.request_focus();
+        }
+        r.on_hover_text(format!("{n}\nColumn {}\nClick to select; Ctrl+click adds, Shift+click selects a range", col + 1));
+        header_cells.push((col, hit));
     }
+    doc.table_state.header_cells = header_cells;
     for &col in &visible {
         let x = x_of(col + 1);
         let handle = Rect::from_min_max(pos2(x - 4.0, header_rect.top()), pos2(x + 4.0, header_rect.bottom()));
@@ -355,6 +463,11 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         }
     }
 
+    doc.view.text_rect = Some(body);
+    doc.view.cell = vec2(cw, rh);
+    if doc.view.first_paint.is_none() && !lines.is_empty() {
+        doc.view.first_paint = Some(std::time::Instant::now());
+    }
     if lines.is_empty() && !pending && doc.is_ready() {
         let msg = if len == 0 { "Empty file" } else { "No data rows" };
         painter.text(body.center(), Align2::CENTER_CENTER, msg, FontId::proportional(16.0), weak);
@@ -397,9 +510,11 @@ fn paint_text(painter: &Painter, cell: Rect, text: &str, font: &FontId, color: C
     }
 }
 
-fn toolbar(ui: &mut Ui, doc: &mut Document, rect: Rect) {
-    let ncols = doc.table_state.widths.len();
+/// Delimiter, header switch, column selection. Returns true when "Delete columns" was clicked.
+fn toolbar(ui: &mut Ui, doc: &mut Document, rect: Rect, ncols: usize, can_delete: bool) -> bool {
     let doc_id = doc.id;
+    let read_only = doc.read_only;
+    let mut delete = false;
     ui.scope_builder(UiBuilder::new().max_rect(rect.shrink2(vec2(8.0, 3.0))).layout(Layout::left_to_right(Align::Center)), |ui| {
         let st = &mut doc.table_state;
         let cur = st.dialect.unwrap_or(Dialect::new(b','));
@@ -414,13 +529,34 @@ fn toolbar(ui: &mut Ui, doc: &mut Document, rect: Rect) {
         });
         ui.checkbox(&mut st.header, "First row is header");
         ui.separator();
-        ui.weak(format!("{ncols} columns"));
+        if st.selected.is_empty() {
+            ui.weak(format!("{ncols} columns · click a column header to select it"));
+        } else {
+            let n = st.selected.len();
+            ui.label(format!("{n} of {ncols} columns selected"));
+            let label = if n == 1 { "Delete column" } else { "Delete columns" };
+            let tip = if read_only {
+                "The document is read-only"
+            } else if n >= ncols {
+                "Keep at least one column"
+            } else {
+                "Delete the selected columns and their values from every row (Delete key)"
+            };
+            let button = egui::Button::new(egui::RichText::new(label).color(ui.visuals().error_fg_color));
+            if ui.add_enabled(can_delete, button).on_hover_text(tip).on_disabled_hover_text(tip).clicked() {
+                delete = true;
+            }
+            if ui.button("Clear selection").on_hover_text("Esc").clicked() {
+                st.selected.clear();
+            }
+        }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             if ui.button("Text view").on_hover_text("Show the file as text (Ctrl+T)").clicked() {
                 doc.table = false;
             }
         });
     });
+    delete
 }
 
 fn handle_wheel(ui: &mut Ui, doc: &mut Document, rh: f32, env: &mut TableEnv) {
@@ -442,12 +578,19 @@ fn handle_wheel(ui: &mut Ui, doc: &mut Document, rh: f32, env: &mut TableEnv) {
     }
 }
 
-fn handle_keys(ui: &mut Ui, doc: &mut Document, n_rows: usize, data_start: u64, cw: f32) {
+/// Scrolling, undo / redo and the column selection keys. Returns true for Delete.
+fn handle_keys(ui: &mut Ui, doc: &mut Document, n_rows: usize, data_start: u64, cw: f32) -> bool {
     let page = n_rows.saturating_sub(2).max(1) as i64;
     let events = ui.input(|i| i.events.clone());
+    let mut delete = false;
     for ev in events {
         let Event::Key { key, pressed: true, modifiers, .. } = ev else { continue };
         match key {
+            Key::Z if modifiers.command && modifiers.shift => doc.redo(),
+            Key::Z if modifiers.command => doc.undo(),
+            Key::Y if modifiers.command => doc.redo(),
+            Key::Delete => delete = true,
+            Key::Escape => doc.table_state.selected.clear(),
             Key::ArrowDown => step(doc, 1),
             Key::ArrowUp => step(doc, -1),
             Key::PageDown => step(doc, page),
@@ -471,6 +614,7 @@ fn handle_keys(ui: &mut Ui, doc: &mut Document, n_rows: usize, data_start: u64, 
             _ => {}
         }
     }
+    delete
 }
 
 /// Brings the row with the caret on screen (after go to line, find next, a click elsewhere).

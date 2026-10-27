@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
+use bigtext::csv::Dialect;
 use bigtext::encoding::LineEnding;
 use bigtext::file::{self, Source};
 use bigtext::index::LineIndex;
@@ -35,6 +36,16 @@ pub enum WriteSpec {
     Identity,
     Eol(LineEnding),
     Replace { matcher: Arc<Matcher>, template: Template, range: std::ops::Range<u64> },
+    DeleteColumns { dialect: Dialect, cols: Vec<usize> },
+}
+
+/// What a write to disk does, for its progress label and the message when it is done.
+#[derive(Clone, PartialEq)]
+pub enum WriteKind {
+    Save,
+    Replace,
+    /// These columns (sorted) were deleted.
+    DeleteColumns(Vec<usize>),
 }
 
 pub struct TempWritten {
@@ -44,7 +55,7 @@ pub struct TempWritten {
     pub backup: bool,
     pub prefix: Option<Vec<u64>>,
     pub stats: ReplaceStats,
-    pub replace: bool,
+    pub kind: WriteKind,
     pub elapsed: Duration,
 }
 
@@ -53,7 +64,7 @@ pub struct Finalized {
     pub prefix: Option<Vec<u64>>,
     pub result: Result<Opened, (String, Result<Opened, String>)>,
     pub stats: ReplaceStats,
-    pub replace: bool,
+    pub kind: WriteKind,
     pub elapsed: Duration,
 }
 
@@ -92,14 +103,19 @@ impl BigTextApp {
             WriteSpec::Identity if same_file => Some(d.buf.index.prefix_checkpoints(d.buf.pristine_prefix())),
             _ => None,
         };
-        let replace = matches!(spec, WriteSpec::Replace { .. });
+        let kind = match &spec {
+            WriteSpec::Replace { .. } => WriteKind::Replace,
+            WriteSpec::DeleteColumns { cols, .. } => WriteKind::DeleteColumns(cols.clone()),
+            WriteSpec::Identity | WriteSpec::Eol(_) => WriteKind::Save,
+        };
         let cancel = CancelToken::new();
         let progress = Progress::new(d.buf.len());
-        d.save_job = Some(SaveJob {
-            cancel: cancel.clone(),
-            progress: progress.clone(),
-            label: if replace { "Replacing".into() } else { "Saving".into() },
-        });
+        let label = match kind {
+            WriteKind::Save => "Saving",
+            WriteKind::Replace => "Replacing",
+            WriteKind::DeleteColumns(_) => "Deleting columns",
+        };
+        d.save_job = Some(SaveJob { cancel: cancel.clone(), progress: progress.clone(), label: label.into() });
         let snap = d.buf.snapshot();
         let tx = self.tx.clone();
         let waker = self.waker.clone();
@@ -109,11 +125,12 @@ impl BigTextApp {
                 WriteSpec::Identity => Transform::Identity,
                 WriteSpec::Eol(le) => Transform::Eol(*le),
                 WriteSpec::Replace { matcher, template, range } => Transform::Replace { matcher, template, range: range.clone() },
+                WriteSpec::DeleteColumns { dialect, cols } => Transform::DeleteColumns { dialect: *dialect, cols },
             };
             let r = save::write_temp(&snap, &target, transform, &cancel, &progress);
             drop(snap);
             let msg = match r {
-                Ok((temp, stats)) => Msg::TempWritten(Box::new(TempWritten { doc: id, temp, target, backup, prefix, stats, replace, elapsed: t.elapsed() })),
+                Ok((temp, stats)) => Msg::TempWritten(Box::new(TempWritten { doc: id, temp, target, backup, prefix, stats, kind, elapsed: t.elapsed() })),
                 Err(SaveError::Cancelled) => Msg::JobFailed { doc: id, msg: None },
                 Err(SaveError::Io(e)) => Msg::JobFailed { doc: id, msg: Some(e) },
             };
@@ -134,7 +151,11 @@ impl BigTextApp {
         d.watch_cancel.cancel();
         let weak: Weak<Source> = Arc::downgrade(&d.buf.source);
         d.buf = d.buf.with_source(Arc::new(Source::empty()), LineIndex::new(0));
-        d.state = DocState::Finalizing(if tw.replace { "Replacing on disk…".into() } else { "Saving…".into() });
+        d.state = DocState::Finalizing(match tw.kind {
+            WriteKind::Save => "Saving…".into(),
+            WriteKind::Replace => "Replacing on disk…".into(),
+            WriteKind::DeleteColumns(_) => "Deleting columns on disk…".into(),
+        });
         let original = d.path.clone();
         jobs::spawn("finalize", move || {
             let deadline = Instant::now() + Duration::from_secs(10);
@@ -156,7 +177,7 @@ impl BigTextApp {
                 prefix: tw.prefix,
                 result,
                 stats: tw.stats,
-                replace: tw.replace,
+                kind: tw.kind,
                 elapsed: tw.elapsed,
             })));
             waker();
@@ -181,10 +202,14 @@ impl BigTextApp {
                 det.codec.enc = codec.enc;
                 d.install(o.source, det, if same { f.prefix } else { None }, waker.clone());
                 d.eol_on_save = None;
-                d.banner = Some(Banner::Info(if f.replace {
-                    format!("Replaced {} matches; wrote {} in {:.2}s.", f.stats.count, human_bytes(f.stats.bytes_out), f.elapsed.as_secs_f64())
-                } else {
-                    format!("Saved {} in {:.2}s.", human_bytes(d.buf.len()), f.elapsed.as_secs_f64())
+                let secs = f.elapsed.as_secs_f64();
+                d.banner = Some(Banner::Info(match &f.kind {
+                    WriteKind::Replace => format!("Replaced {} matches; wrote {} in {secs:.2}s.", f.stats.count, human_bytes(f.stats.bytes_out)),
+                    WriteKind::DeleteColumns(cols) => {
+                        d.table_state.columns_deleted(cols);
+                        format!("Deleted {} from all {} lines; wrote {} in {secs:.2}s.", super::columns::count_label(cols.len()), f.stats.count, human_bytes(f.stats.bytes_out))
+                    }
+                    WriteKind::Save => format!("Saved {} in {secs:.2}s.", human_bytes(d.buf.len())),
                 }));
                 if d.close_after_save {
                     close = Some(d.id);
