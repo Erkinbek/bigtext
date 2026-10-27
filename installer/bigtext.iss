@@ -7,7 +7,7 @@
   #define SourceExe "..\target\release\bigtext.exe"
 #endif
 #define AppName "BigText"
-#define AppVersion "0.1.1"
+#define AppVersion "0.2.0"
 
 [Setup]
 AppId={{7B0C2A51-3E2B-4C55-9C3A-6B3F8E1D2B10}
