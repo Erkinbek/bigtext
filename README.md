@@ -64,6 +64,18 @@ Single self-contained binary, no runtime dependencies.
 - **Split view** (Ctrl+\\): two panes over one document with independent scrolling.
 - **Syntax highlighting** for logs, JSON, XML/HTML, CSV/TSV, SQL and INI/TOML/YAML — computed
   only for the visible slice of the visible rows; View → Highlight as overrides the extension.
+- **CSV / TSV table view**: `.csv` and `.tsv` files open as a table (View → Table view or
+  Ctrl+T switches any file between table and text). The delimiter (comma, semicolon, tab, pipe)
+  is detected from the first lines and can be changed in the toolbar; quoted fields follow
+  RFC 4180. The first row is a pinned header, numbers align right, columns fit their content
+  (drag a header border to resize, double-click it to fit again). Like the text view it reads
+  only the rows on screen, so a 10 GB CSV scrolls as fast as a small one. Click a cell to put
+  the caret there, double-click it to edit it in the text view.
+- **Delete CSV columns**: click column headers to select them (Ctrl+click adds, Shift+click
+  selects a range), then **Delete columns** (or the Delete key) removes them and their values
+  from every row, after a confirmation that names them. Files up to 64 MB change as one undoable
+  edit (Ctrl+Z); larger files are rewritten on disk like Replace All (temp file, atomic swap,
+  optional `.bak`) in one streaming pass with bounded memory.
 - **Compare files** (File → Compare with…): streaming line diff of two huge files with bounded
   memory; identical stretches are skipped at memory speed (1 GB vs 1 GB with two changed lines:
   0.6 s, ~2 MB of memory). Click a difference to jump there in either file.
@@ -208,11 +220,11 @@ Key decisions (details in [PLAN.md](PLAN.md)):
 ## Tests and benchmarks
 
 ```
-cargo test --lib --bins              # 72 unit tests: index, piece table, rows, search, replace, save,
-                                     # encodings, diff, highlighting, session file, updates
+cargo test --lib --bins              # 80 unit tests: index, piece table, rows, search, replace, save,
+                                     # encodings, diff, highlighting, session file, updates, CSV
 cargo test --lib update -- --ignored # downloads and unpacks the latest release (needs the network)
 target/release/bigtext --self-test --report report.txt [--screenshot shots/x.png]
-                                     # 56 GUI checks with synthetic mouse/keyboard/clipboard input
+                                     # 59 GUI checks with synthetic mouse/keyboard/clipboard input
 scripts/gen-testfiles.ps1            # or scripts/gen-testfiles.sh; -SkipBig / --skip-big avoids the 10 GB file
 target/release/bigtext-bench FILE    # core benchmarks (open, first screen, go-to, index, search, replace, memory)
 target/release/bigtext --bench-ui FILE --report out.txt [--screenshot out.png]
@@ -224,7 +236,8 @@ double/triple clicks, shift-click, keys and shortcuts, typing, copy/paste, Ctrl+
 selection, smart Home/End, auto-indent, undo/redo back to the unmodified state, clipboard,
 duplicate/delete line, zoom, find / F3 / Shift+F3 / Find All, replace all + undo, go to line and
 offset, atomic save (no temp files left), the unsaved-changes prompt, wrap/hex/overlay toggles,
-bookmarks, split view, highlighting, file comparison, the About window, and these edge cases:
+bookmarks, split view, highlighting, file comparison, the CSV table (column selection, delete
+and undo), the About window, and these edge cases:
 read-only files (edits blocked; saving over one fails cleanly and keeps the edits), a file
 appended to while open (banner, then follow mode), a file renamed or deleted while open, a
 path longer than 260 characters (open, edit, save), a Unicode path, the chunked read path
@@ -334,6 +347,9 @@ from `bigtext-bench`. Raw reports: `scripts/bench.ps1` reproduces them.
 - On Linux/macOS, another process truncating a file while it is mapped can raise SIGBUS
   (inherent to mmap; Windows forbids truncating mapped files). Network drives use chunked reads.
 - Syntax highlighting is row-local: a string or comment that spans lines is not tracked.
+- The CSV table shows one line per row, so a quoted field that contains line breaks appears as
+  several rows (the text is unchanged). Deleting columns reads whole records and handles such
+  fields correctly.
 - The file comparison compares lines by 64-bit hash + length (a collision would hide a
   difference; astronomically unlikely) and re-synchronises within 4,096 lines / 16 MB; it
   compares the files on disk, not unsaved edits.
