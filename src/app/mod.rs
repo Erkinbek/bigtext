@@ -4,6 +4,7 @@ pub mod document;
 pub mod extras;
 pub mod ops;
 pub mod search_panel;
+pub mod update;
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -44,6 +45,7 @@ pub enum Msg {
     ReplaceTooMany { doc: u64, version: u64, matcher: Arc<Matcher>, template: Template, range: std::ops::Range<u64> },
     Preview { doc: u64, items: Vec<(u64, String, String)>, lines: Vec<u64> },
     FileChanged { doc: u64, deleted: bool, grown: bool },
+    Update(update::Event),
 }
 
 pub struct Settings {
@@ -130,6 +132,7 @@ pub struct BigTextApp {
     pub search: search_panel::SearchUi,
     pending_replace: Option<(u64, Arc<Matcher>, Template, std::ops::Range<u64>)>,
     preview: Option<(u64, Vec<(u64, String, String)>, Vec<u64>)>,
+    pub update: update::UpdateUi,
 }
 
 /// Turns I/O errors into messages a user can act on.
@@ -209,10 +212,13 @@ impl BigTextApp {
             search: search_panel::SearchUi::default(),
             pending_replace: None,
             preview: None,
+            update: update::UpdateUi::default(),
         };
         app.search.query.case_sensitive = true;
         if persist {
             let state = extras::load();
+            app.update.restore(&state);
+            update::cleanup_in_background();
             if files.is_empty() {
                 app.restore_session(state);
             } else {
@@ -349,6 +355,7 @@ impl BigTextApp {
                     }
                     Err(e) => self.error = Some(e),
                 },
+                Msg::Update(e) => self.on_update_event(e),
             }
         }
     }
@@ -655,6 +662,13 @@ impl BigTextApp {
                 ui.checkbox(&mut self.settings.show_perf, "Performance overlay\tF12");
             });
             ui.menu_button("Help", |ui| {
+                if ui.button("Check for updates…").clicked() {
+                    self.check_for_updates(true);
+                }
+                if ui.checkbox(&mut self.update.auto, "Check for updates automatically").changed() {
+                    self.persist_state();
+                }
+                ui.separator();
                 if ui.button("Keyboard shortcuts").clicked() {
                     self.show_shortcuts = true;
                 }
@@ -929,7 +943,11 @@ impl BigTextApp {
                     }
                     (1, ConfirmAction::CopyLarge { doc, cut }) => self.start_copy_job(doc, cut),
                     (1, ConfirmAction::ReplaceOnDisk { doc }) => self.replace_on_disk(doc, checked),
-                    _ => self.pending_replace = None,
+                    _ => {
+                        self.pending_replace = None;
+                        // Exit was cancelled: "Restart now" for an update no longer applies.
+                        self.update.restart = false;
+                    }
                 }
             }
         }
@@ -1230,7 +1248,8 @@ impl eframe::App for BigTextApp {
             self.self_test = Some(t);
         }
 
-        let modal_open = self.goto.is_some() || self.confirm.is_some() || self.error.is_some();
+        self.update_tick();
+        let modal_open = self.goto.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
         if !modal_open {
             self.shortcuts(&ctx);
         }
@@ -1318,6 +1337,7 @@ impl eframe::App for BigTextApp {
         }
 
         self.dialogs(&ctx);
+        self.update_dialog(&ctx);
         self.perf_overlay(&ctx);
 
         let title = match self.docs.get(self.active) {
@@ -1350,5 +1370,9 @@ impl eframe::App for BigTextApp {
         if let Some(t) = &mut self.self_test {
             t.after_frame(&ctx, ms);
         }
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.apply_update_on_exit();
     }
 }

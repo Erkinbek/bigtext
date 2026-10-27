@@ -59,3 +59,11 @@ Root: HKA; Subkey: "Software\Classes\*\shell\BigText\command"; ValueType: string
 
 [Run]
 Filename: "{app}\bigtext.exe"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+; BigText's updater runs this installer with /SILENT and, after "Restart now", /relaunch=1.
+Filename: "{app}\bigtext.exe"; Flags: nowait runasoriginaluser; Check: RelaunchAfterUpdate
+
+[Code]
+function RelaunchAfterUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:relaunch|0}') = '1';
+end;

@@ -69,6 +69,14 @@ Single self-contained binary, no runtime dependencies.
   0.6 s, ~2 MB of memory). Click a difference to jump there in either file.
 - **Recent files and session restore**: tabs, positions, bookmarks and settings come back on
   the next start (state in `%APPDATA%\BigText\state.txt` / `~/.config/bigtext`).
+- **Updates**: once a day BigText asks GitHub for a newer release (Help → Check for updates
+  does it on demand; Help → Check for updates automatically turns it off). A dialog shows the
+  release notes of every newer version and installs nothing until you choose **Update now**;
+  **Skip this version** stops the reminders until the next release. The download is checked
+  against its size and the SHA-256 that GitHub publishes. An installed copy runs the new
+  installer silently when BigText closes; a portable copy (zip, tar.gz) swaps its executable in
+  place. **Restart now** reopens your tabs in the new version. A `cargo install` copy shows the
+  command to run instead.
 
 ## Screenshots
 
@@ -200,8 +208,9 @@ Key decisions (details in [PLAN.md](PLAN.md)):
 ## Tests and benchmarks
 
 ```
-cargo test --lib --bins              # 65 unit tests: index, piece table, rows, search, replace, save,
-                                     # encodings, diff, highlighting, session file
+cargo test --lib --bins              # 72 unit tests: index, piece table, rows, search, replace, save,
+                                     # encodings, diff, highlighting, session file, updates
+cargo test --lib update -- --ignored # downloads and unpacks the latest release (needs the network)
 target/release/bigtext --self-test --report report.txt [--screenshot shots/x.png]
                                      # 56 GUI checks with synthetic mouse/keyboard/clipboard input
 scripts/gen-testfiles.ps1            # or scripts/gen-testfiles.sh; -SkipBig / --skip-big avoids the 10 GB file
@@ -248,7 +257,10 @@ python scripts/build-site.py
    `python scripts/build-site.py --no-images` and commit.
 2. Push a tag: `git tag -a v0.1.2 -m "BigText 0.1.2"` and `git push origin v0.1.2`.
 3. CI builds every platform and publishes a GitHub release with version-free asset names
-   (so `releases/latest/download/<file>` links keep working), then:
+   (so `releases/latest/download/<file>` links keep working, and the in-app updater finds
+   `bigtext-setup-windows-x64.exe`, `bigtext-windows-x64.zip` and the `.tar.gz` files by these
+   names). Write the changes under a `## What's new in 0.1.2` heading in the release notes: the
+   update dialog shows that section (and the whole notes when there is no such heading). Then:
    - **crates.io** (`crates-io` job) publishes the crate with
      [trusted publishing](https://crates.io/docs/trusted-publishing), so no token is stored.
      It runs when the repository variable `CRATES_IO_PUBLISH` is `true`. One-time setup: the

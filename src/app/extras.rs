@@ -35,6 +35,10 @@ pub struct Persisted {
     pub dark: Option<bool>,
     pub backup_on_save: Option<bool>,
     pub syntax: Option<bool>,
+    pub update_check: Option<bool>,
+    pub skip_version: Option<String>,
+    /// Unix time of the last update check.
+    pub update_checked: Option<u64>,
 }
 
 pub fn state_file() -> Option<PathBuf> {
@@ -70,6 +74,9 @@ fn parse(text: &str) -> Persisted {
             "dark" => p.dark = Some(v == "1"),
             "backup_on_save" => p.backup_on_save = Some(v == "1"),
             "syntax" => p.syntax = Some(v == "1"),
+            "update_check" => p.update_check = Some(v == "1"),
+            "skip_version" => p.skip_version = Some(v.to_string()),
+            "update_checked" => p.update_checked = v.parse().ok(),
             "tab" => {
                 let parts: Vec<&str> = v.splitn(5, '|').collect();
                 if parts.len() == 5 {
@@ -103,6 +110,15 @@ fn serialize(p: &Persisted) -> String {
     if let Some(d) = p.syntax {
         s.push_str(&format!("syntax={}\n", b(d)));
     }
+    if let Some(d) = p.update_check {
+        s.push_str(&format!("update_check={}\n", b(d)));
+    }
+    if let Some(v) = &p.skip_version {
+        s.push_str(&format!("skip_version={v}\n"));
+    }
+    if let Some(t) = p.update_checked {
+        s.push_str(&format!("update_checked={t}\n"));
+    }
     for r in &p.recent {
         s.push_str(&format!("recent={}\n", r.display()));
     }
@@ -118,15 +134,27 @@ fn serialize(p: &Persisted) -> String {
 pub fn save_async(p: Persisted) {
     let Some(path) = state_file() else { return };
     let text = serialize(&p);
-    jobs::spawn("save-state", move || {
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let tmp = path.with_extension("tmp");
-        if std::fs::write(&tmp, text).is_ok() {
-            let _ = std::fs::rename(&tmp, &path);
-        }
-    });
+    jobs::spawn("save-state", move || write_state(&path, &text));
+}
+
+/// Writes the state before returning: on exit, when a new BigText process reads it right away.
+pub fn save_now(p: Persisted) {
+    if let Some(path) = state_file() {
+        write_state(&path, &serialize(&p));
+    }
+}
+
+fn write_state(path: &Path, text: &str) {
+    // One writer at a time, since all of them use the same temporary file.
+    static LOCK: Mutex<()> = Mutex::new(());
+    let _guard = LOCK.lock();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let tmp = path.with_extension("tmp");
+    if std::fs::write(&tmp, text).is_ok() {
+        let _ = std::fs::rename(&tmp, path);
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -181,6 +209,9 @@ impl BigTextApp {
             dark: Some(self.settings.dark),
             backup_on_save: Some(self.settings.backup_on_save),
             syntax: Some(self.settings.syntax),
+            update_check: Some(self.update.auto),
+            skip_version: self.update.skipped.map(|v| v.to_string()),
+            update_checked: Some(self.update.last_check).filter(|&t| t > 0),
         }
     }
 
@@ -410,6 +441,9 @@ mod tests {
             dark: Some(false),
             backup_on_save: Some(true),
             syntax: Some(false),
+            update_check: Some(false),
+            skip_version: Some("0.2.0".into()),
+            update_checked: Some(1_761_550_000),
         };
         let q = parse(&serialize(&p));
         assert_eq!(q.recent, p.recent);
@@ -417,5 +451,6 @@ mod tests {
         let t = &q.tabs[0];
         assert_eq!((t.caret, t.top, t.wrap, t.bookmarks.clone(), t.path.clone()), (123, 100, true, vec![0, 55, 1 << 40], PathBuf::from(r"D:\big file.txt")));
         assert_eq!((q.font_size, q.dark, q.backup_on_save, q.syntax), (Some(16.0), Some(false), Some(true), Some(false)));
+        assert_eq!((q.update_check, q.skip_version.as_deref(), q.update_checked), (Some(false), Some("0.2.0"), Some(1_761_550_000)));
     }
 }
