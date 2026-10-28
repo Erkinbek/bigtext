@@ -135,6 +135,8 @@ fn main() -> eframe::Result {
 
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("BigText")
+        // Matches packaging/linux/bigtext.desktop, so Linux desktops show the right icon.
+        .with_app_id("bigtext")
         .with_inner_size([1200.0, 800.0])
         .with_drag_and_drop(true);
     // Without an icon eframe shows its own egui logo in the title bar and taskbar.

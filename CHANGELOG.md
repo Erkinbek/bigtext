@@ -16,6 +16,16 @@ All notable changes to BigText. Each release on
   `bigtext-cli.exe` comes with the Windows zip and installer, since `bigtext.exe` is a windowed
   program that consoles do not wait for.
 
+### Packages
+
+- **Linux**: a `.deb` package (`bigtext`, `bigtext-cli`, a menu entry and the icon) and an
+  **AppImage**; the tarball now has `bigtext.desktop` and the icon too. The window identifies
+  itself as `bigtext`, so desktops show its icon.
+- **macOS**: `BigText.app` (zipped, for the Applications folder) next to the plain binaries.
+- **Homebrew**: a cask (the app) and a formula (built from source, Linux and macOS) ready for a
+  tap; see `packaging/README.md`.
+- Releases carry `SHA256SUMS.txt`.
+
 ### Tabs
 
 - **Ctrl+Tab** shows the tabs in most-recently-used order: hold Ctrl, press Tab (Shift+Tab back)

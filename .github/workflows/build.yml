@@ -86,7 +86,27 @@ jobs:
           mkdir -p "$out"
           cp target/${{ matrix.target }}/release/bigtext target/${{ matrix.target }}/release/bigtext-cli target/${{ matrix.target }}/release/bigtext-bench \
              target/${{ matrix.target }}/release/gen-testfiles README.md "$out/"
+          if [ "$RUNNER_OS" = Linux ]; then
+            cp packaging/linux/bigtext.desktop assets/icon-256.png "$out/"
+          fi
           tar -C dist -czf "dist/bigtext-${{ matrix.name }}.tar.gz" "bigtext-${{ matrix.name }}"
+
+      - name: Package .deb (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          bash packaging/linux/build-deb.sh "$version" target/${{ matrix.target }}/release "dist/bigtext-${{ matrix.name }}.deb"
+
+      - name: Package AppImage (Linux, optional)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: bash packaging/linux/build-appimage.sh target/${{ matrix.target }}/release "$PWD/dist/bigtext-${{ matrix.name }}.AppImage"
+
+      - name: Package BigText.app (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          bash packaging/macos/build-app.sh "$version" target/${{ matrix.target }}/release "dist/bigtext-${{ matrix.name }}.app.zip"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -94,6 +114,9 @@ jobs:
           path: |
             dist/bigtext-${{ matrix.name }}
             dist/*.tar.gz
+            dist/*.deb
+            dist/*.AppImage
+            dist/*.app.zip
             dist/*setup*.exe
           if-no-files-found: error
 
@@ -119,6 +142,8 @@ jobs:
           cp dist/bigtext-windows-x64/*setup*.exe out/bigtext-setup-windows-x64.exe
           (cd dist/bigtext-windows-x64 && zip -qr ../../out/bigtext-windows-x64.zip bigtext-windows-x64)
           cp dist/bigtext-*/bigtext-*.tar.gz out/
+          find dist -maxdepth 2 \( -name '*.deb' -o -name '*.AppImage' -o -name '*.app.zip' \) -exec cp {} out/ \;
+          (cd out && sha256sum * > SHA256SUMS.txt)
           ls -l out
           gh release create "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" \
             --title "BigText $GITHUB_REF_NAME" --generate-notes

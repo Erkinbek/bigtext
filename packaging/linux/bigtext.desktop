@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=BigText
+GenericName=Text Editor
+Comment=Text editor for huge files (1–50+ GB) that never freezes
+Exec=bigtext %F
+Icon=bigtext
+Terminal=false
+Categories=Utility;TextEditor;Development;
+Keywords=log;csv;json;large;editor;viewer;
+MimeType=text/plain;text/csv;text/tab-separated-values;text/x-log;application/json;application/x-ndjson;application/xml;text/xml;text/html;application/sql;application/gzip;application/zstd;
+StartupWMClass=bigtext
