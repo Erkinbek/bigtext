@@ -100,6 +100,8 @@ pub struct Settings {
     pub level_bar: bool,
     /// Saved searches (the ★ menu of the search bar).
     pub saved: Vec<saved_searches::SavedSearch>,
+    /// View → Show whitespace and line breaks.
+    pub show_ws: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -294,7 +296,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, level_bar: true, saved: Vec::new() },
+            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, level_bar: true, saved: Vec::new(), show_ws: false },
             goto: None,
             confirm: None,
             error: None,
@@ -341,6 +343,7 @@ impl BigTextApp {
             app.search.history = std::mem::take(&mut state.history);
             app.settings.level_bar = state.level_bar.unwrap_or(true);
             app.settings.saved = std::mem::take(&mut state.saved);
+            app.settings.show_ws = state.show_ws.unwrap_or(false);
             // A font that is gone or broken is forgotten; the built-in one is used.
             if let Some(p) = state.font.take() {
                 if fonts::apply_font(&cc.egui_ctx, Some(&p)).is_ok() {
@@ -1328,6 +1331,7 @@ impl eframe::App for BigTextApp {
         let hl = self.view_highlights(ui.visuals().dark_mode);
         let font_size = &mut self.settings.font_size;
         let syntax = self.settings.syntax;
+        let show_ws = self.settings.show_ws;
         egui::CentralPanel::no_frame().show(ui, |ui| {
             if let Some(d) = self.docs.get_mut(self.active) {
                 if d.hex && d.is_ready() {
@@ -1339,7 +1343,7 @@ impl eframe::App for BigTextApp {
                     let lang = if syntax { d.effective_lang() } else { crate::view::highlight::Lang::Plain };
                     match d.split.take() {
                         None => {
-                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0 };
+                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws };
                             text_view::show(ui, d, &mut env);
                         }
                         Some(mut pane) => {
@@ -1350,12 +1354,12 @@ impl eframe::App for BigTextApp {
                             let bottom = egui::Rect::from_min_max(egui::pos2(full.left(), mid + 2.0), full.max);
                             ui.painter().hline(full.x_range(), mid, ui.visuals().widgets.noninteractive.bg_stroke);
                             ui.scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
-                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0 };
+                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws };
                                 text_view::show(ui, d, &mut env);
                             });
                             pane.swap_with(&mut d.view);
                             ui.scope_builder(egui::UiBuilder::new().max_rect(bottom), |ui| {
-                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 1 };
+                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 1, show_ws };
                                 text_view::show(ui, d, &mut env);
                             });
                             pane.swap_with(&mut d.view);

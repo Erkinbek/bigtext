@@ -38,6 +38,8 @@ pub struct ViewEnv<'a> {
     pub lang: super::highlight::Lang,
     /// Which split pane this is (0 = primary).
     pub pane: u8,
+    /// Spaces, tabs and line breaks shown as `·`, `→` and `↓` / `↵` / `←`.
+    pub show_ws: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -220,7 +222,12 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                 }
             }
             let (s, sp): (String, bool) = match c.kind {
+                CellKind::Tab if env.show_ws => {
+                    let w = (c.cell + c.width - c.cell.max(first_cell)) as usize;
+                    (if c.cell >= first_cell { format!("→{}", " ".repeat(w - 1)) } else { " ".repeat(w) }, true)
+                }
                 CellKind::Tab => (" ".repeat((c.cell + c.width - c.cell.max(first_cell)) as usize), false),
+                CellKind::Normal if env.show_ws && c.ch == ' ' => ("·".to_string(), true),
                 CellKind::Hidden => (String::new(), false),
                 CellKind::Control => (control_glyph(c.ch).to_string(), true),
                 CellKind::Invalid => ('\u{FFFD}'.to_string(), true),
@@ -300,6 +307,17 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         if !job.text.is_empty() {
             let galley = ui.ctx().fonts_mut(|f| f.layout_job(job));
             text_painter.galley(pos2(x_of(first_cell), y), galley, text_color);
+        }
+        // The line break: LF, CRLF or CR.
+        if env.show_ws && reached_end && row.is_last_in_seg() && row.seg.has_nl {
+            let glyph = if row.seg.next - row.seg.content_end >= 2 * codec.unit() as u64 {
+                "↵"
+            } else if codec.nl == bigtext::encoding::NlByte::Cr {
+                "←"
+            } else {
+                "↓"
+            };
+            text_painter.text(pos2(x_of(end_cell), y), Align2::LEFT_TOP, glyph, font.clone(), weak);
         }
         if row_has_caret {
             let x = x_of(cell_for(caret));

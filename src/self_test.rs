@@ -159,6 +159,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("cli.log"), "first 10:00\nsecond 10:00 10:05\nthird\n")?;
     std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
     std::fs::write(dir.join("levels.log"), LEVELS_LOG)?;
+    std::fs::write(dir.join("ws.txt"), "a b\tc\r\nnext\r\n")?;
     std::fs::write(dir.join("brackets.json"), BRACKETS_JSON)?;
     std::fs::write(dir.join("multi.txt"), "foo x foo y foo\nfirst\nsecond\n")?;
     // Unix times: 2024-05-01 14:32:05, 14:33:05 and 14:34:05 UTC.
@@ -1456,6 +1457,28 @@ impl SelfTest {
                 _ if c.waited() > Duration::from_secs(3) => Step::Fail(format!("step {} caret {caret}", c.mark)),
                 _ => Step::Wait,
             }
+        }));
+        s("open ws.txt", open_step("ws.txt"));
+        s("show whitespace", Box::new(|app, _c| {
+            app.settings.show_ws = true;
+            Step::Next
+        }));
+        s("shot: whitespace", shot_step("whitespace.png"));
+        s("whitespace shown as · → ↵ keeps every character in its place", Box::new(|app, c| {
+            if c.mark == 0 {
+                c.mark = 1;
+                // "a b" then a one-cell tab: "c" is in cell 4.
+                let p = pos(app, 0, 4.0);
+                c.click(p, NONE);
+                return Step::Wait;
+            }
+            let caret = doc(app).view.caret;
+            if caret != 4 {
+                return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("caret {caret}")) } else { Step::Wait };
+            }
+            c.mark = 0;
+            app.settings.show_ws = false;
+            Step::Next
         }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
         s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {

@@ -58,6 +58,7 @@ pub enum Cmd {
     Follow,
     SplitView,
     Syntax,
+    ShowWhitespace,
     DarkTheme,
     Highlights,
     LevelBar,
@@ -82,7 +83,7 @@ const CTRL_SHIFT: Modifiers = Modifiers { alt: false, ctrl: false, shift: true, 
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 55] = [
+    pub const ALL: [Cmd; 56] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -126,6 +127,7 @@ impl Cmd {
         Cmd::Follow,
         Cmd::SplitView,
         Cmd::Syntax,
+        Cmd::ShowWhitespace,
         Cmd::DarkTheme,
         Cmd::Highlights,
         Cmd::LevelBar,
@@ -212,6 +214,7 @@ impl Cmd {
             Cmd::Follow => "Follow (tail) file changes",
             Cmd::SplitView => "Split view",
             Cmd::Syntax => "Syntax highlighting",
+            Cmd::ShowWhitespace => "Show whitespace and line breaks",
             Cmd::DarkTheme => "Dark theme",
             Cmd::Highlights => "Highlights…",
             Cmd::LevelBar => "Log level bar",
@@ -496,6 +499,10 @@ impl BigTextApp {
             Cmd::Follow => doc(self).into_iter().for_each(|d| d.follow = !d.follow),
             Cmd::SplitView => doc(self).into_iter().for_each(toggle_split),
             Cmd::Syntax => self.settings.syntax = !self.settings.syntax,
+            Cmd::ShowWhitespace => {
+                self.settings.show_ws = !self.settings.show_ws;
+                self.persist_state();
+            }
             Cmd::DarkTheme => {
                 self.settings.dark = !self.settings.dark;
                 ctx.set_theme(if self.settings.dark { egui::Theme::Dark } else { egui::Theme::Light });
@@ -529,6 +536,7 @@ impl BigTextApp {
             Cmd::Follow => d.is_some_and(|d| d.follow),
             Cmd::SplitView => d.is_some_and(|d| d.split.is_some()),
             Cmd::Syntax => self.settings.syntax,
+            Cmd::ShowWhitespace => self.settings.show_ws,
             Cmd::DarkTheme => self.settings.dark,
             Cmd::PerfOverlay => self.settings.show_perf,
             Cmd::LevelBar => self.settings.level_bar,
@@ -538,7 +546,7 @@ impl BigTextApp {
     }
 
     fn is_toggle(cmd: Cmd) -> bool {
-        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::Follow | Cmd::SplitView | Cmd::Syntax | Cmd::DarkTheme | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
+        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::Follow | Cmd::SplitView | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
     }
 
     fn enabled(&self, cmd: Cmd) -> bool {
@@ -677,7 +685,9 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                run = run.or(self.item(ui, Cmd::Syntax));
+                for c in [Cmd::Syntax, Cmd::ShowWhitespace] {
+                    run = run.or(self.item(ui, c));
+                }
                 if let Some(d) = self.docs.get_mut(self.active) {
                     let auto = d.auto_lang();
                     ui.menu_button(tr("Highlight as"), |ui| {

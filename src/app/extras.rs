@@ -52,6 +52,7 @@ pub struct Persisted {
     pub level_bar: Option<bool>,
     /// Saved searches.
     pub saved: Vec<super::saved_searches::SavedSearch>,
+    pub show_ws: Option<bool>,
 }
 
 fn query_flags(q: &bigtext::search::Query) -> String {
@@ -123,6 +124,7 @@ fn parse(text: &str) -> Persisted {
             "backup_on_save" => p.backup_on_save = Some(v == "1"),
             "syntax" => p.syntax = Some(v == "1"),
             "level_bar" => p.level_bar = Some(v == "1"),
+            "show_ws" => p.show_ws = Some(v == "1"),
             "update_check" => p.update_check = Some(v == "1"),
             "skip_version" => p.skip_version = Some(v.to_string()),
             "update_checked" => p.update_checked = v.parse().ok(),
@@ -164,6 +166,9 @@ fn serialize(p: &Persisted) -> String {
     }
     if let Some(d) = p.syntax {
         s.push_str(&format!("syntax={}\n", b(d)));
+    }
+    if let Some(d) = p.show_ws {
+        s.push_str(&format!("show_ws={}\n", b(d)));
     }
     if let Some(d) = p.level_bar {
         s.push_str(&format!("level_bar={}\n", b(d)));
@@ -297,6 +302,7 @@ impl BigTextApp {
             font: self.settings.font_path.clone(),
             level_bar: Some(self.settings.level_bar),
             saved: self.settings.saved.clone(),
+            show_ws: Some(self.settings.show_ws),
             keys: self.keymap.changed.iter().map(|(c, k)| (c.id(), super::commands::key_to_string(*k))).collect(),
         }
     }
@@ -562,6 +568,7 @@ mod tests {
             lang: Some("uz".into()),
             font: Some(PathBuf::from(r"C:\Windows\Fonts\consola.ttf")),
             level_bar: Some(false),
+            show_ws: Some(true),
             saved: vec![
                 super::super::saved_searches::SavedSearch {
                     name: "5xx responses".into(),
@@ -578,6 +585,7 @@ mod tests {
             ],
         };
         assert_eq!(parse(&serialize(&p)).saved, p.saved);
+        assert_eq!(parse(&serialize(&p)).show_ws, Some(true));
         assert_eq!(parse(&serialize(&p)).font, p.font);
         assert_eq!(parse(&serialize(&p)).level_bar, Some(false));
         assert_eq!(parse(&serialize(&p)).lang.as_deref(), Some("uz"));

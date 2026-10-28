@@ -57,6 +57,9 @@ All notable changes to BigText. Each release on
   jumps to the partner, or, away from a bracket, to the bracket around the caret. Brackets
   inside double-quoted strings do not count; the jump searches the whole file in the
   background, so it works from the first `[` of a gigabyte-long JSON array too.
+- **View → Show whitespace and line breaks**: spaces as `·`, tabs as `→`, and each line's break
+  as `↓` (LF), `↵` (CRLF) or `←` (CR), dimmed — to see which lines have tabs or mixed line
+  endings.
 
 ## 0.3.0 — 2026-10-28
 

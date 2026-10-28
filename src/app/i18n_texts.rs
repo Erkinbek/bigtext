@@ -495,4 +495,5 @@ pub static TEXTS: &[[&str; 3]] = &[
     // Matching brackets.
     ["Go to matching bracket", "Перейти к парной скобке", "Juft qavsga o'tish"],
     ["No matching bracket", "Нет парной скобки", "Juft qavs topilmadi"],
+    ["Show whitespace and line breaks", "Показывать пробелы и переводы строк", "Bo'shliqlar va satr oxirlarini ko'rsatish"],
 ];
