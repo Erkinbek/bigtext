@@ -123,6 +123,7 @@ mod tests {
         "app" / "marks.rs",
         "app" / "merge_logs.rs",
         "app" / "ops.rs",
+        "app" / "saved_searches.rs",
         "app" / "search_panel.rs",
         "app" / "tasks.rs",
         "app" / "text_tools.rs",

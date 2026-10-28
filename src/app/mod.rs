@@ -15,6 +15,7 @@ pub mod levels;
 pub mod marks;
 pub mod merge_logs;
 pub mod ops;
+pub mod saved_searches;
 pub mod search_panel;
 pub mod tasks;
 pub mod text_tools;
@@ -93,6 +94,8 @@ pub struct Settings {
     pub font_path: Option<PathBuf>,
     /// The log level bar above log files.
     pub level_bar: bool,
+    /// Saved searches (the ★ menu of the search bar).
+    pub saved: Vec<saved_searches::SavedSearch>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -195,6 +198,7 @@ pub struct BigTextApp {
     pub export: export::ExportUi,
     pub csv: csv_tools::CsvUi,
     pub merge: merge_logs::MergeUi,
+    pub saved_ui: saved_searches::SavedUi,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -285,7 +289,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, level_bar: true },
+            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, level_bar: true, saved: Vec::new() },
             goto: None,
             confirm: None,
             error: None,
@@ -311,6 +315,7 @@ impl BigTextApp {
             export: export::ExportUi::default(),
             csv: csv_tools::CsvUi::default(),
             merge: merge_logs::MergeUi::default(),
+            saved_ui: saved_searches::SavedUi::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -329,6 +334,7 @@ impl BigTextApp {
             app.settings.marks = std::mem::take(&mut state.marks);
             app.search.history = std::mem::take(&mut state.history);
             app.settings.level_bar = state.level_bar.unwrap_or(true);
+            app.settings.saved = std::mem::take(&mut state.saved);
             // A font that is gone or broken is forgotten; the built-in one is used.
             if let Some(p) = state.font.take() {
                 if fonts::apply_font(&cc.egui_ctx, Some(&p)).is_ok() {

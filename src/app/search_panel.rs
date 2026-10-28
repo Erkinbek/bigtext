@@ -369,6 +369,7 @@ impl BigTextApp {
                 .response
                 .on_hover_text(tr("Search history (Up/Down in the field)"));
             });
+            ui.menu_button("★", |ui| self.saved_menu(ui)).response.on_hover_text(tr("Saved searches"));
             let q = &mut self.search.query;
             ui.toggle_value(&mut q.case_sensitive, RichText::new("Aa").monospace()).on_hover_text(tr("Case sensitive"));
             ui.toggle_value(&mut q.whole_word, RichText::new("W").monospace()).on_hover_text(tr("Whole word"));

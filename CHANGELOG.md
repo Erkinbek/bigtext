@@ -37,6 +37,12 @@ All notable changes to BigText. Each release on
 - Files without a telling extension (`syslog`, `stdin`, `app.txt`) are recognised as logs when
   their lines start with a time, and as JSON or XML by their first line.
 
+### Search
+
+- **Saved searches**: the ★ menu of the search bar keeps a pattern with its options, the **!**
+  switch and the table column under a name ("Timeouts", "5xx responses"); one click applies it
+  as a filter. They are kept across sessions.
+
 ## 0.3.0 — 2026-10-28
 
 ### Logs

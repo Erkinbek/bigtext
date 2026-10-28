@@ -1341,6 +1341,35 @@ impl SelfTest {
             doc(app).select(0, 0);
             check(dt == Some(60_000), format!("Δt {dt:?}"))
         }));
+        s("levels.log again", open_step("levels.log"));
+        s("saved search: saved with its \"!\", applied as a filter later", Box::new(|app, c| {
+            let line = |n: usize| LEVELS_LOG.split_inclusive('\n').take(n).map(str::len).sum::<usize>() as u64;
+            if c.first() {
+                app.search.query = bigtext::search::Query { pattern: "INFO".into(), case_sensitive: true, ..Default::default() };
+                app.search.invert = true;
+                app.save_search("Not info");
+                app.search.query.pattern = "something else".into();
+                app.search.invert = false;
+                let Some(i) = app.settings.saved.iter().position(|s| s.name == "Not info") else { return Step::Fail("not saved".into()) };
+                app.apply_saved(i);
+                return Step::Wait;
+            }
+            let d = doc(app);
+            let Some(r) = d.filter.as_ref() else { return Step::Fail("no filter".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let ok = g.lines == vec![line(1), line(2), line(3), line(5)] && r.spec.invert && r.query.pattern == "INFO";
+            let got = format!("lines {:?} invert {} pattern {:?}", g.lines, r.spec.invert, r.query.pattern);
+            drop(g);
+            if let Some(r) = doc(app).filter.take() {
+                r.cancel.cancel();
+            }
+            app.search.invert = false;
+            app.search.open = false;
+            check(ok, got)
+        }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
         s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {
             if c.first() {

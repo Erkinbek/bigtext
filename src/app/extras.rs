@@ -50,10 +50,27 @@ pub struct Persisted {
     /// Font file of the text.
     pub font: Option<PathBuf>,
     pub level_bar: Option<bool>,
+    /// Saved searches.
+    pub saved: Vec<super::saved_searches::SavedSearch>,
 }
 
 fn query_flags(q: &bigtext::search::Query) -> String {
     [(q.regex, 'r'), (q.case_sensitive, 'c'), (q.whole_word, 'w'), (q.dot_all, 'd')].iter().filter(|x| x.0).map(|x| x.1).collect()
+}
+
+fn query_from(pattern: String, flags: &str) -> bigtext::search::Query {
+    bigtext::search::Query { pattern, regex: flags.contains('r'), case_sensitive: flags.contains('c'), whole_word: flags.contains('w'), dot_all: flags.contains('d') }
+}
+
+/// "name|flags|invert|column|pattern".
+fn parse_saved(v: &str) -> Option<super::saved_searches::SavedSearch> {
+    let mut it = v.splitn(5, '|');
+    let name = it.next()?.to_string();
+    let flags = it.next()?;
+    let invert = it.next()? == "1";
+    let column = it.next()?.parse().ok();
+    let query = query_from(it.next()?.to_string(), flags);
+    Some(super::saved_searches::SavedSearch { name, query, invert, column })
 }
 
 fn parse_mark(v: &str) -> Option<super::marks::Mark> {
@@ -110,6 +127,7 @@ fn parse(text: &str) -> Persisted {
             "skip_version" => p.skip_version = Some(v.to_string()),
             "update_checked" => p.update_checked = v.parse().ok(),
             "mark" => p.marks.extend(parse_mark(v)),
+            "saved" => p.saved.extend(parse_saved(v)),
             "find" => p.history.push(v.to_string()),
             "lang" => p.lang = Some(v.to_string()),
             "font" => p.font = Some(PathBuf::from(v)),
@@ -170,6 +188,10 @@ fn serialize(p: &Persisted) -> String {
     }
     for m in &p.marks {
         s.push_str(&format!("mark={}|{}|{}|{}\n", b(m.enabled), m.color, query_flags(&m.query), m.query.pattern));
+    }
+    for x in p.saved.iter().filter(|x| !x.query.pattern.contains(['\n', '\r'])) {
+        let col = x.column.map(|c| c.to_string()).unwrap_or_default();
+        s.push_str(&format!("saved={}|{}|{}|{col}|{}\n", x.name.replace('|', "/"), query_flags(&x.query), b(x.invert), x.query.pattern));
     }
     for (cmd, k) in &p.keys {
         s.push_str(&format!("key={cmd}={k}\n"));
@@ -274,6 +296,7 @@ impl BigTextApp {
             lang: Some(super::i18n::lang().code().to_string()),
             font: self.settings.font_path.clone(),
             level_bar: Some(self.settings.level_bar),
+            saved: self.settings.saved.clone(),
             keys: self.keymap.changed.iter().map(|(c, k)| (c.id(), super::commands::key_to_string(*k))).collect(),
         }
     }
@@ -539,7 +562,22 @@ mod tests {
             lang: Some("uz".into()),
             font: Some(PathBuf::from(r"C:\Windows\Fonts\consola.ttf")),
             level_bar: Some(false),
+            saved: vec![
+                super::super::saved_searches::SavedSearch {
+                    name: "5xx responses".into(),
+                    query: bigtext::search::Query { pattern: r#"" 5\d\d |a|b"#.into(), regex: true, case_sensitive: true, whole_word: false, dot_all: false },
+                    invert: false,
+                    column: None,
+                },
+                super::super::saved_searches::SavedSearch {
+                    name: "not ok".into(),
+                    query: bigtext::search::Query { pattern: "ok".into(), regex: false, case_sensitive: false, whole_word: true, dot_all: false },
+                    invert: true,
+                    column: Some(3),
+                },
+            ],
         };
+        assert_eq!(parse(&serialize(&p)).saved, p.saved);
         assert_eq!(parse(&serialize(&p)).font, p.font);
         assert_eq!(parse(&serialize(&p)).level_bar, Some(false));
         assert_eq!(parse(&serialize(&p)).lang.as_deref(), Some("uz"));

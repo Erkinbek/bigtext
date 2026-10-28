@@ -480,4 +480,9 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["(stopped at {n})", "(остановлено на {n})", "({n} da to'xtatildi)"],
     ["{n} binary files skipped", "пропущено двоичных файлов: {n}", "{n} ta ikkilik fayl o'tkazib yuborildi"],
     ["Search again", "Искать снова", "Qayta qidirish"],
+    // Saved searches.
+    ["Saved searches", "Сохранённые поиски", "Saqlangan qidiruvlar"],
+    ["Name", "Имя", "Nomi"],
+    ["Save search", "Сохранить поиск", "Qidiruvni saqlash"],
+    ["Saves the pattern with its options, “!” and the column", "Сохраняет шаблон с параметрами, «!» и столбцом", "Naqshni parametrlari, “!” va ustuni bilan saqlaydi"],
 ];
