@@ -14,6 +14,8 @@ use bigtext::text::{Swap, TextBuf};
 /// Line commands (duplicate/delete line) scan at most this far on the UI thread; longer lines
 /// can still be selected and edited.
 const LINE_CMD_LIMIT: u64 = 8 * 1024 * 1024;
+/// Characters of a selection are counted (on the UI thread) up to this size.
+pub const SEL_CHARS_MAX: u64 = 4 * 1024 * 1024;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EditKind {
@@ -152,6 +154,8 @@ pub struct Document {
     pub temporary: bool,
     /// Progress and cancellation of the open job (shown while a compressed file is unpacked).
     pub unpacking: Option<(bigtext::jobs::Progress, CancelToken)>,
+    /// Character count of the selection, by (start, end, version).
+    sel_chars: std::cell::Cell<Option<((u64, u64, u64), Option<u64>)>>,
     /// Second pane of a split view (shares caret and selection, scrolls independently).
     pub split: Option<PaneView>,
     pub active_pane: u8,
@@ -241,6 +245,7 @@ impl Document {
             unpacked_from: None,
             temporary: false,
             unpacking: None,
+            sel_chars: std::cell::Cell::new(None),
             split: None,
             active_pane: 0,
             lang: None,
@@ -615,6 +620,31 @@ impl Document {
             None => return None,
         };
         Some((start, ce, next))
+    }
+
+    /// Lines (and whether that count is exact), characters (for selections up to
+    /// [`SEL_CHARS_MAX`]) and bytes of the selection. The character count is cached.
+    pub fn selection_stats(&self) -> Option<(u64, bool, Option<u64>, u64)> {
+        let (s, e) = self.selection();
+        if s == e {
+            return None;
+        }
+        let unit = self.buf.codec.unit() as u64;
+        let (a, ea) = self.buf.line_of(s);
+        // A selection that ends at a line start (a triple click) does not count that line.
+        let (b, eb) = self.buf.line_of(e.saturating_sub(unit).max(s));
+        let key = (s, e, self.version);
+        let chars = match self.sel_chars.get() {
+            Some((k, n)) if k == key => n,
+            _ => {
+                let n = (e - s <= SEL_CHARS_MAX).then(|| self.buf.read(s..e).map(|bytes| self.buf.codec.decode_lossy(&bytes).chars().count() as u64)).flatten();
+                if n.is_some() {
+                    self.sel_chars.set(Some((key, n)));
+                }
+                n
+            }
+        };
+        Some((b - a + 1, ea && eb, chars, e - s))
     }
 
     /// Milliseconds between the timestamps of the first and the last selected line, when the

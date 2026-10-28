@@ -179,7 +179,9 @@ pub static TEXTS: &[[&str; 3]] = &[
     // Status bar, banners, dialogs.
     ["Ln {line}, Col {col}", "Стр {line}, Стлб {col}", "Qator {line}, Ustun {col}"],
     ["Offset {n}", "Смещение {n}", "Bayt {n}"],
-    ["Sel {n} bytes", "Выделено {n} байт", "Belgilangan {n} bayt"],
+    ["Sel: {lines} lines, {chars} chars, {bytes} bytes", "Выделено: строк {lines}, символов {chars}, байт {bytes}", "Belgilangan: {lines} qator, {chars} belgi, {bytes} bayt"],
+    ["Sel: {lines} lines, {bytes} bytes", "Выделено: строк {lines}, байт {bytes}", "Belgilangan: {lines} qator, {bytes} bayt"],
+    ["Block: {cols} columns wide", "Блок: ширина {cols} столбцов", "Blok: {cols} ustun kengligida"],
     ["{n} lines", "строк: {n}", "{n} qator"],
     ["Time between the timestamps of the first and last selected lines", "Время между отметками первой и последней выделенной строки", "Birinchi va oxirgi belgilangan qatorlar vaqtlari orasidagi farq"],
     ["FOLLOW", "СЛЕЖЕНИЕ", "KUZATISH"],

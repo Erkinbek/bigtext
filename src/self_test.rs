@@ -645,6 +645,15 @@ impl SelfTest {
             doc(app).view.wrap = false;
             check(app.palette.is_none(), "palette still open")
         }));
+        s("status bar: lines, characters and bytes of the selection", Box::new(|app, _c| {
+            doc(app).select(0, 35);
+            let two_lines = doc(app).selection_stats();
+            doc(app).select(6, 10);
+            let word = doc(app).selection_stats();
+            doc(app).select(0, 0);
+            let none = doc(app).selection_stats();
+            check(two_lines == Some((2, true, Some(35), 35)) && word == Some((1, true, Some(4), 4)) && none.is_none(), format!("{two_lines:?} {word:?} {none:?}"))
+        }));
         s("highlights and occurrences of the selected word", Box::new(|app, _c| {
             app.add_mark(bigtext::search::Query { pattern: "line".into(), case_sensitive: true, ..Default::default() });
             let mark = crate::app::marks::fill(app.settings.marks[0].color, true);

@@ -679,14 +679,24 @@ impl BigTextApp {
                 ui.label(i18n::trf("Ln {line}, Col {col}", &[("line", &format!("{}{}", if exact { "" } else { "~" }, line + 1)), ("col", &col)]));
                 ui.separator();
                 ui.label(i18n::trf("Offset {n}", &[("n", &format!("{caret} (0x{caret:X})"))]));
-                let (s, e) = d.selection();
-                if s != e {
+                if let Some((lines, exact, chars, bytes)) = d.selection_stats() {
                     ui.separator();
-                    ui.label(i18n::trf("Sel {n} bytes", &[("n", &(e - s).to_string())]));
+                    let n = |x: u64| filter_panel::fmt_count(x);
+                    let lines = format!("{}{}", if exact { "" } else { "~" }, n(lines));
+                    let text = match chars {
+                        Some(c) => i18n::trf("Sel: {lines} lines, {chars} chars, {bytes} bytes", &[("lines", &lines), ("chars", &n(c)), ("bytes", &n(bytes))]),
+                        None => i18n::trf("Sel: {lines} lines, {bytes} bytes", &[("lines", &lines), ("bytes", &n(bytes))]),
+                    };
+                    ui.label(text);
                     if let Some(ms) = d.selection_time_delta() {
                         ui.separator();
                         ui.label(format!("Δt {}", bigtext::timestamp::format_delta(ms))).on_hover_text(i18n::tr("Time between the timestamps of the first and last selected lines"));
                     }
+                }
+                if let Some(b) = d.view.block {
+                    let (lo, hi) = b.cells();
+                    ui.separator();
+                    ui.label(i18n::trf("Block: {cols} columns wide", &[("cols", &(hi - lo).to_string())]));
                 }
                 let (lines, lexact) = d.buf.line_count();
                 ui.separator();

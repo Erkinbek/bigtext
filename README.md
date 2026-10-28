@@ -83,6 +83,9 @@ Single self-contained binary, no runtime dependencies.
   "file in use" / permission errors produce clear messages. Save As, optional `.bak` backup
   (File → Keep backup), unsaved-changes prompts. Closing the window during a save waits for a
   clean cancel or for the atomic swap to finish.
+- **Status bar**: line and column of the caret, byte offset, the number of lines (exact once
+  indexing has finished, `~` before), and for a selection its lines, characters (up to 4 MB)
+  and bytes, the time it spans in a log (Δt) and the width of a block selection.
 - **Other**: line numbers, zoom (Ctrl+wheel), word wrap (off by default), light/dark theme,
   read-only toggle (auto for read-only files), external change detection with Reload, and a
   **follow (tail) mode** for growing logs that resumes indexing where it stopped.
