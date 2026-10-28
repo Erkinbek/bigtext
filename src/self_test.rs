@@ -1576,6 +1576,26 @@ impl SelfTest {
             app.csv.groups = None;
             check(ok, format!("groups {got:?}"))
         }));
+        s("CSV: export the table as Markdown and as an Excel workbook", Box::new(|app, c| {
+            use bigtext::table_export::Format;
+            let (md, xlsx) = (c.file("sales.md"), c.file("sales.xlsx"));
+            if c.first() {
+                app.export_table_to(None, Format::Markdown, md.clone());
+                app.export_table_to(None, Format::Xlsx, xlsx.clone());
+                return Step::Wait;
+            }
+            if !app.tasks.is_empty() || !xlsx.exists() || !md.exists() {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("{} tasks running", app.tasks.len())) } else { Step::Wait };
+            }
+            let text = std::fs::read_to_string(&md).unwrap_or_default();
+            let sheet = std::fs::File::open(&xlsx).ok().and_then(|f| zip::ZipArchive::new(f).ok()).and_then(|mut z| {
+                let mut s = String::new();
+                std::io::Read::read_to_string(&mut z.by_name("xl/worksheets/sheet1.xml").ok()?, &mut s).ok()?;
+                Some(s)
+            });
+            let ok = text == "| city | qty |\n| --- | --- |\n| Tashkent | 3 |\n| Bukhara | 5 |\n| Tashkent | 7 |\n" && sheet.as_deref().is_some_and(|s| s.contains(r#"<c r="B4"><v>7</v></c>"#));
+            check(ok, format!("markdown {text:?}, sheet {sheet:?}"))
+        }));
         s("CSV: rows meeting several conditions open as a new table", Box::new(|app, c| {
             use bigtext::csv::{Cond, CondOp};
             if c.first() {

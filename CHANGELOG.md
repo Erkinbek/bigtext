@@ -58,6 +58,10 @@ All notable changes to BigText. Each release on
 - **Filter rows by conditions…**: several conditions on columns at once (contains, does not
   contain, is, is not, `>` and `<` on numbers, empty, not empty); the rows that meet all of
   them open as a new read-only table, which can be saved with Save As.
+- **Export to other formats**: File → Export table as, or a column header's Export menu for some
+  columns: **JSON** (an array of objects keyed by the header), **JSON Lines**, a **Markdown**
+  table, or an **Excel workbook (.xlsx)** with numbers as numbers (`007` stays text). Streamed,
+  so large tables export in the background; Excel's 1,048,576-row limit is reported.
 
 ### Search
 

@@ -660,6 +660,17 @@ impl BigTextApp {
                 for c in [Cmd::ExportLines, Cmd::SaveSelection, Cmd::SplitFile, Cmd::Compare, Cmd::MergeLogs] {
                     run = run.or(self.item(ui, c));
                 }
+                let table = self.docs.get(self.active).is_some_and(|d| d.table && d.is_ready() && d.table_state.dialect.is_some());
+                ui.add_enabled_ui(table, |ui| {
+                    ui.menu_button(tr("Export table as"), |ui| {
+                        for format in bigtext::table_export::Format::ALL {
+                            if ui.button(format!("{}…", tr(format.name()))).clicked() {
+                                ui.close();
+                                self.export_table(None, format);
+                            }
+                        }
+                    });
+                });
                 ui.separator();
                 for c in [Cmd::CloseTab, Cmd::Exit] {
                     run = run.or(self.item(ui, c));

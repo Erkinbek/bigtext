@@ -197,6 +197,10 @@ mod tests {
         "<",
         "is empty",
         "is not empty",
+        "JSON",
+        "JSON Lines",
+        "Markdown table",
+        "Excel workbook (.xlsx)",
     ];
 
     /// String literals in `span` (escapes resolved).

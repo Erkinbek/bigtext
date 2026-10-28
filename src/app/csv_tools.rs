@@ -102,6 +102,7 @@ impl BigTextApp {
             }
             TableAction::Rename { col, name } => self.csv.rename = Some(RenameDialog { col, name, focus: true }),
             TableAction::Export { cols } => self.export_columns(cols),
+            TableAction::ExportAs { cols, format } => self.export_table(cols, format),
             TableAction::GroupBy { col } => {
                 let names = self.column_names();
                 self.csv.group = Some(GroupDialog { col, value: None, names });
@@ -180,6 +181,38 @@ impl BigTextApp {
                     TaskOutcome::Failed(e.to_string())
                 }
             }
+        });
+    }
+
+    /// Writes the table (or some columns) as JSON, JSON Lines, Markdown or Excel to a file the
+    /// user picks.
+    pub(crate) fn export_table(&mut self, cols: Option<Vec<usize>>, format: bigtext::table_export::Format) {
+        let Some(d) = self.docs.get(self.active) else { return };
+        if d.table_state.dialect.is_none() {
+            return;
+        }
+        let stem = std::path::Path::new(&d.title).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| d.title.clone());
+        let Some(target) = self.pick_output_file(tr("Export table"), &format!("{stem}.{}", format.ext())) else { return };
+        self.export_table_to(cols, format, target);
+    }
+
+    /// Writes the table (or some columns) in `format` to `target` in the background.
+    pub(crate) fn export_table_to(&mut self, cols: Option<Vec<usize>>, format: bigtext::table_export::Format, target: std::path::PathBuf) {
+        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(dialect) = d.table_state.dialect else { return };
+        let (snap, header) = (d.buf.snapshot(), d.table_state.header);
+        self.spawn_task(tr("Exporting the table").into(), move |progress, cancel| {
+            tasks::write_via_temp(&target, |w| {
+                let spec = bigtext::table_export::Spec { dialect, cols: cols.as_deref(), header, format };
+                Ok(bigtext::table_export::export(&snap, spec, w, cancel, Some(progress))?.map(|st| {
+                    let mut m = trf("Exported {n} rows to {file}.", &[("n", &fmt_count(st.rows)), ("file", &super::filter_panel::file_name(&target))]);
+                    if st.truncated {
+                        m.push(' ');
+                        m.push_str(tr("Rows or columns past Excel's limits were left out."));
+                    }
+                    m
+                }))
+            })
         });
     }
 

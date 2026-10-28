@@ -143,6 +143,8 @@ pub enum TableAction {
     Move { col: usize, right: bool },
     /// Write these columns (sorted) to a new file.
     Export { cols: Vec<usize> },
+    /// Write these columns (all when `None`) as JSON, JSON Lines, Markdown or Excel.
+    ExportAs { cols: Option<Vec<usize>>, format: bigtext::table_export::Format },
     /// Count (and sum) the rows per value of this column.
     GroupBy { col: usize },
     /// Rows that meet several conditions, starting with one on this column.
@@ -545,8 +547,13 @@ fn column_menu(ui: &mut Ui, actions: &mut Vec<TableAction>, col: usize, name: &s
     act(ui, editable && col > 0, tr("Move left"), TableAction::Move { col, right: false });
     act(ui, editable && col + 1 < ncols, tr("Move right"), TableAction::Move { col, right: true });
     ui.separator();
-    let label = if cols.len() == 1 { tr("Export this column…") } else { tr("Export selected columns…") };
-    act(ui, true, label, TableAction::Export { cols: cols.clone() });
+    let label = if cols.len() == 1 { tr("Export this column") } else { tr("Export selected columns") };
+    ui.menu_button(label, |ui| {
+        act(ui, true, "CSV…", TableAction::Export { cols: cols.clone() });
+        for format in bigtext::table_export::Format::ALL {
+            act(ui, true, &format!("{}…", tr(format.name())), TableAction::ExportAs { cols: Some(cols.clone()), format });
+        }
+    });
     act(ui, editable && cols.len() < ncols, tr("Delete…"), TableAction::DeleteColumns { names, cols });
 }
 
