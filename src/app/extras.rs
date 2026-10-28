@@ -227,7 +227,7 @@ impl BigTextApp {
                 .iter()
                 .filter_map(|d| {
                     Some(TabState {
-                        path: PathBuf::from(file::display_path(d.path.as_deref()?)),
+                        path: PathBuf::from(file::display_path(d.unpacked_from.as_deref().or(d.path.as_deref())?)),
                         caret: d.view.caret,
                         top: d.view.top,
                         wrap: d.view.wrap,

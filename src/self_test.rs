@@ -151,6 +151,9 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("move.txt"), "will be moved\n")?;
     std::fs::write(dir.join("delete.txt"), "will be deleted\n")?;
     std::fs::write(dir.join("empty.txt"), "")?;
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    gz.write_all(b"packed line 1\npacked line 2\n")?;
+    std::fs::write(dir.join("packed.log.gz"), gz.finish()?)?;
     std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
     std::fs::write(dir.join("no-newline.txt"), "first\nsecond without newline")?;
     std::fs::write(dir.join("cr-only.txt"), "old\rmac\rline\rendings\r")?;
@@ -943,6 +946,28 @@ impl SelfTest {
             let dt = doc(app).selection_time_delta();
             doc(app).select(0, 0);
             check(dt == Some(60_000), format!("Δt {dt:?}"))
+        }));
+        s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
+        s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {
+            if c.first() {
+                let d = doc(app);
+                let temp = d.path.clone().unwrap_or_default();
+                let ok = d.read_only && d.unpacked_from.as_ref().is_some_and(|p| p.ends_with("packed.log.gz")) && temp.exists() && d.title == "packed.log.gz";
+                let state = format!("read-only {} from {:?} temp {temp:?}", d.read_only, d.unpacked_from);
+                let t = text(app);
+                if !ok || t != "packed line 1\npacked line 2\n" {
+                    return Step::Fail(format!("{state} text {t:?}"));
+                }
+                c.copied = vec![temp.to_string_lossy().into_owned()];
+                c.key(Key::W, CTRL);
+                return Step::Wait;
+            }
+            let temp = PathBuf::from(&c.copied[0]);
+            if temp.exists() {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("{temp:?} still exists")) } else { Step::Wait };
+            }
+            c.copied.clear();
+            Step::Next
         }));
         s("open read-only file", open_step("ro.txt"));
         s("read-only file blocks edits", Box::new(|app, c| {

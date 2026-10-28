@@ -299,7 +299,14 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
 
     match &doc.state {
         crate::app::document::DocState::Loading => {
-            painter.text(text_rect.center(), Align2::CENTER_CENTER, "Opening…", FontId::proportional(18.0), weak);
+            let msg = match &doc.unpacking {
+                Some((p, _)) if p.total() > 0 => {
+                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+                    crate::app::i18n::trf("Unpacking… {pct}% of {size}", &[("pct", &format!("{:.0}", p.fraction() * 100.0)), ("size", &bigtext::jobs::human_bytes(p.total()))])
+                }
+                _ => crate::app::i18n::tr("Opening…").to_string(),
+            };
+            painter.text(text_rect.center(), Align2::CENTER_CENTER, msg, FontId::proportional(18.0), weak);
         }
         crate::app::document::DocState::Finalizing(msg) => {
             painter.text(text_rect.center(), Align2::CENTER_CENTER, msg, FontId::proportional(18.0), weak);

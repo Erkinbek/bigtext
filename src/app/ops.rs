@@ -75,10 +75,12 @@ impl BigTextApp {
             return;
         }
         let target = match (&d.path, save_as) {
-            (Some(p), false) => p.clone(),
+            // An unpacked copy lives in the temp folder: Save means Save As.
+            (Some(p), false) if d.unpacked_from.is_none() => p.clone(),
             _ => {
-                let mut dlg = rfd::FileDialog::new().set_title("Save As").set_file_name(&d.title);
-                if let Some(dir) = d.path.as_ref().and_then(|p| p.parent()) {
+                let name = d.unpacked_from.as_deref().map(bigtext::decompress::inner_name).unwrap_or_else(|| d.title.clone());
+                let mut dlg = rfd::FileDialog::new().set_title(super::i18n::tr("Save As")).set_file_name(name);
+                if let Some(dir) = d.unpacked_from.as_ref().or(d.path.as_ref()).and_then(|p| p.parent()) {
                     dlg = dlg.set_directory(file::display_path(dir));
                 }
                 match dlg.save_file() {
@@ -194,6 +196,12 @@ impl BigTextApp {
             Ok(o) => {
                 let target = o.path.clone();
                 let same = d.path.as_deref().is_some_and(|p| same_path(p, &target));
+                // Saved as a real file: the unpacked copy is not needed any more.
+                if !same && d.unpacked_from.take().is_some() {
+                    if let Some(temp) = d.path.clone() {
+                        jobs::spawn("remove-unpacked", move || bigtext::decompress::remove_temp(&temp));
+                    }
+                }
                 d.title = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                 d.path = Some(target);
                 let codec = d.buf.codec;

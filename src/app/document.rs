@@ -140,6 +140,10 @@ pub struct Document {
     pub bookmarks: Vec<u64>,
     /// Offsets of the differences found by File → Compare (marked on the scrollbar).
     pub diff_marks: Vec<u64>,
+    /// The compressed file this document is an unpacked copy of (`path` is the temporary copy).
+    pub unpacked_from: Option<PathBuf>,
+    /// Progress and cancellation of the open job (shown while a compressed file is unpacked).
+    pub unpacking: Option<(bigtext::jobs::Progress, CancelToken)>,
     /// Second pane of a split view (shares caret and selection, scrolls independently).
     pub split: Option<PaneView>,
     pub active_pane: u8,
@@ -224,6 +228,8 @@ impl Document {
             reload_prefix: None,
             bookmarks: Vec::new(),
             diff_marks: Vec::new(),
+            unpacked_from: None,
+            unpacking: None,
             split: None,
             active_pane: 0,
             lang: None,
@@ -295,6 +301,9 @@ impl Document {
         }
         if let Some(r) = &self.filter {
             r.cancel.cancel();
+        }
+        if let Some((_, c)) = &self.unpacking {
+            c.cancel();
         }
         if let Some(j) = self.find_job.take() {
             j.cancel.cancel();

@@ -50,6 +50,7 @@ sha2 = "0.11"
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 flate2 = "1"
 tar = { version = "0.4", default-features = false }
+ruzstd = "0.9"
 
 [build-dependencies]
 winresource = "0.1"

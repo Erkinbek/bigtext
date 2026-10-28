@@ -37,6 +37,8 @@ pub struct Opened {
     /// Canonical path (resolved on the worker; can be slow on network drives).
     pub path: PathBuf,
     pub read_only: bool,
+    /// The compressed file that `path` was unpacked from.
+    pub unpacked: Option<PathBuf>,
 }
 
 pub enum Msg {
@@ -193,7 +195,27 @@ fn open_worker(path: &Path, forced: Option<Encoding>) -> Result<Opened, String> 
             None => encoding::detect(&sample, whole),
         }
     };
-    Ok(Opened { source: Arc::new(src), detected: det, elapsed: t.elapsed(), path: canonical.clone(), read_only })
+    Ok(Opened { source: Arc::new(src), detected: det, elapsed: t.elapsed(), path: canonical.clone(), read_only, unpacked: None })
+}
+
+/// Opens `path`, unpacking it into a temporary file first when it is compressed.
+fn open_or_unpack(path: &Path, forced: Option<Encoding>, cancel: &CancelToken, progress: &jobs::Progress) -> Result<Opened, String> {
+    let Some(kind) = bigtext::decompress::detect(path) else { return open_worker(path, forced) };
+    match bigtext::decompress::unpack(path, kind, cancel, progress) {
+        Ok(Some(temp)) => match open_worker(&temp, forced) {
+            Ok(mut o) => {
+                o.unpacked = Some(path.to_path_buf());
+                Ok(o)
+            }
+            Err(e) => {
+                bigtext::decompress::remove_temp(&temp);
+                Err(e)
+            }
+        },
+        Ok(None) => Err(i18n::tr("Unpacking was cancelled.").into()),
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => Err(format!("{}: {e}", file::display_path(path))),
+        Err(e) => Err(i18n::trf("Could not unpack into {dir}: {e}", &[("dir", &file::display_path(&bigtext::decompress::temp_dir())), ("e", &e.to_string())])),
+    }
 }
 
 /// Lexical path comparison (no file-system access, so it is safe on the UI thread):
@@ -256,6 +278,7 @@ impl BigTextApp {
             let mut state = extras::load();
             app.update.restore(&state);
             update::cleanup_in_background();
+            jobs::spawn("cleanup-unpacked", bigtext::decompress::cleanup_old);
             app.settings.marks = std::mem::take(&mut state.marks);
             app.search.history = std::mem::take(&mut state.history);
             if files.is_empty() {
@@ -291,7 +314,7 @@ impl BigTextApp {
 
     pub fn open_path(&mut self, path: PathBuf) {
         let canon = std::path::absolute(&path).unwrap_or(path);
-        if let Some(i) = self.docs.iter().position(|d| d.path.as_deref().is_some_and(|p| same_path(p, &canon))) {
+        if let Some(i) = self.docs.iter().position(|d| d.path.as_deref().or(d.unpacked_from.as_deref()).is_some_and(|p| same_path(p, &canon))) {
             self.active = i;
             return;
         }
@@ -305,11 +328,15 @@ impl BigTextApp {
         self.spawn_open(id, canon, None);
     }
 
-    fn spawn_open(&self, id: u64, path: PathBuf, forced: Option<Encoding>) {
+    fn spawn_open(&mut self, id: u64, path: PathBuf, forced: Option<Encoding>) {
         let tx = self.tx.clone();
         let waker = self.waker.clone();
+        let (progress, cancel) = (jobs::Progress::default(), CancelToken::new());
+        if let Some(d) = self.doc_mut(id) {
+            d.unpacking = Some((progress.clone(), cancel.clone()));
+        }
         jobs::spawn("open", move || {
-            let result = open_worker(&path, forced);
+            let result = open_or_unpack(&path, forced, &cancel, &progress);
             let _ = tx.send(Msg::Opened { doc: id, result });
             waker();
         });
@@ -330,11 +357,20 @@ impl BigTextApp {
                     let waker = self.waker.clone();
                     let tx = self.tx.clone();
                     if let Some(d) = self.doc_mut(doc) {
+                        d.unpacking = None;
                         match result {
                             Ok(o) => {
                                 d.open_elapsed = Some(o.elapsed);
                                 d.read_only = d.read_only || o.read_only;
                                 d.path = Some(o.path.clone());
+                                if let Some(orig) = o.unpacked {
+                                    d.read_only = true;
+                                    d.banner = Some(Banner::Info(i18n::trf(
+                                        "Unpacked copy of {name} ({size}), read-only. To keep changes, turn off Edit → Read-only and use Save As.",
+                                        &[("name", &d.title), ("size", &human_bytes(o.source.len()))],
+                                    )));
+                                    d.unpacked_from = Some(orig);
+                                }
                                 let prefix = d.reload_prefix.take();
                                 let follow_end = d.follow && prefix.is_some();
                                 d.install(o.source, o.detected, prefix, waker.clone());
@@ -356,10 +392,16 @@ impl BigTextApp {
                                     }
                                 }
                                 watch(d, tx, waker);
-                                let p = o.path.clone();
+                                let p = d.unpacked_from.clone().unwrap_or(o.path);
                                 self.add_recent(&p);
                             }
                             Err(e) => d.state = DocState::Failed(e),
+                        }
+                    } else if let Ok(o) = result.as_ref().map(|o| (o.unpacked.is_some(), o.path.clone())) {
+                        // The tab was closed while its file was being unpacked.
+                        drop(result);
+                        if o.0 {
+                            jobs::spawn("remove-unpacked", move || bigtext::decompress::remove_temp(&o.1));
                         }
                     }
                 }
@@ -439,6 +481,10 @@ impl BigTextApp {
         d.watch_cancel.cancel();
         if let Some(j) = &d.save_job {
             j.cancel.cancel();
+        }
+        if let (Some(temp), Some(_)) = (d.path.clone(), &d.unpacked_from) {
+            drop(d);
+            jobs::spawn("remove-unpacked", move || bigtext::decompress::remove_temp(&temp));
         }
         if self.docs.is_empty() {
             self.new_doc();
@@ -1538,5 +1584,25 @@ impl eframe::App for BigTextApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.apply_update_on_exit();
+        // Unpacked copies are deleted once nothing maps them any more.
+        let temps: Vec<PathBuf> = self.docs.iter().filter(|d| d.unpacked_from.is_some()).filter_map(|d| d.path.clone()).collect();
+        if !temps.is_empty() {
+            for d in &mut self.docs {
+                d.cancel_jobs();
+                d.watch_cancel.cancel();
+            }
+            self.docs.clear();
+            for t in temps {
+                for _ in 0..20 {
+                    if std::fs::remove_file(&t).is_ok() || !t.exists() {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                if let Some(dir) = t.parent() {
+                    let _ = std::fs::remove_dir(dir);
+                }
+            }
+        }
     }
 }
