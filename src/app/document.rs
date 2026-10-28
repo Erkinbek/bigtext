@@ -147,6 +147,9 @@ pub struct Document {
     pub diff_marks: Vec<u64>,
     /// The compressed file this document is an unpacked copy of (`path` is the temporary copy).
     pub unpacked_from: Option<PathBuf>,
+    /// `path` is a temporary copy (unpacked archive, standard input): Save means Save As, and
+    /// the copy is deleted when the tab closes.
+    pub temporary: bool,
     /// Progress and cancellation of the open job (shown while a compressed file is unpacked).
     pub unpacking: Option<(bigtext::jobs::Progress, CancelToken)>,
     /// Second pane of a split view (shares caret and selection, scrolls independently).
@@ -169,6 +172,8 @@ pub struct Restore {
     pub wrap: bool,
     pub bookmarks: Vec<u64>,
     pub line: Option<u64>,
+    /// Go to the end (follow mode from the command line).
+    pub end: bool,
 }
 
 /// Scroll state of the secondary split pane.
@@ -234,6 +239,7 @@ impl Document {
             bookmarks: Vec::new(),
             diff_marks: Vec::new(),
             unpacked_from: None,
+            temporary: false,
             unpacking: None,
             split: None,
             active_pane: 0,

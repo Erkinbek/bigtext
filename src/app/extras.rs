@@ -238,6 +238,8 @@ impl BigTextApp {
             tabs: self
                 .docs
                 .iter()
+                // Standard input cannot be reopened.
+                .filter(|d| !d.temporary || d.unpacked_from.is_some())
                 .filter_map(|d| {
                     Some(TabState {
                         path: PathBuf::from(file::display_path(d.unpacked_from.as_deref().or(d.path.as_deref())?)),
@@ -287,7 +289,7 @@ impl BigTextApp {
         for t in p.tabs {
             self.open_path(t.path.clone());
             if let Some(d) = self.docs.last_mut() {
-                d.restore = Some(Restore { caret: t.caret, top: t.top, wrap: t.wrap, bookmarks: t.bookmarks, line: None });
+                d.restore = Some(Restore { caret: t.caret, top: t.top, wrap: t.wrap, bookmarks: t.bookmarks, line: None, end: false });
             }
         }
         if !self.docs.is_empty() {

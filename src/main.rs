@@ -3,15 +3,48 @@
 
 mod app;
 mod bench_ui;
+mod cli;
 mod self_test;
 mod view;
 
 use std::path::PathBuf;
 use std::time::Instant;
 
+/// Shows a message on the console and, in a Windows release build (which has no console), in a
+/// dialog.
+fn tell(title: &str, text: &str, error: bool) {
+    if error {
+        eprintln!("{text}");
+    } else {
+        println!("{text}");
+    }
+    if cfg!(all(windows, not(debug_assertions))) {
+        rfd::MessageDialog::new()
+            .set_level(if error { rfd::MessageLevel::Error } else { rfd::MessageLevel::Info })
+            .set_title(title)
+            .set_description(text)
+            .set_buttons(rfd::MessageButtons::Ok)
+            .show();
+    }
+}
+
+/// Copies standard input into a temporary file on a thread and returns the file, which the
+/// editor then follows as it grows.
+fn stdin_to_temp() -> std::io::Result<PathBuf> {
+    let dir = bigtext::decompress::temp_dir().join(format!("{}-stdin", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join("stdin.txt");
+    let mut file = std::fs::File::create(&path)?;
+    std::thread::Builder::new().name("stdin".into()).spawn(move || {
+        let _ = std::io::copy(&mut std::io::stdin().lock(), &mut file);
+    })?;
+    Ok(path)
+}
+
 fn main() -> eframe::Result {
     let process_start = Instant::now();
-    let mut files = Vec::new();
+    let mut user = cli::UserArgs::default();
+    let mut errors = Vec::new();
     let mut bench: Option<(PathBuf, PathBuf)> = None;
     let mut screenshot: Option<PathBuf> = None;
     let mut scenario = bench_ui::Scenario::Scroll;
@@ -46,12 +79,35 @@ fn main() -> eframe::Result {
                     b.1 = PathBuf::from(p);
                 }
             }
-            _ => files.push(PathBuf::from(a)),
+            Some(s) => {
+                if let Err(e) = cli::take(&mut user, s, &mut || args.next().and_then(|x| x.into_string().ok()), &|p| p.exists()) {
+                    errors.push(e);
+                }
+            }
+            // A path that is not valid Unicode.
+            None => user.files.push((PathBuf::from(a), None)),
         }
+    }
+    if user.help {
+        tell("BigText", cli::USAGE, false);
+        return Ok(());
+    }
+    if !errors.is_empty() {
+        tell("BigText", &format!("{}\n\n{}", errors.join("\n"), cli::USAGE), true);
+        std::process::exit(2);
     }
 
     // The screenshot tour opens its big file itself, after the demo files are created.
-    let tour_file = tour.as_ref().map(|_| files.pop().unwrap_or_else(|| PathBuf::from("testdata/random-lines-10g.txt")));
+    let tour_file = tour.as_ref().map(|_| user.files.pop().map(|f| f.0).unwrap_or_else(|| PathBuf::from("testdata/random-lines-10g.txt")));
+    let stdin = match user.stdin.then(stdin_to_temp) {
+        Some(Ok(p)) => Some(p),
+        Some(Err(e)) => {
+            tell("BigText", &format!("Could not read standard input: {e}"), true);
+            None
+        }
+        None => None,
+    };
+    let start = app::StartOptions { files: user.files, find: user.find, follow: user.follow, stdin };
 
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("BigText")
@@ -67,7 +123,7 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             let persist = bench.is_none() && self_test.is_none() && tour.is_none();
-            let mut app = app::BigTextApp::new(cc, files, process_start, persist);
+            let mut app = app::BigTextApp::new(cc, start, process_start, persist);
             if let Some((file, report)) = bench {
                 let mut b = bench_ui::BenchUi::new(file, report);
                 b.screenshot = screenshot.clone();

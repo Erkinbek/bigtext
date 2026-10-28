@@ -172,7 +172,17 @@ packages listed under [Building](#building)). Or build it yourself (see [Buildin
 ## Usage
 
 ```
-bigtext [FILE ...]
+bigtext [OPTIONS] [FILE[:LINE] ...]
+
+  FILE:LINE        open FILE at line LINE (FILE:LINE:COLUMN, as compilers and grep -n
+                   print it, works too)
+  -                read standard input, following it as it grows
+                   (e.g.  journalctl -f | bigtext -)
+  -n, --line N     go to line N in the last file
+  --find TEXT      search for TEXT (from the start, or from --line)
+  --regex RE       search for a regular expression
+  -f, --follow     follow the files as they grow, like tail -f
+  -h, --help       show this help
 ```
 
 | Shortcut | Action |

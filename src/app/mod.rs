@@ -32,7 +32,18 @@ use bigtext::search::Matcher;
 use bigtext::text::Piece;
 
 use crate::view::{hex_view, table_view, text_view};
-use document::{Banner, DocState, Document};
+use document::{Banner, DocState, Document, Restore};
+
+/// What the command line asks for.
+#[derive(Default)]
+pub struct StartOptions {
+    /// Files with the line to open them at.
+    pub files: Vec<(PathBuf, Option<u64>)>,
+    pub find: Option<bigtext::search::Query>,
+    pub follow: bool,
+    /// Temporary file that standard input is copied into.
+    pub stdin: Option<PathBuf>,
+}
 
 pub struct Opened {
     pub source: Arc<Source>,
@@ -178,6 +189,8 @@ pub struct BigTextApp {
     pub shortcuts_ui: commands::ShortcutsUi,
     /// Matcher for the occurrences of the selected text, by the text it was built for.
     occurrences: Option<(String, bigtext::encoding::Codec, Option<Arc<Matcher>>)>,
+    /// Document to search once it is open (command line --find).
+    pending_find: Option<u64>,
 }
 
 /// Turns I/O errors into messages a user can act on.
@@ -245,7 +258,7 @@ pub fn same_path(a: &Path, b: &Path) -> bool {
 }
 
 impl BigTextApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, files: Vec<PathBuf>, process_start: Instant, persist: bool) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, start: StartOptions, process_start: Instant, persist: bool) -> Self {
         let (tx, rx) = mpsc::channel();
         let ctx = cc.egui_ctx.clone();
         let waker: Waker = Arc::new(move || ctx.request_repaint());
@@ -287,6 +300,7 @@ impl BigTextApp {
             palette: None,
             shortcuts_ui: commands::ShortcutsUi::default(),
             occurrences: None,
+            pending_find: None,
         };
         app.search.query.case_sensitive = true;
         if persist {
@@ -304,7 +318,7 @@ impl BigTextApp {
                     app.keymap.changed.insert(c, k);
                 }
             }
-            if files.is_empty() {
+            if start.files.is_empty() && start.stdin.is_none() {
                 app.restore_session(state);
             } else {
                 app.recent = state.recent;
@@ -314,13 +328,61 @@ impl BigTextApp {
             }
         }
         cc.egui_ctx.set_theme(if app.settings.dark { egui::Theme::Dark } else { egui::Theme::Light });
-        for f in files {
-            app.open_path(f);
-        }
+        app.apply_start(start);
         if app.docs.is_empty() {
             app.new_doc();
         }
         app
+    }
+
+    /// Opens the files from the command line (at their lines, followed, searched).
+    pub(crate) fn apply_start(&mut self, start: StartOptions) {
+        let follow = start.follow;
+        let opened = |app: &mut BigTextApp, path: PathBuf, line: Option<u64>, end: bool| {
+            app.open_path(path);
+            let Some(d) = app.docs.get_mut(app.active) else { return };
+            d.follow |= follow;
+            match (line, d.is_ready()) {
+                // Already open: move there now.
+                (Some(n), true) => d.goto_line(n),
+                (None, true) if end => d.set_caret(d.buf.len(), false),
+                (_, false) if line.is_some() || end => d.restore = Some(Restore { line, end: line.is_none() && end, ..Default::default() }),
+                _ => {}
+            }
+        };
+        for (path, line) in start.files {
+            opened(self, path, line, follow);
+        }
+        if let Some(path) = start.stdin {
+            opened(self, path, None, true);
+            if let Some(d) = self.docs.get_mut(self.active) {
+                d.title = "stdin".into();
+                d.temporary = true;
+                d.read_only = true;
+                d.follow = true;
+            }
+        }
+        if let Some(q) = start.find {
+            self.search.query = q;
+            self.search.open = true;
+            self.pending_find = self.docs.get(self.active).map(|d| d.id);
+        }
+    }
+
+    /// Runs the command line's `--find` once its document has opened.
+    fn run_pending_find(&mut self) {
+        let Some(id) = self.pending_find else { return };
+        match self.docs.iter().position(|d| d.id == id) {
+            // After a --line go-to has its exact position (it can start as an estimate).
+            Some(i) if self.docs[i].is_ready() && self.docs[i].view.pending_goto_line.is_none() => {
+                self.pending_find = None;
+                self.active = i;
+                self.find_next(true);
+            }
+            Some(i) if matches!(self.docs[i].state, DocState::Failed(_)) => self.pending_find = None,
+            Some(_) => {}
+            None => self.pending_find = None,
+        }
     }
 
     fn alloc_id(&mut self) -> u64 {
@@ -393,6 +455,7 @@ impl BigTextApp {
                                         &[("name", &d.title), ("size", &human_bytes(o.source.len()))],
                                     )));
                                     d.unpacked_from = Some(orig);
+                                    d.temporary = true;
                                 }
                                 let prefix = d.reload_prefix.take();
                                 let follow_end = d.follow && prefix.is_some();
@@ -406,6 +469,7 @@ impl BigTextApp {
                                     d.view.wrap = r.wrap;
                                     d.bookmarks = r.bookmarks.into_iter().filter(|&b| b <= len).collect();
                                     match r.line {
+                                        None if r.end => d.set_caret(len, false),
                                         Some(line) => d.goto_line(line),
                                         None => {
                                             d.set_caret(r.caret.min(len), false);
@@ -415,8 +479,11 @@ impl BigTextApp {
                                     }
                                 }
                                 watch(d, tx, waker);
-                                let p = d.unpacked_from.clone().unwrap_or(o.path);
-                                self.add_recent(&p);
+                                // Standard input has no file to remember.
+                                if !d.temporary || d.unpacked_from.is_some() {
+                                    let p = d.unpacked_from.clone().unwrap_or(o.path);
+                                    self.add_recent(&p);
+                                }
                             }
                             Err(e) => d.state = DocState::Failed(e),
                         }
@@ -507,7 +574,7 @@ impl BigTextApp {
         if let Some(j) = &d.save_job {
             j.cancel.cancel();
         }
-        if let (Some(temp), Some(_)) = (d.path.clone(), &d.unpacked_from) {
+        if let (Some(temp), true) = (d.path.clone(), d.temporary) {
             drop(d);
             jobs::spawn("remove-unpacked", move || bigtext::decompress::remove_temp(&temp));
         }
@@ -1158,6 +1225,7 @@ impl eframe::App for BigTextApp {
             d.tick();
             d.refine_goto();
         }
+        self.run_pending_find();
         self.sync_diff_marks();
 
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
@@ -1288,7 +1356,7 @@ impl eframe::App for BigTextApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.apply_update_on_exit();
         // Unpacked copies are deleted once nothing maps them any more.
-        let temps: Vec<PathBuf> = self.docs.iter().filter(|d| d.unpacked_from.is_some()).filter_map(|d| d.path.clone()).collect();
+        let temps: Vec<PathBuf> = self.docs.iter().filter(|d| d.temporary).filter_map(|d| d.path.clone()).collect();
         if !temps.is_empty() {
             for d in &mut self.docs {
                 d.cancel_jobs();

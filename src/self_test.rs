@@ -154,6 +154,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
     gz.write_all(b"packed line 1\npacked line 2\n")?;
     std::fs::write(dir.join("packed.log.gz"), gz.finish()?)?;
+    std::fs::write(dir.join("cli.log"), "first 10:00\nsecond 10:00 10:05\nthird\n")?;
     std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
     std::fs::write(dir.join("no-newline.txt"), "first\nsecond without newline")?;
     std::fs::write(dir.join("cr-only.txt"), "old\rmac\rline\rendings\r")?;
@@ -1060,6 +1061,21 @@ impl SelfTest {
             };
             app.csv.stats = None;
             check(s.name == "age" && s.rows == 3 && s.numeric == 3 && s.sum == 96.0 && s.max == Some(41.0), format!("{s:?}"))
+        }));
+        s("command line: FILE:LINE with --find searches from that line", Box::new(|app, c| {
+            if c.first() {
+                let (path, line) = crate::cli::split_line(&format!("{}:2", c.file("cli.log").display()), |p| p.exists());
+                let find = bigtext::search::Query { pattern: "10:0".into(), case_sensitive: true, ..Default::default() };
+                app.apply_start(crate::app::StartOptions { files: vec![(path, line)], find: Some(find), ..Default::default() });
+                return Step::Wait;
+            }
+            let d = doc(app);
+            let sel = d.selection();
+            if !d.is_ready() || sel != (19, 23) {
+                return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("title {} selection {sel:?}", d.title)) } else { Step::Wait };
+            }
+            app.search.open = false;
+            Step::Next
         }));
         s("open time.log", open_step("time.log"));
         s("go to time (Ctrl+Shift+T) and the Δt of a selection", Box::new(|app, c| {
