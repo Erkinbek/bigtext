@@ -9,6 +9,7 @@ pub mod encoding;
 pub mod file;
 pub mod filter;
 pub mod find_files;
+pub mod headless;
 pub mod histogram;
 pub mod index;
 pub mod jobs;

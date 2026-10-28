@@ -6,6 +6,8 @@
 #ifndef SourceExe
   #define SourceExe "..\target\release\bigtext.exe"
 #endif
+; The command-line tools, built next to bigtext.exe.
+#define CliExe AddBackslash(ExtractFileDir(SourceExe)) + "bigtext-cli.exe"
 #define AppName "BigText"
 #define AppVersion "0.3.0"
 
@@ -35,6 +37,7 @@ Name: "contextmenu"; Description: "Add ""Open with BigText"" to the Explorer con
 
 [Files]
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "bigtext.exe"; Flags: ignoreversion
+Source: "{#CliExe}"; DestDir: "{app}"; DestName: "bigtext-cli.exe"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\bigtext.exe"

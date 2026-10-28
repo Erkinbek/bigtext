@@ -66,6 +66,7 @@ jobs:
           $out = "dist/bigtext-${{ matrix.name }}"
           New-Item -ItemType Directory -Force $out | Out-Null
           Copy-Item target/${{ matrix.target }}/release/bigtext.exe $out/
+          Copy-Item target/${{ matrix.target }}/release/bigtext-cli.exe $out/
           Copy-Item target/${{ matrix.target }}/release/bigtext-bench.exe $out/
           Copy-Item target/${{ matrix.target }}/release/gen-testfiles.exe $out/
           Copy-Item README.md $out/
@@ -83,7 +84,7 @@ jobs:
         run: |
           out="dist/bigtext-${{ matrix.name }}"
           mkdir -p "$out"
-          cp target/${{ matrix.target }}/release/bigtext target/${{ matrix.target }}/release/bigtext-bench \
+          cp target/${{ matrix.target }}/release/bigtext target/${{ matrix.target }}/release/bigtext-cli target/${{ matrix.target }}/release/bigtext-bench \
              target/${{ matrix.target }}/release/gen-testfiles README.md "$out/"
           tar -C dist -czf "dist/bigtext-${{ matrix.name }}.tar.gz" "bigtext-${{ matrix.name }}"
 

@@ -5,6 +5,17 @@ All notable changes to BigText. Each release on
 
 ## Unreleased
 
+### Command line
+
+- **Script commands without a window**, in the new console program **`bigtext-cli`** (also
+  `bigtext --filter …`): `filter` (grep-like, `-v -i -w -E`, to a file in the original
+  encoding with `-o` or to the console), `levels ERROR,WARN`, `count`, `split --size 100MB` /
+  `--lines N`, `stats` (size, lines, encoding, line endings, first and last time), `merge` (logs
+  in time order) and `convert --to json|jsonl|md|xlsx|csv`. Exit codes: 0 done, 1 nothing
+  matched, 2 error. They stream like the editor, so they work on files of any size.
+  `bigtext-cli.exe` comes with the Windows zip and installer, since `bigtext.exe` is a windowed
+  program that consoles do not wait for.
+
 ### Tabs
 
 - **Ctrl+Tab** shows the tabs in most-recently-used order: hold Ctrl, press Tab (Shift+Tab back)

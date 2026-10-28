@@ -17,6 +17,11 @@ Usage: bigtext [OPTIONS] [FILE[:LINE] ...]
   --regex RE       search for a regular expression
   -f, --follow     follow the files as they grow, like tail -f
   -h, --help       show this help
+
+Script commands, without a window (bigtext-cli runs the same; on Windows use it in
+scripts, since bigtext.exe is a windowed program):
+  --filter, --levels, --count, --split, --stats, --merge, --convert
+                   see  bigtext-cli --help
 ";
 
 #[derive(Debug, Default, PartialEq)]

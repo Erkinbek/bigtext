@@ -33,6 +33,10 @@ path = "src/bin/gen_testfiles.rs"
 name = "bigtext-bench"
 path = "src/bin/bench.rs"
 
+[[bin]]
+name = "bigtext-cli"
+path = "src/bin/cli.rs"
+
 [dependencies]
 memmap2 = "0.9"
 memchr = "2.7"

@@ -41,7 +41,31 @@ fn stdin_to_temp() -> std::io::Result<PathBuf> {
     Ok(path)
 }
 
+/// Lets a windowed build (Windows release) print to the console it was started from.
+#[cfg(windows)]
+fn attach_console() {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn AttachConsole(process: u32) -> i32;
+    }
+    const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
+    // SAFETY: a plain Win32 call without pointers; failing (no parent console) is harmless.
+    unsafe {
+        AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+}
+
 fn main() -> eframe::Result {
+    // `bigtext --filter …` and the other script commands run without a window.
+    let raw: Vec<String> = std::env::args().skip(1).collect();
+    if raw.first().is_some_and(|a| bigtext::headless::is_command(a)) {
+        #[cfg(windows)]
+        if cfg!(not(debug_assertions)) {
+            attach_console();
+        }
+        let code = bigtext::headless::run(&raw, &mut std::io::stdout().lock(), &mut std::io::stderr().lock());
+        std::process::exit(code);
+    }
     let process_start = Instant::now();
     let mut user = cli::UserArgs::default();
     let mut errors = Vec::new();
