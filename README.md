@@ -83,6 +83,11 @@ Single self-contained binary, no runtime dependencies.
 - **Other**: line numbers, zoom (Ctrl+wheel), word wrap (off by default), light/dark theme,
   read-only toggle (auto for read-only files), external change detection with Reload, and a
   **follow (tail) mode** for growing logs that resumes indexing where it stopped.
+- **Text operations** (Edit → Text) on the selection, or on the whole document up to 64 MB:
+  sort lines (A→Z, Z→A, by leading number), reverse, remove duplicate lines, UPPER / lower
+  case, trim trailing whitespace, tabs ↔ spaces, and JSON pretty-print / minify (token by
+  token: key order, numbers and escapes stay as written; JSON Lines stay one value per line).
+  Runs on a worker and is one undo step.
 - **Bookmarks** (Ctrl+F2, F2 / Shift+F2) that stay on their lines while you edit.
 - **Split view** (Ctrl+\\): two panes over one document with independent scrolling.
 - **Syntax highlighting** for logs, JSON, XML/HTML, CSV/TSV, SQL and INI/TOML/YAML — computed

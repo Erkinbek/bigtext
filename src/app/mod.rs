@@ -10,6 +10,7 @@ pub mod marks;
 pub mod ops;
 pub mod search_panel;
 pub mod tasks;
+pub mod text_tools;
 pub mod update;
 
 use std::collections::VecDeque;
@@ -56,6 +57,7 @@ pub enum Msg {
     Update(update::Event),
     ColumnsDeleted(Box<columns::ColumnsDeleted>),
     TaskDone { id: u64, outcome: tasks::TaskOutcome },
+    TextOp(Box<text_tools::TextOpDone>),
     TimeFound { doc: u64, version: u64, result: Result<u64, bigtext::timestamp::TimeError> },
 }
 
@@ -442,6 +444,7 @@ impl BigTextApp {
                 Msg::Update(e) => self.on_update_event(e),
                 Msg::ColumnsDeleted(c) => self.on_columns_deleted(*c),
                 Msg::TaskDone { id, outcome } => self.on_task_done(id, outcome),
+                Msg::TextOp(r) => self.on_text_op(*r),
                 Msg::TimeFound { doc, version, result } => self.on_time_found(doc, version, result),
             }
         }
@@ -706,6 +709,9 @@ impl BigTextApp {
                     if ui.button("Delete line\tCtrl+Shift+K").clicked() {
                         d.delete_line();
                     }
+                }
+                self.text_menu(ui);
+                if let Some(d) = self.docs.get_mut(self.active) {
                     ui.separator();
                     if ui.button("Toggle bookmark\tCtrl+F2").clicked() {
                         d.toggle_bookmark();

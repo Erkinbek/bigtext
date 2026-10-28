@@ -629,6 +629,26 @@ impl SelfTest {
             }
             check(text(app) == ORIGINAL, "undo of replace all failed")
         }));
+        s("Edit → Text: sort the selected lines, then undo", Box::new(|app, c| {
+            if c.first() {
+                doc(app).select(0, 51);
+                app.text_op(bigtext::textops::Op::SortAsc);
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let t = text(app);
+                if t == ORIGINAL {
+                    return if c.waited() > Duration::from_secs(3) { Step::Fail("not sorted".into()) } else { Step::Wait };
+                }
+                if !t.starts_with("    indented line\nalpha beta gamma\nthird line here\nfoo") || doc(app).selection() != (0, 51) {
+                    return Step::Fail(format!("sorted {t:?} selection {:?}", doc(app).selection()));
+                }
+                c.mark = 1;
+                c.key(Key::Z, CTRL);
+                return Step::Wait;
+            }
+            check(text(app) == ORIGINAL, "undo of the sort failed")
+        }));
         s("go to line (Ctrl+G) and byte offset (Ctrl+Shift+G)", Box::new(|app, c| {
             if c.first() {
                 c.key(Key::G, CTRL);

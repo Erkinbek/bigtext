@@ -15,5 +15,6 @@ pub mod split;
 pub mod search;
 pub mod sysinfo;
 pub mod text;
+pub mod textops;
 pub mod timestamp;
 pub mod update;
