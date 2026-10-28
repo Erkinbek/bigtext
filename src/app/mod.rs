@@ -1,6 +1,7 @@
 //! Application shell: tabs, menus, dialogs, status bar and background-job plumbing.
 
 pub mod columns;
+pub mod commands;
 pub mod csv_tools;
 pub mod document;
 pub mod export;
@@ -20,11 +21,10 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use egui::{Align, Color32, Key, KeyboardShortcut, Layout, Modifiers, RichText};
+use egui::{Align, Color32, Key, Layout, RichText};
 
 use bigtext::encoding::{self, Detected, Encoding};
 use bigtext::file::{self, OpenMode, Source};
-use bigtext::encoding::LineEnding;
 use bigtext::jobs::{self, human_bytes, CancelToken, Waker};
 use bigtext::replace::Template;
 use bigtext::search::Matcher;
@@ -158,7 +158,6 @@ pub struct BigTextApp {
     exit_confirmed: bool,
     exit_after_jobs: bool,
     pub show_about: bool,
-    pub show_shortcuts: bool,
     pub recent: Vec<PathBuf>,
     /// Session state is saved and restored (off for benchmarks and the self-test).
     pub persist: bool,
@@ -173,6 +172,9 @@ pub struct BigTextApp {
     pub marks: marks::MarksUi,
     pub export: export::ExportUi,
     pub csv: csv_tools::CsvUi,
+    pub keymap: commands::Keymap,
+    pub palette: Option<commands::Palette>,
+    pub shortcuts_ui: commands::ShortcutsUi,
     /// Matcher for the occurrences of the selected text, by the text it was built for.
     occurrences: Option<(String, bigtext::encoding::Codec, Option<Arc<Matcher>>)>,
 }
@@ -267,7 +269,6 @@ impl BigTextApp {
             exit_confirmed: false,
             exit_after_jobs: false,
             show_about: false,
-            show_shortcuts: false,
             recent: Vec::new(),
             persist,
             diff: None,
@@ -281,6 +282,9 @@ impl BigTextApp {
             marks: marks::MarksUi::default(),
             export: export::ExportUi::default(),
             csv: csv_tools::CsvUi::default(),
+            keymap: commands::Keymap::default(),
+            palette: None,
+            shortcuts_ui: commands::ShortcutsUi::default(),
             occurrences: None,
         };
         app.search.query.case_sensitive = true;
@@ -291,6 +295,11 @@ impl BigTextApp {
             jobs::spawn("cleanup-unpacked", bigtext::decompress::cleanup_old);
             app.settings.marks = std::mem::take(&mut state.marks);
             app.search.history = std::mem::take(&mut state.history);
+            for (id, k) in std::mem::take(&mut state.keys) {
+                if let (Some(c), Some(k)) = (commands::Cmd::from_id(&id), commands::key_from_string(&k)) {
+                    app.keymap.changed.insert(c, k);
+                }
+            }
             if files.is_empty() {
                 app.restore_session(state);
             } else {
@@ -527,332 +536,6 @@ impl BigTextApp {
 
     // ------------------------------------------------------------------------------------------
     // UI pieces.
-
-    fn shortcuts(&mut self, ctx: &egui::Context) {
-        let sc = |m: Modifiers, k: Key| KeyboardShortcut::new(m, k);
-        let cmd = Modifiers::COMMAND;
-        let cmd_shift = Modifiers::COMMAND | Modifiers::SHIFT;
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::O))) {
-            self.open_dialog();
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::N))) {
-            self.new_doc();
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::W))) {
-            if let Some(id) = self.docs.get(self.active).map(|d| d.id) {
-                self.close_tab(id, false);
-            }
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::S))) {
-            self.save(true);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::S))) {
-            self.save(false);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::F))) {
-            self.open_search(false);
-            self.start_filter();
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::F))) {
-            self.open_search(false);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::H))) {
-            self.open_search(true);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::F3))) {
-            self.find_next(false);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::NONE, Key::F3))) {
-            self.find_next(true);
-        }
-        // egui ignores extra Shift when matching, so the Shift variant must be tested first.
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::G))) {
-            self.goto = GotoDialog::new(GotoMode::Offset);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::G))) {
-            self.goto = GotoDialog::new(GotoMode::Line);
-        }
-        // Before Ctrl+T (table view), for the same reason.
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::T))) {
-            self.goto = GotoDialog::new(GotoMode::Time);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::Equals)) || i.consume_shortcut(&sc(cmd, Key::Plus))) {
-            self.settings.font_size = (self.settings.font_size + 1.0).min(72.0);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::Minus))) {
-            self.settings.font_size = (self.settings.font_size - 1.0).max(6.0);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::Num0))) {
-            self.settings.font_size = 14.0;
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::F2))) {
-            if let Some(d) = self.active_doc() {
-                d.toggle_bookmark();
-            }
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::F2))) {
-            if let Some(d) = self.active_doc() {
-                d.goto_bookmark(false);
-            }
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::NONE, Key::F2))) {
-            if let Some(d) = self.active_doc() {
-                d.goto_bookmark(true);
-            }
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::Backslash))) {
-            if let Some(d) = self.active_doc() {
-                toggle_split(d);
-            }
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::T))) {
-            if let Some(d) = self.active_doc() {
-                d.table = !d.table;
-                d.view.scroll_to_caret = true;
-            }
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::NONE, Key::F12))) {
-            self.settings.show_perf = !self.settings.show_perf;
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::ALT, Key::Z))) {
-            if let Some(d) = self.active_doc() {
-                d.view.wrap = !d.view.wrap;
-                d.view.scroll_to_caret = true;
-            }
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::CTRL, Key::Tab))) && !self.docs.is_empty() {
-            self.active = (self.active + 1) % self.docs.len();
-        }
-    }
-
-    fn menu_bar(&mut self, ui: &mut egui::Ui) {
-        egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button("File", |ui| {
-                if ui.button("New\tCtrl+N").clicked() {
-                    self.new_doc();
-                }
-                if ui.button("Open…\tCtrl+O").clicked() {
-                    self.open_dialog();
-                }
-                if ui.button("Save\tCtrl+S").clicked() {
-                    self.save(false);
-                }
-                if ui.button("Save As…\tCtrl+Shift+S").clicked() {
-                    self.save(true);
-                }
-                ui.checkbox(&mut self.settings.backup_on_save, "Keep backup (.bak) on save");
-                if let Some(d) = self.docs.get_mut(self.active) {
-                    ui.menu_button("Line endings on save", |ui| {
-                        ui.radio_value(&mut d.eol_on_save, None, "Keep as is");
-                        ui.radio_value(&mut d.eol_on_save, Some(LineEnding::Lf), "Convert to LF");
-                        ui.radio_value(&mut d.eol_on_save, Some(LineEnding::CrLf), "Convert to CRLF");
-                        ui.radio_value(&mut d.eol_on_save, Some(LineEnding::Cr), "Convert to CR");
-                    });
-                }
-                ui.menu_button("Save with encoding", |ui| {
-                    let choices = [
-                        (Encoding::Utf8, false, "UTF-8"),
-                        (Encoding::Utf8, true, "UTF-8 with BOM"),
-                        (Encoding::Utf16Le, true, "UTF-16 LE"),
-                        (Encoding::Utf16Be, true, "UTF-16 BE"),
-                        (Encoding::Windows1251, false, "Windows-1251"),
-                        (Encoding::Windows1252, false, "Windows-1252"),
-                        (Encoding::Latin1, false, "ISO-8859-1"),
-                    ];
-                    for (enc, bom, label) in choices {
-                        if ui.button(i18n::tr(label)).clicked() {
-                            self.save_with(true, Some((enc, bom)));
-                            ui.close();
-                        }
-                    }
-                });
-                ui.menu_button("Reopen with encoding", |ui| {
-                    for enc in Encoding::ALL {
-                        if ui.button(enc.name()).clicked() {
-                            self.reopen_with(enc);
-                        }
-                    }
-                });
-                let recent = self.recent.clone();
-                ui.add_enabled_ui(!recent.is_empty(), |ui| {
-                    ui.menu_button("Open recent", |ui| {
-                        for p in recent {
-                            if ui.button(file::display_path(&p)).clicked() {
-                                self.open_path(p);
-                            }
-                        }
-                        ui.separator();
-                        if ui.button("Clear list").clicked() {
-                            self.recent.clear();
-                            self.persist_state();
-                        }
-                    });
-                });
-                ui.separator();
-                if ui.button("Export lines…").clicked() {
-                    self.open_export_lines();
-                }
-                if ui.button("Save selection as…").clicked() {
-                    self.save_selection_as();
-                }
-                if ui.button("Split file…").clicked() {
-                    self.open_split();
-                }
-                if ui.button("Compare with…").clicked() {
-                    self.compare_dialog();
-                }
-                ui.separator();
-                if ui.button("Close tab\tCtrl+W").clicked() {
-                    if let Some(id) = self.docs.get(self.active).map(|d| d.id) {
-                        self.close_tab(id, false);
-                    }
-                }
-                if ui.button("Exit").clicked() {
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                }
-            });
-            ui.menu_button("Edit", |ui| {
-                let ro = self.docs.get(self.active).map(|d| d.read_only).unwrap_or(false);
-                if let Some(d) = self.docs.get_mut(self.active) {
-                    if ui.add_enabled(!d.undo.is_empty(), egui::Button::new("Undo\tCtrl+Z")).clicked() {
-                        d.undo();
-                    }
-                    if ui.add_enabled(!d.redo.is_empty(), egui::Button::new("Redo\tCtrl+Y")).clicked() {
-                        d.redo();
-                    }
-                    ui.separator();
-                    if ui.button("Select all\tCtrl+A").clicked() {
-                        let len = d.buf.len();
-                        d.view.anchor = d.min_caret();
-                        d.view.caret = len;
-                    }
-                    if ui.button("Duplicate line\tCtrl+D").clicked() {
-                        d.duplicate_line();
-                    }
-                    if ui.button("Delete line\tCtrl+Shift+K").clicked() {
-                        d.delete_line();
-                    }
-                }
-                self.text_menu(ui);
-                if let Some(d) = self.docs.get_mut(self.active) {
-                    ui.separator();
-                    if ui.button("Toggle bookmark\tCtrl+F2").clicked() {
-                        d.toggle_bookmark();
-                    }
-                    if ui.button("Next bookmark\tF2").clicked() {
-                        d.goto_bookmark(true);
-                    }
-                    if ui.button("Previous bookmark\tShift+F2").clicked() {
-                        d.goto_bookmark(false);
-                    }
-                    if ui.add_enabled(!d.bookmarks.is_empty(), egui::Button::new("Clear bookmarks")).clicked() {
-                        d.bookmarks.clear();
-                    }
-                    ui.separator();
-                    let mut r = ro;
-                    if ui.checkbox(&mut r, "Read-only").changed() {
-                        d.read_only = r;
-                    }
-                }
-            });
-            ui.menu_button("Search", |ui| {
-                if ui.button("Find…\tCtrl+F").clicked() {
-                    self.open_search(false);
-                }
-                if ui.button("Replace…\tCtrl+H").clicked() {
-                    self.open_search(true);
-                }
-                if ui.button("Find next\tF3").clicked() {
-                    self.find_next(true);
-                }
-                if ui.button("Find previous\tShift+F3").clicked() {
-                    self.find_next(false);
-                }
-                if ui.button("Find all").clicked() {
-                    self.open_search(false);
-                    self.find_all();
-                }
-                if ui.button("Filter lines\tCtrl+Shift+F").clicked() {
-                    self.open_search(false);
-                    self.start_filter();
-                }
-                ui.separator();
-                if ui.button("Go to line…\tCtrl+G").clicked() {
-                    self.goto = GotoDialog::new(GotoMode::Line);
-                }
-                if ui.button("Go to byte offset…\tCtrl+Shift+G").clicked() {
-                    self.goto = GotoDialog::new(GotoMode::Offset);
-                }
-                if ui.button("Go to time…\tCtrl+Shift+T").clicked() {
-                    self.goto = GotoDialog::new(GotoMode::Time);
-                }
-            });
-            ui.menu_button("View", |ui| {
-                if let Some(d) = self.docs.get_mut(self.active) {
-                    if ui.checkbox(&mut d.view.wrap, "Word wrap\tAlt+Z").changed() {
-                        d.view.scroll_to_caret = true;
-                    }
-                    if ui.checkbox(&mut d.hex, "Hex view").changed() {
-                        d.view.scroll_to_caret = true;
-                    }
-                    if ui.checkbox(&mut d.table, "Table view (CSV / TSV)\tCtrl+T").changed() {
-                        d.view.scroll_to_caret = true;
-                    }
-                    ui.checkbox(&mut d.follow, "Follow (tail) file changes");
-                    let mut split = d.split.is_some();
-                    if ui.checkbox(&mut split, "Split view\tCtrl+\\").changed() {
-                        toggle_split(d);
-                    }
-                    ui.separator();
-                    ui.checkbox(&mut self.settings.syntax, "Syntax highlighting");
-                    let auto = crate::view::highlight::Lang::from_path(d.path.as_deref());
-                    ui.menu_button("Highlight as", |ui| {
-                        if ui.radio(d.lang.is_none(), format!("Auto ({})", auto.name())).clicked() {
-                            d.lang = None;
-                        }
-                        for l in crate::view::highlight::Lang::ALL {
-                            if ui.radio(d.lang == Some(l), l.name()).clicked() {
-                                d.lang = Some(l);
-                            }
-                        }
-                    });
-                }
-                if ui.checkbox(&mut self.settings.dark, "Dark theme").changed() {
-                    ui.ctx().set_theme(if self.settings.dark { egui::Theme::Dark } else { egui::Theme::Light });
-                }
-                ui.separator();
-                if ui.button("Zoom in\tCtrl+=").clicked() {
-                    self.settings.font_size = (self.settings.font_size + 1.0).min(72.0);
-                }
-                if ui.button("Zoom out\tCtrl+-").clicked() {
-                    self.settings.font_size = (self.settings.font_size - 1.0).max(6.0);
-                }
-                if ui.button("Reset zoom\tCtrl+0").clicked() {
-                    self.settings.font_size = 14.0;
-                }
-                ui.checkbox(&mut self.settings.show_perf, "Performance overlay\tF12");
-                ui.separator();
-                if ui.button("Highlights…").clicked() {
-                    self.marks.open = true;
-                }
-            });
-            ui.menu_button("Help", |ui| {
-                if ui.button("Check for updates…").clicked() {
-                    self.check_for_updates(true);
-                }
-                if ui.checkbox(&mut self.update.auto, "Check for updates automatically").changed() {
-                    self.persist_state();
-                }
-                ui.separator();
-                if ui.button("Keyboard shortcuts").clicked() {
-                    self.show_shortcuts = true;
-                }
-                if ui.button("About BigText").clicked() {
-                    self.show_about = true;
-                }
-            });
-        });
-    }
 
     fn reopen_with(&mut self, enc: Encoding) {
         let Some(d) = self.docs.get_mut(self.active) else { return };
@@ -1206,17 +889,6 @@ impl BigTextApp {
                 about_contents(ui);
             });
         }
-        if self.show_shortcuts {
-            egui::Window::new("Keyboard shortcuts").open(&mut self.show_shortcuts).collapsible(false).show(ctx, |ui| {
-                egui::Grid::new("keys").striped(true).show(ui, |ui| {
-                    for (k, v) in SHORTCUTS {
-                        ui.monospace(*k);
-                        ui.label(*v);
-                        ui.end_row();
-                    }
-                });
-            });
-        }
     }
 
     /// Carries out the answer to a confirmation: 0 = cancel, 1 = primary, 2 = save.
@@ -1419,26 +1091,6 @@ fn about_contents(ui: &mut egui::Ui) {
     ui.small("Licensed under the MIT license. Built with Rust and egui.");
 }
 
-pub const SHORTCUTS: &[(&str, &str)] = &[
-    ("Ctrl+O / Ctrl+N", "Open / new"),
-    ("Ctrl+S / Ctrl+Shift+S", "Save / save as"),
-    ("Ctrl+W, Ctrl+Tab", "Close tab, next tab"),
-    ("Ctrl+F / Ctrl+H", "Find / replace"),
-    ("F3 / Shift+F3", "Find next / previous"),
-    ("Ctrl+Shift+F", "Filter lines"),
-    ("Ctrl+G / Ctrl+Shift+G", "Go to line / byte offset"),
-    ("Ctrl+Shift+T", "Go to time"),
-    ("Ctrl+Z / Ctrl+Y", "Undo / redo"),
-    ("Ctrl+D / Ctrl+Shift+K", "Duplicate line / delete line"),
-    ("Ctrl+A", "Select all (large-file safe)"),
-    ("Ctrl+wheel, Ctrl+= / Ctrl+-", "Zoom"),
-    ("Alt+Z", "Toggle word wrap"),
-    ("Ctrl+F2 / F2 / Shift+F2", "Toggle / next / previous bookmark"),
-    ("Ctrl+\\", "Split view"),
-    ("Ctrl+T", "Table view for CSV / TSV"),
-    ("Alt+drag", "Column (block) selection"),
-    ("F12", "Performance overlay"),
-];
 
 impl BigTextApp {
     pub(crate) fn test_has_confirm(&self) -> bool {
@@ -1493,7 +1145,7 @@ impl eframe::App for BigTextApp {
         }
 
         self.update_tick();
-        let modal_open = self.goto.is_some() || self.export.is_open() || self.csv.rename.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
+        let modal_open = self.goto.is_some() || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
         if !modal_open {
             self.shortcuts(&ctx);
         }
@@ -1592,6 +1244,8 @@ impl eframe::App for BigTextApp {
         self.marks_window(&ctx);
         self.export_windows(&ctx);
         self.csv_windows(&ctx);
+        self.palette_window(&ctx);
+        self.shortcuts_window(&ctx);
         self.perf_overlay(&ctx);
 
         let title = match self.docs.get(self.active) {

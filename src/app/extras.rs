@@ -42,6 +42,8 @@ pub struct Persisted {
     pub marks: Vec<super::marks::Mark>,
     /// Search history, newest first.
     pub history: Vec<String>,
+    /// Changed key bindings: command id and binding ("none" = removed).
+    pub keys: Vec<(String, String)>,
 }
 
 fn query_flags(q: &bigtext::search::Query) -> String {
@@ -102,6 +104,7 @@ fn parse(text: &str) -> Persisted {
             "update_checked" => p.update_checked = v.parse().ok(),
             "mark" => p.marks.extend(parse_mark(v)),
             "find" => p.history.push(v.to_string()),
+            "key" => p.keys.extend(v.split_once('=').map(|(a, b)| (a.to_string(), b.to_string()))),
             "tab" => {
                 let parts: Vec<&str> = v.splitn(5, '|').collect();
                 if parts.len() == 5 {
@@ -149,6 +152,9 @@ fn serialize(p: &Persisted) -> String {
     }
     for m in &p.marks {
         s.push_str(&format!("mark={}|{}|{}|{}\n", b(m.enabled), m.color, query_flags(&m.query), m.query.pattern));
+    }
+    for (cmd, k) in &p.keys {
+        s.push_str(&format!("key={cmd}={k}\n"));
     }
     for h in p.history.iter().filter(|h| !h.contains(['\n', '\r'])) {
         s.push_str(&format!("find={h}\n"));
@@ -245,6 +251,7 @@ impl BigTextApp {
             update_checked: Some(self.update.last_check).filter(|&t| t > 0),
             marks: self.settings.marks.clone(),
             history: self.search.history.clone(),
+            keys: self.keymap.changed.iter().map(|(c, k)| (c.id(), super::commands::key_to_string(*k))).collect(),
         }
     }
 
@@ -501,9 +508,10 @@ mod tests {
                 enabled: false,
             }],
             history: vec!["ERROR".into(), "a|b=c".into()],
+            keys: vec![("goto_time".into(), "ctrl+alt+T".into()), ("find_all".into(), "none".into())],
         };
         let q = parse(&serialize(&p));
-        assert_eq!((q.marks.clone(), q.history.clone()), (p.marks.clone(), p.history.clone()));
+        assert_eq!((q.marks.clone(), q.history.clone(), q.keys.clone()), (p.marks.clone(), p.history.clone(), p.keys.clone()));
         assert_eq!(q.recent, p.recent);
         assert_eq!(q.tabs.len(), 1);
         let t = &q.tabs[0];

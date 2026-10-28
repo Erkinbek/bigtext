@@ -95,6 +95,10 @@ Single self-contained binary, no runtime dependencies.
   case, trim trailing whitespace, tabs ↔ spaces, and JSON pretty-print / minify (token by
   token: key order, numbers and escapes stay as written; JSON Lines stay one value per line).
   Runs on a worker and is one undo step.
+- **Command palette** (Ctrl+Shift+P): type a few letters of any command (menus, views, text
+  operations) and press Enter. **Help → Keyboard shortcuts** lists every command with its key;
+  click a key and press a new one to change it (a key taken from another command is moved,
+  with a note). Changes are kept across sessions.
 - **Bookmarks** (Ctrl+F2, F2 / Shift+F2) that stay on their lines while you edit.
 - **Split view** (Ctrl+\\): two panes over one document with independent scrolling.
 - **Syntax highlighting** for logs, JSON, XML/HTML, CSV/TSV, SQL and INI/TOML/YAML — computed
@@ -176,6 +180,7 @@ bigtext [FILE ...]
 | Ctrl+F / Ctrl+H | Find / replace (Enter = next, Shift+Enter = previous, Esc = close) |
 | F3 / Shift+F3 | Find next / previous |
 | Ctrl+Shift+F | Filter: show only the lines with a match |
+| Ctrl+Shift+P | Command palette |
 | Ctrl+G / Ctrl+Shift+G | Go to line / go to byte offset (decimal or `0x` hex) |
 | Ctrl+Shift+T | Go to time (first log line at or after a timestamp) |
 | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) | Undo / redo |

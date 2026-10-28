@@ -593,6 +593,20 @@ impl SelfTest {
             doc(app).filter = None;
             check(v == vec![0, 17, 35, 67], format!("inverted filter lines {v:?}"))
         }));
+        s("command palette (Ctrl+Shift+P) runs a command", Box::new(|app, c| {
+            if c.first() {
+                c.key(Key::P, CTRL_SHIFT);
+                c.push(vec![], NONE);
+                c.typed("word wrap");
+                c.key(Key::Enter, NONE);
+                return Step::Wait;
+            }
+            if !doc(app).view.wrap {
+                return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("palette open {}", app.palette.is_some())) } else { Step::Wait };
+            }
+            doc(app).view.wrap = false;
+            check(app.palette.is_none(), "palette still open")
+        }));
         s("highlights and occurrences of the selected word", Box::new(|app, _c| {
             app.add_mark(bigtext::search::Query { pattern: "line".into(), case_sensitive: true, ..Default::default() });
             let mark = crate::app::marks::fill(app.settings.marks[0].color, true);
