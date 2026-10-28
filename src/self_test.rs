@@ -151,6 +151,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("move.txt"), "will be moved\n")?;
     std::fs::write(dir.join("delete.txt"), "will be deleted\n")?;
     std::fs::write(dir.join("empty.txt"), "")?;
+    std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
     std::fs::write(dir.join("no-newline.txt"), "first\nsecond without newline")?;
     std::fs::write(dir.join("cr-only.txt"), "old\rmac\rline\rendings\r")?;
     std::fs::write(dir.join("bom-middle.txt"), "start\n\u{FEFF}after bom\nend\n")?;
@@ -924,6 +925,24 @@ impl SelfTest {
                 return Step::Wait;
             }
             check(text(app) == CSV && !doc(app).is_modified(), format!("after undo {:?}", text(app)))
+        }));
+        s("open time.log", open_step("time.log"));
+        s("go to time (Ctrl+Shift+T) and the Δt of a selection", Box::new(|app, c| {
+            if c.first() {
+                c.key(Key::T, CTRL_SHIFT);
+                c.push(vec![], NONE);
+                c.typed("10:00:30");
+                c.key(Key::Enter, NONE);
+                return Step::Wait;
+            }
+            let caret = doc(app).view.caret;
+            if caret != 58 {
+                return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("caret {caret}")) } else { Step::Wait };
+            }
+            doc(app).select(0, 80);
+            let dt = doc(app).selection_time_delta();
+            doc(app).select(0, 0);
+            check(dt == Some(60_000), format!("Δt {dt:?}"))
         }));
         s("open read-only file", open_step("ro.txt"));
         s("read-only file blocks edits", Box::new(|app, c| {

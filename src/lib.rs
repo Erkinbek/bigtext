@@ -13,4 +13,5 @@ pub mod save;
 pub mod search;
 pub mod sysinfo;
 pub mod text;
+pub mod timestamp;
 pub mod update;

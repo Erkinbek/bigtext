@@ -597,6 +597,20 @@ impl Document {
         Some((start, ce, next))
     }
 
+    /// Milliseconds between the timestamps of the first and the last selected line, when the
+    /// selection spans lines that both start with a time.
+    pub fn selection_time_delta(&self) -> Option<i64> {
+        let (s, e) = self.selection();
+        let e = e.saturating_sub(self.buf.codec.unit() as u64).max(s);
+        let a = self.line_bounds(s, 64 * 1024)?.0;
+        let b = self.line_bounds(e, 64 * 1024)?.0;
+        if a == b {
+            return None;
+        }
+        let (x, y) = (bigtext::timestamp::stamp_at(&self.buf, a)?, bigtext::timestamp::stamp_at(&self.buf, b)?);
+        (x.has_date == y.has_date).then_some(y.ms - x.ms)
+    }
+
     /// Selects the whole line containing `off` including its line break (triple click).
     pub fn select_line(&mut self, off: u64) {
         if let Some((ls, _ce, next)) = self.line_bounds(off, LINE_CMD_LIMIT) {

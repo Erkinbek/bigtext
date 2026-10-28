@@ -56,6 +56,12 @@ Single self-contained binary, no runtime dependencies.
 - **Scrollbar marks**: Find All matches, filter lines, bookmarks and the differences from
   File → Compare are marked on the vertical scrollbar, so you see where they cluster in a 50 GB
   file at a glance.
+- **Go to time** (Ctrl+Shift+T): type `14:32:05` or `2024-05-01 14:32:05` to jump to the first
+  log line at or after that time. A binary search over byte offsets reads only a few hundred
+  KB, so it is instant even before indexing finishes. Recognises ISO 8601, `DD.MM.YYYY`,
+  `MM/DD/YYYY`, Apache `[01/May/2024:14:32:05`, syslog `May  1 14:32:05` and bare times, with
+  milliseconds. When a selection spans timestamped lines, the status bar shows the time
+  between its first and last line (**Δt**).
 - **Search history**: the ▾ button next to the find field, or Up/Down inside it, brings back
   recent patterns (kept across sessions).
 - **Replace** (Ctrl+H): replace current / replace all with `$1`, `${name}`, `\n`, `\t`. Up to
@@ -142,6 +148,7 @@ bigtext [FILE ...]
 | F3 / Shift+F3 | Find next / previous |
 | Ctrl+Shift+F | Filter: show only the lines with a match |
 | Ctrl+G / Ctrl+Shift+G | Go to line / go to byte offset (decimal or `0x` hex) |
+| Ctrl+Shift+T | Go to time (first log line at or after a timestamp) |
 | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) | Undo / redo |
 | Ctrl+X / Ctrl+C / Ctrl+V | Cut / copy / paste |
 | Ctrl+A | Select all |

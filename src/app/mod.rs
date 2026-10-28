@@ -53,6 +53,7 @@ pub enum Msg {
     Update(update::Event),
     ColumnsDeleted(Box<columns::ColumnsDeleted>),
     TaskDone { id: u64, outcome: tasks::TaskOutcome },
+    TimeFound { doc: u64, version: u64, result: Result<u64, bigtext::timestamp::TimeError> },
 }
 
 pub struct Settings {
@@ -65,11 +66,26 @@ pub struct Settings {
     pub marks: Vec<marks::Mark>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GotoMode {
+    Line,
+    Offset,
+    Time,
+}
+
 struct GotoDialog {
     text: String,
-    by_offset: bool,
+    mode: GotoMode,
     error: Option<String>,
     focus: bool,
+    /// A running go-to-time search.
+    busy: Option<CancelToken>,
+}
+
+impl GotoDialog {
+    fn new(mode: GotoMode) -> Option<GotoDialog> {
+        Some(GotoDialog { text: String::new(), mode, error: None, focus: true, busy: None })
+    }
 }
 
 struct Confirm {
@@ -381,7 +397,25 @@ impl BigTextApp {
                 Msg::Update(e) => self.on_update_event(e),
                 Msg::ColumnsDeleted(c) => self.on_columns_deleted(*c),
                 Msg::TaskDone { id, outcome } => self.on_task_done(id, outcome),
+                Msg::TimeFound { doc, version, result } => self.on_time_found(doc, version, result),
             }
+        }
+    }
+
+    fn on_time_found(&mut self, doc: u64, version: u64, result: Result<u64, bigtext::timestamp::TimeError>) {
+        let Some(g) = &mut self.goto else { return };
+        if g.busy.take().is_none() {
+            return;
+        }
+        match result {
+            Ok(off) => {
+                self.goto = None;
+                if let Some(d) = self.doc_mut(doc).filter(|d| d.version == version) {
+                    d.goto_offset(off);
+                }
+            }
+            Err(bigtext::timestamp::TimeError::NoTimestamps) => g.error = Some(i18n::tr("No timestamps found at the start of the file's lines.").into()),
+            Err(bigtext::timestamp::TimeError::Cancelled) => {}
         }
     }
 
@@ -475,10 +509,14 @@ impl BigTextApp {
         }
         // egui ignores extra Shift when matching, so the Shift variant must be tested first.
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::G))) {
-            self.goto = Some(GotoDialog { text: String::new(), by_offset: true, error: None, focus: true });
+            self.goto = GotoDialog::new(GotoMode::Offset);
         }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::G))) {
-            self.goto = Some(GotoDialog { text: String::new(), by_offset: false, error: None, focus: true });
+            self.goto = GotoDialog::new(GotoMode::Line);
+        }
+        // Before Ctrl+T (table view), for the same reason.
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::T))) {
+            self.goto = GotoDialog::new(GotoMode::Time);
         }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::Equals)) || i.consume_shortcut(&sc(cmd, Key::Plus))) {
             self.settings.font_size = (self.settings.font_size + 1.0).min(72.0);
@@ -652,10 +690,13 @@ impl BigTextApp {
                 }
                 ui.separator();
                 if ui.button("Go to line…\tCtrl+G").clicked() {
-                    self.goto = Some(GotoDialog { text: String::new(), by_offset: false, error: None, focus: true });
+                    self.goto = GotoDialog::new(GotoMode::Line);
                 }
                 if ui.button("Go to byte offset…\tCtrl+Shift+G").clicked() {
-                    self.goto = Some(GotoDialog { text: String::new(), by_offset: true, error: None, focus: true });
+                    self.goto = GotoDialog::new(GotoMode::Offset);
+                }
+                if ui.button("Go to time…\tCtrl+Shift+T").clicked() {
+                    self.goto = GotoDialog::new(GotoMode::Time);
                 }
             });
             ui.menu_button("View", |ui| {
@@ -789,6 +830,10 @@ impl BigTextApp {
                 if s != e {
                     ui.separator();
                     ui.label(format!("Sel {} bytes", e - s));
+                    if let Some(ms) = d.selection_time_delta() {
+                        ui.separator();
+                        ui.label(format!("Δt {}", bigtext::timestamp::format_delta(ms))).on_hover_text(i18n::tr("Time between the timestamps of the first and last selected lines"));
+                    }
                 }
                 let (lines, lexact) = d.buf.line_count();
                 ui.separator();
@@ -898,16 +943,23 @@ impl BigTextApp {
         if let Some(g) = &mut self.goto {
             let mut open = true;
             let mut submit = false;
-            egui::Window::new(if g.by_offset { "Go to byte offset" } else { "Go to line" })
+            let title = match g.mode {
+                GotoMode::Line => "Go to line",
+                GotoMode::Offset => "Go to byte offset",
+                GotoMode::Time => "Go to time",
+            };
+            egui::Window::new(i18n::tr(title))
                 .collapsible(false)
                 .resizable(false)
                 .open(&mut open)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.radio_value(&mut g.by_offset, false, "Line");
-                        ui.radio_value(&mut g.by_offset, true, "Byte offset (dec or 0x hex)");
+                        ui.radio_value(&mut g.mode, GotoMode::Line, i18n::tr("Line"));
+                        ui.radio_value(&mut g.mode, GotoMode::Offset, i18n::tr("Byte offset (dec or 0x hex)"));
+                        ui.radio_value(&mut g.mode, GotoMode::Time, i18n::tr("Time"));
                     });
-                    let r = ui.text_edit_singleline(&mut g.text);
+                    let hint = if g.mode == GotoMode::Time { "14:32:05 · 2024-05-01 14:32:05" } else { "" };
+                    let r = ui.add(egui::TextEdit::singleline(&mut g.text).hint_text(hint));
                     if g.focus {
                         r.request_focus();
                         g.focus = false;
@@ -915,14 +967,43 @@ impl BigTextApp {
                     if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
                         submit = true;
                     }
+                    if g.mode == GotoMode::Time {
+                        ui.weak(i18n::tr("Jumps to the first line at or after this time (the log must be in time order)."));
+                    }
                     if let Some(e) = &g.error {
                         ui.colored_label(ui.visuals().error_fg_color, e);
                     }
-                    if ui.button("Go").clicked() {
-                        submit = true;
-                    }
+                    ui.horizontal(|ui| {
+                        if g.busy.is_some() {
+                            ui.spinner();
+                            ui.label(i18n::tr("Searching…"));
+                        } else if ui.button(i18n::tr("Go")).clicked() {
+                            submit = true;
+                        }
+                    });
                 });
-            if submit {
+            if submit && g.busy.is_none() && g.mode == GotoMode::Time {
+                match bigtext::timestamp::parse(g.text.trim()) {
+                    Some(st) => {
+                        g.error = None;
+                        let cancel = CancelToken::new();
+                        g.busy = Some(cancel.clone());
+                        if let Some(d) = self.docs.get(self.active) {
+                            let (snap, id, version) = (d.buf.snapshot(), d.id, d.version);
+                            let tx = self.tx.clone();
+                            let waker = self.waker.clone();
+                            jobs::spawn("goto-time", move || {
+                                let result = bigtext::timestamp::find_time(&snap, st, &cancel);
+                                if !cancel.is_cancelled() {
+                                    let _ = tx.send(Msg::TimeFound { doc: id, version, result });
+                                    waker();
+                                }
+                            });
+                        }
+                    }
+                    None => g.error = Some(i18n::tr("Enter a time like 14:32:05 or 2024-05-01 14:32:05").into()),
+                }
+            } else if submit && g.busy.is_none() {
                 let t = g.text.trim().replace(['_', ','], "");
                 let parsed = if let Some(h) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
                     u64::from_str_radix(h, 16).ok()
@@ -931,7 +1012,7 @@ impl BigTextApp {
                 };
                 match parsed {
                     Some(v) => {
-                        let by_offset = g.by_offset;
+                        let by_offset = g.mode == GotoMode::Offset;
                         if let Some(d) = self.docs.get_mut(self.active) {
                             if by_offset {
                                 d.goto_offset(v);
@@ -941,9 +1022,12 @@ impl BigTextApp {
                         }
                         self.goto = None;
                     }
-                    None => g.error = Some("Enter a number".into()),
+                    None => g.error = Some(i18n::tr("Enter a number").into()),
                 }
             } else if !open || ctx.input(|i| i.key_pressed(Key::Escape)) {
+                if let Some(c) = &g.busy {
+                    c.cancel();
+                }
                 self.goto = None;
             }
         }
@@ -1253,6 +1337,7 @@ pub const SHORTCUTS: &[(&str, &str)] = &[
     ("F3 / Shift+F3", "Find next / previous"),
     ("Ctrl+Shift+F", "Filter lines"),
     ("Ctrl+G / Ctrl+Shift+G", "Go to line / byte offset"),
+    ("Ctrl+Shift+T", "Go to time"),
     ("Ctrl+Z / Ctrl+Y", "Undo / redo"),
     ("Ctrl+D / Ctrl+Shift+K", "Duplicate line / delete line"),
     ("Ctrl+A", "Select all (large-file safe)"),
