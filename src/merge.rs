@@ -36,6 +36,16 @@ fn stamp(line: &str) -> Option<Stamp> {
     timestamp::parse(line)
 }
 
+/// Logs that all give their offset from UTC (`+05:00`, `Z`, Unix times) are compared in UTC,
+/// so logs from servers in different time zones line up.
+fn in_utc(st: Stamp, utc: bool) -> Stamp {
+    if utc {
+        Stamp { ms: st.utc_ms(), tz: Some(0), ..st }
+    } else {
+        st
+    }
+}
+
 /// Writes the lines of `inputs` merged by time to `out`. Returns `None` when cancelled.
 pub fn merge_to<W: Write>(inputs: &[Input], out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<Merged>> {
     let width = inputs.iter().map(|i| i.label.chars().count()).max().unwrap_or(0);
@@ -52,11 +62,12 @@ pub fn merge_to<W: Write>(inputs: &[Input], out: &mut W, cancel: &CancelToken, p
         firsts.push(line);
     }
     let dated = firsts.iter().flatten().filter_map(|l| stamp(l)).all(|s| s.has_date);
+    let utc = firsts.iter().flatten().filter_map(|l| stamp(l)).all(|s| s.tz.is_some());
     for (c, line) in cursors.iter_mut().zip(firsts) {
         c.head = line.map(|l| match stamp(&l) {
             Some(st) => {
                 c.seen_time = true;
-                (c.clock.key(st, dated), l)
+                (c.clock.key(in_utc(st, utc), dated), l)
             }
             None => (i64::MIN, l),
         });
@@ -86,7 +97,7 @@ pub fn merge_to<W: Write>(inputs: &[Input], out: &mut W, cancel: &CancelToken, p
             match stamp(&line) {
                 Some(st) => {
                     c.seen_time = true;
-                    c.head = Some((c.clock.key(st, dated), line));
+                    c.head = Some((c.clock.key(in_utc(st, utc), dated), line));
                     break;
                 }
                 None => write_line(out, &labels[i], &line, &mut stats)?,
@@ -175,6 +186,16 @@ mod tests {
         assert_eq!(text, "plain │ no times\nplain │ at all\nu16   │ 2024-05-01 10:00:01 привет\n");
         assert_eq!(m.without_times, 2);
         assert_eq!(Codec::utf8().unit(), 1);
+    }
+
+    #[test]
+    fn time_zones_are_compared_in_utc() {
+        let dir = tempfile::tempdir().unwrap();
+        // 10:00 in Tashkent (+05:00) is 05:00 UTC, 06:00 in Berlin (+01:00).
+        let a = input(&dir, "tashkent", b"2024-05-01T10:00:00+05:00 a1\n2024-05-01T10:30:00+05:00 a2\n");
+        let b = input(&dir, "berlin", b"2024-05-01T06:15:00+01:00 b1\n");
+        let (text, _) = merge(&[a, b]);
+        assert_eq!(text, "tashkent │ 2024-05-01T10:00:00+05:00 a1\nberlin   │ 2024-05-01T06:15:00+01:00 b1\ntashkent │ 2024-05-01T10:30:00+05:00 a2\n");
     }
 
     #[test]

@@ -7,11 +7,21 @@ use crate::jobs::CancelToken;
 use crate::text::TextBuf;
 
 /// A point in time from a log line: milliseconds since 0000-03-01 when the line has a date,
-/// otherwise milliseconds since midnight.
+/// otherwise milliseconds since midnight. The time is the one written in the line; `tz` is the
+/// line's offset from UTC when it gives one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Stamp {
     pub ms: i64,
     pub has_date: bool,
+    /// Minutes east of UTC (`+05:00` is 300; `Z` and Unix times are 0).
+    pub tz: Option<i16>,
+}
+
+impl Stamp {
+    /// The time in UTC when the line gives its offset, otherwise as written.
+    pub fn utc_ms(self) -> i64 {
+        self.ms - self.tz.unwrap_or(0) as i64 * 60_000
+    }
 }
 
 const DAY: i64 = 86_400_000;
@@ -83,24 +93,36 @@ fn valid(y: i64, m: i64, d: i64) -> Option<(i64, i64, i64)> {
     ((1..=12).contains(&m) && (1..=31).contains(&d) && (1..=9999).contains(&y)).then_some((y, m, d))
 }
 
-/// A date ending exactly at the end of `b`: `YYYY-MM-DD`, `YYYY/MM/DD`, `YYYY.MM.DD`,
-/// `DD.MM.YYYY`, `DD-MM-YYYY`, `DD/MM/YYYY` or `MM/DD/YYYY`, `DD/Mon/YYYY` and syslog's
-/// `Mon DD` (no year; 2000 is used, so only order within one file matters).
-fn date_before(b: &[u8]) -> Option<(i64, i64, i64)> {
+/// A date ending exactly at the end of `b`, and whether it had a year: `YYYY-MM-DD`,
+/// `YYYY/M/D`, `YYYY.MM.DD`, `DD.MM.YYYY`, `D-M-YYYY`, `DD/MM/YYYY` or `M/D/YYYY` (slashes are
+/// month-first unless that cannot be a month), `DD/Mon/YYYY` (Apache), `Mon D, YYYY` (Java)
+/// and syslog's `Mon DD` (no year: 2000 is used, so only the order within one file matters).
+fn date_before(b: &[u8]) -> Option<((i64, i64, i64), bool)> {
     let n = b.len();
     let sep = |c: u8| matches!(c, b'-' | b'/' | b'.');
-    if n >= 10 {
-        let t = &b[n - 10..];
-        let left_ok = n == 10 || !b[n - 11].is_ascii_digit();
-        if left_ok && sep(t[4]) && t[7] == t[4] {
-            if let (Some(y), Some(m), Some(d)) = (num(&t[..4]), num(&t[5..7]), num(&t[8..])) {
-                return valid(y, m, d);
-            }
-        }
-        if left_ok && sep(t[2]) && t[5] == t[2] {
-            if let (Some(a), Some(c), Some(y)) = (num(&t[..2]), num(&t[3..5]), num(&t[6..])) {
-                // Slashes are month-first (US) unless that cannot be a month.
-                return if t[2] == b'/' && a <= 12 { valid(y, a, c) } else { valid(y, c, a) };
+    // Start of the run of digits that ends at `end`.
+    let run = |end: usize| b[..end].iter().rev().take_while(|c| c.is_ascii_digit()).count();
+    let s1 = n - run(n);
+    // Three numbers with the same separator.
+    if s1 < n && s1 > 0 && sep(b[s1 - 1]) {
+        let sp = b[s1 - 1];
+        let s2 = s1 - 1 - run(s1 - 1);
+        if s2 < s1 - 1 && s2 > 0 && b[s2 - 1] == sp {
+            let s3 = s2 - 1 - run(s2 - 1);
+            let left_ok = s3 == 0 || !b[s3 - 1].is_ascii_alphanumeric();
+            if s3 < s2 - 1 && left_ok {
+                let (f3, f2, f1) = (&b[s3..s2 - 1], &b[s2..s1 - 1], &b[s1..n]);
+                if f3.len().max(f2.len()).max(f1.len()) > 4 {
+                    return None;
+                }
+                let (a, mid, c) = (num(f3)?, num(f2)?, num(f1)?);
+                if f3.len() == 4 && f2.len() <= 2 && f1.len() <= 2 {
+                    return valid(a, mid, c).map(|d| (d, true));
+                }
+                if f1.len() == 4 && f3.len() <= 2 && f2.len() <= 2 {
+                    let d = if sp == b'/' && a <= 12 { valid(c, a, mid) } else { valid(c, mid, a) };
+                    return d.map(|d| (d, true));
+                }
             }
         }
     }
@@ -108,18 +130,27 @@ fn date_before(b: &[u8]) -> Option<(i64, i64, i64)> {
         let t = &b[n - 11..];
         if t[2] == b'/' && t[6] == b'/' {
             if let (Some(d), Some(m), Some(y)) = (num(&t[..2]), month_name(&t[3..6]), num(&t[7..])) {
-                return valid(y, m, d);
+                return valid(y, m, d).map(|x| (x, true));
+            }
+        }
+    }
+    // Java: "May 1, 2024".
+    if s1 + 4 == n && s1 >= 2 && &b[s1 - 2..s1] == b", " {
+        let ds = s1 - 2 - run(s1 - 2);
+        if ds < s1 - 2 && s1 - 2 - ds <= 2 && ds >= 4 && b[ds - 1] == b' ' {
+            if let (Some(m), Some(d), Some(y)) = (month_name(&b[ds - 4..ds - 1]), num(&b[ds..s1 - 2]), num(&b[s1..])) {
+                return valid(y, m, d).map(|x| (x, true));
             }
         }
     }
     // Syslog: "Mon DD" or "Mon  D".
-    let digits = b.iter().rev().take_while(|c| c.is_ascii_digit()).count();
+    let digits = n - s1;
     if (1..=2).contains(&digits) {
-        let rest = &b[..n - digits];
+        let rest = &b[..s1];
         let rest = rest.strip_suffix(b" ").map(|r| r.strip_suffix(b" ").unwrap_or(r))?;
         if rest.len() >= 3 && (rest.len() == 3 || !rest[rest.len() - 4].is_ascii_alphabetic()) {
             let m = month_name(&rest[rest.len() - 3..])?;
-            return valid(2000, m, num(&b[n - digits..])?);
+            return valid(2000, m, num(&b[s1..])?).map(|x| (x, false));
         }
     }
     None
@@ -147,31 +178,134 @@ pub fn parse_bytes(line: &[u8]) -> Option<Stamp> {
     parse_ascii(&b[..n])
 }
 
+/// Keys that hold a Unix time in JSON and key=value logs.
+const EPOCH_KEYS: [&[u8]; 9] = [b"\"ts\":", b"\"time\":", b"\"timestamp\":", b"\"@timestamp\":", b"\"t\":", b"\"date\":", b"ts=", b"time=", b"timestamp="];
+
+/// Days from 0000-03-01 to 1970-01-01.
+fn unix_epoch_days() -> i64 {
+    days_from_civil(1970, 1, 1)
+}
+
+/// A Unix time at `i`: 10 digits of seconds (with an optional fraction), or 13, 16 or 19 digits
+/// of milliseconds, microseconds or nanoseconds, between the years 2000 and 2100.
+fn epoch_at(b: &[u8], i: usize) -> Option<Stamp> {
+    let digits = b.get(i..)?.iter().take_while(|c| c.is_ascii_digit()).count();
+    if !matches!(digits, 10 | 13 | 16 | 19) {
+        return None;
+    }
+    // Up to 19 digits fit in a u64.
+    let whole = b[i..i + digits].iter().fold(0u64, |a, &c| a * 10 + (c - b'0') as u64) as i128;
+    let mut end = i + digits;
+    let ms = match digits {
+        10 => {
+            let mut ms = whole as i64 * 1000;
+            if b.get(end) == Some(&b'.') && b.get(end + 1).is_some_and(u8::is_ascii_digit) {
+                let f = b[end + 1..].iter().take_while(|c| c.is_ascii_digit()).count();
+                let first3 = &b[end + 1..end + 1 + f.min(3)];
+                ms += num(first3)? * 10i64.pow(3 - first3.len() as u32);
+                end += 1 + f;
+            }
+            ms
+        }
+        13 => whole as i64,
+        16 => (whole / 1000) as i64,
+        _ => (whole / 1_000_000) as i64,
+    };
+    if b.get(end).is_some_and(|c| c.is_ascii_alphanumeric()) || !(946_684_800_000..4_102_444_800_000).contains(&ms) {
+        return None;
+    }
+    Some(Stamp { ms: unix_epoch_days() * DAY + ms, has_date: true, tz: Some(0) })
+}
+
+/// A Unix time as the line's first word, or as the value of a time key (`"ts":`, `time=`).
+fn epoch(b: &[u8]) -> Option<Stamp> {
+    let first = b.iter().take_while(|c| matches!(c, b' ' | b'\t' | b'[')).count();
+    if let Some(st) = epoch_at(b, first) {
+        return Some(st);
+    }
+    for key in EPOCH_KEYS {
+        if let Some(p) = b.windows(key.len()).position(|w| w == key) {
+            let k = p + key.len();
+            let k = k + b[k..].iter().take_while(|c| matches!(c, b' ' | b'"')).count();
+            if let Some(st) = epoch_at(b, k) {
+                return Some(st);
+            }
+        }
+    }
+    None
+}
+
+/// "Z", "+05:00", "-0800" or " +0000" at `i`: minutes east of UTC and the end.
+fn zone_at(b: &[u8], i: usize) -> Option<(i16, usize)> {
+    let at = |k: usize| b.get(k).copied().unwrap_or(0);
+    if at(i) == b'Z' && !at(i + 1).is_ascii_alphanumeric() {
+        return Some((0, i + 1));
+    }
+    let i = if at(i) == b' ' && matches!(at(i + 1), b'+' | b'-') { i + 1 } else { i };
+    let sign = match at(i) {
+        b'+' => 1,
+        b'-' => -1,
+        _ => return None,
+    };
+    let hh = num(b.get(i + 1..i + 3)?)?;
+    let (mm, end) = if at(i + 3) == b':' { (num(b.get(i + 4..i + 6)?)?, i + 6) } else { (num(b.get(i + 3..i + 5)?)?, i + 5) };
+    (hh <= 14 && mm < 60 && !at(end).is_ascii_digit()).then_some(((sign * (hh * 60 + mm)) as i16, end))
+}
+
 /// The first timestamp in `b` (ASCII; other characters replaced by '?').
 fn parse_ascii(b: &[u8]) -> Option<Stamp> {
+    if let Some(st) = epoch(b) {
+        return Some(st);
+    }
     let mut i = 0;
-    while i + 8 <= b.len() {
+    while i + 7 <= b.len() {
         let t = &b[i..];
-        let two = |k: usize| num(&t[k..k + 2]);
         let start_ok = i == 0 || !b[i - 1].is_ascii_digit();
-        if start_ok && t[2] == b':' && t[5] == b':' {
-            if let (Some(h), Some(m), Some(s)) = (two(0), two(3), two(6)) {
-                if h < 24 && m < 60 && s <= 60 && (t.len() == 8 || !t[8].is_ascii_digit()) {
-                    let mut ms = (h * 3600 + m * 60 + s) * 1000;
-                    if t.len() > 9 && matches!(t[8], b'.' | b',') && t[9].is_ascii_digit() {
-                        let digits: Vec<u8> = t[9..].iter().take_while(|c| c.is_ascii_digit()).copied().collect();
-                        let mut f = num(&digits[..digits.len().min(3)]).unwrap_or(0);
-                        for _ in digits.len().min(3)..3 {
-                            f *= 10;
-                        }
-                        ms += f;
+        // HH:MM:SS, or H:MM:SS as Java and .NET write it.
+        let hl = if t.len() >= 8 && t[2] == b':' && t[5] == b':' {
+            2
+        } else if t[1] == b':' && t[4] == b':' {
+            1
+        } else {
+            0
+        };
+        if start_ok && hl > 0 {
+            if let (Some(mut h), Some(m), Some(s)) = (num(&t[..hl]), num(&t[hl + 1..hl + 3]), num(&t[hl + 4..hl + 6])) {
+                let after = hl + 6;
+                if h < 24 && m < 60 && s <= 60 && (t.len() == after || !t[after].is_ascii_digit()) {
+                    let mut end = i + after;
+                    let mut frac = 0;
+                    if t.len() > after + 1 && matches!(t[after], b'.' | b',') && t[after + 1].is_ascii_digit() {
+                        let digits = t[after + 1..].iter().take_while(|c| c.is_ascii_digit()).count();
+                        let first3 = &t[after + 1..after + 1 + digits.min(3)];
+                        frac = num(first3).unwrap_or(0) * 10i64.pow(3 - first3.len() as u32);
+                        end += 1 + digits;
                     }
+                    // 12-hour clock (Java, .NET).
+                    let ampm = |k: usize| b.get(k..k + 2).map(|w| w.to_ascii_uppercase());
+                    let k = end + (b.get(end) == Some(&b' ')) as usize;
+                    if let Some(w) = ampm(k).filter(|w| (w == b"AM" || w == b"PM") && !b.get(k + 2).is_some_and(u8::is_ascii_alphabetic)) {
+                        if (1..=12).contains(&h) {
+                            h = if w == b"AM" { h % 12 } else { h % 12 + 12 };
+                            end = k + 2;
+                        }
+                    }
+                    let mut tz = None;
+                    if let Some((z, e)) = zone_at(b, end) {
+                        tz = Some(z);
+                        end = e;
+                    }
+                    let ms = (h * 3600 + m * 60 + s) * 1000 + frac;
                     let before = &b[..i];
                     let trimmed = before.strip_suffix(b"T").or_else(|| before.strip_suffix(b" ")).or_else(|| before.strip_suffix(b":")).unwrap_or(before);
                     let trimmed = trimmed.strip_suffix(b" ").unwrap_or(trimmed);
                     return Some(match date_before(trimmed) {
-                        Some((y, mo, d)) => Stamp { ms: days_from_civil(y, mo, d) * DAY + ms, has_date: true },
-                        None => Stamp { ms, has_date: false },
+                        Some(((y, mo, d), year_known)) => {
+                            // "Wed May 01 10:00:00 UTC 2024": the year comes after the time.
+                            let (y, zone) = if year_known { (y, None) } else { year_after(b, end).unwrap_or((y, None)) };
+                            Stamp { ms: days_from_civil(y, mo, d) * DAY + ms, has_date: true, tz: tz.or(zone) }
+                        }
+                        None => Stamp { ms, has_date: false, tz },
                     });
                 }
             }
@@ -179,6 +313,34 @@ fn parse_ascii(b: &[u8]) -> Option<Stamp> {
         i += 1;
     }
     None
+}
+
+/// " 2024" or " UTC 2024" at `i`: the year, and the offset of UTC or GMT.
+fn year_after(b: &[u8], i: usize) -> Option<(i64, Option<i16>)> {
+    let rest = b.get(i..)?.strip_prefix(b" ")?;
+    let letters = rest.iter().take_while(|c| c.is_ascii_uppercase()).count();
+    let (zone, rest) = if (3..=4).contains(&letters) && rest.get(letters) == Some(&b' ') {
+        let name = &rest[..letters];
+        ((name == b"UTC" || name == b"GMT").then_some(0), &rest[letters + 1..])
+    } else {
+        (None, rest)
+    };
+    let y = num(rest.get(..4)?)?;
+    (!rest.get(4).is_some_and(u8::is_ascii_digit) && (1970..=2100).contains(&y)).then_some((y, zone))
+}
+
+/// "2024-05-01 10:00:00.123 UTC" for a Unix time in seconds (10 digits, optional fraction) or
+/// milliseconds (13 digits); `None` for other text.
+pub fn epoch_text(text: &str) -> Option<String> {
+    let b = text.trim().as_bytes();
+    let st = epoch_at(b, 0)?;
+    let end = b.iter().take_while(|c| c.is_ascii_digit() || **c == b'.').count();
+    if end != b.len() {
+        return None;
+    }
+    let ms = st.ms.rem_euclid(1000);
+    let base = format_key(st.ms, true, true);
+    Some(if ms > 0 { format!("{base}.{ms:03} UTC") } else { format!("{base} UTC") })
 }
 
 /// Formats a duration in milliseconds: "850 ms", "12.345 s", "3 m 05.120 s", "2 h 03 m 05 s",
@@ -341,17 +503,69 @@ mod tests {
     #[test]
     fn formats() {
         let t = |h: i64, m: i64, s: i64| (h * 3600 + m * 60 + s) * 1000;
-        assert_eq!(parse("2024-05-01 14:32:05,123 INFO x"), Some(Stamp { ms: day(2024, 5, 1) + t(14, 32, 5) + 123, has_date: true }));
+        assert_eq!(parse("2024-05-01 14:32:05,123 INFO x"), Some(Stamp { ms: day(2024, 5, 1) + t(14, 32, 5) + 123, has_date: true, tz: None }));
         assert_eq!(parse("[2024-05-01T14:32:05.5Z] x").map(|s| s.ms), Some(day(2024, 5, 1) + t(14, 32, 5) + 500));
         assert_eq!(parse("01.05.2024 14:32:05 x").map(|s| s.ms), Some(day(2024, 5, 1) + t(14, 32, 5)));
         assert_eq!(parse("05/01/2024 14:32:05 x").map(|s| s.ms), Some(day(2024, 5, 1) + t(14, 32, 5)));
         assert_eq!(parse("13/01/2024 14:32:05 x").map(|s| s.ms), Some(day(2024, 1, 13) + t(14, 32, 5)));
         assert_eq!(parse("127.0.0.1 - - [01/May/2024:14:32:05 +0000] \"GET\"").map(|s| s.ms), Some(day(2024, 5, 1) + t(14, 32, 5)));
         assert_eq!(parse("May  1 14:32:05 host sshd").map(|s| s.ms), Some(day(2000, 5, 1) + t(14, 32, 5)));
-        assert_eq!(parse("14:32:05.123456 thread"), Some(Stamp { ms: t(14, 32, 5) + 123, has_date: false }));
+        assert_eq!(parse("14:32:05.123456 thread"), Some(Stamp { ms: t(14, 32, 5) + 123, has_date: false, tz: None }));
         assert_eq!(parse("id=123:45:67 nothing"), None);
         assert_eq!(parse("no time here"), None);
         assert!(day(2024, 3, 1) - day(2024, 2, 28) == 2 * DAY);
+    }
+
+    #[test]
+    fn zones_twelve_hour_clocks_and_other_dates() {
+        let t = |h: i64, m: i64, s: i64| (h * 3600 + m * 60 + s) * 1000;
+        let st = |text: &str| parse(text).map(|s| (s.ms, s.has_date, s.tz));
+        // Offsets from UTC.
+        assert_eq!(st("2024-05-01T14:32:05+05:00 x"), Some((day(2024, 5, 1) + t(14, 32, 5), true, Some(300))));
+        assert_eq!(st("2024-05-01T14:32:05.250-0800 x"), Some((day(2024, 5, 1) + t(14, 32, 5) + 250, true, Some(-480))));
+        assert_eq!(st("[01/May/2024:14:32:05 +0000] GET").map(|s| s.2), Some(Some(0)));
+        assert_eq!(st("2024-05-01 14:32:05 - message").map(|s| s.2), Some(None));
+        assert_eq!(parse("2024-05-01T14:32:05+05:00").unwrap().utc_ms(), day(2024, 5, 1) + t(9, 32, 5));
+        // Java and .NET.
+        assert_eq!(st("May 1, 2024 2:32:05 PM com.example.App main"), Some((day(2024, 5, 1) + t(14, 32, 5), true, None)));
+        assert_eq!(st("Dec 31, 2023 12:05:00 AM x"), Some((day(2023, 12, 31) + t(0, 5, 0), true, None)));
+        assert_eq!(st("5/1/2024 2:32:05 PM"), Some((day(2024, 5, 1) + t(14, 32, 5), true, None)));
+        assert_eq!(st("2024/5/1 14:32:05"), Some((day(2024, 5, 1) + t(14, 32, 5), true, None)));
+        assert_eq!(st("1.5.2024 14:32:05"), Some((day(2024, 5, 1) + t(14, 32, 5), true, None)));
+        assert_eq!(st("Wed May 01 14:32:05 UTC 2024 x"), Some((day(2024, 5, 1) + t(14, 32, 5), true, Some(0))));
+        assert_eq!(st("Wed May 01 14:32:05 2024"), Some((day(2024, 5, 1) + t(14, 32, 5), true, None)));
+        // Not a 12-hour clock.
+        assert_eq!(st("14:32:05 PMS started").map(|s| s.0), Some(t(14, 32, 5)));
+        assert_eq!(st("v1.2.2024 14:32:05").map(|s| s.1), Some(false));
+    }
+
+    #[test]
+    fn unix_times() {
+        let at = |s: i64| days_from_civil(1970, 1, 1) * DAY + s;
+        // 1714573925 is 2024-05-01 14:32:05 UTC.
+        let w = day(2024, 5, 1) + (14 * 3600 + 32 * 60 + 5) * 1000;
+        let want = Some(w);
+        assert_eq!(at(1_714_573_925_000), w);
+        assert_eq!(parse("1714573925 INFO started").map(|s| (s.ms, s.has_date, s.tz)), Some((w, true, Some(0))));
+        assert_eq!(parse("[1714573925.250] x").map(|s| s.ms), want.map(|w| w + 250));
+        assert_eq!(parse("1714573925250 x").map(|s| s.ms), want.map(|w| w + 250));
+        assert_eq!(parse("1714573925250123 x").map(|s| s.ms), want.map(|w| w + 250));
+        assert_eq!(parse(r#"{"level":"info","ts":1714573925.5,"msg":"at 10:00:00"}"#).map(|s| s.ms), want.map(|w| w + 500));
+        assert_eq!(parse("level=info time=1714573925 msg=x").map(|s| s.ms), want);
+        // Not times: too short, too far in the past, part of a word.
+        assert_eq!(parse("123456789 x"), None);
+        assert_eq!(parse("0000000001 x"), None);
+        assert_eq!(parse("1714573925abc x"), None);
+        assert_eq!(parse("id 1714573925 x"), None);
+        assert_eq!(epoch_text("1714573925"), Some("2024-05-01 14:32:05 UTC".into()));
+        assert_eq!(epoch_text("1714573925123"), Some("2024-05-01 14:32:05.123 UTC".into()));
+        assert_eq!(epoch_text("17145739"), None);
+        assert_eq!(epoch_text("1714573925 x"), None);
+        // Long runs of digits are not numbers to overflow on.
+        assert_eq!(parse("99999999999999999999999999 x"), None);
+        assert_eq!(parse("9999999999999999999 x"), None);
+        assert_eq!(parse("12345678901234567890-01-01 10:00:00").map(|s| s.has_date), Some(false));
+        assert_eq!(parse("May 123456789012345678901, 2024 10:00:00").map(|s| s.has_date), Some(false));
     }
 
     #[test]

@@ -27,6 +27,13 @@ All notable changes to BigText. Each release on
   `file:line` with the text around each match. Click a match to open the file with the match
   selected. Each file is searched with the streaming search in its own encoding; binary files
   are skipped and open tabs are searched with their unsaved edits.
+- More timestamp formats for Go to time, Δt, the histogram and merging: **Unix times** (10-digit
+  seconds with an optional fraction, or 13-, 16- and 19-digit milli-, micro- and nanoseconds)
+  as a line's first word or as `"ts":`, `"time":`, `time=` values; **time zones** (`Z`,
+  `+05:00`, `-0800`); 12-hour clocks with **AM/PM**; Java's `May 1, 2024 2:32:05 PM`, .NET's
+  `5/1/2024 2:32:05 PM`, one-digit days and months, and `Wed May 01 14:32:05 UTC 2024`. Logs
+  that all give their time zone are merged in UTC. Hovering a Unix time in the text shows it
+  as a date and time (UTC).
 - Files without a telling extension (`syslog`, `stdin`, `app.txt`) are recognised as logs when
   their lines start with a time, and as JSON or XML by their first line.
 

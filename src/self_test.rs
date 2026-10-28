@@ -158,6 +158,8 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("cli.log"), "first 10:00\nsecond 10:00 10:05\nthird\n")?;
     std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
     std::fs::write(dir.join("levels.log"), LEVELS_LOG)?;
+    // Unix times: 2024-05-01 14:32:05, 14:33:05 and 14:34:05 UTC.
+    std::fs::write(dir.join("epoch.log"), "1714573925 start\n1714573985 middle\n1714574045 end\n")?;
     std::fs::create_dir_all(dir.join("tree").join("sub"))?;
     std::fs::write(dir.join("tree").join("a.log"), "one\ntwo NEEDLE\n")?;
     std::fs::write(dir.join("tree").join("c.txt"), "NEEDLE in a .txt file\n")?;
@@ -1318,6 +1320,26 @@ impl SelfTest {
                 r.cancel.cancel();
             }
             check(sel == (0, 6), format!("selection {sel:?}"))
+        }));
+        s("open epoch.log", open_step("epoch.log"));
+        s("go to time in a log of Unix times", Box::new(|app, c| {
+            if c.first() {
+                c.key(Key::T, CTRL_SHIFT);
+                c.push(vec![], NONE);
+                c.typed("2024-05-01 14:33:30");
+                c.key(Key::Enter, NONE);
+                return Step::Wait;
+            }
+            // The first line at or after 14:33:30 is the third one.
+            let want = "1714573925 start\n1714573985 middle\n".len() as u64;
+            let caret = doc(app).view.caret;
+            if caret != want {
+                return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("caret {caret}, want {want}")) } else { Step::Wait };
+            }
+            doc(app).select(0, want);
+            let dt = doc(app).selection_time_delta();
+            doc(app).select(0, 0);
+            check(dt == Some(60_000), format!("Δt {dt:?}"))
         }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
         s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {

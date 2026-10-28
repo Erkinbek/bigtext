@@ -119,6 +119,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         if let Ok(rows) = layout_rows(&doc.buf, doc.view.top, doc.view.rows_on_screen + 1, wrap) {
             handle_wheel(ui, doc, &resp, m, wrap, env);
             handle_mouse(ui, doc, &resp, text_rect, m, wrap, &rows, active_pane);
+            epoch_tooltip(ui, doc, &resp, text_rect, m, &rows);
             if focused {
                 handle_keys(ui, doc, wrap, env);
                 ime_output(ui, text_rect);
@@ -572,6 +573,32 @@ fn hit_cell(doc: &Document, rows: &[Row], text_rect: Rect, m: Metrics, pos: Pos2
     };
     let col = ((pos.x - text_rect.left() + doc.view.scroll_x) / m.cw).round().max(0.0) as u32;
     Some((row, col))
+}
+
+/// Under the mouse, a Unix time (`1714573925`, `1714573925123`) shows as a date and time.
+fn epoch_tooltip(ui: &Ui, doc: &Document, resp: &egui::Response, text_rect: Rect, m: Metrics, rows: &[Row]) {
+    let Some(pos) = resp.hover_pos().filter(|p| text_rect.contains(*p)) else { return };
+    if doc.buf.codec.unit() != 1 || ui.input(|i| i.pointer.any_down()) {
+        return;
+    }
+    let ri = ((pos.y - text_rect.top()) / m.rh).floor() as usize;
+    let Some(row) = rows.get(ri) else { return };
+    // The character under the pointer, not the nearest boundary.
+    let col = ((pos.x - text_rect.left() + doc.view.scroll_x) / m.cw).floor().max(0.0) as u32;
+    let Ok(off) = rows::offset_at_cell(&doc.buf, row, col) else { return };
+    let (from, to) = (off.saturating_sub(24).max(row.start), (off + 24).min(row.end));
+    let Some(b) = doc.buf.read(from..to) else { return };
+    let i = (off - from) as usize;
+    let num = |c: &u8| c.is_ascii_digit() || *c == b'.';
+    if !b.get(i).is_some_and(u8::is_ascii_digit) {
+        return;
+    }
+    let s = i - b[..i].iter().rev().take_while(|c| num(c)).count();
+    let e = i + b[i..].iter().take_while(|c| num(c)).count();
+    let word = String::from_utf8_lossy(&b[s..e]);
+    if let Some(text) = bigtext::timestamp::epoch_text(word.trim_matches('.')) {
+        resp.clone().on_hover_text_at_pointer(text);
+    }
 }
 
 fn hit_test(doc: &Document, rows: &[Row], text_rect: Rect, m: Metrics, pos: Pos2) -> Option<u64> {
