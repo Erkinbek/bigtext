@@ -141,8 +141,35 @@ Single self-contained binary, no runtime dependencies.
 - **Compare files** (File → Compare with…): streaming line diff of two huge files with bounded
   memory; identical stretches are skipped at memory speed (1 GB vs 1 GB with two changed lines:
   0.6 s, ~2 MB of memory). Click a difference to jump there in either file.
+- **Log tools**: a **level bar** above logs (ERROR / WARN / INFO / DEBUG lines in the filter view,
+  F8 / Shift+F8 to the next / previous error); **Search → Time histogram** (Ctrl+Shift+H), a bar
+  chart of lines and errors per second, minute, hour or day, click a bar to go there;
+  **File → Merge logs by time…**, several logs in timestamp order with each line labelled in its
+  file's colour. Timestamps: ISO 8601 with time zones, Unix seconds / milliseconds, syslog,
+  Apache, Java and .NET formats with AM/PM; hovering a Unix time shows it as a date.
+- **Find in files** (Search, Ctrl+Alt+F): the pattern in every `*.log` (or any pattern) file of a
+  folder and its sub-folders, listed as `file:line`; click to open the file there.
+- **Saved searches** (★ in the search bar): a pattern with its options, `!` and column under a
+  name, applied as a filter with one click.
+- **Multiple cursors**: Ctrl+D adds the next occurrence of the selection, Alt+click adds a
+  cursor; typing, paste, Backspace, Delete, Enter and Tab change the text at all of them.
+- **Matching brackets and tags** highlighted next to the caret; Ctrl+] jumps to the partner.
+  **View → Show whitespace and line breaks** shows spaces, tabs and LF / CRLF / CR.
+- **JSON**: **View → JSON structure** (Ctrl+Shift+J), an outline opened node by node (fine for a
+  root array of millions of items), jumping to a path like `$.items[1234].id` and copying the
+  path at the caret; **View → Open JSON Lines as table**.
+- **More table tools**: **Group rows by this column…** (counts, with sums of another column),
+  **Filter rows by conditions…** (several conditions at once), and export as JSON, JSON Lines,
+  Markdown or Excel (.xlsx).
+- **Tabs and sessions**: Ctrl+Tab in most-recently-used order, pinned tabs, close other tabs /
+  tabs to the right, drag to move; **File → Sessions** saves the open files with positions,
+  bookmarks, pins, filters and highlights under a name; **Edit → Copy file:line**
+  (Ctrl+Shift+C) for `bigtext path:line`.
 - **Recent files and session restore**: tabs, positions, bookmarks and settings come back on
-  the next start (state in `%APPDATA%\BigText\state.txt` / `~/.config/bigtext`).
+  the next start (state in `%APPDATA%\BigText\state.txt` / `~/.config/bigtext`). **Portable
+  mode** keeps them in a `BigText-data` folder next to the program instead (Help → Portable
+  mode…), and **Help → Export / Import settings** carries highlights, key bindings, saved
+  searches and the look to another computer.
 - **Updates**: once a day BigText asks GitHub for a newer release (Help → Check for updates
   does it on demand; Help → Check for updates automatically turns it off). A dialog shows the
   release notes of every newer version and installs nothing until you choose **Update now**;
@@ -192,14 +219,36 @@ bigtext [OPTIONS] [FILE[:LINE] ...]
   -h, --help       show this help
 ```
 
+For scripts, **`bigtext-cli`** (in every download; `bigtext --filter …` works too) runs the
+same streaming code without a window:
+
+```
+bigtext-cli filter [-v] [-i] [-w] [-E] PATTERN FILE [-o OUT]   lines with (-v: without) a match
+bigtext-cli levels ERROR,WARN FILE [-o OUT]                    lines of these log levels
+bigtext-cli count [-v] [-i] [-w] [-E] PATTERN FILE             number of matching lines
+bigtext-cli split (--size 100MB | --lines N) FILE [--out-dir DIR]
+bigtext-cli stats FILE...                                      size, lines, encoding, first/last time
+bigtext-cli merge FILE FILE... [-o OUT]                        logs merged by time
+bigtext-cli convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]  tables (and JSON Lines → CSV)
+```
+
+Exit codes: 0 done, 1 nothing matched, 2 error.
+
 | Shortcut | Action |
 |---|---|
 | Ctrl+O / Ctrl+N | Open / new |
 | Ctrl+S / Ctrl+Shift+S | Save / save as |
-| Ctrl+W, Ctrl+Tab | Close tab, next tab |
+| Ctrl+W | Close tab |
+| Ctrl+Tab / Ctrl+Shift+Tab | Tabs in most-recently-used order (hold Ctrl, release to switch) |
 | Ctrl+F / Ctrl+H | Find / replace (Enter = next, Shift+Enter = previous, Esc = close) |
 | F3 / Shift+F3 | Find next / previous |
 | Ctrl+Shift+F | Filter: show only the lines with a match |
+| Ctrl+Alt+F | Find in files |
+| F8 / Shift+F8 | Next / previous error line (or line of the levels shown) |
+| Ctrl+Shift+H | Time histogram |
+| Ctrl+] | Go to the matching bracket or tag |
+| Ctrl+Shift+J | JSON structure |
+| Ctrl+Shift+C | Copy file:line |
 | Ctrl+Shift+P | Command palette |
 | Ctrl+G / Ctrl+Shift+G | Go to line / go to byte offset (decimal or `0x` hex) |
 | Ctrl+Shift+T | Go to time (first log line at or after a timestamp) |
@@ -225,8 +274,9 @@ File → Keep backup (.bak) on save, Edit → Read-only, Help → About.
 
 ## Building
 
-The workspace builds three binaries: `bigtext` (the editor), `bigtext-bench` (core benchmarks)
-and `gen-testfiles` (test corpus generator).
+The workspace builds four binaries: `bigtext` (the editor), `bigtext-cli` (the script
+commands), `bigtext-bench` (core benchmarks) and `gen-testfiles` (test corpus generator).
+`packaging/` has the Linux `.deb` / AppImage and macOS `.app` scripts and Homebrew templates.
 
 ### Windows (MSVC)
 
