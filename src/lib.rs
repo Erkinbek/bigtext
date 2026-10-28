@@ -1,6 +1,7 @@
 //! BigText core: file access, encodings, line index, piece table, search, replace and save.
 //! Nothing in this crate depends on the GUI; `main.rs` hosts the egui front end.
 
+pub mod brackets;
 pub mod csv;
 pub mod decompress;
 pub mod diff;

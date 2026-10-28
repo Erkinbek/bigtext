@@ -51,6 +51,7 @@ pub enum Cmd {
     GotoOffset,
     GotoTime,
     Timeline,
+    MatchBracket,
     WordWrap,
     HexView,
     TableView,
@@ -81,7 +82,7 @@ const CTRL_SHIFT: Modifiers = Modifiers { alt: false, ctrl: false, shift: true, 
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 54] = [
+    pub const ALL: [Cmd; 55] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -118,6 +119,7 @@ impl Cmd {
         Cmd::GotoOffset,
         Cmd::GotoTime,
         Cmd::Timeline,
+        Cmd::MatchBracket,
         Cmd::WordWrap,
         Cmd::HexView,
         Cmd::TableView,
@@ -203,6 +205,7 @@ impl Cmd {
             Cmd::GotoOffset => "Go to byte offset…",
             Cmd::GotoTime => "Go to time…",
             Cmd::Timeline => "Time histogram",
+            Cmd::MatchBracket => "Go to matching bracket",
             Cmd::WordWrap => "Word wrap",
             Cmd::HexView => "Hex view",
             Cmd::TableView => "Table view (CSV / TSV)",
@@ -241,7 +244,7 @@ impl Cmd {
             | Cmd::ClearBookmarks
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
-            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline => "Search",
+            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::MatchBracket => "Search",
             Cmd::Palette | Cmd::Shortcuts | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
@@ -276,6 +279,7 @@ impl Cmd {
             Cmd::GotoOffset => key(CTRL_SHIFT, Key::G),
             Cmd::GotoTime => key(CTRL_SHIFT, Key::T),
             Cmd::Timeline => key(CTRL_SHIFT, Key::H),
+            Cmd::MatchBracket => key(CTRL, Key::CloseBracket),
             Cmd::WordWrap => key(Modifiers::ALT, Key::Z),
             Cmd::TableView => key(CTRL, Key::T),
             Cmd::SplitView => key(CTRL, Key::Backslash),
@@ -469,6 +473,7 @@ impl BigTextApp {
             Cmd::GotoLine => self.goto = GotoDialog::new(GotoMode::Line),
             Cmd::GotoOffset => self.goto = GotoDialog::new(GotoMode::Offset),
             Cmd::GotoTime => self.goto = GotoDialog::new(GotoMode::Time),
+            Cmd::MatchBracket => self.goto_matching_bracket(),
             Cmd::Timeline => {
                 if self.is_on(Cmd::Timeline) {
                     self.timeline.open = false;
@@ -663,7 +668,7 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                for c in [Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::Timeline] {
+                for c in [Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::MatchBracket, Cmd::Timeline] {
                     run = run.or(self.item(ui, c));
                 }
             });

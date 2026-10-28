@@ -52,6 +52,11 @@ All notable changes to BigText. Each release on
   at every cursor as one undoable edit; Left/Right/Home/End move them all; copy joins their
   selections line by line; **Esc** goes back to one cursor. The status bar shows the count.
 - **Duplicate line** moves to **Ctrl+Shift+D**, and can now be rebound.
+- **Matching brackets and tags**: the `()`, `[]`, `{}` pair next to the caret is highlighted, and
+  in XML / HTML the opening and closing tag names. **Ctrl+]** (Search → Go to matching bracket)
+  jumps to the partner, or, away from a bracket, to the bracket around the caret. Brackets
+  inside double-quoted strings do not count; the jump searches the whole file in the
+  background, so it works from the first `[` of a gigabyte-long JSON array too.
 
 ## 0.3.0 — 2026-10-28
 

@@ -492,4 +492,7 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Esc: back to one cursor", "Esc: вернуться к одному курсору", "Esc: bitta kursorga qaytish"],
     ["Add a cursor", "Добавить курсор", "Kursor qo'shish"],
     ["Back to one cursor", "Вернуться к одному курсору", "Bitta kursorga qaytish"],
+    // Matching brackets.
+    ["Go to matching bracket", "Перейти к парной скобке", "Juft qavsga o'tish"],
+    ["No matching bracket", "Нет парной скобки", "Juft qavs topilmadi"],
 ];

@@ -65,6 +65,7 @@ pub struct SelfTest {
 const ORIGINAL: &str = "alpha beta gamma\n    indented line\nthird line here\nfoo bar foo baz\nlast line\n";
 const CSV: &str = "id;name;age;city\r\n1;Ann;30;Tashkent\r\n2;\"Bob; Jr\";41;Samarkand\r\n3;Cy;25;Bukhara\r\n";
 const LEVELS_LOG: &str = "2024-05-01 10:00:00 INFO start\n2024-05-01 10:00:01 DEBUG cfg loaded\n2024-05-01 10:00:02 WARN slow disk\n2024-05-01 10:00:03 ERROR db timeout\n2024-05-01 10:00:04 INFO no error here\n2024-05-01 10:00:05 [error] nginx style\n";
+const BRACKETS_JSON: &str = "{\"a\": [1, \"]\", {\"b\": 2}]}\n";
 const CSV_WITHOUT_NAME_CITY: &str = "id;age\r\n1;30\r\n2;41\r\n3;25\r\n";
 
 fn doc(app: &mut BigTextApp) -> &mut Document {
@@ -158,6 +159,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("cli.log"), "first 10:00\nsecond 10:00 10:05\nthird\n")?;
     std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
     std::fs::write(dir.join("levels.log"), LEVELS_LOG)?;
+    std::fs::write(dir.join("brackets.json"), BRACKETS_JSON)?;
     std::fs::write(dir.join("multi.txt"), "foo x foo y foo\nfirst\nsecond\n")?;
     // Unix times: 2024-05-01 14:32:05, 14:33:05 and 14:34:05 UTC.
     std::fs::write(dir.join("epoch.log"), "1714573925 start\n1714573985 middle\n1714574045 end\n")?;
@@ -1419,6 +1421,41 @@ impl SelfTest {
             }
             c.key(Key::Escape, NONE);
             Step::Next
+        }));
+        s("open brackets.json", open_step("brackets.json"));
+        s("the bracket pair at the caret is highlighted; Ctrl+] jumps between them", Box::new(|app, c| {
+            use bigtext::brackets::Pair;
+            let close = BRACKETS_JSON.trim_end().len() as u64 - 1;
+            let inner = BRACKETS_JSON.find("{\"b").unwrap() as u64;
+            if c.first() {
+                doc(app).set_caret(0, false);
+                if app.caret_pair() != Some(Pair::Brackets(0, close)) {
+                    return Step::Fail(format!("pair {:?}", app.caret_pair()));
+                }
+                c.key(Key::CloseBracket, CTRL);
+                return Step::Wait;
+            }
+            let caret = doc(app).view.caret;
+            match c.mark {
+                0 if caret == close => {
+                    c.mark = 1;
+                    c.key(Key::CloseBracket, CTRL);
+                    Step::Wait
+                }
+                1 if caret == 0 => {
+                    // Inside "b": to the brace around it.
+                    c.mark = 2;
+                    doc(app).set_caret(inner + 3, false);
+                    c.key(Key::CloseBracket, CTRL);
+                    Step::Wait
+                }
+                2 if caret == inner => {
+                    c.mark = 0;
+                    Step::Next
+                }
+                _ if c.waited() > Duration::from_secs(3) => Step::Fail(format!("step {} caret {caret}", c.mark)),
+                _ => Step::Wait,
+            }
         }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
         s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {

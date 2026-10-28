@@ -13,6 +13,7 @@ pub mod i18n;
 mod i18n_texts;
 pub mod levels;
 pub mod marks;
+pub mod match_bracket;
 pub mod merge_logs;
 pub mod multi_cursor;
 pub mod ops;
@@ -82,6 +83,7 @@ pub enum Msg {
     TimeFound { doc: u64, version: u64, result: Result<u64, bigtext::timestamp::TimeError> },
     LevelFound(Box<levels::LevelFound>),
     CursorFound(Box<multi_cursor::CursorFound>),
+    BracketJump(Box<match_bracket::BracketJump>),
 }
 
 pub struct Settings {
@@ -201,6 +203,7 @@ pub struct BigTextApp {
     pub csv: csv_tools::CsvUi,
     pub merge: merge_logs::MergeUi,
     pub saved_ui: saved_searches::SavedUi,
+    pairs: match_bracket::PairCache,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -318,6 +321,7 @@ impl BigTextApp {
             csv: csv_tools::CsvUi::default(),
             merge: merge_logs::MergeUi::default(),
             saved_ui: saved_searches::SavedUi::default(),
+            pairs: match_bracket::PairCache::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -572,6 +576,7 @@ impl BigTextApp {
                 Msg::TimeFound { doc, version, result } => self.on_time_found(doc, version, result),
                 Msg::LevelFound(f) => self.on_level_found(*f),
                 Msg::CursorFound(f) => self.on_cursor_found(*f),
+                Msg::BracketJump(j) => self.on_bracket_jump(*j),
             }
         }
     }

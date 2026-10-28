@@ -121,6 +121,7 @@ mod tests {
         "app" / "fonts.rs",
         "app" / "levels.rs",
         "app" / "marks.rs",
+        "app" / "match_bracket.rs",
         "app" / "merge_logs.rs",
         "app" / "multi_cursor.rs",
         "app" / "ops.rs",

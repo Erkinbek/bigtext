@@ -575,6 +575,8 @@ impl BigTextApp {
             None => Vec::new(),
         };
         let occ = self.occurrence_matcher();
+        let pair = self.caret_pair();
+        let pair_color = if dark { Color32::from_rgba_unmultiplied(110, 170, 255, 85) } else { Color32::from_rgba_unmultiplied(40, 110, 230, 65) };
         // The file labels of a merged log, each in its file's colour.
         let tags: Vec<(Arc<Matcher>, usize)> = self.docs.get(self.active).and_then(|d| d.merged.as_ref()).map(|t| t.matchers.iter().cloned().zip(0..).collect()).unwrap_or_default();
         let found_color = if dark { Color32::from_rgba_unmultiplied(200, 160, 0, 90) } else { Color32::from_rgba_unmultiplied(255, 200, 0, 120) };
@@ -594,6 +596,13 @@ impl BigTextApp {
             if let Some(m) = &found {
                 add(m, found_color);
             }
+            // The bracket or tag pair at the caret.
+            let ranges = match pair {
+                Some(bigtext::brackets::Pair::Brackets(a, b)) => [(a, a + 1), (b, b + 1)],
+                Some(bigtext::brackets::Pair::Tags(a, b)) => [a, b],
+                None => [(0, 0); 2],
+            };
+            v.extend(ranges.into_iter().filter(|&(s, e)| e > s && e > r.start && s < r.end).map(|(s, e)| (s, e, pair_color)));
             v
         }
     }
