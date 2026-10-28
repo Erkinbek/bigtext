@@ -24,11 +24,14 @@ pub enum ViewAction {
     CopyLarge { cut: bool, len: u64 },
 }
 
+/// Ranges to paint behind the text, with their colours.
+pub type Highlights = Vec<(u64, u64, Color32)>;
+
 pub struct ViewEnv<'a> {
     pub font_size: &'a mut f32,
     /// Returns ranges to highlight within the given (visible) range, with their colours, in
     /// painting order.
-    pub highlight: &'a dyn Fn(&TextBuf, Range<u64>) -> Vec<(u64, u64, Color32)>,
+    pub highlight: &'a dyn Fn(&TextBuf, Range<u64>) -> Highlights,
     pub actions: &'a mut Vec<ViewAction>,
     pub focus: bool,
     /// Syntax highlighting for the visible rows.

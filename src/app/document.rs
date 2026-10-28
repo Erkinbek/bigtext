@@ -14,6 +14,9 @@ use bigtext::text::{Swap, TextBuf};
 /// Line commands (duplicate/delete line) scan at most this far on the UI thread; longer lines
 /// can still be selected and edited.
 const LINE_CMD_LIMIT: u64 = 8 * 1024 * 1024;
+/// A selection and the document version: (start, end, version).
+type SelKey = (u64, u64, u64);
+
 /// Characters of a selection are counted (on the UI thread) up to this size.
 pub const SEL_CHARS_MAX: u64 = 4 * 1024 * 1024;
 
@@ -154,8 +157,8 @@ pub struct Document {
     pub temporary: bool,
     /// Progress and cancellation of the open job (shown while a compressed file is unpacked).
     pub unpacking: Option<(bigtext::jobs::Progress, CancelToken)>,
-    /// Character count of the selection, by (start, end, version).
-    sel_chars: std::cell::Cell<Option<((u64, u64, u64), Option<u64>)>>,
+    /// Character count of the selection, cached.
+    sel_chars: std::cell::Cell<Option<(SelKey, Option<u64>)>>,
     /// Second pane of a split view (shares caret and selection, scrolls independently).
     pub split: Option<PaneView>,
     pub active_pane: u8,

@@ -40,6 +40,9 @@ pub fn solid(color: usize) -> Color32 {
     Color32::from_rgb(r, g, b)
 }
 
+/// Compiled marks with their colour indexes.
+pub type MarkMatchers = Vec<(Arc<Matcher>, usize)>;
+
 #[derive(Default)]
 pub struct MarksUi {
     pub open: bool,
@@ -47,7 +50,7 @@ pub struct MarksUi {
     pub new_regex: bool,
     pub new_case: bool,
     /// Compiled matchers for the enabled marks, for one encoding.
-    cache: Option<(Vec<Mark>, Codec, Vec<(Arc<Matcher>, usize)>)>,
+    cache: Option<(Vec<Mark>, Codec, MarkMatchers)>,
 }
 
 impl BigTextApp {
@@ -77,13 +80,13 @@ impl BigTextApp {
     }
 
     /// Matchers of the enabled marks for documents in `codec` (with their colours).
-    pub(super) fn mark_matchers(&mut self, codec: Codec) -> Vec<(Arc<Matcher>, usize)> {
+    pub(super) fn mark_matchers(&mut self, codec: Codec) -> MarkMatchers {
         if let Some((marks, c, v)) = &self.marks.cache {
             if *marks == self.settings.marks && *c == codec {
                 return v.clone();
             }
         }
-        let v: Vec<(Arc<Matcher>, usize)> =
+        let v: MarkMatchers =
             self.settings.marks.iter().filter(|m| m.enabled).filter_map(|m| Matcher::new(&m.query, codec).ok().map(|x| (Arc::new(x), m.color))).collect();
         self.marks.cache = Some((self.settings.marks.clone(), codec, v.clone()));
         v
