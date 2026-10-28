@@ -113,6 +113,9 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         }
     }
 
+    if doc.view.extra_version != doc.version {
+        doc.view.extra.clear();
+    }
     let mut pending = false;
     if doc.is_ready() {
         // Input is handled against the current layout, then the layout is rebuilt for painting.
@@ -169,6 +172,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     let text_painter = painter.with_clip_rect(text_rect);
     let (sel_s, sel_e) = doc.selection();
     let caret = doc.view.caret;
+    let extra = doc.view.extra.clone();
     let highlights = match (rows.first(), rows.last()) {
         (Some(a), Some(b)) => (env.highlight)(&doc.buf, a.start..b.seg.next.max(b.end)),
         _ => Vec::new(),
@@ -284,6 +288,15 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                 text_painter.rect_filled(Rect::from_min_max(pos2(x0, y), pos2(x1, y + m.rh)), 0.0, sel_color);
             }
         }
+        for &(a, c) in &extra {
+            let (s, e) = (a.min(c), a.max(c));
+            if s < e && e > row.start && s <= row.end {
+                let (x0, x1) = (x_of(cell_for(s.max(row.start))), x_of(cell_for(e.min(row.end))));
+                if x1 > x0 {
+                    text_painter.rect_filled(Rect::from_min_max(pos2(x0, y), pos2(x1, y + m.rh)), 0.0, sel_color);
+                }
+            }
+        }
         if !job.text.is_empty() {
             let galley = ui.ctx().fonts_mut(|f| f.layout_job(job));
             text_painter.galley(pos2(x_of(first_cell), y), galley, text_color);
@@ -292,6 +305,13 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             let x = x_of(cell_for(caret));
             let color = if focused { visuals.text_cursor.stroke.color } else { weak };
             text_painter.rect_filled(Rect::from_min_max(pos2(x - 0.5, y), pos2(x + 1.5, y + m.rh)), 0.0, color);
+        }
+        for &(_, c) in &extra {
+            if c >= row.start && (c < row.end || (c == row.end && (row.is_last_in_seg() || row.end == doc.buf.len()))) {
+                let x = x_of(cell_for(c));
+                let color = if focused { visuals.text_cursor.stroke.color } else { weak };
+                text_painter.rect_filled(Rect::from_min_max(pos2(x - 0.5, y), pos2(x + 1.5, y + m.rh)), 0.0, color);
+            }
         }
 
         let label = if starts_line {
@@ -622,6 +642,7 @@ fn handle_mouse(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, text_rec
     // Alt+drag: column (block) selection.
     if pressed && text_rect.contains(pos) && resp.hovered() && mods.alt && wrap.is_none() {
         if let Some((row, col)) = hit_cell(doc, rows, text_rect, m, pos) {
+            doc.view.alt_prev = Some((doc.view.anchor, doc.view.caret));
             doc.view.block = Some(Block::at(row.start, col));
             doc.view.block_drag = true;
             if let Ok(off) = rows::offset_at_cell(&doc.buf, &row, col) {
@@ -634,6 +655,16 @@ fn handle_mouse(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, text_rec
     if doc.view.block_drag && active_pane {
         if !down {
             doc.view.block_drag = false;
+            // Alt+click without a drag: another cursor.
+            if let (Some(b), Some((a, c))) = (doc.view.block, doc.view.alt_prev.take()) {
+                if b.anchor == b.caret && b.anchor_cell == b.caret_cell {
+                    let off = doc.view.caret;
+                    doc.view.block = None;
+                    doc.view.anchor = a;
+                    doc.view.caret = c;
+                    crate::view::multi::add_cursor(doc, off, off);
+                }
+            }
             return;
         }
         if pos.y < text_rect.top() || pos.y > text_rect.bottom() {
@@ -658,6 +689,7 @@ fn handle_mouse(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, text_rec
     }
     if pressed && text_rect.contains(pos) && resp.hovered() {
         doc.view.block = None;
+        doc.view.extra.clear();
         if let Some(off) = hit_test(doc, rows, text_rect, m, pos) {
             doc.set_caret(off, mods.shift);
             doc.view.desired_cell = None;
@@ -700,7 +732,7 @@ fn is_word_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
-fn select_word(doc: &mut Document, off: u64, wrap: Option<usize>) {
+pub(crate) fn select_word(doc: &mut Document, off: u64, wrap: Option<usize>) {
     let Ok(row) = rows::row_at(&doc.buf, off, wrap) else { return };
     let lo = off.saturating_sub(1024).max(row.seg.start);
     let hi = (off + 1024).min(row.seg.content_end);
@@ -801,7 +833,7 @@ fn handle_block_event(ui: &mut Ui, doc: &mut Document, ev: &Event) -> bool {
 fn handle_keys(ui: &mut Ui, doc: &mut Document, wrap: Option<usize>, env: &mut ViewEnv) {
     let events = ui.input(|i| i.events.clone());
     for ev in events {
-        if handle_block_event(ui, doc, &ev) {
+        if handle_block_event(ui, doc, &ev) || crate::view::multi::handle_event(ui, doc, &ev, wrap) {
             continue;
         }
         match ev {
@@ -1033,7 +1065,6 @@ fn handle_key(doc: &mut Document, key: Key, m: Modifiers, wrap: Option<usize>) {
             }
         }
         Key::Y if cmd => doc.redo(),
-        Key::D if cmd => doc.duplicate_line(),
         Key::K if cmd && shift => doc.delete_line(),
         Key::Escape => {
             let c = doc.view.caret;

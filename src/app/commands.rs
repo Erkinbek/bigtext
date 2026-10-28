@@ -30,6 +30,7 @@ pub enum Cmd {
     Undo,
     Redo,
     SelectAll,
+    AddNextOccurrence,
     DuplicateLine,
     DeleteLine,
     ToggleBookmark,
@@ -80,7 +81,7 @@ const CTRL_SHIFT: Modifiers = Modifiers { alt: false, ctrl: false, shift: true, 
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 53] = [
+    pub const ALL: [Cmd; 54] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -96,6 +97,7 @@ impl Cmd {
         Cmd::Undo,
         Cmd::Redo,
         Cmd::SelectAll,
+        Cmd::AddNextOccurrence,
         Cmd::DuplicateLine,
         Cmd::DeleteLine,
         Cmd::ToggleBookmark,
@@ -180,6 +182,7 @@ impl Cmd {
             Cmd::Undo => "Undo",
             Cmd::Redo => "Redo",
             Cmd::SelectAll => "Select all",
+            Cmd::AddNextOccurrence => "Add next occurrence (another cursor)",
             Cmd::DuplicateLine => "Duplicate line",
             Cmd::DeleteLine => "Delete line",
             Cmd::ToggleBookmark => "Toggle bookmark",
@@ -229,6 +232,7 @@ impl Cmd {
             Cmd::Undo
             | Cmd::Redo
             | Cmd::SelectAll
+            | Cmd::AddNextOccurrence
             | Cmd::DuplicateLine
             | Cmd::DeleteLine
             | Cmd::ToggleBookmark
@@ -254,7 +258,8 @@ impl Cmd {
             Cmd::Undo => key(CTRL, Key::Z),
             Cmd::Redo => key(CTRL, Key::Y),
             Cmd::SelectAll => key(CTRL, Key::A),
-            Cmd::DuplicateLine => key(CTRL, Key::D),
+            Cmd::AddNextOccurrence => key(CTRL, Key::D),
+            Cmd::DuplicateLine => key(CTRL_SHIFT, Key::D),
             Cmd::DeleteLine => key(CTRL_SHIFT, Key::K),
             Cmd::ToggleBookmark => key(CTRL, Key::F2),
             Cmd::NextBookmark => key(Modifiers::NONE, Key::F2),
@@ -285,7 +290,7 @@ impl Cmd {
 
     /// Editing keys the text view handles itself; they are listed but cannot be rebound.
     pub fn fixed_key(self) -> bool {
-        matches!(self, Cmd::Undo | Cmd::Redo | Cmd::SelectAll | Cmd::DuplicateLine | Cmd::DeleteLine)
+        matches!(self, Cmd::Undo | Cmd::Redo | Cmd::SelectAll | Cmd::DeleteLine)
     }
 }
 
@@ -391,6 +396,8 @@ const OTHER_KEYS: &[(&str, &str)] = &[
     ("Ctrl+wheel", "Zoom"),
     ("Double / triple click", "Select word / line"),
     ("Alt+drag", "Column (block) selection"),
+    ("Alt+click", "Add a cursor"),
+    ("Esc", "Back to one cursor"),
     ("Up / Down in the find field", "Search history"),
 ];
 
@@ -436,6 +443,7 @@ impl BigTextApp {
                     d.view.caret = d.buf.len();
                 }
             }
+            Cmd::AddNextOccurrence => self.add_next_occurrence(),
             Cmd::DuplicateLine => doc(self).into_iter().for_each(|d| d.duplicate_line()),
             Cmd::DeleteLine => doc(self).into_iter().for_each(|d| d.delete_line()),
             Cmd::ToggleBookmark => doc(self).into_iter().for_each(|d| d.toggle_bookmark()),
@@ -639,7 +647,7 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                for c in [Cmd::SelectAll, Cmd::DuplicateLine, Cmd::DeleteLine] {
+                for c in [Cmd::SelectAll, Cmd::AddNextOccurrence, Cmd::DuplicateLine, Cmd::DeleteLine] {
                     run = run.or(self.item(ui, c));
                 }
                 self.text_menu(ui);

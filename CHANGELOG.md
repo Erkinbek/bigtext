@@ -43,6 +43,16 @@ All notable changes to BigText. Each release on
   switch and the table column under a name ("Timeouts", "5xx responses"); one click applies it
   as a filter. They are kept across sessions.
 
+### Editing
+
+- **Multiple cursors.** **Ctrl+D** selects the word at the caret, and each further press adds
+  the next occurrence of the selection as another cursor (searched in the background, so it
+  never blocks on a large file). **Alt+click** adds a cursor where you click. Typing, pasting
+  (one line per cursor when the counts match), Backspace, Delete, Enter and Tab change the text
+  at every cursor as one undoable edit; Left/Right/Home/End move them all; copy joins their
+  selections line by line; **Esc** goes back to one cursor. The status bar shows the count.
+- **Duplicate line** moves to **Ctrl+Shift+D**, and can now be rebound.
+
 ## 0.3.0 — 2026-10-28
 
 ### Logs

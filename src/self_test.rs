@@ -158,6 +158,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("cli.log"), "first 10:00\nsecond 10:00 10:05\nthird\n")?;
     std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
     std::fs::write(dir.join("levels.log"), LEVELS_LOG)?;
+    std::fs::write(dir.join("multi.txt"), "foo x foo y foo\nfirst\nsecond\n")?;
     // Unix times: 2024-05-01 14:32:05, 14:33:05 and 14:34:05 UTC.
     std::fs::write(dir.join("epoch.log"), "1714573925 start\n1714573985 middle\n1714574045 end\n")?;
     std::fs::create_dir_all(dir.join("tree").join("sub"))?;
@@ -449,11 +450,11 @@ impl SelfTest {
             }
             check(text(app) == ORIGINAL, "undo paste failed")
         }));
-        s("Ctrl+D duplicates line, Ctrl+Shift+K deletes it", Box::new(|app, c| {
+        s("Ctrl+Shift+D duplicates line, Ctrl+Shift+K deletes it", Box::new(|app, c| {
             if c.first() {
                 let p = pos(app, 3, 2.0);
                 c.click(p, NONE);
-                c.key(Key::D, CTRL);
+                c.key(Key::D, CTRL_SHIFT);
                 return Step::Wait;
             }
             if c.frames == 2 {
@@ -1369,6 +1370,55 @@ impl SelfTest {
             app.search.invert = false;
             app.search.open = false;
             check(ok, got)
+        }));
+        s("open multi.txt", open_step("multi.txt"));
+        s("Ctrl+D: the word, then its next occurrences as cursors; typing changes all", Box::new(|app, c| {
+            if c.first() {
+                let p = pos(app, 0, 1.0);
+                c.click(p, NONE);
+                c.key(Key::D, CTRL);
+                return Step::Wait;
+            }
+            let n = doc(app).view.extra.len();
+            match c.mark {
+                // The word, then two more occurrences.
+                0 | 1 if doc(app).find_job.is_none() && n == c.mark as usize && doc(app).selection() != (1, 1) => {
+                    c.mark += 1;
+                    c.key(Key::D, CTRL);
+                    Step::Wait
+                }
+                2 if doc(app).find_job.is_none() && n == 2 => {
+                    c.mark = 3;
+                    c.typed("bar");
+                    Step::Wait
+                }
+                3 if text(app).starts_with("bar x bar y bar\n") => {
+                    c.mark = 4;
+                    c.key(Key::Escape, NONE);
+                    Step::Wait
+                }
+                4 if n == 0 => {
+                    c.mark = 0;
+                    Step::Next
+                }
+                _ if c.waited() > Duration::from_secs(5) => Step::Fail(format!("step {}: {n} extra cursors, selection {:?}, text {:?}", c.mark, doc(app).selection(), text(app))),
+                _ => Step::Wait,
+            }
+        }));
+        s("Alt+click adds a cursor; Backspace at both", Box::new(|app, c| {
+            if c.first() {
+                let (a, b) = (pos(app, 1, 5.0), pos(app, 2, 6.0));
+                c.click(a, NONE);
+                c.click(b, ALT);
+                c.key(Key::Backspace, NONE);
+                return Step::Wait;
+            }
+            let t = text(app);
+            if !t.ends_with("firs\nsecon\n") {
+                return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("text {t:?}, {} extra cursors", doc(app).view.extra.len())) } else { Step::Wait };
+            }
+            c.key(Key::Escape, NONE);
+            Step::Next
         }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
         s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {

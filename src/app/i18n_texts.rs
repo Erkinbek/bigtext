@@ -485,4 +485,11 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Name", "Имя", "Nomi"],
     ["Save search", "Сохранить поиск", "Qidiruvni saqlash"],
     ["Saves the pattern with its options, “!” and the column", "Сохраняет шаблон с параметрами, «!» и столбцом", "Naqshni parametrlari, “!” va ustuni bilan saqlaydi"],
+    // Multiple cursors.
+    ["Add next occurrence (another cursor)", "Добавить следующее вхождение (ещё курсор)", "Keyingi moslikni qo'shish (yana bir kursor)"],
+    ["Every occurrence already has a cursor", "У каждого вхождения уже есть курсор", "Har bir moslikda allaqachon kursor bor"],
+    ["{n} cursors", "курсоров: {n}", "{n} ta kursor"],
+    ["Esc: back to one cursor", "Esc: вернуться к одному курсору", "Esc: bitta kursorga qaytish"],
+    ["Add a cursor", "Добавить курсор", "Kursor qo'shish"],
+    ["Back to one cursor", "Вернуться к одному курсору", "Bitta kursorga qaytish"],
 ];

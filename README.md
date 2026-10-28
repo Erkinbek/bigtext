@@ -206,7 +206,9 @@ bigtext [OPTIONS] [FILE[:LINE] ...]
 | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) | Undo / redo |
 | Ctrl+X / Ctrl+C / Ctrl+V | Cut / copy / paste |
 | Ctrl+A | Select all |
-| Ctrl+D / Ctrl+Shift+K | Duplicate line (or selection) / delete line |
+| Ctrl+D | Select the word, then add its next occurrence as another cursor |
+| Alt+click | Add a cursor (Esc: back to one cursor) |
+| Ctrl+Shift+D / Ctrl+Shift+K | Duplicate line (or selection) / delete line |
 | Ctrl+←/→, Ctrl+Backspace/Delete | Word movement / delete word |
 | Home / End, Ctrl+Home / Ctrl+End | Line start (smart) / end, document start / end |
 | Ctrl+wheel, Ctrl+= / Ctrl+- / Ctrl+0 | Zoom |

@@ -82,6 +82,12 @@ pub struct ViewState {
     /// Column (block) selection, made with Alt+drag.
     pub block: Option<crate::view::block::Block>,
     pub block_drag: bool,
+    /// More cursors (anchor, caret) besides `anchor`/`caret` (Ctrl+D, Alt+click).
+    pub extra: Vec<(u64, u64)>,
+    /// The document version the extra cursors belong to; any other edit drops them.
+    pub extra_version: u64,
+    /// The selection before an Alt+press, for adding a cursor when it turns out to be a click.
+    pub alt_prev: Option<(u64, u64)>,
 }
 
 impl Default for ViewState {
@@ -110,6 +116,9 @@ impl Default for ViewState {
             scroll_marks: Default::default(),
             block: None,
             block_drag: false,
+            extra: Vec::new(),
+            extra_version: 0,
+            alt_prev: None,
         }
     }
 }

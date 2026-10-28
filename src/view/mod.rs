@@ -3,5 +3,6 @@
 pub mod block;
 pub mod hex_view;
 pub mod highlight;
+pub mod multi;
 pub mod table_view;
 pub mod text_view;

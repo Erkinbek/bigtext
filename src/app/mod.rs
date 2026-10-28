@@ -14,6 +14,7 @@ mod i18n_texts;
 pub mod levels;
 pub mod marks;
 pub mod merge_logs;
+pub mod multi_cursor;
 pub mod ops;
 pub mod saved_searches;
 pub mod search_panel;
@@ -80,6 +81,7 @@ pub enum Msg {
     CsvRewritten(Box<csv_tools::CsvRewritten>),
     TimeFound { doc: u64, version: u64, result: Result<u64, bigtext::timestamp::TimeError> },
     LevelFound(Box<levels::LevelFound>),
+    CursorFound(Box<multi_cursor::CursorFound>),
 }
 
 pub struct Settings {
@@ -569,6 +571,7 @@ impl BigTextApp {
                 Msg::CsvRewritten(c) => self.on_csv_rewritten(*c),
                 Msg::TimeFound { doc, version, result } => self.on_time_found(doc, version, result),
                 Msg::LevelFound(f) => self.on_level_found(*f),
+                Msg::CursorFound(f) => self.on_cursor_found(*f),
             }
         }
     }
@@ -703,6 +706,10 @@ impl BigTextApp {
                     _ => "?".into(),
                 };
                 ui.label(i18n::trf("Ln {line}, Col {col}", &[("line", &format!("{}{}", if exact { "" } else { "~" }, line + 1)), ("col", &col)]));
+                if !d.view.extra.is_empty() {
+                    ui.separator();
+                    ui.label(i18n::trf("{n} cursors", &[("n", &(d.view.extra.len() + 1).to_string())])).on_hover_text(i18n::tr("Esc: back to one cursor"));
+                }
                 ui.separator();
                 ui.label(i18n::trf("Offset {n}", &[("n", &format!("{caret} (0x{caret:X})"))]));
                 if let Some((lines, exact, chars, bytes)) = d.selection_stats() {
