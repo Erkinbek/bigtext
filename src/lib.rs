@@ -5,6 +5,7 @@ pub mod csv;
 pub mod diff;
 pub mod encoding;
 pub mod file;
+pub mod filter;
 pub mod index;
 pub mod jobs;
 pub mod replace;

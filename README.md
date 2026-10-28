@@ -45,6 +45,19 @@ Single self-contained binary, no runtime dependencies.
   matches highlighted in the viewport only. Non-UTF-8 files are searched by transcoding the
   pattern (literal) or decoding windows (regex) with exact byte mapping. Matches spanning
   chunk or piece boundaries are found.
+- **Filter view** (Ctrl+Shift+F, or **Filter** in the search bar): only the lines with a match
+  — or, with **!**, the lines without one — in a virtualized list under the text, like `grep`
+  over the whole file. Click a line to jump to it. **Save lines…** streams every kept line to a
+  new file (no limit); **Copy lines** puts them on the clipboard (up to 100 MB). Find All
+  results offer the same two buttons.
+- **Highlights** (View → Highlights…, or **Mark** in the search bar): patterns painted in their
+  own colours in every document — `ERROR` in red, a request id in blue — kept across sessions.
+  Selecting a word (double click) also highlights its other occurrences on screen.
+- **Scrollbar marks**: Find All matches, filter lines, bookmarks and the differences from
+  File → Compare are marked on the vertical scrollbar, so you see where they cluster in a 50 GB
+  file at a glance.
+- **Search history**: the ▾ button next to the find field, or Up/Down inside it, brings back
+  recent patterns (kept across sessions).
 - **Replace** (Ctrl+H): replace current / replace all with `$1`, `${name}`, `\n`, `\t`. Up to
   50,000 matches are applied as one undoable piece-table edit; beyond that the result is
   streamed to a temp file and swapped in atomically (optional `.bak`), with bounded memory and
@@ -127,6 +140,7 @@ bigtext [FILE ...]
 | Ctrl+W, Ctrl+Tab | Close tab, next tab |
 | Ctrl+F / Ctrl+H | Find / replace (Enter = next, Shift+Enter = previous, Esc = close) |
 | F3 / Shift+F3 | Find next / previous |
+| Ctrl+Shift+F | Filter: show only the lines with a match |
 | Ctrl+G / Ctrl+Shift+G | Go to line / go to byte offset (decimal or `0x` hex) |
 | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) | Undo / redo |
 | Ctrl+X / Ctrl+C / Ctrl+V | Cut / copy / paste |

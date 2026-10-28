@@ -3,8 +3,12 @@
 pub mod columns;
 pub mod document;
 pub mod extras;
+pub mod filter_panel;
+pub mod i18n;
+pub mod marks;
 pub mod ops;
 pub mod search_panel;
+pub mod tasks;
 pub mod update;
 
 use std::collections::VecDeque;
@@ -48,6 +52,7 @@ pub enum Msg {
     FileChanged { doc: u64, deleted: bool, grown: bool },
     Update(update::Event),
     ColumnsDeleted(Box<columns::ColumnsDeleted>),
+    TaskDone { id: u64, outcome: tasks::TaskOutcome },
 }
 
 pub struct Settings {
@@ -56,6 +61,8 @@ pub struct Settings {
     pub show_perf: bool,
     pub backup_on_save: bool,
     pub syntax: bool,
+    /// Highlight patterns (View → Highlights).
+    pub marks: Vec<marks::Mark>,
 }
 
 struct GotoDialog {
@@ -136,6 +143,12 @@ pub struct BigTextApp {
     pending_replace: Option<(u64, Arc<Matcher>, Template, std::ops::Range<u64>)>,
     preview: Option<(u64, Vec<(u64, String, String)>, Vec<u64>)>,
     pub update: update::UpdateUi,
+    pub tasks: Vec<tasks::Task>,
+    next_task: u64,
+    pub notice: Option<tasks::Notice>,
+    pub marks: marks::MarksUi,
+    /// Matcher for the occurrences of the selected text, by the text it was built for.
+    occurrences: Option<(String, bigtext::encoding::Codec, Option<Arc<Matcher>>)>,
 }
 
 /// Turns I/O errors into messages a user can act on.
@@ -196,7 +209,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true },
+            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new() },
             goto: None,
             confirm: None,
             error: None,
@@ -216,12 +229,19 @@ impl BigTextApp {
             pending_replace: None,
             preview: None,
             update: update::UpdateUi::default(),
+            tasks: Vec::new(),
+            next_task: 0,
+            notice: None,
+            marks: marks::MarksUi::default(),
+            occurrences: None,
         };
         app.search.query.case_sensitive = true;
         if persist {
-            let state = extras::load();
+            let mut state = extras::load();
             app.update.restore(&state);
             update::cleanup_in_background();
+            app.settings.marks = std::mem::take(&mut state.marks);
+            app.search.history = std::mem::take(&mut state.history);
             if files.is_empty() {
                 app.restore_session(state);
             } else {
@@ -360,6 +380,7 @@ impl BigTextApp {
                 },
                 Msg::Update(e) => self.on_update_event(e),
                 Msg::ColumnsDeleted(c) => self.on_columns_deleted(*c),
+                Msg::TaskDone { id, outcome } => self.on_task_done(id, outcome),
             }
         }
     }
@@ -435,6 +456,10 @@ impl BigTextApp {
         }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::S))) {
             self.save(false);
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::F))) {
+            self.open_search(false);
+            self.start_filter();
         }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::F))) {
             self.open_search(false);
@@ -621,6 +646,10 @@ impl BigTextApp {
                     self.open_search(false);
                     self.find_all();
                 }
+                if ui.button("Filter lines\tCtrl+Shift+F").clicked() {
+                    self.open_search(false);
+                    self.start_filter();
+                }
                 ui.separator();
                 if ui.button("Go to line…\tCtrl+G").clicked() {
                     self.goto = Some(GotoDialog { text: String::new(), by_offset: false, error: None, focus: true });
@@ -673,6 +702,10 @@ impl BigTextApp {
                     self.settings.font_size = 14.0;
                 }
                 ui.checkbox(&mut self.settings.show_perf, "Performance overlay\tF12");
+                ui.separator();
+                if ui.button("Highlights…").clicked() {
+                    self.marks.open = true;
+                }
             });
             ui.menu_button("Help", |ui| {
                 if ui.button("Check for updates…").clicked() {
@@ -736,8 +769,8 @@ impl BigTextApp {
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {
-        let Some(d) = self.docs.get(self.active) else { return };
         ui.horizontal(|ui| {
+            let Some(d) = self.docs.get(self.active) else { return };
             if d.is_ready() {
                 let caret = d.view.caret;
                 let (line, exact) = d.buf.line_of(caret);
@@ -762,6 +795,8 @@ impl BigTextApp {
                 ui.label(format!("{}{} lines", if lexact { "" } else { "~" }, lines));
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                self.tasks_status(ui);
+                let Some(d) = self.docs.get(self.active) else { return };
                 if let Some(j) = &d.save_job {
                     if ui.small_button("Cancel").clicked() {
                         j.cancel.cancel();
@@ -1216,6 +1251,7 @@ pub const SHORTCUTS: &[(&str, &str)] = &[
     ("Ctrl+W, Ctrl+Tab", "Close tab, next tab"),
     ("Ctrl+F / Ctrl+H", "Find / replace"),
     ("F3 / Shift+F3", "Find next / previous"),
+    ("Ctrl+Shift+F", "Filter lines"),
     ("Ctrl+G / Ctrl+Shift+G", "Go to line / byte offset"),
     ("Ctrl+Z / Ctrl+Y", "Undo / redo"),
     ("Ctrl+D / Ctrl+Shift+K", "Duplicate line / delete line"),
@@ -1290,6 +1326,7 @@ impl eframe::App for BigTextApp {
             d.tick();
             d.refine_goto();
         }
+        self.sync_diff_marks();
 
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
         egui::Panel::top("tabs").show(ui, |ui| self.tab_bar(ui));
@@ -1300,6 +1337,9 @@ impl eframe::App for BigTextApp {
         if self.search.show_results && self.docs.get(self.active).is_some_and(|d| d.results.is_some()) {
             egui::Panel::bottom("results").resizable(true).default_size(220.0).show(ui, |ui| self.results_panel(ui));
         }
+        if self.search.show_filter && self.docs.get(self.active).is_some_and(|d| d.filter.is_some()) {
+            egui::Panel::bottom("filter").resizable(true).default_size(260.0).show(ui, |ui| self.filter_panel(ui));
+        }
         if self.diff.is_some() {
             egui::Panel::bottom("diff").resizable(true).default_size(200.0).show(ui, |ui| self.diff_panel(ui));
         }
@@ -1309,7 +1349,7 @@ impl eframe::App for BigTextApp {
 
         let mut actions = Vec::new();
         let mut table_actions = Vec::new();
-        let matcher = self.view_highlighter();
+        let hl = self.view_highlights(ui.visuals().dark_mode);
         let font_size = &mut self.settings.font_size;
         let syntax = self.settings.syntax;
         egui::CentralPanel::no_frame().show(ui, |ui| {
@@ -1320,10 +1360,6 @@ impl eframe::App for BigTextApp {
                     let mut env = table_view::TableEnv { font_size, focus: !modal_open, actions: &mut table_actions };
                     table_view::show(ui, d, &mut env);
                 } else {
-                    let hl = |b: &bigtext::text::TextBuf, r: std::ops::Range<u64>| match &matcher {
-                        Some(m) => bigtext::search::matches_in_view(b, m, r, 2000),
-                        None => Vec::new(),
-                    };
                     let lang = if syntax { d.lang.unwrap_or_else(|| crate::view::highlight::Lang::from_path(d.path.as_deref())) } else { crate::view::highlight::Lang::Plain };
                     match d.split.take() {
                         None => {
@@ -1379,6 +1415,7 @@ impl eframe::App for BigTextApp {
 
         self.dialogs(&ctx);
         self.update_dialog(&ctx);
+        self.marks_window(&ctx);
         self.perf_overlay(&ctx);
 
         let title = match self.docs.get(self.active) {
@@ -1394,7 +1431,8 @@ impl eframe::App for BigTextApp {
                 || d.save_job.is_some()
                 || d.find_job.is_some()
                 || d.results.as_ref().is_some_and(|r| r.is_running())
-        });
+                || d.filter.as_ref().is_some_and(|r| r.is_running())
+        }) || !self.tasks.is_empty();
         if busy {
             ctx.request_repaint_after(Duration::from_millis(100));
         }

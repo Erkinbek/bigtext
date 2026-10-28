@@ -39,6 +39,29 @@ pub struct Persisted {
     pub skip_version: Option<String>,
     /// Unix time of the last update check.
     pub update_checked: Option<u64>,
+    pub marks: Vec<super::marks::Mark>,
+    /// Search history, newest first.
+    pub history: Vec<String>,
+}
+
+fn query_flags(q: &bigtext::search::Query) -> String {
+    [(q.regex, 'r'), (q.case_sensitive, 'c'), (q.whole_word, 'w'), (q.dot_all, 'd')].iter().filter(|x| x.0).map(|x| x.1).collect()
+}
+
+fn parse_mark(v: &str) -> Option<super::marks::Mark> {
+    let mut it = v.splitn(4, '|');
+    let enabled = it.next()? == "1";
+    let color = it.next()?.parse().ok()?;
+    let flags = it.next()?;
+    let pattern = it.next()?.to_string();
+    let query = bigtext::search::Query {
+        pattern,
+        regex: flags.contains('r'),
+        case_sensitive: flags.contains('c'),
+        whole_word: flags.contains('w'),
+        dot_all: flags.contains('d'),
+    };
+    Some(super::marks::Mark { query, color, enabled })
 }
 
 pub fn state_file() -> Option<PathBuf> {
@@ -77,6 +100,8 @@ fn parse(text: &str) -> Persisted {
             "update_check" => p.update_check = Some(v == "1"),
             "skip_version" => p.skip_version = Some(v.to_string()),
             "update_checked" => p.update_checked = v.parse().ok(),
+            "mark" => p.marks.extend(parse_mark(v)),
+            "find" => p.history.push(v.to_string()),
             "tab" => {
                 let parts: Vec<&str> = v.splitn(5, '|').collect();
                 if parts.len() == 5 {
@@ -121,6 +146,12 @@ fn serialize(p: &Persisted) -> String {
     }
     for r in &p.recent {
         s.push_str(&format!("recent={}\n", r.display()));
+    }
+    for m in &p.marks {
+        s.push_str(&format!("mark={}|{}|{}|{}\n", b(m.enabled), m.color, query_flags(&m.query), m.query.pattern));
+    }
+    for h in p.history.iter().filter(|h| !h.contains(['\n', '\r'])) {
+        s.push_str(&format!("find={h}\n"));
     }
     for t in &p.tabs {
         let bm: Vec<String> = t.bookmarks.iter().map(|x| x.to_string()).collect();
@@ -212,6 +243,8 @@ impl BigTextApp {
             update_check: Some(self.update.auto),
             skip_version: self.update.skipped.map(|v| v.to_string()),
             update_checked: Some(self.update.last_check).filter(|&t| t > 0),
+            marks: self.settings.marks.clone(),
+            history: self.search.history.clone(),
         }
     }
 
@@ -315,6 +348,24 @@ impl BigTextApp {
             drop(g);
             waker();
         });
+    }
+
+    /// Copies the differences' offsets into the compared document for its scrollbar marks.
+    pub(super) fn sync_diff_marks(&mut self) {
+        let (id, data) = match &self.diff {
+            Some(r) => (Some(r.doc), Some(r.data.clone())),
+            None => (None, None),
+        };
+        for d in &mut self.docs {
+            if Some(d.id) != id {
+                d.diff_marks.clear();
+            } else if let Some(data) = &data {
+                let g = data.lock().unwrap();
+                if g.hunks.len() != d.diff_marks.len() {
+                    d.diff_marks = g.hunks.iter().map(|h| h.a_off).collect();
+                }
+            }
+        }
     }
 
     pub(super) fn diff_panel(&mut self, ui: &mut egui::Ui) {
@@ -444,8 +495,15 @@ mod tests {
             update_check: Some(false),
             skip_version: Some("0.2.0".into()),
             update_checked: Some(1_761_550_000),
+            marks: vec![super::super::marks::Mark {
+                query: bigtext::search::Query { pattern: r"id=\d+|x".into(), regex: true, case_sensitive: true, whole_word: false, dot_all: false },
+                color: 3,
+                enabled: false,
+            }],
+            history: vec!["ERROR".into(), "a|b=c".into()],
         };
         let q = parse(&serialize(&p));
+        assert_eq!((q.marks.clone(), q.history.clone()), (p.marks.clone(), p.history.clone()));
         assert_eq!(q.recent, p.recent);
         assert_eq!(q.tabs.len(), 1);
         let t = &q.tabs[0];

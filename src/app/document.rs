@@ -73,6 +73,7 @@ pub struct ViewState {
     /// Geometry of the last painted text area (hit testing in the self-test).
     pub text_rect: Option<egui::Rect>,
     pub cell: egui::Vec2,
+    pub scroll_marks: crate::view::text_view::ScrollMarks,
 }
 
 impl Default for ViewState {
@@ -98,6 +99,7 @@ impl Default for ViewState {
             width_cache_version: 0,
             text_rect: None,
             cell: egui::Vec2::ZERO,
+            scroll_marks: Default::default(),
         }
     }
 }
@@ -129,12 +131,15 @@ pub struct Document {
     pub open_elapsed: Option<Duration>,
     pub follow: bool,
     pub results: Option<super::search_panel::SearchResults>,
+    pub filter: Option<super::filter_panel::FilterResults>,
     pub find_job: Option<super::search_panel::FindJob>,
     pub save_job: Option<super::ops::SaveJob>,
     pub close_after_save: bool,
     pub reload_prefix: Option<Vec<u64>>,
     /// Bookmarked line starts (sorted byte offsets).
     pub bookmarks: Vec<u64>,
+    /// Offsets of the differences found by File → Compare (marked on the scrollbar).
+    pub diff_marks: Vec<u64>,
     /// Second pane of a split view (shares caret and selection, scrolls independently).
     pub split: Option<PaneView>,
     pub active_pane: u8,
@@ -212,11 +217,13 @@ impl Document {
             open_elapsed: None,
             follow: false,
             results: None,
+            filter: None,
             find_job: None,
             save_job: None,
             close_after_save: false,
             reload_prefix: None,
             bookmarks: Vec::new(),
+            diff_marks: Vec::new(),
             split: None,
             active_pane: 0,
             lang: None,
@@ -284,6 +291,9 @@ impl Document {
     pub fn cancel_jobs(&mut self) {
         self.index_cancel.cancel();
         if let Some(r) = &self.results {
+            r.cancel.cancel();
+        }
+        if let Some(r) = &self.filter {
             r.cancel.cancel();
         }
         if let Some(j) = self.find_job.take() {

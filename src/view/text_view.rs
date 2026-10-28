@@ -25,8 +25,9 @@ pub enum ViewAction {
 
 pub struct ViewEnv<'a> {
     pub font_size: &'a mut f32,
-    /// Returns matches to highlight within the given (visible) range.
-    pub highlight: &'a dyn Fn(&TextBuf, Range<u64>) -> Vec<(u64, u64)>,
+    /// Returns ranges to highlight within the given (visible) range, with their colours, in
+    /// painting order.
+    pub highlight: &'a dyn Fn(&TextBuf, Range<u64>) -> Vec<(u64, u64, Color32)>,
     pub actions: &'a mut Vec<ViewAction>,
     pub focus: bool,
     /// Syntax highlighting for the visible rows.
@@ -147,7 +148,6 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     let text_color = visuals.text_color();
     let weak = visuals.weak_text_color();
     let sel_color = visuals.selection.bg_fill;
-    let hl_color = if visuals.dark_mode { Color32::from_rgba_unmultiplied(200, 160, 0, 90) } else { Color32::from_rgba_unmultiplied(255, 200, 0, 120) };
     let cur_line_bg = if visuals.dark_mode { Color32::from_white_alpha(8) } else { Color32::from_black_alpha(10) };
 
     let first_cell = (doc.view.scroll_x / m.cw).floor().max(0.0) as u32;
@@ -247,11 +247,11 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         if row_has_caret && focused && sel_s == sel_e {
             text_painter.rect_filled(Rect::from_min_max(pos2(text_rect.left(), y), pos2(text_rect.right(), y + m.rh)), 0.0, cur_line_bg);
         }
-        for &(hs, he) in &highlights {
+        for &(hs, he, color) in &highlights {
             if he > row.start && hs < row.end || (hs == he && hs >= row.start && hs < row.end) {
                 let x0 = x_of(cell_for(hs.max(row.start)));
                 let x1 = x_of(cell_for(he.min(row.end))).max(x0 + 2.0);
-                text_painter.rect_filled(Rect::from_min_max(pos2(x0, y), pos2(x1, y + m.rh)), 2.0, hl_color);
+                text_painter.rect_filled(Rect::from_min_max(pos2(x0, y), pos2(x1, y + m.rh)), 2.0, color);
             }
         }
         if sel_s < sel_e && sel_e > row.start && sel_s <= row.end {
@@ -382,6 +382,7 @@ pub(crate) fn vertical_scrollbar(ui: &mut Ui, doc: &mut Document, id: egui::Id, 
     painter.rect_filled(bar, 0.0, v.faint_bg_color);
     let color = if r.dragged() || r.hovered() { v.widgets.hovered.bg_fill } else { v.widgets.inactive.bg_fill };
     painter.rect_filled(thumb, 4.0, color);
+    paint_marks(&painter, doc, bar, v.dark_mode);
     if r.dragged() || r.is_pointer_button_down_on() {
         if let Some(p) = r.interact_pointer_pos() {
             let f = ((p.y - bar.top() - thumb_h / 2.0) / (track_h - thumb_h).max(1.0)).clamp(0.0, 1.0) as f64;
@@ -391,6 +392,93 @@ pub(crate) fn vertical_scrollbar(ui: &mut Ui, doc: &mut Document, id: egui::Id, 
             }
         }
     }
+}
+
+/// Where things are in the document, one bit per kind for each pixel row of the scrollbar.
+/// Find All and filter results only grow while their job runs, so new entries are added
+/// incrementally; everything is rebuilt when the document, its length or the bar height changes.
+#[derive(Default)]
+pub struct ScrollMarks {
+    key: (u64, u64, u32, usize, usize),
+    results_done: usize,
+    filter_done: usize,
+    other: (usize, usize),
+    rows: Vec<u8>,
+}
+
+pub const MARK_FOUND: u8 = 1;
+pub const MARK_FILTER: u8 = 2;
+pub const MARK_BOOKMARK: u8 = 4;
+pub const MARK_DIFF: u8 = 8;
+
+impl ScrollMarks {
+    /// The kinds of marks currently on the bar (bitwise or of `MARK_*`).
+    pub fn kinds(&self) -> u8 {
+        self.rows.iter().fold(0, |a, &b| a | b)
+    }
+}
+
+fn paint_marks(painter: &egui::Painter, doc: &mut Document, bar: Rect, dark: bool) {
+    let len = doc.buf.len();
+    let h = bar.height().max(1.0) as u32;
+    if len == 0 {
+        return;
+    }
+    let ptr = |o: Option<usize>| o.unwrap_or(0);
+    let results = doc.results.as_ref().filter(|r| r.version == doc.version);
+    let filter = doc.filter.as_ref().filter(|r| r.version == doc.version);
+    let key = (doc.version, len, h, ptr(results.map(|r| std::sync::Arc::as_ptr(&r.data) as usize)), ptr(filter.map(|r| std::sync::Arc::as_ptr(&r.data) as usize)));
+    let mut m = std::mem::take(&mut doc.view.scroll_marks);
+    let other = (doc.bookmarks.len(), doc.diff_marks.len());
+    if m.key != key || m.other != other {
+        m = ScrollMarks { key, rows: vec![0; h as usize], ..Default::default() };
+        m.other = other;
+        let row = |off: u64| ((off as f64 / len as f64) * h as f64).min(h as f64 - 1.0) as usize;
+        for &b in &doc.bookmarks {
+            m.rows[row(b)] |= MARK_BOOKMARK;
+        }
+        for &d in &doc.diff_marks {
+            m.rows[row(d)] |= MARK_DIFF;
+        }
+    }
+    let row = |off: u64| ((off as f64 / len as f64) * h as f64).min(h as f64 - 1.0) as usize;
+    if let Some(r) = results {
+        let g = r.data.lock().unwrap();
+        for &(s, _) in &g.matches[m.results_done.min(g.matches.len())..] {
+            m.rows[row(s)] |= MARK_FOUND;
+        }
+        m.results_done = g.matches.len();
+    }
+    if let Some(r) = filter {
+        let g = r.data.lock().unwrap();
+        for &s in &g.lines[m.filter_done.min(g.lines.len())..] {
+            m.rows[row(s)] |= MARK_FILTER;
+        }
+        m.filter_done = g.lines.len();
+    }
+    // Lanes from the left: diff, filter, search, bookmarks across the whole width.
+    let lane = (bar.width() - 4.0) / 3.0;
+    let colors = [
+        (MARK_DIFF, 0.0, if dark { Color32::from_rgb(220, 90, 90) } else { Color32::from_rgb(200, 50, 50) }),
+        (MARK_FILTER, 1.0, if dark { Color32::from_rgb(90, 160, 240) } else { Color32::from_rgb(40, 110, 220) }),
+        (MARK_FOUND, 2.0, if dark { Color32::from_rgb(230, 180, 30) } else { Color32::from_rgb(220, 150, 0) }),
+    ];
+    for (y, &bits) in m.rows.iter().enumerate() {
+        if bits == 0 {
+            continue;
+        }
+        let top = bar.top() + y as f32;
+        for &(bit, i, c) in &colors {
+            if bits & bit != 0 {
+                let x = bar.left() + 2.0 + i * lane;
+                painter.rect_filled(Rect::from_min_max(pos2(x, top), pos2(x + lane, top + 2.0)), 0.0, c);
+            }
+        }
+        if bits & MARK_BOOKMARK != 0 {
+            painter.rect_filled(Rect::from_min_max(pos2(bar.left() + 1.0, top), pos2(bar.right() - 1.0, top + 2.0)), 0.0, if dark { Color32::from_rgb(120, 200, 255) } else { Color32::from_rgb(30, 120, 200) });
+        }
+    }
+    doc.view.scroll_marks = m;
 }
 
 fn horizontal_scrollbar(ui: &mut Ui, doc: &mut Document, id: egui::Id, bar: Rect, m: Metrics, text_w: f32) {

@@ -552,6 +552,56 @@ impl SelfTest {
             }
             check(g.matches == vec![(51, 54), (59, 62)], format!("{:?}", g.matches))
         }));
+        s("scrollbar marks Find All results and bookmarks", Box::new(|app, c| {
+            use crate::view::text_view::{MARK_BOOKMARK, MARK_FOUND};
+            if c.first() {
+                doc(app).bookmarks = vec![35];
+                return Step::Wait;
+            }
+            let kinds = doc(app).view.scroll_marks.kinds();
+            doc(app).bookmarks.clear();
+            check(kinds & MARK_FOUND != 0 && kinds & MARK_BOOKMARK != 0, format!("marks {kinds:#b}"))
+        }));
+        s("filter: lines with a match, then inverted", Box::new(|app, c| {
+            let lines = |app: &mut BigTextApp| -> Option<Vec<u64>> {
+                let r = doc(app).filter.as_ref()?;
+                let g = r.data.lock().unwrap();
+                g.done.then(|| g.lines.clone())
+            };
+            if c.first() {
+                app.search.invert = false;
+                app.start_filter();
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let Some(v) = lines(app) else { return Step::Wait };
+                if v != vec![51] {
+                    return Step::Fail(format!("filter lines {v:?}"));
+                }
+                c.mark = 1;
+                app.search.invert = true;
+                app.start_filter();
+                return Step::Wait;
+            }
+            let Some(v) = lines(app) else { return Step::Wait };
+            app.search.invert = false;
+            app.search.show_filter = false;
+            doc(app).filter = None;
+            check(v == vec![0, 17, 35, 67], format!("inverted filter lines {v:?}"))
+        }));
+        s("highlights and occurrences of the selected word", Box::new(|app, _c| {
+            app.add_mark(bigtext::search::Query { pattern: "line".into(), case_sensitive: true, ..Default::default() });
+            let mark = crate::app::marks::fill(app.settings.marks[0].color, true);
+            doc(app).select(30, 34);
+            let hl = app.view_highlights(true);
+            let d = doc(app);
+            let v = hl(&d.buf, 0..d.buf.len());
+            let marked = v.iter().filter(|x| x.2 == mark).count();
+            let occ = v.iter().filter(|x| x.2 == egui::Color32::from_white_alpha(30)).map(|x| (x.0, x.1)).collect::<Vec<_>>();
+            app.settings.marks.clear();
+            doc(app).select(0, 0);
+            check(marked == 3 && occ == vec![(30, 34), (41, 45), (72, 76)], format!("marked {marked}, occurrences {occ:?}"))
+        }));
         s("replace all (undoable batch) + undo", Box::new(|app, c| {
             if c.first() {
                 app.search.replace_with = "QUX".into();

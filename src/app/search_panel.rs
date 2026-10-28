@@ -12,10 +12,13 @@ use bigtext::jobs::{self, CancelToken, Progress, Throttle};
 use bigtext::search::{self, Matcher, Query, SearchEnd};
 use bigtext::text::{rows, TextBuf};
 
+use super::i18n::{tr, trf};
 use super::{BigTextApp, Msg};
 
 /// Maximum number of results kept by "Find All".
 pub const RESULT_CAP: usize = 1_000_000;
+/// Patterns remembered in the search history.
+pub const HISTORY_MAX: usize = 30;
 
 #[derive(Default)]
 pub struct ResultsData {
@@ -55,6 +58,15 @@ pub struct SearchUi {
     pub focus_find: bool,
     pub status: String,
     pub show_results: bool,
+    /// Filter: keep the lines without a match.
+    pub invert: bool,
+    pub show_filter: bool,
+    /// Filter a table by this column only (0-based).
+    pub filter_column: Option<usize>,
+    /// Recent patterns, newest first.
+    pub history: Vec<String>,
+    /// Position while stepping through the history with the arrow keys.
+    history_pos: Option<usize>,
     compiled: Option<(Query, Codec, Result<Arc<Matcher>, String>)>,
 }
 
@@ -69,6 +81,34 @@ impl SearchUi {
         let r = Matcher::new(&self.query, codec).map(Arc::new);
         self.compiled = Some((self.query.clone(), codec, r.clone()));
         r
+    }
+
+    /// Puts the current pattern at the top of the history.
+    pub fn remember(&mut self) {
+        let p = self.query.pattern.clone();
+        if p.is_empty() {
+            return;
+        }
+        self.history.retain(|h| *h != p);
+        self.history.insert(0, p);
+        self.history.truncate(HISTORY_MAX);
+        self.history_pos = None;
+    }
+
+    /// Up/Down in the find field: older/newer history entries.
+    fn step_history(&mut self, older: bool) {
+        if self.history.is_empty() {
+            return;
+        }
+        let next = match (self.history_pos, older) {
+            (None, true) => Some(0),
+            (None, false) => None,
+            (Some(i), true) => Some((i + 1).min(self.history.len() - 1)),
+            (Some(0), false) => None,
+            (Some(i), false) => Some(i - 1),
+        };
+        self.history_pos = next;
+        self.query.pattern = next.map(|i| self.history[i].clone()).unwrap_or_default();
     }
 }
 
@@ -113,6 +153,7 @@ impl BigTextApp {
         } else {
             0..d.buf.len()
         };
+        self.search.remember();
         let d = &mut self.docs[self.active];
         if let Some(r) = d.results.take() {
             r.cancel.cancel();
@@ -182,13 +223,17 @@ impl BigTextApp {
         };
         let (s, e) = d.selection();
         let from = if forward { e } else { s };
+        if self.search.history.first() != Some(&self.search.query.pattern) {
+            self.search.remember();
+        }
+        let d = &self.docs[self.active];
         // Fast path: complete results for the same query and version.
         if let Some(r) = &d.results {
             let g = r.data.lock().unwrap();
             if g.done && !g.capped && r.query == self.search.query && r.version == d.version && r.range == (0..d.buf.len()) {
                 let v = &g.matches;
                 if v.is_empty() {
-                    self.search.status = "No matches".into();
+                    self.search.status = tr("No matches").into();
                     return;
                 }
                 let idx = if forward {
@@ -207,7 +252,8 @@ impl BigTextApp {
                 let d = &mut self.docs[self.active];
                 d.select(ms, me);
                 d.view.center_caret = true;
-                self.search.status = format!("Match {} of {}", idx + 1, self.docs[self.active].results.as_ref().map(|r| r.data.lock().unwrap().matches.len()).unwrap_or(0));
+                let total = self.docs[self.active].results.as_ref().map(|r| r.data.lock().unwrap().matches.len()).unwrap_or(0);
+                self.search.status = trf("Match {i} of {n}", &[("i", &(idx + 1).to_string()), ("n", &total.to_string())]);
                 return;
             }
         }
@@ -254,7 +300,7 @@ impl BigTextApp {
                 waker();
             }
         });
-        self.search.status = "Searching…".into();
+        self.search.status = tr("Searching…").into();
     }
 
     pub(super) fn on_found(&mut self, doc: u64, version: u64, found: Option<(u64, u64)>, wrapped: bool) {
@@ -267,9 +313,9 @@ impl BigTextApp {
             Some((s, e)) => {
                 d.select(s, e);
                 d.view.center_caret = true;
-                self.search.status = if wrapped { "Wrapped around".into() } else { String::new() };
+                self.search.status = if wrapped { tr("Wrapped around").into() } else { String::new() };
             }
-            None => self.search.status = "No matches".into(),
+            None => self.search.status = tr("No matches").into(),
         }
     }
 
@@ -282,9 +328,11 @@ impl BigTextApp {
         let mut do_replace = false;
         let mut do_replace_all = false;
         let mut do_preview = false;
+        let mut do_filter = false;
+        let mut do_mark = false;
         ui.horizontal(|ui| {
-            ui.label("Find");
-            let r = ui.add(TextEdit::singleline(&mut self.search.query.pattern).desired_width(320.0).hint_text("text or regex").font(egui::TextStyle::Monospace));
+            ui.label(tr("Find"));
+            let r = ui.add(TextEdit::singleline(&mut self.search.query.pattern).desired_width(320.0).hint_text(tr("text or regex")).font(egui::TextStyle::Monospace));
             if self.search.focus_find {
                 r.request_focus();
                 self.search.focus_find = false;
@@ -296,23 +344,56 @@ impl BigTextApp {
             if r.has_focus() && ui.input(|i| i.key_pressed(Key::Escape)) {
                 do_close = true;
             }
+            if r.has_focus() {
+                let (up, down) = ui.input_mut(|i| (i.consume_key(egui::Modifiers::NONE, Key::ArrowUp), i.consume_key(egui::Modifiers::NONE, Key::ArrowDown)));
+                if up || down {
+                    self.search.step_history(up);
+                }
+            }
+            let history = self.search.history.clone();
+            ui.add_enabled_ui(!history.is_empty(), |ui| {
+                ui.menu_button("▾", |ui| {
+                    for h in history {
+                        let label: String = h.chars().take(80).collect();
+                        if ui.button(RichText::new(label).monospace()).clicked() {
+                            self.search.query.pattern = h;
+                            self.search.focus_find = true;
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    if ui.button(tr("Clear history")).clicked() {
+                        self.search.history.clear();
+                    }
+                })
+                .response
+                .on_hover_text(tr("Search history (Up/Down in the field)"));
+            });
             let q = &mut self.search.query;
-            ui.toggle_value(&mut q.case_sensitive, RichText::new("Aa").monospace()).on_hover_text("Case sensitive");
-            ui.toggle_value(&mut q.whole_word, RichText::new("W").monospace()).on_hover_text("Whole word");
-            ui.toggle_value(&mut q.regex, RichText::new(".*").monospace()).on_hover_text("Regular expression (linear time)");
-            ui.toggle_value(&mut q.dot_all, RichText::new("\\n").monospace()).on_hover_text("Multiline: dot matches newline");
-            ui.toggle_value(&mut self.search.in_selection, RichText::new("Sel").monospace()).on_hover_text("Search in selection (Find All / Replace All)");
-            if ui.button("◀").on_hover_text("Find previous (Shift+F3)").clicked() {
+            ui.toggle_value(&mut q.case_sensitive, RichText::new("Aa").monospace()).on_hover_text(tr("Case sensitive"));
+            ui.toggle_value(&mut q.whole_word, RichText::new("W").monospace()).on_hover_text(tr("Whole word"));
+            ui.toggle_value(&mut q.regex, RichText::new(".*").monospace()).on_hover_text(tr("Regular expression (linear time)"));
+            ui.toggle_value(&mut q.dot_all, RichText::new("\\n").monospace()).on_hover_text(tr("Multiline: dot matches newline"));
+            ui.toggle_value(&mut self.search.in_selection, RichText::new("Sel").monospace()).on_hover_text(tr("Search in selection (Find All / Replace All)"));
+            if ui.button("◀").on_hover_text(tr("Find previous (Shift+F3)")).clicked() {
                 do_next = Some(false);
             }
-            if ui.button("▶").on_hover_text("Find next (F3)").clicked() {
+            if ui.button("▶").on_hover_text(tr("Find next (F3)")).clicked() {
                 do_next = Some(true);
             }
-            if ui.button("Find All").clicked() {
+            if ui.button(tr("Find All")).clicked() {
                 do_all = true;
             }
+            ui.separator();
+            ui.toggle_value(&mut self.search.invert, RichText::new("!").monospace()).on_hover_text(tr("Filter: keep the lines WITHOUT a match"));
+            if ui.button(tr("Filter")).on_hover_text(tr("Show only the lines with a match (Ctrl+Shift+F)")).clicked() {
+                do_filter = true;
+            }
+            if ui.button(tr("Mark")).on_hover_text(tr("Highlight this pattern in its own colour (View → Highlights)")).clicked() {
+                do_mark = true;
+            }
             let running = self.docs.get(self.active).and_then(|d| d.results.as_ref()).is_some_and(|r| r.is_running());
-            if running && ui.button("Cancel").clicked() {
+            if running && ui.button(tr("Cancel")).clicked() {
                 do_cancel = true;
             }
             if ui.small_button("×").clicked() {
@@ -329,15 +410,15 @@ impl BigTextApp {
         });
         if self.search.replace_open {
             ui.horizontal(|ui| {
-                ui.label("Replace");
+                ui.label(tr("Replace"));
                 ui.add(TextEdit::singleline(&mut self.search.replace_with).desired_width(320.0).hint_text("$1, ${name}, \\n, \\t").font(egui::TextStyle::Monospace));
-                if ui.button("Replace").clicked() {
+                if ui.button(tr("Replace")).clicked() {
                     do_replace = true;
                 }
-                if ui.button("Replace All").clicked() {
+                if ui.button(tr("Replace All")).clicked() {
                     do_replace_all = true;
                 }
-                if ui.button("Preview").clicked() {
+                if ui.button(tr("Preview")).clicked() {
                     do_preview = true;
                 }
             });
@@ -365,6 +446,12 @@ impl BigTextApp {
         if do_preview {
             self.replace_preview();
         }
+        if do_filter {
+            self.start_filter();
+        }
+        if do_mark {
+            self.add_mark_from_search();
+        }
     }
 
     /// Virtualized "Find All" results list.
@@ -378,26 +465,33 @@ impl BigTextApp {
         };
         let mut close = false;
         let mut jump = None;
+        let mut lines_action: Option<bool> = None;
         ui.horizontal(|ui| {
-            let mut s = format!("{n} matches");
+            let mut s = trf("{n} matches", &[("n", &super::filter_panel::fmt_count(n as u64))]);
             if capped {
-                s.push_str(&format!(" (capped at {RESULT_CAP} — more exist)"));
+                s.push_str(&trf(" (capped at {n} — more exist)", &[("n", &super::filter_panel::fmt_count(RESULT_CAP as u64))]));
             }
             ui.strong(s);
             if !done {
-                ui.add(egui::ProgressBar::new(r.progress.fraction()).desired_width(160.0).text(format!("searching {:.0}%", r.progress.fraction() * 100.0)));
+                ui.add(egui::ProgressBar::new(r.progress.fraction()).desired_width(160.0).text(format!("{} {:.0}%", tr("searching"), r.progress.fraction() * 100.0)));
                 ui.ctx().request_repaint_after(Duration::from_millis(50));
             } else if let Some(t) = elapsed {
                 let mb = (r.range.end - r.range.start) as f64 / (1024.0 * 1024.0);
-                let note = if end == Some(SearchEnd::Cancelled) { " (cancelled)" } else { "" };
-                ui.label(format!("in {:.2}s ({:.0} MB/s){note}", t.as_secs_f64(), mb / t.as_secs_f64().max(1e-6)));
+                let note = if end == Some(SearchEnd::Cancelled) { tr(" (cancelled)") } else { "" };
+                ui.label(format!("{} {:.2}s ({:.0} MB/s){note}", tr("in"), t.as_secs_f64(), mb / t.as_secs_f64().max(1e-6)));
             }
             if r.version != d.version {
-                ui.colored_label(Color32::from_rgb(220, 150, 60), "stale (document changed)");
+                ui.colored_label(Color32::from_rgb(220, 150, 60), tr("stale (document changed)"));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button("×").clicked() {
                     close = true;
+                }
+                if ui.add_enabled(done && r.version == d.version && n > 0, egui::Button::new(tr("Save lines…")).small()).on_hover_text(tr("Save every line with a match to a file")).clicked() {
+                    lines_action = Some(true);
+                }
+                if ui.add_enabled(done && r.version == d.version && n > 0, egui::Button::new(tr("Copy lines")).small()).on_hover_text(tr("Copy every line with a match to the clipboard")).clicked() {
+                    lines_action = Some(false);
                 }
             });
         });
@@ -432,6 +526,21 @@ impl BigTextApp {
             }
             self.search.show_results = false;
         }
+        if let Some(save) = lines_action {
+            let Some(d) = self.docs.get(self.active) else { return };
+            let Some(r) = &d.results else { return };
+            match Matcher::new(&r.query, d.buf.codec) {
+                Ok(m) => {
+                    let (snap, id, name) = (d.buf.snapshot(), d.id, d.title.clone());
+                    if save {
+                        self.save_lines_dialog(snap, Arc::new(m), Default::default(), &name);
+                    } else {
+                        self.copy_lines(snap, Arc::new(m), Default::default(), id);
+                    }
+                }
+                Err(e) => self.error = Some(e),
+            }
+        }
     }
 
     /// Matches to highlight in the visible range of the active document.
@@ -441,6 +550,58 @@ impl BigTextApp {
         }
         let codec = self.docs.get(self.active)?.buf.codec;
         self.search.matcher(codec).ok()
+    }
+
+    /// Everything painted behind the text of the active document, bottom to top: highlights
+    /// (marks), the other occurrences of the selected text, and search matches.
+    pub(crate) fn view_highlights(&mut self, dark: bool) -> impl Fn(&TextBuf, Range<u64>) -> Vec<(u64, u64, Color32)> {
+        let found = self.view_highlighter();
+        let marks = match self.docs.get(self.active).map(|d| d.buf.codec) {
+            Some(c) => self.mark_matchers(c),
+            None => Vec::new(),
+        };
+        let occ = self.occurrence_matcher();
+        let found_color = if dark { Color32::from_rgba_unmultiplied(200, 160, 0, 90) } else { Color32::from_rgba_unmultiplied(255, 200, 0, 120) };
+        let occ_color = if dark { Color32::from_white_alpha(30) } else { Color32::from_black_alpha(30) };
+        move |b: &TextBuf, r: Range<u64>| {
+            let mut v = Vec::new();
+            let mut add = |m: &Matcher, color: Color32| v.extend(search::matches_in_view(b, m, r.clone(), 2000).into_iter().map(|(s, e)| (s, e, color)));
+            for (m, c) in &marks {
+                add(m, super::marks::fill(*c, dark));
+            }
+            if let Some(m) = &occ {
+                add(m, occ_color);
+            }
+            if let Some(m) = &found {
+                add(m, found_color);
+            }
+            v
+        }
+    }
+
+    /// Matcher for the other occurrences of a short selection on one line (whole words when the
+    /// selection is a word), as editors highlight them after a double click.
+    fn occurrence_matcher(&mut self) -> Option<Arc<Matcher>> {
+        let d = self.docs.get(self.active)?;
+        let (s, e) = d.selection();
+        if s == e || e - s > 200 || d.hex || !d.is_ready() {
+            return None;
+        }
+        let codec = d.buf.codec;
+        let text = codec.decode_lossy(&d.buf.read(s..e)?);
+        if text.contains(['\n', '\r']) || text.trim().is_empty() || (self.search.open && self.search.query.pattern == text) {
+            return None;
+        }
+        if let Some((t, c, m)) = &self.occurrences {
+            if *t == text && *c == codec {
+                return m.clone();
+            }
+        }
+        let word = text.chars().all(|c| c.is_alphanumeric() || c == '_');
+        let q = Query { pattern: text.clone(), case_sensitive: true, whole_word: word, ..Default::default() };
+        let m = Matcher::new(&q, codec).ok().map(Arc::new);
+        self.occurrences = Some((text, codec, m.clone()));
+        m
     }
 }
 
