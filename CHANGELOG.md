@@ -17,6 +17,11 @@ All notable changes to BigText. Each release on
   name in that file's colour (the status bar shows the legend); lines without a time, like
   stack traces, stay with the line above. Logs in different encodings can be merged, and the
   files are read once from front to back, so it works on logs of any size.
+- **Search → Time histogram** (Ctrl+Shift+H): a bar chart under the text of how many lines fall
+  in each second, minute, hour or day, with the errors (or the search matches) in colour. Hover
+  a bar for its counts, click it to jump to its first line; the caret's time is marked. It is
+  built in one pass with partial results on the way, and its buckets widen as needed, so it
+  stays small for logs of any length.
 - Files without a telling extension (`syslog`, `stdin`, `app.txt`) are recognised as logs when
   their lines start with a time, and as JSON or XML by their first line.
 

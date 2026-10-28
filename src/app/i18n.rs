@@ -125,6 +125,7 @@ mod tests {
         "app" / "search_panel.rs",
         "app" / "tasks.rs",
         "app" / "text_tools.rs",
+        "app" / "timeline.rs",
         "app" / "update.rs",
         "view" / "block.rs",
         "view" / "hex_view.rs",
@@ -178,6 +179,9 @@ mod tests {
         "Column (block) selection",
         "Search history",
         "Language",
+        "Errors",
+        "Search matches",
+        "Lines only",
     ];
 
     /// String literals in `span` (escapes resolved).

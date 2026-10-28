@@ -17,6 +17,7 @@ pub mod ops;
 pub mod search_panel;
 pub mod tasks;
 pub mod text_tools;
+pub mod timeline;
 pub mod update;
 
 use std::collections::VecDeque;
@@ -193,6 +194,7 @@ pub struct BigTextApp {
     pub export: export::ExportUi,
     pub csv: csv_tools::CsvUi,
     pub merge: merge_logs::MergeUi,
+    pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
     pub palette: Option<commands::Palette>,
     pub shortcuts_ui: commands::ShortcutsUi,
@@ -307,6 +309,7 @@ impl BigTextApp {
             export: export::ExportUi::default(),
             csv: csv_tools::CsvUi::default(),
             merge: merge_logs::MergeUi::default(),
+            timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
             palette: None,
             shortcuts_ui: commands::ShortcutsUi::default(),
@@ -1281,6 +1284,9 @@ impl eframe::App for BigTextApp {
         if self.search.show_filter && self.docs.get(self.active).is_some_and(|d| d.filter.is_some()) {
             egui::Panel::bottom("filter").resizable(true).default_size(260.0).show(ui, |ui| self.filter_panel(ui));
         }
+        if self.timeline.open && self.docs.get(self.active).is_some_and(|d| d.timeline.is_some()) {
+            egui::Panel::bottom("timeline").resizable(true).default_size(170.0).show(ui, |ui| self.timeline_panel(ui));
+        }
         if self.diff.is_some() {
             egui::Panel::bottom("diff").resizable(true).default_size(200.0).show(ui, |ui| self.diff_panel(ui));
         }
@@ -1377,6 +1383,7 @@ impl eframe::App for BigTextApp {
                 || d.find_job.is_some()
                 || d.results.as_ref().is_some_and(|r| r.is_running())
                 || d.filter.as_ref().is_some_and(|r| r.is_running())
+                || d.timeline.as_ref().is_some_and(|t| t.is_running())
         }) || !self.tasks.is_empty();
         if busy {
             ctx.request_repaint_after(Duration::from_millis(100));

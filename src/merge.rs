@@ -5,16 +5,10 @@
 
 use std::io::{self, Write};
 
-use crate::encoding::Encoding;
 use crate::jobs::{CancelToken, Progress};
+use crate::lines::LineReader;
 use crate::text::TextBuf;
-use crate::timestamp::{self, Stamp};
-
-/// Bytes read from a file at a time.
-const CHUNK: usize = 1 << 20;
-/// Longer lines are cut into pieces of this size.
-const MAX_LINE: usize = 16 << 20;
-const DAY: i64 = 86_400_000;
+use crate::timestamp::{self, Clock, Stamp};
 
 pub struct Input {
     pub buf: TextBuf,
@@ -28,94 +22,6 @@ pub struct Merged {
     pub bytes: u64,
     /// Inputs in which no line had a time (their lines come first).
     pub without_times: usize,
-}
-
-/// The lines of one input, in order, without their line breaks.
-struct LineReader<'a> {
-    buf: &'a TextBuf,
-    data: Vec<u8>,
-    /// Consumed bytes at the start of `data`.
-    at: usize,
-    /// File offset of the end of `data`.
-    end: u64,
-    line: Vec<u8>,
-    chunk: Vec<u8>,
-}
-
-impl<'a> LineReader<'a> {
-    fn new(buf: &'a TextBuf) -> LineReader<'a> {
-        let start = (buf.codec.bom_len as u64).min(buf.len());
-        LineReader { buf, data: Vec::new(), at: 0, end: start, line: Vec::new(), chunk: Vec::new() }
-    }
-
-    /// The next line (`Ok(None)` at the end of the file); `read` counts the bytes taken.
-    fn next(&mut self, read: &mut u64) -> io::Result<Option<&[u8]>> {
-        let codec = self.buf.codec;
-        let unit = codec.unit();
-        loop {
-            let base = self.end - (self.data.len() - self.at) as u64;
-            let pending = &self.data[self.at..];
-            let cut = match codec.find_nl(pending, base) {
-                Some(i) if i <= MAX_LINE => Some((i, i + unit)),
-                _ if pending.len() > MAX_LINE => {
-                    let mut n = MAX_LINE - MAX_LINE % unit;
-                    // Not inside a UTF-8 character.
-                    while codec.enc == Encoding::Utf8 && n > 0 && pending[n] & 0xC0 == 0x80 {
-                        n -= 1;
-                    }
-                    Some((n, n))
-                }
-                None if self.end >= self.buf.len() => (!pending.is_empty()).then_some((pending.len(), pending.len())),
-                _ => None,
-            };
-            if let Some((content, taken)) = cut {
-                self.line.clear();
-                self.line.extend_from_slice(&pending[..content]);
-                let cr = codec.cr_unit();
-                if content < taken && self.line.ends_with(cr) {
-                    self.line.truncate(self.line.len() - cr.len());
-                }
-                self.at += taken;
-                *read += taken as u64;
-                return Ok(Some(&self.line));
-            }
-            if self.end >= self.buf.len() {
-                return Ok(None);
-            }
-            self.data.drain(..self.at);
-            self.at = 0;
-            let to = (self.end + CHUNK as u64).min(self.buf.len());
-            let n = self.buf.read_to(self.end..to, &mut self.chunk).ok_or_else(|| io::Error::other("could not read the file"))?;
-            self.data.extend_from_slice(&self.chunk[..n]);
-            self.end = to;
-        }
-    }
-}
-
-/// Turns timestamps into sortable keys: a date's milliseconds, or for times without a date the
-/// time of day plus the days that have passed (a time much earlier than the one before is the
-/// next day).
-#[derive(Default)]
-struct Clock {
-    day: i64,
-    last: Option<i64>,
-}
-
-impl Clock {
-    fn key(&mut self, st: Stamp, dated: bool) -> i64 {
-        let key = if dated && st.has_date {
-            self.day = st.ms.div_euclid(DAY);
-            st.ms
-        } else {
-            let tod = st.time_of_day();
-            if self.last.is_some_and(|l| tod + DAY / 2 < l.rem_euclid(DAY)) {
-                self.day += 1;
-            }
-            self.day * DAY + tod
-        };
-        self.last = Some(key);
-        key
-    }
 }
 
 struct Cursor<'a> {
@@ -137,13 +43,12 @@ pub fn merge_to<W: Write>(inputs: &[Input], out: &mut W, cancel: &CancelToken, p
     if let Some(p) = progress {
         p.set_total(inputs.iter().map(|i| i.buf.len()).sum());
     }
-    let mut read = 0u64;
     let mut cursors: Vec<Cursor> = inputs.iter().map(|i| Cursor { lines: LineReader::new(&i.buf), clock: Clock::default(), head: None, seen_time: false }).collect();
     // First lines; times compare as dates only when every file's first time has one.
     let mut firsts = Vec::with_capacity(cursors.len());
     for c in &mut cursors {
-        let codec = c.lines.buf.codec;
-        let line = c.lines.next(&mut read)?.map(|l| codec.decode_lossy(l));
+        let codec = c.lines.buf().codec;
+        let line = c.lines.next()?.map(|(_, l)| codec.decode_lossy(l));
         firsts.push(line);
     }
     let dated = firsts.iter().flatten().filter_map(|l| stamp(l)).all(|s| s.has_date);
@@ -172,11 +77,11 @@ pub fn merge_to<W: Write>(inputs: &[Input], out: &mut W, cancel: &CancelToken, p
         // Few inputs: a linear scan for the earliest head (ties keep the input order).
         let Some(i) = (0..cursors.len()).filter(|&i| cursors[i].head.is_some()).min_by_key(|&i| (cursors[i].head.as_ref().map(|h| h.0), i)) else { break };
         let c = &mut cursors[i];
-        let codec = c.lines.buf.codec;
+        let codec = c.lines.buf().codec;
         let (_, text) = c.head.take().unwrap();
         write_line(out, &labels[i], &text, &mut stats)?;
         // The lines after it without a time belong to it.
-        while let Some(raw) = c.lines.next(&mut read)? {
+        while let Some((_, raw)) = c.lines.next()? {
             let line = codec.decode_lossy(raw);
             match stamp(&line) {
                 Some(st) => {
@@ -191,7 +96,7 @@ pub fn merge_to<W: Write>(inputs: &[Input], out: &mut W, cancel: &CancelToken, p
             }
         }
         if let Some(p) = progress {
-            p.set_done(read);
+            p.set_done(cursors.iter().map(|c| c.lines.taken()).sum());
         }
     }
     stats.without_times = cursors.iter().filter(|c| !c.seen_time).count();
@@ -202,6 +107,7 @@ pub fn merge_to<W: Write>(inputs: &[Input], out: &mut W, cancel: &CancelToken, p
 mod tests {
     use super::*;
     use crate::encoding::{self, Codec};
+    use crate::lines::MAX_LINE;
     use crate::file::{OpenMode, Source};
     use crate::index::LineIndex;
     use std::sync::Arc;

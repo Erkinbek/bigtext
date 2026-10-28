@@ -48,6 +48,7 @@ pub enum Cmd {
     GotoLine,
     GotoOffset,
     GotoTime,
+    Timeline,
     WordWrap,
     HexView,
     TableView,
@@ -77,7 +78,7 @@ const CTRL: Modifiers = Modifiers::COMMAND;
 const CTRL_SHIFT: Modifiers = Modifiers { alt: false, ctrl: false, shift: true, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 51] = [
+    pub const ALL: [Cmd; 52] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -111,6 +112,7 @@ impl Cmd {
         Cmd::GotoLine,
         Cmd::GotoOffset,
         Cmd::GotoTime,
+        Cmd::Timeline,
         Cmd::WordWrap,
         Cmd::HexView,
         Cmd::TableView,
@@ -193,6 +195,7 @@ impl Cmd {
             Cmd::GotoLine => "Go to line…",
             Cmd::GotoOffset => "Go to byte offset…",
             Cmd::GotoTime => "Go to time…",
+            Cmd::Timeline => "Time histogram",
             Cmd::WordWrap => "Word wrap",
             Cmd::HexView => "Hex view",
             Cmd::TableView => "Table view (CSV / TSV)",
@@ -230,7 +233,7 @@ impl Cmd {
             | Cmd::ClearBookmarks
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
-            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::NextLevel | Cmd::PrevLevel | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime => "Search",
+            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::NextLevel | Cmd::PrevLevel | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline => "Search",
             Cmd::Palette | Cmd::Shortcuts | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
@@ -262,6 +265,7 @@ impl Cmd {
             Cmd::GotoLine => key(CTRL, Key::G),
             Cmd::GotoOffset => key(CTRL_SHIFT, Key::G),
             Cmd::GotoTime => key(CTRL_SHIFT, Key::T),
+            Cmd::Timeline => key(CTRL_SHIFT, Key::H),
             Cmd::WordWrap => key(Modifiers::ALT, Key::Z),
             Cmd::TableView => key(CTRL, Key::T),
             Cmd::SplitView => key(CTRL, Key::Backslash),
@@ -451,6 +455,13 @@ impl BigTextApp {
             Cmd::GotoLine => self.goto = GotoDialog::new(GotoMode::Line),
             Cmd::GotoOffset => self.goto = GotoDialog::new(GotoMode::Offset),
             Cmd::GotoTime => self.goto = GotoDialog::new(GotoMode::Time),
+            Cmd::Timeline => {
+                if self.is_on(Cmd::Timeline) {
+                    self.timeline.open = false;
+                } else {
+                    self.open_timeline();
+                }
+            }
             Cmd::WordWrap => doc(self).into_iter().for_each(|d| {
                 d.view.wrap = !d.view.wrap;
                 d.view.scroll_to_caret = true;
@@ -502,12 +513,13 @@ impl BigTextApp {
             Cmd::DarkTheme => self.settings.dark,
             Cmd::PerfOverlay => self.settings.show_perf,
             Cmd::LevelBar => self.settings.level_bar,
+            Cmd::Timeline => self.timeline.open && d.is_some_and(|d| d.timeline.is_some()),
             _ => false,
         }
     }
 
     fn is_toggle(cmd: Cmd) -> bool {
-        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::Follow | Cmd::SplitView | Cmd::Syntax | Cmd::DarkTheme | Cmd::PerfOverlay | Cmd::LevelBar)
+        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::Follow | Cmd::SplitView | Cmd::Syntax | Cmd::DarkTheme | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
     }
 
     fn enabled(&self, cmd: Cmd) -> bool {
@@ -637,7 +649,7 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                for c in [Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime] {
+                for c in [Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::Timeline] {
                     run = run.or(self.item(ui, c));
                 }
             });

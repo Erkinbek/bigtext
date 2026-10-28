@@ -1241,6 +1241,46 @@ impl SelfTest {
             c.copied.clear();
             Step::Next
         }));
+        s("back to levels.log", open_step("levels.log"));
+        s("time histogram: lines and errors per second; a click on a bar jumps there", Box::new(|app, c| {
+            let line = |n: usize| LEVELS_LOG.split_inclusive('\n').take(n).map(str::len).sum::<usize>() as u64;
+            if c.first() {
+                app.timeline.count = crate::app::timeline::Count::Errors;
+                app.open_timeline();
+                doc(app).set_caret(0, false);
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let Some(t) = doc(app).timeline.as_ref() else { return Step::Fail("no histogram".into()) };
+                let g = t.data.lock().unwrap();
+                let Some(h) = g.hist.as_ref().filter(|_| g.done) else {
+                    return if c.waited() > Duration::from_secs(5) { Step::Fail("histogram not done".into()) } else { Step::Wait };
+                };
+                let got = (h.lines, h.hits, h.buckets.len(), h.untimed, h.dated);
+                if got != (6, 2, 6, 0, true) {
+                    return Step::Fail(format!("lines, hits, buckets, untimed, dated = {got:?}"));
+                }
+                drop(g);
+                // Click once the bars have kept their place for a frame (the panel settles).
+                let bar = app.timeline.bars.get(3).map(|b| format!("{:?}", b.0));
+                if app.timeline.bars.len() != 6 || c.copied.last() != bar.as_ref() {
+                    c.copied = bar.into_iter().collect();
+                    return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("{} bars drawn", app.timeline.bars.len())) } else { Step::Wait };
+                }
+                c.copied.clear();
+                c.mark = 1;
+                let r = app.timeline.bars[3].0;
+                c.click(Pos2::new(r.center().x, r.bottom() - 2.0), NONE);
+                return Step::Wait;
+            }
+            let caret = doc(app).view.caret;
+            if caret != line(3) {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("caret {caret}, want {}", line(3))) } else { Step::Wait };
+            }
+            c.mark = 0;
+            app.timeline.open = false;
+            Step::Next
+        }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
         s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {
             if c.first() {

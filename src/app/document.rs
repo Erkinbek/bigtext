@@ -168,6 +168,8 @@ pub struct Document {
     pub sniffed_lang: crate::view::highlight::Lang,
     /// The file labels of a merged log (File → Merge logs by time), painted in their colours.
     pub merged: Option<super::merge_logs::MergeTags>,
+    /// Time histogram (Search → Time histogram).
+    pub timeline: Option<super::timeline::TimelineResults>,
     /// Shown as a table (CSV / TSV); on by default for .csv and .tsv files.
     pub table: bool,
     pub table_state: crate::view::table_view::TableState,
@@ -258,6 +260,7 @@ impl Document {
             lang: None,
             sniffed_lang: crate::view::highlight::Lang::Plain,
             merged: None,
+            timeline: None,
             table,
             table_state: Default::default(),
             restore: None,
@@ -342,6 +345,9 @@ impl Document {
         }
         if let Some(r) = &self.filter {
             r.cancel.cancel();
+        }
+        if let Some(t) = &self.timeline {
+            t.cancel.cancel();
         }
         if let Some((_, c)) = &self.unpacking {
             c.cancel();

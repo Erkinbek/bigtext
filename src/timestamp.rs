@@ -28,6 +28,33 @@ impl Stamp {
     }
 }
 
+/// Turns the timestamps of one log, in order, into sortable keys: a date's milliseconds, or for
+/// times without a date the time of day plus the days that have passed (a time much earlier
+/// than the one before is the next day).
+#[derive(Clone, Debug, Default)]
+pub struct Clock {
+    day: i64,
+    last: Option<i64>,
+}
+
+impl Clock {
+    /// `dated`: the log's times have dates (the first one had), so they are compared as such.
+    pub fn key(&mut self, st: Stamp, dated: bool) -> i64 {
+        let key = if dated && st.has_date {
+            self.day = st.ms.div_euclid(DAY);
+            st.ms
+        } else {
+            let tod = st.time_of_day();
+            if self.last.is_some_and(|l| tod + DAY / 2 < l.rem_euclid(DAY)) {
+                self.day += 1;
+            }
+            self.day * DAY + tod
+        };
+        self.last = Some(key);
+        key
+    }
+}
+
 /// Days from 0000-03-01 (proleptic Gregorian) for a civil date (H. Hinnant's algorithm).
 fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
@@ -100,7 +127,28 @@ fn date_before(b: &[u8]) -> Option<(i64, i64, i64)> {
 
 /// The first timestamp in `text` (looking at its first characters only).
 pub fn parse(text: &str) -> Option<Stamp> {
-    let b: Vec<u8> = text.chars().take(LOOK).map(|c| if c.is_ascii() { c as u8 } else { b'?' }).collect();
+    let mut b = [0u8; LOOK];
+    let mut n = 0;
+    for c in text.chars().take(LOOK) {
+        b[n] = if c.is_ascii() { c as u8 } else { b'?' };
+        n += 1;
+    }
+    parse_ascii(&b[..n])
+}
+
+/// Like [`parse`], for the bytes of a line in an ASCII-compatible encoding (UTF-8, the Windows
+/// and ISO code pages), without decoding it.
+pub fn parse_bytes(line: &[u8]) -> Option<Stamp> {
+    let mut b = [0u8; LOOK];
+    let n = line.len().min(LOOK);
+    for (d, &c) in b.iter_mut().zip(&line[..n]) {
+        *d = if c.is_ascii() { c } else { b'?' };
+    }
+    parse_ascii(&b[..n])
+}
+
+/// The first timestamp in `b` (ASCII; other characters replaced by '?').
+fn parse_ascii(b: &[u8]) -> Option<Stamp> {
     let mut i = 0;
     while i + 8 <= b.len() {
         let t = &b[i..];
@@ -149,6 +197,39 @@ pub fn format_delta(ms: i64) -> String {
         format!("{sign}{h} h {m:02} m {s:02} s")
     } else {
         format!("{sign}{d} d {h:02} h {m:02} m")
+    }
+}
+
+/// The civil date of a day count from [`days_from_civil`] (H. Hinnant's algorithm).
+fn civil_from_days(z: i64) -> (i64, i64, i64) {
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400;
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+/// Formats a key from [`Clock::key`]: "2024-05-01 14:32:05" for dated logs, otherwise
+/// "14:32:05" (with "+1 d" and so on after midnight). Seconds are left out when `seconds` is
+/// false.
+pub fn format_key(key: i64, dated: bool, seconds: bool) -> String {
+    let (day, ms) = (key.div_euclid(DAY), key.rem_euclid(DAY));
+    let time = if seconds {
+        format!("{:02}:{:02}:{:02}", ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60)
+    } else {
+        format!("{:02}:{:02}", ms / 3_600_000, ms / 60_000 % 60)
+    };
+    if dated {
+        let (y, m, d) = civil_from_days(day);
+        format!("{y:04}-{m:02}-{d:02} {time}")
+    } else if day > 0 {
+        format!("{time} +{day} d")
+    } else {
+        time
     }
 }
 
@@ -233,6 +314,19 @@ pub fn find_time(buf: &TextBuf, target: Stamp, cancel: &CancelToken) -> Result<u
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn civil_dates_round_trip_and_keys_format() {
+        for (y, m, d) in [(2024, 2, 29), (2024, 3, 1), (1999, 12, 31), (2000, 1, 1), (2100, 6, 15)] {
+            assert_eq!(super::civil_from_days(super::days_from_civil(y, m, d)), (y, m, d));
+        }
+        let st = super::parse("2024-05-01 14:32:05.250 x").unwrap();
+        assert_eq!(super::format_key(st.ms, true, true), "2024-05-01 14:32:05");
+        assert_eq!(super::format_key(st.ms, true, false), "2024-05-01 14:32");
+        assert_eq!(super::format_key(super::DAY + 61_000, false, true), "00:01:01 +1 d");
+        assert_eq!(super::parse_bytes("2024-05-01 14:32:05 привет".as_bytes()), Some(st).map(|s| super::Stamp { ms: s.ms - 250, ..s }));
+        assert_eq!(super::parse_bytes(b"no time here"), None);
+    }
+
     use super::*;
     use crate::encoding::Codec;
     use crate::file::{OpenMode, Source};
