@@ -2,6 +2,7 @@
 
 pub mod columns;
 pub mod document;
+pub mod export;
 pub mod extras;
 pub mod filter_panel;
 pub mod i18n;
@@ -165,6 +166,7 @@ pub struct BigTextApp {
     next_task: u64,
     pub notice: Option<tasks::Notice>,
     pub marks: marks::MarksUi,
+    pub export: export::ExportUi,
     /// Matcher for the occurrences of the selected text, by the text it was built for.
     occurrences: Option<(String, bigtext::encoding::Codec, Option<Arc<Matcher>>)>,
 }
@@ -271,6 +273,7 @@ impl BigTextApp {
             next_task: 0,
             notice: None,
             marks: marks::MarksUi::default(),
+            export: export::ExportUi::default(),
             occurrences: None,
         };
         app.search.query.case_sensitive = true;
@@ -659,6 +662,16 @@ impl BigTextApp {
                         }
                     });
                 });
+                ui.separator();
+                if ui.button("Export lines…").clicked() {
+                    self.open_export_lines();
+                }
+                if ui.button("Save selection as…").clicked() {
+                    self.save_selection_as();
+                }
+                if ui.button("Split file…").clicked() {
+                    self.open_split();
+                }
                 if ui.button("Compare with…").clicked() {
                     self.compare_dialog();
                 }
@@ -1448,7 +1461,7 @@ impl eframe::App for BigTextApp {
         }
 
         self.update_tick();
-        let modal_open = self.goto.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
+        let modal_open = self.goto.is_some() || self.export.is_open() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
         if !modal_open {
             self.shortcuts(&ctx);
         }
@@ -1547,6 +1560,7 @@ impl eframe::App for BigTextApp {
         self.dialogs(&ctx);
         self.update_dialog(&ctx);
         self.marks_window(&ctx);
+        self.export_windows(&ctx);
         self.perf_overlay(&ctx);
 
         let title = match self.docs.get(self.active) {

@@ -99,6 +99,11 @@ Single self-contained binary, no runtime dependencies.
   from every row, after a confirmation that names them. Files up to 64 MB change as one undoable
   edit (Ctrl+Z); larger files are rewritten on disk like Replace All (temp file, atomic swap,
   optional `.bak`) in one streaming pass with bounded memory.
+- **Export and split** (File menu): **Export lines…** writes a line range (say 100,000–200,000)
+  to a new file, **Save selection as…** writes the selection, and **Split file…** cuts the
+  document into `name.part001.ext`, `name.part002.ext`, … of a given size in MB or number of
+  lines, always at line breaks (UTF-16 parts each get the byte order mark). All of them
+  stream on a worker with progress and Cancel in the status bar.
 - **Compare files** (File → Compare with…): streaming line diff of two huge files with bounded
   memory; identical stretches are skipped at memory speed (1 GB vs 1 GB with two changed lines:
   0.6 s, ~2 MB of memory). Click a difference to jump there in either file.

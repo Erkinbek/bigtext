@@ -11,6 +11,7 @@ pub mod index;
 pub mod jobs;
 pub mod replace;
 pub mod save;
+pub mod split;
 pub mod search;
 pub mod sysinfo;
 pub mod text;
