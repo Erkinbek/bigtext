@@ -167,13 +167,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          status=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" \
-            https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/e/Erkinbek/BigText)
-          case "$status" in
-            200) echo "listed=true" >> "$GITHUB_OUTPUT" ;;
-            404) echo "Erkinbek.BigText is not in winget-pkgs yet; the winget submission was skipped." ;;
-            *) echo "GitHub API returned HTTP $status"; exit 1 ;;
-          esac
+          # winget-pkgs is huge and this endpoint often answers 429 at first, so retry.
+          for wait in 5 15 30 60 0; do
+            status=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" \
+              https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/e/Erkinbek/BigText)
+            case "$status" in
+              200) echo "listed=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+              404) echo "Erkinbek.BigText is not in winget-pkgs yet; the winget submission was skipped."; exit 0 ;;
+            esac
+            echo "GitHub API returned HTTP $status"
+            sleep "$wait"
+          done
+          exit 1
 
       - name: Submit the new version to winget
         if: steps.listed.outputs.listed == 'true'
