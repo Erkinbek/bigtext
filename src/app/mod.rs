@@ -18,6 +18,7 @@ pub mod match_bracket;
 pub mod merge_logs;
 pub mod multi_cursor;
 pub mod ops;
+pub mod portable;
 pub mod saved_searches;
 pub mod search_panel;
 pub mod sessions;
@@ -216,6 +217,7 @@ pub struct BigTextApp {
     mru: Vec<u64>,
     pub switcher: Option<tabs::TabSwitcher>,
     pub sessions: sessions::SessionsUi,
+    pub portable: portable::PortableUi,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -338,6 +340,7 @@ impl BigTextApp {
             mru: Vec::new(),
             switcher: None,
             sessions: sessions::SessionsUi::default(),
+            portable: portable::PortableUi::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1395,6 +1398,7 @@ impl eframe::App for BigTextApp {
         self.merge_window(&ctx);
         self.find_in_files_window(&ctx);
         self.switcher_window(&ctx);
+        self.portable_window(&ctx);
         self.palette_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);

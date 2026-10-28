@@ -1709,6 +1709,32 @@ impl SelfTest {
             c.copied.clear();
             check(ok, got)
         }));
+        s("settings export and import (highlights, saved searches, keys)", Box::new(|app, c| {
+            use crate::app::commands::Cmd;
+            let file = c.file("my.settings");
+            let q = bigtext::search::Query { pattern: "TIMEOUT".into(), case_sensitive: true, ..Default::default() };
+            app.settings.marks.push(crate::app::marks::Mark { query: q.clone(), color: 3, enabled: true });
+            app.settings.saved.push(crate::app::saved_searches::SavedSearch { name: "Timeouts".into(), query: q.clone(), invert: false, column: None });
+            app.keymap.changed.insert(Cmd::GotoTime, None);
+            if let Err(e) = app.export_settings_to(&file) {
+                return Step::Fail(e);
+            }
+            let text = std::fs::read_to_string(&file).unwrap_or_default();
+            if text.contains("tab=") || text.contains("recent=") {
+                return Step::Fail(format!("files leaked into the settings: {text}"));
+            }
+            app.settings.marks.retain(|m| m.query != q);
+            app.settings.saved.clear();
+            app.keymap.changed.clear();
+            if let Err(e) = app.import_settings_from(&file, None) {
+                return Step::Fail(e);
+            }
+            let ok = app.settings.marks.iter().any(|m| m.query == q && m.color == 3) && app.settings.saved.iter().any(|s| s.name == "Timeouts") && app.keymap.get(Cmd::GotoTime).is_none();
+            app.settings.marks.retain(|m| m.query != q);
+            app.settings.saved.clear();
+            app.keymap.changed.clear();
+            check(ok, format!("settings file: {text}"))
+        }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
         s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {
             if c.first() {

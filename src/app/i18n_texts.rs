@@ -561,6 +561,33 @@ pub static TEXTS: &[[&str; 3]] = &[
         "Скопировано: {text} (номер строки приблизительный, пока не закончится индексация)",
         "Nusxalandi: {text} (indekslash tugaguncha satr raqami taxminiy)",
     ],
+    // Portable mode and settings files.
+    ["Export settings…", "Экспорт настроек…", "Sozlamalarni eksport qilish…"],
+    ["Import settings…", "Импорт настроек…", "Sozlamalarni import qilish…"],
+    ["Export settings", "Экспорт настроек", "Sozlamalarni eksport qilish"],
+    ["Import settings", "Импорт настроек", "Sozlamalarni import qilish"],
+    ["Settings saved to {file}.", "Настройки сохранены в {file}.", "Sozlamalar {file} ga saqlandi."],
+    ["Settings imported.", "Настройки импортированы.", "Sozlamalar import qilindi."],
+    ["Portable mode…", "Переносной режим…", "Ko'chma rejim…"],
+    ["Portable mode", "Переносной режим", "Ko'chma rejim"],
+    [
+        "BigText is portable: its settings, recent files and sessions are kept in",
+        "BigText в переносном режиме: настройки, недавние файлы и сеансы хранятся в",
+        "BigText ko'chma rejimda: sozlamalar, so'nggi fayllar va sessiyalar shu yerda saqlanadi:",
+    ],
+    [
+        "Delete that folder (with BigText closed) to keep the settings in your user profile again.",
+        "Удалите эту папку (при закрытом BigText), чтобы снова хранить настройки в профиле пользователя.",
+        "Sozlamalarni yana foydalanuvchi profilida saqlash uchun (BigText yopiq paytda) o'sha papkani o'chiring.",
+    ],
+    [
+        "Keep the settings, recent files and sessions next to bigtext.exe instead of your user profile, to run BigText with its settings from a USB stick.",
+        "Хранить настройки, недавние файлы и сеансы рядом с bigtext.exe, а не в профиле пользователя, чтобы запускать BigText с его настройками с флешки.",
+        "Sozlamalar, so'nggi fayllar va sessiyalarni foydalanuvchi profilida emas, bigtext.exe yonida saqlash — BigText ni sozlamalari bilan fleshkadan ishga tushirish uchun.",
+    ],
+    ["This creates a “{dir}” folder next to the program.", "Рядом с программой будет создана папка «{dir}».", "Dastur yonida “{dir}” papkasi yaratiladi."],
+    ["Make portable", "Сделать переносным", "Ko'chma qilish"],
+    ["BigText is portable now.", "BigText теперь переносной.", "BigText endi ko'chma rejimda."],
     // Table export.
     ["Export table as", "Экспорт таблицы как", "Jadvalni eksport qilish"],
     ["Export table", "Экспорт таблицы", "Jadvalni eksport qilish"],

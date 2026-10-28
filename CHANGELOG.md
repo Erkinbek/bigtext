@@ -28,6 +28,12 @@ All notable changes to BigText. Each release on
 - **File → Sessions**: save the open files with their positions, bookmarks, pins and filters,
   and the highlights, under a name ("Incident 2026-10-28"), and open them again later in one
   click. Sessions are small text files next to BigText's settings.
+- **Portable mode** (Help → Portable mode…): with a `BigText-data` folder next to `bigtext.exe`,
+  the settings, recent files and sessions are kept there, so BigText runs from a USB stick with
+  its settings. The button creates the folder and moves the settings and sessions in.
+- **Help → Export settings… / Import settings…**: highlights, key bindings, saved searches,
+  theme, font, language and view options in one file, to take to another computer (no file
+  names or tabs). Importing adds highlights and saved searches and replaces the rest.
 - **Edit → Copy file:line** (Ctrl+Shift+C) copies `C:\logs\app.log:1234` for the caret's line, to
   send to a colleague: `bigtext C:\logs\app.log:1234` opens it right there.
 

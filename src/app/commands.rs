@@ -75,6 +75,9 @@ pub enum Cmd {
     Font,
     Palette,
     Shortcuts,
+    ExportSettings,
+    ImportSettings,
+    Portable,
     CheckUpdates,
     About,
     Text(Op),
@@ -90,7 +93,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 62] = [
+    pub const ALL: [Cmd; 65] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -151,6 +154,9 @@ impl Cmd {
         Cmd::Font,
         Cmd::Palette,
         Cmd::Shortcuts,
+        Cmd::ExportSettings,
+        Cmd::ImportSettings,
+        Cmd::Portable,
         Cmd::CheckUpdates,
         Cmd::About,
     ];
@@ -244,6 +250,9 @@ impl Cmd {
             Cmd::Font => "Font…",
             Cmd::Palette => "Command palette…",
             Cmd::Shortcuts => "Keyboard shortcuts",
+            Cmd::ExportSettings => "Export settings…",
+            Cmd::ImportSettings => "Import settings…",
+            Cmd::Portable => "Portable mode…",
             Cmd::CheckUpdates => "Check for updates…",
             Cmd::About => "About BigText",
             Cmd::Text(op) => op.name(),
@@ -268,7 +277,7 @@ impl Cmd {
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
             Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::MatchBracket => "Search",
-            Cmd::Palette | Cmd::Shortcuts | Cmd::CheckUpdates | Cmd::About => "Help",
+            Cmd::Palette | Cmd::Shortcuts | Cmd::ExportSettings | Cmd::ImportSettings | Cmd::Portable | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
     }
@@ -552,6 +561,9 @@ impl BigTextApp {
             Cmd::Font => self.fonts.open = true,
             Cmd::Palette => self.palette = Some(Palette { focus: true, ..Default::default() }),
             Cmd::Shortcuts => self.shortcuts_ui.open = true,
+            Cmd::ExportSettings => self.export_settings(),
+            Cmd::ImportSettings => self.import_settings(ctx),
+            Cmd::Portable => self.portable.open = true,
             Cmd::CheckUpdates => self.check_for_updates(true),
             Cmd::About => self.show_about = true,
             Cmd::Text(op) => self.text_op(op),
@@ -760,6 +772,10 @@ impl BigTextApp {
             });
             ui.menu_button(tr("Help"), |ui| {
                 for c in [Cmd::Palette, Cmd::Shortcuts] {
+                    run = run.or(self.item(ui, c));
+                }
+                ui.separator();
+                for c in [Cmd::ExportSettings, Cmd::ImportSettings, Cmd::Portable] {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();

@@ -118,6 +118,10 @@ pub fn state_file() -> Option<PathBuf> {
     if std::env::var_os("BIGTEXT_NO_STATE").is_some() {
         return None;
     }
+    // Portable mode: a BigText-data folder next to the program.
+    if let Some(d) = super::portable::portable_dir() {
+        return Some(d.join("state.txt"));
+    }
     let base = if cfg!(windows) {
         std::env::var_os("APPDATA").map(PathBuf::from)
     } else if cfg!(target_os = "macos") {
@@ -136,7 +140,7 @@ pub fn load() -> Persisted {
     }
 }
 
-fn parse(text: &str) -> Persisted {
+pub(super) fn parse(text: &str) -> Persisted {
     let mut p = Persisted::default();
     for line in text.lines() {
         let Some((k, v)) = line.split_once('=') else { continue };
@@ -166,7 +170,7 @@ fn parse(text: &str) -> Persisted {
     p
 }
 
-fn serialize(p: &Persisted) -> String {
+pub(super) fn serialize(p: &Persisted) -> String {
     let mut s = String::from("# BigText session state\n");
     let b = |x: bool| if x { "1" } else { "0" };
     if let Some(f) = p.font_size {
