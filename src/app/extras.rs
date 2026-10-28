@@ -302,7 +302,7 @@ impl BigTextApp {
         for t in p.tabs {
             self.open_path(t.path.clone());
             if let Some(d) = self.docs.last_mut() {
-                d.restore = Some(Restore { caret: t.caret, top: t.top, wrap: t.wrap, bookmarks: t.bookmarks, line: None, end: false });
+                d.restore = Some(Restore { caret: t.caret, top: t.top, wrap: t.wrap, bookmarks: t.bookmarks, ..Default::default() });
             }
         }
         if !self.docs.is_empty() {

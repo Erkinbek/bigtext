@@ -187,6 +187,8 @@ pub struct Restore {
     pub line: Option<u64>,
     /// Go to the end (follow mode from the command line).
     pub end: bool,
+    /// Select this range (a match from Find in files).
+    pub select: Option<(u64, u64)>,
 }
 
 /// Scroll state of the secondary split pane.

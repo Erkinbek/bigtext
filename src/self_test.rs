@@ -158,6 +158,10 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("cli.log"), "first 10:00\nsecond 10:00 10:05\nthird\n")?;
     std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
     std::fs::write(dir.join("levels.log"), LEVELS_LOG)?;
+    std::fs::create_dir_all(dir.join("tree").join("sub"))?;
+    std::fs::write(dir.join("tree").join("a.log"), "one\ntwo NEEDLE\n")?;
+    std::fs::write(dir.join("tree").join("c.txt"), "NEEDLE in a .txt file\n")?;
+    std::fs::write(dir.join("tree").join("sub").join("b.log"), "NEEDLE x\n")?;
     std::fs::write(dir.join("merge-a.log"), "2024-05-01 10:00:00 a1\n2024-05-01 10:00:02 a2\n  at x()\n")?;
     std::fs::write(dir.join("merge-b.log"), "2024-05-01 10:00:01 b1\r\n2024-05-01 10:00:03 b2\r\n")?;
     std::fs::write(dir.join("journal"), "Jan  1 00:00:01 host app[1]: started\nJan  1 00:00:02 host app[1]: ERROR boom\n")?;
@@ -1280,6 +1284,40 @@ impl SelfTest {
             c.mark = 0;
             app.timeline.open = false;
             Step::Next
+        }));
+        s("find in files: the *.log files of a folder and its sub-folders", Box::new(|app, c| {
+            if c.first() {
+                app.open_find_in_files();
+                app.files.dir = c.file("tree").to_string_lossy().into_owned();
+                app.files.names = "*.log".into();
+                app.files.recursive = true;
+                app.search.query = bigtext::search::Query { pattern: "NEEDLE".into(), case_sensitive: true, ..Default::default() };
+                app.start_find_in_files();
+                return Step::Wait;
+            }
+            let Some(r) = app.files.results.as_ref() else { return Step::Fail("no results".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail("still searching".into()) } else { Step::Wait };
+            }
+            let got: Vec<(String, u64, String)> = g.hits.iter().map(|(f, h)| (g.files[*f].file_name().unwrap_or_default().to_string_lossy().into_owned(), h.line, h.text.clone())).collect();
+            let want = vec![("a.log".to_string(), 2, "two NEEDLE".to_string()), ("b.log".to_string(), 1, "NEEDLE x".to_string())];
+            check(got == want && g.total == 2 && g.searched == 2 && !app.files.open, format!("hits {got:?}, {} of {} files", g.searched, g.total))
+        }));
+        s("a match from Find in files opens its file with the match selected", Box::new(|app, c| {
+            if c.first() {
+                app.open_files_hit(1);
+                return Step::Wait;
+            }
+            let d = doc(app);
+            if d.title != "b.log" || !d.is_ready() {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("active tab {:?}", d.title)) } else { Step::Wait };
+            }
+            let sel = d.selection();
+            if let Some(r) = app.files.results.take() {
+                r.cancel.cancel();
+            }
+            check(sel == (0, 6), format!("selection {sel:?}"))
         }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
         s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {

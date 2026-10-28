@@ -117,6 +117,7 @@ mod tests {
         "app" / "export.rs",
         "app" / "extras.rs",
         "app" / "filter_panel.rs",
+        "app" / "find_in_files.rs",
         "app" / "fonts.rs",
         "app" / "levels.rs",
         "app" / "marks.rs",

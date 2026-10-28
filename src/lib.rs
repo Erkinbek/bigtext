@@ -7,6 +7,7 @@ pub mod diff;
 pub mod encoding;
 pub mod file;
 pub mod filter;
+pub mod find_files;
 pub mod histogram;
 pub mod index;
 pub mod jobs;

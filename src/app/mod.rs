@@ -7,6 +7,7 @@ pub mod document;
 pub mod export;
 pub mod extras;
 pub mod filter_panel;
+pub mod find_in_files;
 pub mod fonts;
 pub mod i18n;
 mod i18n_texts;
@@ -194,6 +195,7 @@ pub struct BigTextApp {
     pub export: export::ExportUi,
     pub csv: csv_tools::CsvUi,
     pub merge: merge_logs::MergeUi,
+    pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
     pub palette: Option<commands::Palette>,
@@ -309,6 +311,7 @@ impl BigTextApp {
             export: export::ExportUi::default(),
             csv: csv_tools::CsvUi::default(),
             merge: merge_logs::MergeUi::default(),
+            files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
             palette: None,
@@ -491,6 +494,11 @@ impl BigTextApp {
                                     d.view.wrap = r.wrap;
                                     d.bookmarks = r.bookmarks.into_iter().filter(|&b| b <= len).collect();
                                     match r.line {
+                                        _ if r.select.is_some() => {
+                                            let (s, e) = r.select.unwrap_or_default();
+                                            d.select(s.min(len), e.min(len));
+                                            d.view.center_caret = true;
+                                        }
                                         None if r.end => d.set_caret(len, false),
                                         Some(line) => d.goto_line(line),
                                         None => {
@@ -1257,7 +1265,7 @@ impl eframe::App for BigTextApp {
         }
 
         self.update_tick();
-        let modal_open = self.goto.is_some() || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
+        let modal_open = self.goto.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
         if !modal_open {
             self.shortcuts(&ctx);
         }
@@ -1283,6 +1291,9 @@ impl eframe::App for BigTextApp {
         }
         if self.search.show_filter && self.docs.get(self.active).is_some_and(|d| d.filter.is_some()) {
             egui::Panel::bottom("filter").resizable(true).default_size(260.0).show(ui, |ui| self.filter_panel(ui));
+        }
+        if self.files.results.is_some() {
+            egui::Panel::bottom("files").resizable(true).default_size(240.0).show(ui, |ui| self.files_panel(ui));
         }
         if self.timeline.open && self.docs.get(self.active).is_some_and(|d| d.timeline.is_some()) {
             egui::Panel::bottom("timeline").resizable(true).default_size(170.0).show(ui, |ui| self.timeline_panel(ui));
@@ -1364,6 +1375,7 @@ impl eframe::App for BigTextApp {
         self.export_windows(&ctx);
         self.csv_windows(&ctx);
         self.merge_window(&ctx);
+        self.find_in_files_window(&ctx);
         self.palette_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);
@@ -1384,7 +1396,8 @@ impl eframe::App for BigTextApp {
                 || d.results.as_ref().is_some_and(|r| r.is_running())
                 || d.filter.as_ref().is_some_and(|r| r.is_running())
                 || d.timeline.as_ref().is_some_and(|t| t.is_running())
-        }) || !self.tasks.is_empty();
+        }) || !self.tasks.is_empty()
+            || self.files.is_running();
         if busy {
             ctx.request_repaint_after(Duration::from_millis(100));
         }

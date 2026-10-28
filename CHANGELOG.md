@@ -22,6 +22,11 @@ All notable changes to BigText. Each release on
   a bar for its counts, click it to jump to its first line; the caret's time is marked. It is
   built in one pass with partial results on the way, and its buckets widen as needed, so it
   stays small for logs of any length.
+- **Search → Find in files…** (Ctrl+Alt+F): the search pattern in every file of a folder whose
+  name fits (`*.log *.txt`; sub-folders too, hidden ones like `.git` skipped), listed as
+  `file:line` with the text around each match. Click a match to open the file with the match
+  selected. Each file is searched with the streaming search in its own encoding; binary files
+  are skipped and open tabs are searched with their unsaved edits.
 - Files without a telling extension (`syslog`, `stdin`, `app.txt`) are recognised as logs when
   their lines start with a time, and as JSON or XML by their first line.
 

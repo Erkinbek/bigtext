@@ -43,6 +43,7 @@ pub enum Cmd {
     FindPrev,
     FindAll,
     Filter,
+    FindInFiles,
     NextLevel,
     PrevLevel,
     GotoLine,
@@ -76,9 +77,10 @@ const fn key(m: Modifiers, k: Key) -> Option<KeyboardShortcut> {
 
 const CTRL: Modifiers = Modifiers::COMMAND;
 const CTRL_SHIFT: Modifiers = Modifiers { alt: false, ctrl: false, shift: true, mac_cmd: false, command: true };
+const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 52] = [
+    pub const ALL: [Cmd; 53] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -107,6 +109,7 @@ impl Cmd {
         Cmd::FindPrev,
         Cmd::FindAll,
         Cmd::Filter,
+        Cmd::FindInFiles,
         Cmd::NextLevel,
         Cmd::PrevLevel,
         Cmd::GotoLine,
@@ -190,6 +193,7 @@ impl Cmd {
             Cmd::FindPrev => "Find previous",
             Cmd::FindAll => "Find all",
             Cmd::Filter => "Filter lines",
+            Cmd::FindInFiles => "Find in files…",
             Cmd::NextLevel => "Next error line",
             Cmd::PrevLevel => "Previous error line",
             Cmd::GotoLine => "Go to line…",
@@ -233,7 +237,7 @@ impl Cmd {
             | Cmd::ClearBookmarks
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
-            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::NextLevel | Cmd::PrevLevel | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline => "Search",
+            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline => "Search",
             Cmd::Palette | Cmd::Shortcuts | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
@@ -260,6 +264,7 @@ impl Cmd {
             Cmd::FindNext => key(Modifiers::NONE, Key::F3),
             Cmd::FindPrev => key(Modifiers::SHIFT, Key::F3),
             Cmd::Filter => key(CTRL_SHIFT, Key::F),
+            Cmd::FindInFiles => key(CTRL_ALT, Key::F),
             Cmd::NextLevel => key(Modifiers::NONE, Key::F8),
             Cmd::PrevLevel => key(Modifiers::SHIFT, Key::F8),
             Cmd::GotoLine => key(CTRL, Key::G),
@@ -450,6 +455,7 @@ impl BigTextApp {
                 self.open_search(false);
                 self.start_filter();
             }
+            Cmd::FindInFiles => self.open_find_in_files(),
             Cmd::NextLevel => self.next_level(true),
             Cmd::PrevLevel => self.next_level(false),
             Cmd::GotoLine => self.goto = GotoDialog::new(GotoMode::Line),
@@ -645,7 +651,7 @@ impl BigTextApp {
                 run = run.or(self.item(ui, Cmd::ReadOnly));
             });
             ui.menu_button(tr("Search"), |ui| {
-                for c in [Cmd::Find, Cmd::Replace, Cmd::FindNext, Cmd::FindPrev, Cmd::FindAll, Cmd::Filter, Cmd::NextLevel, Cmd::PrevLevel] {
+                for c in [Cmd::Find, Cmd::Replace, Cmd::FindNext, Cmd::FindPrev, Cmd::FindAll, Cmd::Filter, Cmd::FindInFiles, Cmd::NextLevel, Cmd::PrevLevel] {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();

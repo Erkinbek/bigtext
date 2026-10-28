@@ -466,4 +466,18 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["h", "ч", "soat"],
     ["min", "мин", "daq"],
     ["s", "с", "son"],
+    // Find in files.
+    ["Find in files…", "Найти в файлах…", "Fayllardan qidirish…"],
+    ["Find in files", "Поиск в файлах", "Fayllardan qidirish"],
+    ["Folder", "Папка", "Papka"],
+    ["Browse…", "Обзор…", "Tanlash…"],
+    ["File names", "Имена файлов", "Fayl nomlari"],
+    ["*.log *.txt (empty: all files)", "*.log *.txt (пусто: все файлы)", "*.log *.txt (bo'sh: barcha fayllar)"],
+    ["Include sub-folders", "Включая вложенные папки", "Ichki papkalar bilan"],
+    ["“{dir}” is not a folder.", "«{dir}» — не папка.", "“{dir}” papka emas."],
+    ["{n} matches of “{p}” in {files} files", "{n} совпадений «{p}» в {files} файлах", "“{p}” ning {n} ta mosligi {files} ta faylda"],
+    ["searched {done} of {total} files in {dir}", "просмотрено {done} из {total} файлов в {dir}", "{dir} dagi {total} ta fayldan {done} tasi ko'rildi"],
+    ["(stopped at {n})", "(остановлено на {n})", "({n} da to'xtatildi)"],
+    ["{n} binary files skipped", "пропущено двоичных файлов: {n}", "{n} ta ikkilik fayl o'tkazib yuborildi"],
+    ["Search again", "Искать снова", "Qayta qidirish"],
 ];
