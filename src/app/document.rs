@@ -183,6 +183,8 @@ pub struct Document {
     pub json: Option<super::json_panel::JsonTree>,
     /// Pinned tabs stay first and are not closed by "Close other tabs".
     pub pinned: bool,
+    /// A session's filter, run once the document has opened.
+    pub pending_filter: Option<super::sessions::SavedFilter>,
     /// Shown as a table (CSV / TSV); on by default for .csv and .tsv files.
     pub table: bool,
     pub table_state: crate::view::table_view::TableState,
@@ -202,6 +204,8 @@ pub struct Restore {
     pub end: bool,
     /// Select this range (a match from Find in files).
     pub select: Option<(u64, u64)>,
+    /// Run this filter (a session's).
+    pub filter: Option<super::sessions::SavedFilter>,
 }
 
 /// Scroll state of the secondary split pane.
@@ -278,6 +282,7 @@ impl Document {
             timeline: None,
             json: None,
             pinned: false,
+            pending_filter: None,
             table,
             table_state: Default::default(),
             restore: None,

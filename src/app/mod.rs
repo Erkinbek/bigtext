@@ -20,6 +20,7 @@ pub mod multi_cursor;
 pub mod ops;
 pub mod saved_searches;
 pub mod search_panel;
+pub mod sessions;
 pub mod tabs;
 pub mod tasks;
 pub mod text_tools;
@@ -214,6 +215,7 @@ pub struct BigTextApp {
     /// Document ids, most recently used first (for Ctrl+Tab).
     mru: Vec<u64>,
     pub switcher: Option<tabs::TabSwitcher>,
+    pub sessions: sessions::SessionsUi,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -335,6 +337,7 @@ impl BigTextApp {
             json_open: false,
             mru: Vec::new(),
             switcher: None,
+            sessions: sessions::SessionsUi::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -515,7 +518,8 @@ impl BigTextApp {
                                     let len = d.buf.len();
                                     d.set_caret(len, false);
                                 }
-                                if let Some(r) = d.restore.take() {
+                                if let Some(mut r) = d.restore.take() {
+                                    d.pending_filter = r.filter.take();
                                     let len = d.buf.len();
                                     d.view.wrap = r.wrap;
                                     d.bookmarks = r.bookmarks.into_iter().filter(|&b| b <= len).collect();
@@ -1232,6 +1236,9 @@ impl BigTextApp {
             self.apply_confirm(&ctx, 1, c);
         }
     }
+    pub(crate) fn test_close(&mut self, id: u64) {
+        self.close_tab(id, true);
+    }
     pub(crate) fn test_dismiss(&mut self) {
         self.error = None;
         self.confirm = None;
@@ -1280,6 +1287,7 @@ impl eframe::App for BigTextApp {
             d.refine_goto();
         }
         self.run_pending_find();
+        self.run_pending_filters();
         self.sync_diff_marks();
 
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));

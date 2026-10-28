@@ -36,6 +36,7 @@ pub enum Cmd {
     AddNextOccurrence,
     DuplicateLine,
     DeleteLine,
+    CopyFileLine,
     ToggleBookmark,
     NextBookmark,
     PrevBookmark,
@@ -89,7 +90,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 61] = [
+    pub const ALL: [Cmd; 62] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -111,6 +112,7 @@ impl Cmd {
         Cmd::AddNextOccurrence,
         Cmd::DuplicateLine,
         Cmd::DeleteLine,
+        Cmd::CopyFileLine,
         Cmd::ToggleBookmark,
         Cmd::NextBookmark,
         Cmd::PrevBookmark,
@@ -203,6 +205,7 @@ impl Cmd {
             Cmd::AddNextOccurrence => "Add next occurrence (another cursor)",
             Cmd::DuplicateLine => "Duplicate line",
             Cmd::DeleteLine => "Delete line",
+            Cmd::CopyFileLine => "Copy file:line",
             Cmd::ToggleBookmark => "Toggle bookmark",
             Cmd::NextBookmark => "Next bookmark",
             Cmd::PrevBookmark => "Previous bookmark",
@@ -257,6 +260,7 @@ impl Cmd {
             | Cmd::AddNextOccurrence
             | Cmd::DuplicateLine
             | Cmd::DeleteLine
+            | Cmd::CopyFileLine
             | Cmd::ToggleBookmark
             | Cmd::NextBookmark
             | Cmd::PrevBookmark
@@ -284,6 +288,7 @@ impl Cmd {
             Cmd::AddNextOccurrence => key(CTRL, Key::D),
             Cmd::DuplicateLine => key(CTRL_SHIFT, Key::D),
             Cmd::DeleteLine => key(CTRL_SHIFT, Key::K),
+            Cmd::CopyFileLine => key(CTRL_SHIFT, Key::C),
             Cmd::ToggleBookmark => key(CTRL, Key::F2),
             Cmd::NextBookmark => key(Modifiers::NONE, Key::F2),
             Cmd::PrevBookmark => key(Modifiers::SHIFT, Key::F2),
@@ -478,6 +483,7 @@ impl BigTextApp {
             Cmd::AddNextOccurrence => self.add_next_occurrence(),
             Cmd::DuplicateLine => doc(self).into_iter().for_each(|d| d.duplicate_line()),
             Cmd::DeleteLine => doc(self).into_iter().for_each(|d| d.delete_line()),
+            Cmd::CopyFileLine => self.copy_file_line(ctx),
             Cmd::ToggleBookmark => doc(self).into_iter().for_each(|d| d.toggle_bookmark()),
             Cmd::NextBookmark => doc(self).into_iter().for_each(|d| d.goto_bookmark(true)),
             Cmd::PrevBookmark => doc(self).into_iter().for_each(|d| d.goto_bookmark(false)),
@@ -659,6 +665,7 @@ impl BigTextApp {
                         }
                     }
                 });
+                ui.menu_button(tr("Sessions"), |ui| self.sessions_menu(ui));
                 let recent = self.recent.clone();
                 ui.add_enabled_ui(!recent.is_empty(), |ui| {
                     ui.menu_button(tr("Open recent"), |ui| {
@@ -699,7 +706,7 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                for c in [Cmd::SelectAll, Cmd::AddNextOccurrence, Cmd::DuplicateLine, Cmd::DeleteLine] {
+                for c in [Cmd::SelectAll, Cmd::AddNextOccurrence, Cmd::DuplicateLine, Cmd::DeleteLine, Cmd::CopyFileLine] {
                     run = run.or(self.item(ui, c));
                 }
                 self.text_menu(ui);

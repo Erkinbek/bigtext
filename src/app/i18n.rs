@@ -128,6 +128,7 @@ mod tests {
         "app" / "ops.rs",
         "app" / "saved_searches.rs",
         "app" / "search_panel.rs",
+        "app" / "sessions.rs",
         "app" / "tabs.rs",
         "app" / "tasks.rs",
         "app" / "text_tools.rs",

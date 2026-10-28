@@ -18,7 +18,7 @@ pub const DIFF_CAP: usize = 100_000;
 // ---------------------------------------------------------------------------------------------
 // Persistence: a small key=value text file in the user's config directory.
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct TabState {
     pub path: PathBuf,
     pub caret: u64,
@@ -57,11 +57,11 @@ pub struct Persisted {
     pub pinned: Vec<PathBuf>,
 }
 
-fn query_flags(q: &bigtext::search::Query) -> String {
+pub(super) fn query_flags(q: &bigtext::search::Query) -> String {
     [(q.regex, 'r'), (q.case_sensitive, 'c'), (q.whole_word, 'w'), (q.dot_all, 'd')].iter().filter(|x| x.0).map(|x| x.1).collect()
 }
 
-fn query_from(pattern: String, flags: &str) -> bigtext::search::Query {
+pub(super) fn query_from(pattern: String, flags: &str) -> bigtext::search::Query {
     bigtext::search::Query { pattern, regex: flags.contains('r'), case_sensitive: flags.contains('c'), whole_word: flags.contains('w'), dot_all: flags.contains('d') }
 }
 
@@ -76,7 +76,29 @@ fn parse_saved(v: &str) -> Option<super::saved_searches::SavedSearch> {
     Some(super::saved_searches::SavedSearch { name, query, invert, column })
 }
 
-fn parse_mark(v: &str) -> Option<super::marks::Mark> {
+/// "enabled|color|flags|pattern".
+pub(super) fn mark_line(m: &super::marks::Mark) -> String {
+    format!("{}|{}|{}|{}", if m.enabled { "1" } else { "0" }, m.color, query_flags(&m.query), m.query.pattern)
+}
+
+/// "caret|top|wrap|bookmarks|path".
+pub(super) fn tab_line(t: &TabState) -> String {
+    let bm: Vec<String> = t.bookmarks.iter().map(|x| x.to_string()).collect();
+    format!("{}|{}|{}|{}|{}", t.caret, t.top, if t.wrap { "1" } else { "0" }, bm.join(","), t.path.display())
+}
+
+pub(super) fn parse_tab(v: &str) -> Option<TabState> {
+    let parts: Vec<&str> = v.splitn(5, '|').collect();
+    (parts.len() == 5).then(|| TabState {
+        caret: parts[0].parse().unwrap_or(0),
+        top: parts[1].parse().unwrap_or(0),
+        wrap: parts[2] == "1",
+        bookmarks: parts[3].split(',').filter_map(|x| x.parse().ok()).collect(),
+        path: PathBuf::from(parts[4]),
+    })
+}
+
+pub(super) fn parse_mark(v: &str) -> Option<super::marks::Mark> {
     let mut it = v.splitn(4, '|');
     let enabled = it.next()? == "1";
     let color = it.next()?.parse().ok()?;
@@ -137,18 +159,7 @@ fn parse(text: &str) -> Persisted {
             "lang" => p.lang = Some(v.to_string()),
             "font" => p.font = Some(PathBuf::from(v)),
             "key" => p.keys.extend(v.split_once('=').map(|(a, b)| (a.to_string(), b.to_string()))),
-            "tab" => {
-                let parts: Vec<&str> = v.splitn(5, '|').collect();
-                if parts.len() == 5 {
-                    p.tabs.push(TabState {
-                        caret: parts[0].parse().unwrap_or(0),
-                        top: parts[1].parse().unwrap_or(0),
-                        wrap: parts[2] == "1",
-                        bookmarks: parts[3].split(',').filter_map(|x| x.parse().ok()).collect(),
-                        path: PathBuf::from(parts[4]),
-                    });
-                }
-            }
+            "tab" => p.tabs.extend(parse_tab(v)),
             _ => {}
         }
     }
@@ -195,7 +206,7 @@ fn serialize(p: &Persisted) -> String {
         s.push_str(&format!("recent={}\n", r.display()));
     }
     for m in &p.marks {
-        s.push_str(&format!("mark={}|{}|{}|{}\n", b(m.enabled), m.color, query_flags(&m.query), m.query.pattern));
+        s.push_str(&format!("mark={}\n", mark_line(m)));
     }
     for x in p.saved.iter().filter(|x| !x.query.pattern.contains(['\n', '\r'])) {
         let col = x.column.map(|c| c.to_string()).unwrap_or_default();
@@ -211,8 +222,7 @@ fn serialize(p: &Persisted) -> String {
         s.push_str(&format!("find={h}\n"));
     }
     for t in &p.tabs {
-        let bm: Vec<String> = t.bookmarks.iter().map(|x| x.to_string()).collect();
-        s.push_str(&format!("tab={}|{}|{}|{}|{}\n", t.caret, t.top, b(t.wrap), bm.join(","), t.path.display()));
+        s.push_str(&format!("tab={}\n", tab_line(t)));
     }
     s.push_str(&format!("active={}\n", p.active));
     s

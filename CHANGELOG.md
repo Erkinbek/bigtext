@@ -14,6 +14,11 @@ All notable changes to BigText. Each release on
   tab's right-click menu, which can copy the file's path too). Tabs with unsaved changes are
   never closed by these. Pinned tabs are restored as pinned.
 - **Drag a tab** to move it.
+- **File → Sessions**: save the open files with their positions, bookmarks, pins and filters,
+  and the highlights, under a name ("Incident 2026-10-28"), and open them again later in one
+  click. Sessions are small text files next to BigText's settings.
+- **Edit → Copy file:line** (Ctrl+Shift+C) copies `C:\logs\app.log:1234` for the caret's line, to
+  send to a colleague: `bigtext C:\logs\app.log:1234` opens it right there.
 
 ### Logs
 

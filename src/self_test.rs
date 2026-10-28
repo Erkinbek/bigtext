@@ -1660,6 +1660,55 @@ impl SelfTest {
             app.move_tab(0, last);
             check(title_at(app, last) == "tab1.txt" && !app.docs[last].pinned, format!("last tab {:?}", title_at(app, last)))
         }));
+        s("levels.log for the session", open_step("levels.log"));
+        s("Ctrl+Shift+C copies file:line", Box::new(|app, c| {
+            let line = |n: usize| LEVELS_LOG.split_inclusive('\n').take(n).map(str::len).sum::<usize>() as u64;
+            if c.first() {
+                c.copied.clear();
+                doc(app).set_caret(line(2) + 3, false);
+                c.key(Key::C, CTRL_SHIFT);
+                return Step::Wait;
+            }
+            let got = c.copied.last().cloned().unwrap_or_default();
+            if got.is_empty() {
+                return if c.waited() > Duration::from_secs(3) { Step::Fail("nothing copied".into()) } else { Step::Wait };
+            }
+            check(got.ends_with("levels.log:3") && std::path::Path::new(got.trim_end_matches(":3")).exists(), format!("copied {got:?}"))
+        }));
+        s("a session brings back a closed file at its place, pinned, with its filter", Box::new(|app, c| {
+            use crate::app::sessions;
+            use bigtext::loglevel::{Level, Levels};
+            let line = |n: usize| LEVELS_LOG.split_inclusive('\n').take(n).map(str::len).sum::<usize>() as u64;
+            if c.first() {
+                app.filter_levels(Levels::only(Level::Error));
+                doc(app).set_caret(line(4), false);
+                let id = doc(app).id;
+                if !doc(app).pinned {
+                    app.toggle_pin(id);
+                }
+                let text = sessions::serialize(&app.current_session());
+                c.copied = vec![text];
+                // Close it (unpinned first, as a user would), then open the session.
+                app.toggle_pin(id);
+                app.test_close(id);
+                if app.docs.iter().any(|d| d.title == "levels.log") {
+                    return Step::Fail("levels.log did not close".into());
+                }
+                app.apply_session(sessions::parse(&c.copied[0]));
+                return Step::Wait;
+            }
+            let Some(d) = app.docs.iter().find(|d| d.title == "levels.log") else { return Step::Fail("levels.log not reopened".into()) };
+            let done = d.filter.as_ref().is_some_and(|f| !f.is_running());
+            if !d.is_ready() || !done {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("ready {} filter {}", d.is_ready(), d.filter.is_some())) } else { Step::Wait };
+            }
+            let ok = d.pinned && d.view.caret == line(4) && d.filter.as_ref().and_then(|f| f.levels) == Some(Levels::only(Level::Error)) && app.docs[0].title == "levels.log";
+            let got = format!("pinned {} caret {} levels {:?} first tab {:?}", d.pinned, d.view.caret, d.filter.as_ref().and_then(|f| f.levels), app.docs[0].title);
+            let id = d.id;
+            app.toggle_pin(id);
+            c.copied.clear();
+            check(ok, got)
+        }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
         s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {
             if c.first() {

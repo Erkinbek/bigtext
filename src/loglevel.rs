@@ -62,6 +62,15 @@ impl Levels {
         self.0 == 0
     }
 
+    /// The set as a number (for saving).
+    pub fn bits(self) -> u8 {
+        self.0
+    }
+
+    pub fn from_bits(b: u8) -> Levels {
+        Levels(b & 0x0F)
+    }
+
     pub fn iter(self) -> impl Iterator<Item = Level> {
         Level::ALL.into_iter().filter(move |&l| self.contains(l))
     }

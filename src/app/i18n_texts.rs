@@ -542,6 +542,25 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Previous tab", "Предыдущая вкладка", "Oldingi tab"],
     ["Hold Ctrl, press Tab to step, release to switch", "Держите Ctrl, нажимайте Tab для выбора, отпустите для перехода", "Ctrl ni bosib turing, Tab bilan tanlang, qo'yib yuborsangiz o'tadi"],
     ["{n} tabs with unsaved changes were kept open.", "Вкладки с несохранёнными изменениями оставлены открытыми: {n}.", "Saqlanmagan o'zgarishli {n} ta tab ochiq qoldirildi."],
+    // Sessions and file:line.
+    ["Sessions", "Сеансы", "Sessiyalar"],
+    ["Save session", "Сохранить сеанс", "Sessiyani saqlash"],
+    [
+        "Saves the open files with their positions, bookmarks, pins and filters, and the highlights",
+        "Сохраняет открытые файлы с позициями, закладками, закреплением и фильтрами, а также подсветку",
+        "Ochiq fayllarni joylashuvi, xatcho'plari, qadalgani va filtrlari bilan, hamda ajratishlarni saqlaydi",
+    ],
+    ["Type a name for the session.", "Введите имя сеанса.", "Sessiya nomini kiriting."],
+    ["Saved the session “{name}”.", "Сеанс «{name}» сохранён.", "“{name}” sessiyasi saqlandi."],
+    ["Opened the session “{name}”.", "Сеанс «{name}» открыт.", "“{name}” sessiyasi ochildi."],
+    ["Copy file:line", "Копировать файл:строку", "Fayl:satrni nusxalash"],
+    ["Save the document first: it has no file.", "Сначала сохраните документ: у него нет файла.", "Avval hujjatni saqlang: uning fayli yo'q."],
+    ["Copied {text}", "Скопировано: {text}", "Nusxalandi: {text}"],
+    [
+        "Copied {text} (the line number is an estimate until indexing ends)",
+        "Скопировано: {text} (номер строки приблизительный, пока не закончится индексация)",
+        "Nusxalandi: {text} (indekslash tugaguncha satr raqami taxminiy)",
+    ],
     // Table export.
     ["Export table as", "Экспорт таблицы как", "Jadvalni eksport qilish"],
     ["Export table", "Экспорт таблицы", "Jadvalni eksport qilish"],
