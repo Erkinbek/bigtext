@@ -409,6 +409,334 @@ pub fn delete_columns_to<W: Write>(buf: &TextBuf, d: Dialect, cols: &[usize], ou
     Ok(Some(stats))
 }
 
+/// One record of the document: its content (without the line break), where the next record
+/// starts, and its fields (quotes included). A record can span lines when a quoted field
+/// holds line breaks.
+pub struct Record<'a> {
+    pub content: Range<u64>,
+    pub next: u64,
+    pub fields: &'a [Range<u64>],
+}
+
+/// Calls `f` for every record in order, until it returns false. Streams over the document, so
+/// memory stays bounded by the widest record.
+pub fn for_each_record(buf: &TextBuf, d: Dialect, cancel: &CancelToken, progress: Option<&Progress>, mut f: impl FnMut(&Record) -> bool) -> ScanEnd {
+    let codec = buf.codec;
+    let unit = codec.unit();
+    let (nl, cr, lf_mode) = (nl_value(&codec), b'\r' as u16, codec.nl == NlByte::Lf);
+    let len = buf.len();
+    let start = (codec.bom_len as u64).min(len);
+    let mut st = State::FieldStart;
+    let mut fields: Vec<Range<u64>> = Vec::new();
+    let (mut rec_start, mut field_start) = (start, start);
+    let (mut empty, mut prev_cr) = (true, false);
+    let mut end = ScanEnd::Done;
+    if let Some(p) = progress {
+        p.set_total(len);
+    }
+    let read = buf.for_each_chunk(start..len, |base, chunk| {
+        if cancel.is_cancelled() {
+            end = ScanEnd::Cancelled;
+            return false;
+        }
+        let mut i = 0;
+        while i + unit <= chunk.len() {
+            let c = unit_at(codec.enc, chunk, i);
+            let p = base + i as u64;
+            let step = st.step(c, d, nl);
+            empty = step == Step::RecordEnd;
+            match step {
+                Step::Inside => {}
+                Step::FieldEnd => {
+                    fields.push(field_start..p);
+                    field_start = p + unit as u64;
+                }
+                Step::RecordEnd => {
+                    let content_end = if lf_mode && prev_cr { p - unit as u64 } else { p }.max(field_start);
+                    fields.push(field_start..content_end);
+                    if !f(&Record { content: rec_start..content_end, next: p + unit as u64, fields: &fields }) {
+                        end = ScanEnd::Stopped;
+                        return false;
+                    }
+                    fields.clear();
+                    rec_start = p + unit as u64;
+                    field_start = rec_start;
+                }
+            }
+            prev_cr = c == cr;
+            i += unit;
+        }
+        if let Some(pr) = progress {
+            pr.set_done(base + chunk.len() as u64);
+        }
+        true
+    });
+    if end != ScanEnd::Done {
+        return end;
+    }
+    if read.is_none() {
+        return ScanEnd::Failed;
+    }
+    if !empty {
+        fields.push(field_start..len);
+        if !f(&Record { content: rec_start..len, next: len, fields: &fields }) {
+            return ScanEnd::Stopped;
+        }
+    }
+    ScanEnd::Done
+}
+
+/// A number as spreadsheets read it: `12`, `-3.5`, `1e6`, and `3,5` (decimal comma).
+pub fn parse_number(s: &str) -> Option<f64> {
+    let t = s.trim();
+    if t.is_empty() || !t.bytes().any(|b| b.is_ascii_digit()) || !t.bytes().all(|b| b.is_ascii_digit() || b"+-.,eE".contains(&b)) {
+        return None;
+    }
+    t.parse().ok().or_else(|| (t.matches(',').count() == 1 && !t.contains('.')).then(|| t.replace(',', ".").parse().ok()).flatten())
+}
+
+/// Distinct values counted by [`column_stats`] before it stops tracking new ones.
+pub const DISTINCT_MAX: usize = 100_000;
+
+/// Summary of one column.
+#[derive(Clone, Debug, Default)]
+pub struct ColumnStats {
+    pub col: usize,
+    pub name: String,
+    /// Data rows (the header excluded).
+    pub rows: u64,
+    pub empty: u64,
+    pub numeric: u64,
+    pub sum: f64,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub longest: usize,
+    /// Distinct values (a lower bound when `distinct_capped`).
+    pub distinct: usize,
+    pub distinct_capped: bool,
+    /// The most frequent values with their counts (approximate when capped).
+    pub top: Vec<(String, u64)>,
+}
+
+impl ColumnStats {
+    pub fn mean(&self) -> Option<f64> {
+        (self.numeric > 0).then(|| self.sum / self.numeric as f64)
+    }
+}
+
+/// Counts, numeric summary, distinct values and the most frequent values of column `col`,
+/// in one pass. With `header`, the first record names the column and is not counted.
+pub fn column_stats(buf: &TextBuf, d: Dialect, col: usize, header: bool, cancel: &CancelToken, progress: Option<&Progress>) -> Result<ColumnStats, ScanEnd> {
+    let codec = buf.codec;
+    let mut s = ColumnStats { col, ..Default::default() };
+    let mut counts: HashMap<String, u64> = HashMap::new();
+    let mut first = header;
+    let mut failed = false;
+    let end = for_each_record(buf, d, cancel, progress, |r| {
+        let value = match r.fields.get(col) {
+            Some(f) => match buf.read(f.clone()) {
+                Some(b) => field_value(&codec, d, &b),
+                None => {
+                    failed = true;
+                    return false;
+                }
+            },
+            None => String::new(),
+        };
+        if first {
+            first = false;
+            s.name = value;
+            return true;
+        }
+        // A blank line at the very end is not a row.
+        if r.content.is_empty() && r.next == r.content.end && r.fields.len() == 1 {
+            return true;
+        }
+        s.rows += 1;
+        if value.is_empty() {
+            s.empty += 1;
+            return true;
+        }
+        s.longest = s.longest.max(value.chars().count());
+        if let Some(n) = parse_number(&value) {
+            s.numeric += 1;
+            s.sum += n;
+            s.min = Some(s.min.map_or(n, |m| m.min(n)));
+            s.max = Some(s.max.map_or(n, |m| m.max(n)));
+        }
+        let key: String = value.chars().take(200).collect();
+        if let Some(c) = counts.get_mut(&key) {
+            *c += 1;
+        } else if counts.len() < DISTINCT_MAX {
+            counts.insert(key, 1);
+        } else {
+            s.distinct_capped = true;
+        }
+        true
+    });
+    if failed {
+        return Err(ScanEnd::Failed);
+    }
+    if end != ScanEnd::Done {
+        return Err(end);
+    }
+    s.distinct = counts.len();
+    let mut top: Vec<(String, u64)> = counts.into_iter().collect();
+    top.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    top.truncate(10);
+    s.top = top;
+    Ok(s)
+}
+
+/// A rewrite of every record of a CSV document.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Rewrite {
+    /// Rows ordered by the value of column `col` (numbers numerically when every non-empty
+    /// value is a number, otherwise text, ignoring case); empty values last. The header stays
+    /// first. The sort is stable.
+    Sort { col: usize, desc: bool, header: bool },
+    /// Exchange two columns in every record that has both.
+    Swap(usize, usize),
+    /// Keep only these columns, in this order.
+    Select(Vec<usize>),
+}
+
+/// Streams the document rewritten by `rw` to `out` (with its byte order mark). `count` in the
+/// result is the number of records. Sorting holds every row's key in memory. Returns
+/// `Ok(None)` if cancelled.
+pub fn rewrite_to<W: Write>(buf: &TextBuf, d: Dialect, rw: &Rewrite, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<ReplaceStats>> {
+    let codec = buf.codec;
+    let read_err = || io::Error::other("could not read the document");
+    let mut stats = ReplaceStats { bytes_in: buf.len(), ..Default::default() };
+    let bom = codec.bom_len as u64;
+    let mut emit = |b: &[u8], stats: &mut ReplaceStats| -> io::Result<()> {
+        stats.bytes_out += b.len() as u64;
+        out.write_all(b)
+    };
+    emit(&buf.read(0..bom.min(buf.len())).ok_or_else(read_err)?, &mut stats)?;
+    let delim = codec.encode(&(d.delim as char).to_string());
+    let mut err: Option<io::Error> = None;
+    let end = match rw {
+        Rewrite::Swap(..) | Rewrite::Select(_) => for_each_record(buf, d, cancel, progress, |r| {
+            let res = (|| -> io::Result<()> {
+                let order: Vec<usize> = match rw {
+                    Rewrite::Swap(a, b) if r.fields.len() > *a.max(b) => (0..r.fields.len()).map(|i| if i == *a { *b } else if i == *b { *a } else { i }).collect(),
+                    Rewrite::Swap(..) => (0..r.fields.len()).collect(),
+                    Rewrite::Select(cols) => cols.clone(),
+                    Rewrite::Sort { .. } => unreachable!(),
+                };
+                // Keep blank lines blank.
+                if !(r.content.is_empty() && r.fields.len() == 1) {
+                    for (i, &c) in order.iter().enumerate() {
+                        if i > 0 {
+                            emit(&delim, &mut stats)?;
+                        }
+                        if let Some(f) = r.fields.get(c) {
+                            emit(&buf.read(f.clone()).ok_or_else(read_err)?, &mut stats)?;
+                        }
+                    }
+                }
+                emit(&buf.read(r.content.end..r.next).ok_or_else(read_err)?, &mut stats)?;
+                Ok(())
+            })();
+            stats.count += 1;
+            match res {
+                Ok(()) => true,
+                Err(e) => {
+                    err = Some(e);
+                    false
+                }
+            }
+        }),
+        Rewrite::Sort { col, desc, header } => {
+            // (number, text key, start, content end, next) of every data row.
+            let mut rows: Vec<(Option<f64>, String, u64, u64, u64)> = Vec::new();
+            let mut head: Option<(u64, u64, u64)> = None;
+            let mut all_numeric = true;
+            let end = for_each_record(buf, d, cancel, progress, |r| {
+                let start = r.content.start;
+                if *header && head.is_none() {
+                    head = Some((start, r.content.end, r.next));
+                    return true;
+                }
+                let value = match r.fields.get(*col).map(|f| buf.read(f.clone())) {
+                    Some(Some(b)) => field_value(&codec, d, &b),
+                    Some(None) => {
+                        err = Some(read_err());
+                        return false;
+                    }
+                    None => String::new(),
+                };
+                let num = parse_number(&value);
+                if num.is_none() && !value.trim().is_empty() {
+                    all_numeric = false;
+                }
+                rows.push((num, value.to_lowercase().chars().take(256).collect(), start, r.content.end, r.next));
+                true
+            });
+            if end == ScanEnd::Done && err.is_none() {
+                // Empty values last in both directions.
+                let numeric = all_numeric && rows.iter().any(|r| r.0.is_some());
+                rows.sort_by(|a, b| {
+                    let (ea, eb) = (a.1.trim().is_empty(), b.1.trim().is_empty());
+                    if ea != eb {
+                        return ea.cmp(&eb);
+                    }
+                    let o = if numeric { a.0.unwrap_or(0.0).total_cmp(&b.0.unwrap_or(0.0)) } else { a.1.cmp(&b.1) };
+                    if *desc {
+                        o.reverse()
+                    } else {
+                        o
+                    }
+                });
+                // A row without a line break (the file's last) gets the break of another record
+                // when it moves up.
+                let brk = head
+                    .map(|h| (h.1, h.2))
+                    .into_iter()
+                    .chain(rows.iter().map(|r| (r.3, r.4)))
+                    .find(|(e, n)| n > e)
+                    .and_then(|(e, n)| buf.read(e..n).map(|b| b.into_owned()))
+                    .unwrap_or_else(|| codec.encode("\n"));
+                let res = (|| -> io::Result<()> {
+                    if let Some((s, _, n)) = head {
+                        emit(&buf.read(s..n).ok_or_else(read_err)?, &mut stats)?;
+                        stats.count += 1;
+                    }
+                    let last = rows.len().saturating_sub(1);
+                    for (i, r) in rows.iter().enumerate() {
+                        if cancel.is_cancelled() {
+                            return Ok(());
+                        }
+                        emit(&buf.read(r.2..r.4).ok_or_else(read_err)?, &mut stats)?;
+                        if i < last && r.4 == r.3 {
+                            emit(&brk, &mut stats)?;
+                        }
+                        stats.count += 1;
+                    }
+                    Ok(())
+                })();
+                if let Err(e) = res {
+                    err = Some(e);
+                }
+            }
+            if cancel.is_cancelled() {
+                ScanEnd::Cancelled
+            } else {
+                end
+            }
+        }
+    };
+    if let Some(e) = err {
+        return Err(e);
+    }
+    match end {
+        ScanEnd::Done => Ok(Some(stats)),
+        ScanEnd::Cancelled => Ok(None),
+        _ => Err(read_err()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -597,5 +925,71 @@ mod tests {
         assert_eq!(det("single\ncolumn\n", b','), None);
         // A cut-off last line does not count.
         assert_eq!(detect(&c, b"a;b\n1;2\n3,4,5,6", false, b',').map(|d| d.delim), Some(b';'));
+    }
+}
+
+#[cfg(test)]
+mod rewrite_tests {
+    use super::*;
+    use crate::file::{OpenMode, Source};
+    use crate::index;
+    use std::sync::Arc;
+
+    fn buf_with(data: &[u8]) -> (tempfile::NamedTempFile, TextBuf) {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(data).unwrap();
+        f.flush().unwrap();
+        let src = Arc::new(Source::open(f.path(), OpenMode::Auto).unwrap());
+        let idx = index::build_blocking(&src, Codec::utf8());
+        let mut t = TextBuf::new(src, idx, Codec::utf8());
+        t.blocking = true;
+        (f, t)
+    }
+
+    fn rewrite(data: &str, rw: Rewrite) -> String {
+        let (_f, t) = buf_with(data.as_bytes());
+        let mut out = Vec::new();
+        rewrite_to(&t, Dialect::new(b','), &rw, &mut out, &CancelToken::new(), None).unwrap().unwrap();
+        String::from_utf8(out).unwrap()
+    }
+
+    const DATA: &str = "name,qty,note\r\nb,10,\"x\r\ny\"\r\na,9,\r\nC,,z\r\nd,100,last";
+
+    #[test]
+    fn records_span_quoted_line_breaks() {
+        let (_f, t) = buf_with(DATA.as_bytes());
+        let mut n = Vec::new();
+        for_each_record(&t, Dialect::new(b','), &CancelToken::new(), None, |r| {
+            n.push(r.fields.len());
+            true
+        });
+        assert_eq!(n, vec![3, 3, 3, 3, 3]);
+    }
+
+    #[test]
+    fn sort_numeric_text_and_descending() {
+        let by_qty = rewrite(DATA, Rewrite::Sort { col: 1, desc: false, header: true });
+        assert_eq!(by_qty, "name,qty,note\r\na,9,\r\nb,10,\"x\r\ny\"\r\nd,100,last\r\nC,,z\r\n");
+        let by_name_desc = rewrite(DATA, Rewrite::Sort { col: 0, desc: true, header: true });
+        assert_eq!(by_name_desc, "name,qty,note\r\nd,100,last\r\nC,,z\r\nb,10,\"x\r\ny\"\r\na,9,\r\n");
+    }
+
+    #[test]
+    fn swap_and_select_columns() {
+        assert_eq!(rewrite("a,b,c\n1,2,3\n\n4,5\n", Rewrite::Swap(0, 2)), "c,b,a\n3,2,1\n\n4,5\n");
+        assert_eq!(rewrite("a,b,c\n1,\"2,x\",3\n", Rewrite::Select(vec![2, 1])), "c,b\n3,\"2,x\"\n");
+    }
+
+    #[test]
+    fn stats() {
+        let (_f, t) = buf_with(b"id,amount,city\n1,10.5,Paris\n2,\"3,5\",Rome\n3,,Paris\n4,x,Oslo\n");
+        let s = column_stats(&t, Dialect::new(b','), 1, true, &CancelToken::new(), None).unwrap();
+        assert_eq!((s.name.as_str(), s.rows, s.empty, s.numeric), ("amount", 4, 1, 2));
+        assert_eq!((s.min, s.max, s.mean()), (Some(3.5), Some(10.5), Some(7.0)));
+        let c = column_stats(&t, Dialect::new(b','), 2, true, &CancelToken::new(), None).unwrap();
+        assert_eq!((c.distinct, c.top[0].clone()), (3, ("Paris".to_string(), 2)));
+        assert_eq!(parse_number(" -1e3 "), Some(-1000.0));
+        assert_eq!(parse_number("1.2.3"), None);
+        assert_eq!(parse_number("inf"), None);
     }
 }

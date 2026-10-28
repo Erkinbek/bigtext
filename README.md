@@ -116,6 +116,14 @@ Single self-contained binary, no runtime dependencies.
   document into `name.part001.ext`, `name.part002.ext`, … of a given size in MB or number of
   lines, always at line breaks (UTF-16 parts each get the byte order mark). All of them
   stream on a worker with progress and Cancel in the status bar.
+- **CSV column tools** (right-click a column header in the table view): sort rows ascending or
+  descending (numbers numerically, text ignoring case, empty values last, header kept; files
+  up to 1 GB), **Statistics…** (rows, empty, distinct values, numeric sum/mean/min/max and the
+  most frequent values, in one streaming pass), **Filter rows by this column** (the filter
+  then only counts matches inside that field), **Rename…**, **Move left/right**, and **Export**
+  the column or the selected columns to a new CSV. Like Delete columns, changes to files up
+  to 64 MB are one undo step; larger files are rewritten on disk (temp file, atomic swap,
+  optional `.bak`).
 - **Compare files** (File → Compare with…): streaming line diff of two huge files with bounded
   memory; identical stretches are skipped at memory speed (1 GB vs 1 GB with two changed lines:
   0.6 s, ~2 MB of memory). Click a difference to jump there in either file.

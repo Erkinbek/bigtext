@@ -389,6 +389,14 @@ impl BigTextApp {
             if ui.button(tr("Filter")).on_hover_text(tr("Show only the lines with a match (Ctrl+Shift+F)")).clicked() {
                 do_filter = true;
             }
+            let table = self.docs.get(self.active).is_some_and(|d| d.table);
+            if let (Some(c), true) = (self.search.filter_column, table) {
+                ui.label(RichText::new(trf("in column {n}", &[("n", &(c + 1).to_string())])).color(Color32::from_rgb(90, 160, 220)))
+                    .on_hover_text(tr("Filter looks at this column only (set from a column header's menu)"));
+                if ui.small_button("×").on_hover_text(tr("Filter in all columns")).clicked() {
+                    self.search.filter_column = None;
+                }
+            }
             if ui.button(tr("Mark")).on_hover_text(tr("Highlight this pattern in its own colour (View → Highlights)")).clicked() {
                 do_mark = true;
             }

@@ -74,6 +74,23 @@ impl TableState {
         self.anchor = None;
     }
 
+    /// After the header was edited on purpose (a rename): keep the layout.
+    pub fn keep_layout(&mut self) {
+        self.first_line = None;
+    }
+
+    /// After columns `a` and `b` were exchanged in the document: their widths go with them.
+    pub fn columns_swapped(&mut self, a: usize, b: usize) {
+        if a.max(b) < self.widths.len() {
+            self.widths.swap(a, b);
+            self.fixed.swap(a, b);
+        }
+        self.selected.clear();
+        self.selected.insert(b);
+        self.anchor = Some(b);
+        self.first_line = None;
+    }
+
     /// After `cols` were deleted from the document: the other columns keep their widths.
     pub fn columns_deleted(&mut self, cols: &[usize]) {
         for &c in cols.iter().rev() {
@@ -117,6 +134,14 @@ impl TableState {
 pub enum TableAction {
     /// Delete these columns (sorted) with their values from every row, after asking.
     DeleteColumns { cols: Vec<usize>, names: Vec<String> },
+    Sort { col: usize, desc: bool },
+    Stats { col: usize },
+    Filter { col: usize, name: String },
+    Rename { col: usize, name: String },
+    /// Exchange column `col` with its neighbour.
+    Move { col: usize, right: bool },
+    /// Write these columns (sorted) to a new file.
+    Export { cols: Vec<usize> },
 }
 
 pub struct TableEnv<'a> {
@@ -418,6 +443,13 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
             doc.table_state.click_header(col, m);
             resp.request_focus();
         }
+        let editable = doc.editable();
+        // The menu acts on the selected columns when it opens on one of them.
+        r.context_menu(|ui| {
+            let cols: Vec<usize> = if selected.contains(&col) { selected.iter().copied().collect() } else { vec![col] };
+            let names: Vec<String> = cols.iter().map(|&c| name(c)).collect();
+            column_menu(ui, env.actions, col, &n, ncols, cols, names, editable)
+        });
         r.on_hover_text(format!("{n}\nColumn {}\nClick to select; Ctrl+click adds, Shift+click selects a range", col + 1));
         header_cells.push((col, hit));
     }
@@ -481,6 +513,31 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         text_view::vertical_scrollbar(ui, doc, id, vbar, &rows, None);
         horizontal_scrollbar(ui, doc, id, hbar, total, body.width(), max_scroll);
     }
+}
+
+/// Right-click menu of a column header.
+#[allow(clippy::too_many_arguments)]
+fn column_menu(ui: &mut Ui, actions: &mut Vec<TableAction>, col: usize, name: &str, ncols: usize, cols: Vec<usize>, names: Vec<String>, editable: bool) {
+    use crate::app::i18n::tr;
+    let mut act = |ui: &mut Ui, enabled: bool, label: &str, a: TableAction| {
+        if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+            actions.push(a);
+            ui.close();
+        }
+    };
+    act(ui, editable, tr("Sort ascending (A → Z, 1 → 9)"), TableAction::Sort { col, desc: false });
+    act(ui, editable, tr("Sort descending (Z → A, 9 → 1)"), TableAction::Sort { col, desc: true });
+    ui.separator();
+    act(ui, true, tr("Statistics…"), TableAction::Stats { col });
+    act(ui, true, tr("Filter rows by this column…"), TableAction::Filter { col, name: name.to_string() });
+    ui.separator();
+    act(ui, editable, tr("Rename…"), TableAction::Rename { col, name: name.to_string() });
+    act(ui, editable && col > 0, tr("Move left"), TableAction::Move { col, right: false });
+    act(ui, editable && col + 1 < ncols, tr("Move right"), TableAction::Move { col, right: true });
+    ui.separator();
+    let label = if cols.len() == 1 { tr("Export this column…") } else { tr("Export selected columns…") };
+    act(ui, true, label, TableAction::Export { cols: cols.clone() });
+    act(ui, editable && cols.len() < ncols, tr("Delete…"), TableAction::DeleteColumns { names, cols });
 }
 
 /// Columns that overlap the visible width.

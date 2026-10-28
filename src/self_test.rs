@@ -978,6 +978,52 @@ impl SelfTest {
             }
             check(text(app) == CSV && !doc(app).is_modified(), format!("after undo {:?}", text(app)))
         }));
+        s("CSV: sort by a column, move a column, rename a header; each undoes", Box::new(|app, c| {
+            use crate::view::table_view::TableAction;
+            const SORTED: &str = "id;name;age;city\r\n3;Cy;25;Bukhara\r\n2;\"Bob; Jr\";41;Samarkand\r\n1;Ann;30;Tashkent\r\n";
+            const MOVED: &str = "id;age;name;city\r\n1;30;Ann;Tashkent\r\n2;41;\"Bob; Jr\";Samarkand\r\n3;25;Cy;Bukhara\r\n";
+            const RENAMED: &str = "\"No; 1\";name;age;city\r\n1;Ann;30;Tashkent\r\n2;\"Bob; Jr\";41;Samarkand\r\n3;Cy;25;Bukhara\r\n";
+            // Each stage: start an action, wait for its result, undo, wait for the original.
+            let stage = c.mark / 2;
+            if doc(app).save_job.is_some() {
+                return Step::Wait;
+            }
+            let t = text(app);
+            if c.mark % 2 == 0 {
+                if t != CSV {
+                    return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("stage {stage}: not back to the original: {t:?}")) } else { Step::Wait };
+                }
+                match stage {
+                    0 => app.on_table_action(TableAction::Sort { col: 3, desc: false }),
+                    1 => app.on_table_action(TableAction::Move { col: 2, right: false }),
+                    2 => {
+                        app.on_table_action(TableAction::Rename { col: 0, name: "id".into() });
+                        app.test_rename("No; 1");
+                    }
+                    _ => return Step::Next,
+                }
+                c.mark += 1;
+                return Step::Wait;
+            }
+            let want = [SORTED, MOVED, RENAMED][stage as usize];
+            if t != want {
+                return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("stage {stage}: {t:?}")) } else { Step::Wait };
+            }
+            c.mark += 1;
+            c.key(Key::Z, CTRL);
+            Step::Wait
+        }));
+        s("CSV: column statistics", Box::new(|app, c| {
+            if c.first() {
+                app.on_table_action(crate::view::table_view::TableAction::Stats { col: 2 });
+                return Step::Wait;
+            }
+            let Some((_, s)) = app.csv.stats.clone() else {
+                return if c.waited() > Duration::from_secs(3) { Step::Fail("no statistics".into()) } else { Step::Wait };
+            };
+            app.csv.stats = None;
+            check(s.name == "age" && s.rows == 3 && s.numeric == 3 && s.sum == 96.0 && s.max == Some(41.0), format!("{s:?}"))
+        }));
         s("open time.log", open_step("time.log"));
         s("go to time (Ctrl+Shift+T) and the Δt of a selection", Box::new(|app, c| {
             if c.first() {

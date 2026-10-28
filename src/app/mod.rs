@@ -1,6 +1,7 @@
 //! Application shell: tabs, menus, dialogs, status bar and background-job plumbing.
 
 pub mod columns;
+pub mod csv_tools;
 pub mod document;
 pub mod export;
 pub mod extras;
@@ -58,6 +59,7 @@ pub enum Msg {
     ColumnsDeleted(Box<columns::ColumnsDeleted>),
     TaskDone { id: u64, outcome: tasks::TaskOutcome },
     TextOp(Box<text_tools::TextOpDone>),
+    CsvRewritten(Box<csv_tools::CsvRewritten>),
     TimeFound { doc: u64, version: u64, result: Result<u64, bigtext::timestamp::TimeError> },
 }
 
@@ -107,6 +109,7 @@ enum ConfirmAction {
     CopyLarge { doc: u64, cut: bool },
     ReplaceOnDisk { doc: u64 },
     DeleteColumns { doc: u64, dialect: bigtext::csv::Dialect, cols: Vec<usize>, on_disk: bool },
+    CsvRewrite { doc: u64, dialect: bigtext::csv::Dialect, rewrite: bigtext::csv::Rewrite, on_disk: bool },
 }
 
 #[derive(Default)]
@@ -169,6 +172,7 @@ pub struct BigTextApp {
     pub notice: Option<tasks::Notice>,
     pub marks: marks::MarksUi,
     pub export: export::ExportUi,
+    pub csv: csv_tools::CsvUi,
     /// Matcher for the occurrences of the selected text, by the text it was built for.
     occurrences: Option<(String, bigtext::encoding::Codec, Option<Arc<Matcher>>)>,
 }
@@ -276,6 +280,7 @@ impl BigTextApp {
             notice: None,
             marks: marks::MarksUi::default(),
             export: export::ExportUi::default(),
+            csv: csv_tools::CsvUi::default(),
             occurrences: None,
         };
         app.search.query.case_sensitive = true;
@@ -445,6 +450,7 @@ impl BigTextApp {
                 Msg::ColumnsDeleted(c) => self.on_columns_deleted(*c),
                 Msg::TaskDone { id, outcome } => self.on_task_done(id, outcome),
                 Msg::TextOp(r) => self.on_text_op(*r),
+                Msg::CsvRewritten(c) => self.on_csv_rewritten(*c),
                 Msg::TimeFound { doc, version, result } => self.on_time_found(doc, version, result),
             }
         }
@@ -1136,6 +1142,7 @@ impl BigTextApp {
                         ConfirmAction::ReplaceOnDisk { .. } => "Replace on disk",
                         ConfirmAction::CopyLarge { .. } => "Copy",
                         ConfirmAction::DeleteColumns { .. } => "Delete",
+                        ConfirmAction::CsvRewrite { .. } => "Rewrite",
                     };
                     if ui.button(primary).clicked() {
                         decision = Some(1);
@@ -1231,6 +1238,7 @@ impl BigTextApp {
             (1, ConfirmAction::CopyLarge { doc, cut }) => self.start_copy_job(doc, cut),
             (1, ConfirmAction::ReplaceOnDisk { doc }) => self.replace_on_disk(doc, checked),
             (1, ConfirmAction::DeleteColumns { doc, dialect, cols, on_disk }) => self.delete_columns(doc, dialect, cols, on_disk, checked),
+            (1, ConfirmAction::CsvRewrite { doc, dialect, rewrite, on_disk }) => self.rewrite_csv(doc, dialect, rewrite, on_disk, checked),
             _ => {
                 self.pending_replace = None;
                 // Exit was cancelled: "Restart now" for an update no longer applies.
@@ -1485,7 +1493,7 @@ impl eframe::App for BigTextApp {
         }
 
         self.update_tick();
-        let modal_open = self.goto.is_some() || self.export.is_open() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
+        let modal_open = self.goto.is_some() || self.export.is_open() || self.csv.rename.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
         if !modal_open {
             self.shortcuts(&ctx);
         }
@@ -1558,9 +1566,7 @@ impl eframe::App for BigTextApp {
             }
         });
         for a in table_actions {
-            match a {
-                table_view::TableAction::DeleteColumns { cols, names } => self.ask_delete_columns(cols, names),
-            }
+            self.on_table_action(a);
         }
         for a in actions {
             match a {
@@ -1585,6 +1591,7 @@ impl eframe::App for BigTextApp {
         self.update_dialog(&ctx);
         self.marks_window(&ctx);
         self.export_windows(&ctx);
+        self.csv_windows(&ctx);
         self.perf_overlay(&ctx);
 
         let title = match self.docs.get(self.active) {

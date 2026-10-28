@@ -32,6 +32,8 @@ pub enum Transform<'a> {
     /// breaks. `ReplaceStats::count` is the number of characters `enc` cannot represent
     /// (written as '?').
     Transcode { enc: Encoding, bom: bool, eol: Option<LineEnding> },
+    /// Sort rows, swap or select columns of a CSV document.
+    Csv { dialect: Dialect, rewrite: &'a csv::Rewrite },
 }
 
 const TRANSCODE_STEP: u64 = 4 * 1024 * 1024;
@@ -270,6 +272,10 @@ pub fn write_temp(buf: &TextBuf, target: &Path, transform: Transform, cancel: &C
                 }
             }
             Transform::DeleteColumns { dialect, cols } => match csv::delete_columns_to(buf, dialect, cols, &mut w, cancel, Some(progress)).map_err(io)? {
+                Some(s) => s,
+                None => return Err(SaveError::Cancelled),
+            },
+            Transform::Csv { dialect, rewrite } => match csv::rewrite_to(buf, dialect, rewrite, &mut w, cancel, Some(progress)).map_err(io)? {
                 Some(s) => s,
                 None => return Err(SaveError::Cancelled),
             },
