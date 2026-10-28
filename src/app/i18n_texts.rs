@@ -377,6 +377,15 @@ pub static TEXTS: &[[&str; 3]] = &[
     [" (capped, more exist)", " (ограничено, есть ещё)", " (cheklangan, yana bor)"],
     ["Go to this line in A", "Перейти к этой строке в A", "A dagi shu qatorga o'tish"],
     ["Open the other file at this line", "Открыть другой файл на этой строке", "Ikkinchi faylni shu qatorda ochish"],
+    // Fonts.
+    ["Font", "Шрифт", "Shrift"],
+    ["Fonts", "Шрифты", "Shriftlar"],
+    ["Built-in (Hack)", "Встроенный (Hack)", "Ichki (Hack)"],
+    ["Font of the text (monospaced fonts keep columns aligned):", "Шрифт текста (моноширинные шрифты сохраняют выравнивание столбцов):", "Matn shrifti (bir xil kenglikdagi shriftlar ustunlarni tekis saqlaydi):"],
+    ["Other font file…", "Другой файл шрифта…", "Boshqa shrift fayli…"],
+    ["Not a usable font file: {e}", "Файл шрифта не подходит: {e}", "Bu shrift fayli yaroqsiz: {e}"],
+    ["The font has no Latin letters.", "В шрифте нет латинских букв.", "Shriftda lotin harflari yo'q."],
+    ["This font is not monospaced, so columns will not line up.", "Шрифт не моноширинный, поэтому столбцы не будут выровнены.", "Bu shrift bir xil kenglikda emas, shuning uchun ustunlar tekis turmaydi."],
     // Updates.
     ["Could not check for updates", "Не удалось проверить обновления", "Yangilanishlarni tekshirib bo'lmadi"],
     ["The update failed", "Обновление не удалось", "Yangilash amalga oshmadi"],

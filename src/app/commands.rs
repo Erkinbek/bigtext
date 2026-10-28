@@ -57,6 +57,7 @@ pub enum Cmd {
     ZoomOut,
     ZoomReset,
     PerfOverlay,
+    Font,
     Palette,
     Shortcuts,
     CheckUpdates,
@@ -72,7 +73,7 @@ const CTRL: Modifiers = Modifiers::COMMAND;
 const CTRL_SHIFT: Modifiers = Modifiers { alt: false, ctrl: false, shift: true, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 46] = [
+    pub const ALL: [Cmd; 47] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -115,6 +116,7 @@ impl Cmd {
         Cmd::ZoomOut,
         Cmd::ZoomReset,
         Cmd::PerfOverlay,
+        Cmd::Font,
         Cmd::Palette,
         Cmd::Shortcuts,
         Cmd::CheckUpdates,
@@ -192,6 +194,7 @@ impl Cmd {
             Cmd::ZoomOut => "Zoom out",
             Cmd::ZoomReset => "Reset zoom",
             Cmd::PerfOverlay => "Performance overlay",
+            Cmd::Font => "Font…",
             Cmd::Palette => "Command palette…",
             Cmd::Shortcuts => "Keyboard shortcuts",
             Cmd::CheckUpdates => "Check for updates…",
@@ -455,6 +458,7 @@ impl BigTextApp {
             Cmd::ZoomOut => self.settings.font_size = (self.settings.font_size - 1.0).max(6.0),
             Cmd::ZoomReset => self.settings.font_size = 14.0,
             Cmd::PerfOverlay => self.settings.show_perf = !self.settings.show_perf,
+            Cmd::Font => self.fonts.open = true,
             Cmd::Palette => self.palette = Some(Palette { focus: true, ..Default::default() }),
             Cmd::Shortcuts => self.shortcuts_ui.open = true,
             Cmd::CheckUpdates => self.check_for_updates(true),
@@ -638,6 +642,7 @@ impl BigTextApp {
                 ui.separator();
                 run = run.or(self.item(ui, Cmd::DarkTheme));
                 self.language_menu(ui);
+                run = run.or(self.item(ui, Cmd::Font));
                 for c in [Cmd::ZoomIn, Cmd::ZoomOut, Cmd::ZoomReset, Cmd::PerfOverlay] {
                     run = run.or(self.item(ui, c));
                 }

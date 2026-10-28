@@ -101,26 +101,47 @@ mod tests {
     use super::*;
     use crate::app::commands::Cmd;
 
-    const SOURCES: &[&str] = &[
-        include_str!("mod.rs"),
-        include_str!("columns.rs"),
-        include_str!("commands.rs"),
-        include_str!("csv_tools.rs"),
-        include_str!("document.rs"),
-        include_str!("export.rs"),
-        include_str!("extras.rs"),
-        include_str!("filter_panel.rs"),
-        include_str!("marks.rs"),
-        include_str!("ops.rs"),
-        include_str!("search_panel.rs"),
-        include_str!("tasks.rs"),
-        include_str!("text_tools.rs"),
-        include_str!("update.rs"),
-        include_str!("../view/block.rs"),
-        include_str!("../view/hex_view.rs"),
-        include_str!("../view/table_view.rs"),
-        include_str!("../view/text_view.rs"),
+    macro_rules! sources {
+        ($($dir:literal / $file:literal),* $(,)?) => {
+            &[$((concat!($dir, "/", $file), include_str!(concat!("../", $dir, "/", $file)))),*]
+        };
+    }
+
+    /// The scanned files (path under `src`, content).
+    const SOURCES: &[(&str, &str)] = sources![
+        "app" / "mod.rs",
+        "app" / "columns.rs",
+        "app" / "commands.rs",
+        "app" / "csv_tools.rs",
+        "app" / "document.rs",
+        "app" / "export.rs",
+        "app" / "extras.rs",
+        "app" / "filter_panel.rs",
+        "app" / "fonts.rs",
+        "app" / "marks.rs",
+        "app" / "ops.rs",
+        "app" / "search_panel.rs",
+        "app" / "tasks.rs",
+        "app" / "text_tools.rs",
+        "app" / "update.rs",
+        "view" / "block.rs",
+        "view" / "hex_view.rs",
+        "view" / "table_view.rs",
+        "view" / "text_view.rs",
     ];
+
+    #[test]
+    fn every_file_with_texts_is_scanned() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        for dir in ["app", "view"] {
+            for e in std::fs::read_dir(src.join(dir)).unwrap().flatten() {
+                let name = format!("{dir}/{}", e.file_name().to_string_lossy());
+                let text = std::fs::read_to_string(e.path()).unwrap_or_default();
+                let uses = !keys_in(&text).is_empty();
+                assert!(!uses || name == "app/i18n.rs" || SOURCES.iter().any(|s| s.0 == name), "add {name} to SOURCES in i18n.rs");
+            }
+        }
+    }
 
     /// Texts translated through a variable rather than a literal at the call.
     const DYNAMIC: &[&str] = &[
@@ -236,7 +257,7 @@ mod tests {
 
     #[test]
     fn every_text_is_translated() {
-        let mut keys: Vec<String> = SOURCES.iter().flat_map(|s| keys_in(s)).collect();
+        let mut keys: Vec<String> = SOURCES.iter().flat_map(|s| keys_in(s.1)).collect();
         keys.extend(Cmd::all().flat_map(|c| [c.label(), c.group()]).map(String::from));
         keys.extend(DYNAMIC.iter().map(|s| s.to_string()));
         let known: HashMap<&str, &[&str; 3]> = TEXTS.iter().map(|t| (t[0], t)).collect();

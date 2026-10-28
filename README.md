@@ -95,6 +95,10 @@ Single self-contained binary, no runtime dependencies.
   case, trim trailing whitespace, tabs ↔ spaces, and JSON pretty-print / minify (token by
   token: key order, numbers and escapes stay as written; JSON Lines stay one value per line).
   Runs on a worker and is one undo step.
+- **Font** (View → Font…): the monospaced fonts installed on the system (Consolas, Cascadia,
+  JetBrains Mono, DejaVu Sans Mono, Menlo, …) or any `.ttf`/`.otf`/`.ttc` file, with a preview
+  and a warning for fonts that are not monospaced; the built-in font stays as the fallback
+  for missing characters. Kept across sessions.
 - **Interface languages**: English, Russian and Uzbek (View → Language), kept across sessions.
   A unit test checks that every interface text has both translations with the same
   placeholders. Error details that come from the operating system stay in English.

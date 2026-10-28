@@ -47,6 +47,8 @@ pub struct Persisted {
     pub keys: Vec<(String, String)>,
     /// Interface language code (en, ru, uz).
     pub lang: Option<String>,
+    /// Font file of the text.
+    pub font: Option<PathBuf>,
 }
 
 fn query_flags(q: &bigtext::search::Query) -> String {
@@ -108,6 +110,7 @@ fn parse(text: &str) -> Persisted {
             "mark" => p.marks.extend(parse_mark(v)),
             "find" => p.history.push(v.to_string()),
             "lang" => p.lang = Some(v.to_string()),
+            "font" => p.font = Some(PathBuf::from(v)),
             "key" => p.keys.extend(v.split_once('=').map(|(a, b)| (a.to_string(), b.to_string()))),
             "tab" => {
                 let parts: Vec<&str> = v.splitn(5, '|').collect();
@@ -147,6 +150,9 @@ fn serialize(p: &Persisted) -> String {
     }
     if let Some(v) = &p.skip_version {
         s.push_str(&format!("skip_version={v}\n"));
+    }
+    if let Some(f) = &p.font {
+        s.push_str(&format!("font={}\n", f.display()));
     }
     if let Some(l) = &p.lang {
         s.push_str(&format!("lang={l}\n"));
@@ -261,6 +267,7 @@ impl BigTextApp {
             marks: self.settings.marks.clone(),
             history: self.search.history.clone(),
             lang: Some(super::i18n::lang().code().to_string()),
+            font: self.settings.font_path.clone(),
             keys: self.keymap.changed.iter().map(|(c, k)| (c.id(), super::commands::key_to_string(*k))).collect(),
         }
     }
@@ -524,7 +531,9 @@ mod tests {
             history: vec!["ERROR".into(), "a|b=c".into()],
             keys: vec![("goto_time".into(), "ctrl+alt+T".into()), ("find_all".into(), "none".into())],
             lang: Some("uz".into()),
+            font: Some(PathBuf::from(r"C:\Windows\Fonts\consola.ttf")),
         };
+        assert_eq!(parse(&serialize(&p)).font, p.font);
         assert_eq!(parse(&serialize(&p)).lang.as_deref(), Some("uz"));
         let q = parse(&serialize(&p));
         assert_eq!((q.marks.clone(), q.history.clone(), q.keys.clone()), (p.marks.clone(), p.history.clone(), p.keys.clone()));

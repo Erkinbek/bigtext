@@ -617,6 +617,20 @@ impl SelfTest {
             app.search.status.clear();
             check(uz, "Uzbek texts missing")
         }));
+        s("font: an installed monospace font, then the built-in one", Box::new(|app, c| {
+            if c.first() {
+                let Some((_, path)) = crate::app::fonts::system_fonts().into_iter().next() else { return Step::Skip("no monospace font found".into()) };
+                app.test_set_font(Some(path));
+                return Step::Wait;
+            }
+            if c.frames < 4 {
+                return Step::Wait;
+            }
+            let ok = app.settings.font_path.is_some() && app.fonts.error.is_none();
+            let err = app.fonts.error.clone();
+            app.test_set_font(None);
+            check(ok && app.settings.font_path.is_none(), format!("font error {err:?}"))
+        }));
         s("command palette (Ctrl+Shift+P) runs a command", Box::new(|app, c| {
             if c.first() {
                 c.key(Key::P, CTRL_SHIFT);

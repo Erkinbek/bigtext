@@ -7,6 +7,7 @@ pub mod document;
 pub mod export;
 pub mod extras;
 pub mod filter_panel;
+pub mod fonts;
 pub mod i18n;
 mod i18n_texts;
 pub mod marks;
@@ -83,6 +84,8 @@ pub struct Settings {
     pub syntax: bool,
     /// Highlight patterns (View → Highlights).
     pub marks: Vec<marks::Mark>,
+    /// Font file of the text (None: the built-in font).
+    pub font_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -187,6 +190,7 @@ pub struct BigTextApp {
     pub keymap: commands::Keymap,
     pub palette: Option<commands::Palette>,
     pub shortcuts_ui: commands::ShortcutsUi,
+    pub fonts: fonts::FontsUi,
     /// Matcher for the occurrences of the selected text, by the text it was built for.
     occurrences: Option<(String, bigtext::encoding::Codec, Option<Arc<Matcher>>)>,
     /// Document to search once it is open (command line --find).
@@ -271,7 +275,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new() },
+            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None },
             goto: None,
             confirm: None,
             error: None,
@@ -299,6 +303,7 @@ impl BigTextApp {
             keymap: commands::Keymap::default(),
             palette: None,
             shortcuts_ui: commands::ShortcutsUi::default(),
+            fonts: fonts::FontsUi::default(),
             occurrences: None,
             pending_find: None,
         };
@@ -310,6 +315,12 @@ impl BigTextApp {
             jobs::spawn("cleanup-unpacked", bigtext::decompress::cleanup_old);
             app.settings.marks = std::mem::take(&mut state.marks);
             app.search.history = std::mem::take(&mut state.history);
+            // A font that is gone or broken is forgotten; the built-in one is used.
+            if let Some(p) = state.font.take() {
+                if fonts::apply_font(&cc.egui_ctx, Some(&p)).is_ok() {
+                    app.settings.font_path = Some(p);
+                }
+            }
             if let Some(l) = state.lang.as_deref().and_then(i18n::Lang::from_code) {
                 i18n::set_lang(l);
             }
@@ -1318,6 +1329,7 @@ impl eframe::App for BigTextApp {
         self.csv_windows(&ctx);
         self.palette_window(&ctx);
         self.shortcuts_window(&ctx);
+        self.fonts_window(&ctx);
         self.perf_overlay(&ctx);
 
         let title = match self.docs.get(self.active) {
