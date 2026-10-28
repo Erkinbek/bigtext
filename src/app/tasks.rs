@@ -27,8 +27,16 @@ pub enum TaskOutcome {
     Stats(Box<(String, bigtext::csv::ColumnStats)>),
     /// Logs merged into a temporary file, to open as a document.
     Merged(Box<super::merge_logs::MergedLogs>),
-    /// JSON Lines converted to a temporary CSV, to open as a table.
-    JsonlTable(Box<super::json_panel::JsonlTable>),
+    /// Rows per value of a column (document title, groups) for the groups window.
+    Groups(Box<(String, bigtext::csv::Groups)>),
+    /// A temporary CSV (converted JSON Lines, filtered rows) to open read-only as a table.
+    TempTable(Box<TempTable>),
+}
+
+pub struct TempTable {
+    pub path: PathBuf,
+    pub title: String,
+    pub message: String,
 }
 
 /// A short message in the status bar that disappears after a while.
@@ -99,8 +107,21 @@ impl BigTextApp {
             TaskOutcome::Failed(e) => self.error = Some(e),
             TaskOutcome::Stats(s) => self.csv.stats = Some(*s),
             TaskOutcome::Merged(m) => self.on_merged(*m),
-            TaskOutcome::JsonlTable(t) => self.on_jsonl_table(*t),
+            TaskOutcome::TempTable(t) => self.open_temp_table(*t),
+            TaskOutcome::Groups(g) => self.csv.groups = Some(*g),
         }
+    }
+
+    /// Opens a temporary CSV as a read-only table (deleted when its tab closes).
+    fn open_temp_table(&mut self, t: TempTable) {
+        self.open_path(t.path);
+        if let Some(d) = self.docs.get_mut(self.active) {
+            d.title = t.title;
+            d.temporary = true;
+            d.read_only = true;
+            d.table = true;
+        }
+        self.notify(t.message, None);
     }
 
     pub(crate) fn notify(&mut self, text: String, open: Option<PathBuf>) {

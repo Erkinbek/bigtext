@@ -143,6 +143,10 @@ pub enum TableAction {
     Move { col: usize, right: bool },
     /// Write these columns (sorted) to a new file.
     Export { cols: Vec<usize> },
+    /// Count (and sum) the rows per value of this column.
+    GroupBy { col: usize },
+    /// Rows that meet several conditions, starting with one on this column.
+    Conditions { col: usize },
 }
 
 pub struct TableEnv<'a> {
@@ -534,6 +538,8 @@ fn column_menu(ui: &mut Ui, actions: &mut Vec<TableAction>, col: usize, name: &s
     ui.separator();
     act(ui, true, tr("Statistics…"), TableAction::Stats { col });
     act(ui, true, tr("Filter rows by this column…"), TableAction::Filter { col, name: name.to_string() });
+    act(ui, true, tr("Filter rows by conditions…"), TableAction::Conditions { col });
+    act(ui, true, tr("Group rows by this column…"), TableAction::GroupBy { col });
     ui.separator();
     act(ui, editable, tr("Rename…"), TableAction::Rename { col, name: name.to_string() });
     act(ui, editable && col > 0, tr("Move left"), TableAction::Move { col, right: false });

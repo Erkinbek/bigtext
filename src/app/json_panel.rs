@@ -4,8 +4,6 @@
 //! the path of the value at the caret. View → Open JSON Lines as table shows a `.jsonl` file
 //! as a table (converted to a temporary CSV with a column per key).
 
-use std::path::PathBuf;
-
 use egui::RichText;
 
 use bigtext::jobs::{self, CancelToken, Progress};
@@ -49,12 +47,6 @@ pub struct JsonDone {
     pub doc: u64,
     pub version: u64,
     pub msg: JsonMsg,
-}
-
-pub struct JsonlTable {
-    pub path: PathBuf,
-    pub title: String,
-    pub message: String,
 }
 
 fn summary(buf: &bigtext::text::TextBuf, c: &Child) -> String {
@@ -360,7 +352,7 @@ impl BigTextApp {
                         message.push(' ');
                         message.push_str(&trf("{n} values of keys first seen after line {lines} were left out.", &[("n", &fmt_count(st.late_keys)), ("lines", &json::JSONL_SAMPLE.to_string())]));
                     }
-                    TaskOutcome::JsonlTable(Box::new(JsonlTable { path: target, title, message }))
+                    TaskOutcome::TempTable(Box::new(super::tasks::TempTable { path: target, title, message }))
                 }
                 Ok(None) => {
                     bigtext::decompress::remove_temp(&target);
@@ -372,16 +364,5 @@ impl BigTextApp {
                 }
             }
         });
-    }
-
-    pub(super) fn on_jsonl_table(&mut self, t: JsonlTable) {
-        self.open_path(t.path);
-        if let Some(d) = self.docs.get_mut(self.active) {
-            d.title = t.title;
-            d.temporary = true;
-            d.read_only = true;
-            d.table = true;
-        }
-        self.notify(t.message, None);
     }
 }

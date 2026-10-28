@@ -189,6 +189,14 @@ mod tests {
         "Errors",
         "Search matches",
         "Lines only",
+        "contains",
+        "does not contain",
+        "is",
+        "is not",
+        ">",
+        "<",
+        "is empty",
+        "is not empty",
     ];
 
     /// String literals in `span` (escapes resolved).

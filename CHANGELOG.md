@@ -50,6 +50,15 @@ All notable changes to BigText. Each release on
   table's sorting, statistics and filters work on it. It is converted into a temporary CSV in
   the background and opens read-only.
 
+### CSV tables
+
+- **Group rows by this column…** (column header menu): the number of rows of each value, like
+  `GROUP BY`, optionally with the sum, mean, minimum and maximum of another column; largest
+  groups first, exportable to CSV.
+- **Filter rows by conditions…**: several conditions on columns at once (contains, does not
+  contain, is, is not, `>` and `<` on numbers, empty, not empty); the rows that meet all of
+  them open as a new read-only table, which can be saved with Save As.
+
 ### Search
 
 - **Saved searches**: the ★ menu of the search bar keeps a pattern with its options, the **!**

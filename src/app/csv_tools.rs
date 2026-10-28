@@ -3,7 +3,7 @@
 //! documents up to `IN_MEMORY_MAX` change in memory as one undo step, bigger ones are
 //! rewritten on disk (temp file, atomic swap, optional backup).
 
-use bigtext::csv::{self, ColumnStats, Dialect, Rewrite, ScanEnd};
+use bigtext::csv::{self, ColumnStats, Cond, CondOp, Dialect, Groups, Rewrite, ScanEnd};
 use bigtext::jobs::{self, human_bytes, CancelToken, Progress};
 use bigtext::text::Piece;
 
@@ -39,7 +39,27 @@ pub struct RenameDialog {
 pub struct CsvUi {
     pub stats: Option<(String, ColumnStats)>,
     pub rename: Option<RenameDialog>,
+    pub group: Option<GroupDialog>,
+    /// Finished groups: document title, groups.
+    pub groups: Option<(String, Groups)>,
+    pub conds: Option<CondDialog>,
 }
+
+/// Group rows by `col`, optionally summing `value`.
+pub struct GroupDialog {
+    pub col: usize,
+    pub value: Option<usize>,
+    pub names: Vec<String>,
+}
+
+/// Several conditions on columns.
+pub struct CondDialog {
+    pub conds: Vec<Cond>,
+    pub names: Vec<String>,
+}
+
+/// Groups shown in the results window.
+const GROUPS_SHOWN: usize = 500;
 
 /// A field value written so it reads back as `v`: quoted when it holds the delimiter, a
 /// quote, a line break or edge spaces.
@@ -82,7 +102,98 @@ impl BigTextApp {
             }
             TableAction::Rename { col, name } => self.csv.rename = Some(RenameDialog { col, name, focus: true }),
             TableAction::Export { cols } => self.export_columns(cols),
+            TableAction::GroupBy { col } => {
+                let names = self.column_names();
+                self.csv.group = Some(GroupDialog { col, value: None, names });
+            }
+            TableAction::Conditions { col } => {
+                let names = self.column_names();
+                self.csv.conds = Some(CondDialog { conds: vec![Cond { col, op: CondOp::Contains, value: String::new() }], names });
+            }
         }
+    }
+
+    /// The column names of the active table (from its header, or "Column N").
+    fn column_names(&self) -> Vec<String> {
+        let Some(d) = self.docs.get(self.active) else { return Vec::new() };
+        let Some(dialect) = d.table_state.dialect else { return Vec::new() };
+        let start = d.min_caret();
+        let Some(b) = d.buf.read(start..(start + 64 * 1024).min(d.buf.len())) else { return Vec::new() };
+        let codec = d.buf.codec;
+        let end = codec.find_nl(&b, start).unwrap_or(b.len());
+        let line = &b[..end];
+        let line = line.strip_suffix(codec.cr_unit()).unwrap_or(line);
+        let mut fields = Vec::new();
+        csv::split_fields(&codec, dialect, line, &mut fields);
+        fields
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let v = csv::field_value(&codec, dialect, &line[r.clone()]);
+                if d.table_state.header && !v.trim().is_empty() { v } else { trf("Column {n}", &[("n", &(i + 1).to_string())]) }
+            })
+            .collect()
+    }
+
+    /// Counts the rows per value of a column (and sums another) in the background.
+    pub(crate) fn start_group_by(&mut self, col: usize, value: Option<usize>) {
+        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(dialect) = d.table_state.dialect else { return };
+        let (snap, header, title) = (d.buf.snapshot(), d.table_state.header, d.title.clone());
+        self.spawn_task(tr("Grouping rows").into(), move |progress, cancel| match csv::group_by(&snap, dialect, col, value, header, cancel, Some(progress)) {
+            Ok(g) => TaskOutcome::Groups(Box::new((title, g))),
+            Err(ScanEnd::Cancelled) => TaskOutcome::Cancelled,
+            Err(_) => TaskOutcome::Failed(tr("Could not read the document.").into()),
+        });
+    }
+
+    /// Writes the rows meeting every condition to a temporary CSV and opens it as a table.
+    pub(crate) fn start_conditions(&mut self, conds: Vec<Cond>) {
+        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(dialect) = d.table_state.dialect else { return };
+        let (snap, header) = (d.buf.snapshot(), d.table_state.header);
+        let stem = std::path::Path::new(&d.title).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "rows".into());
+        let target = bigtext::decompress::temp_file(&format!("{stem}.filtered.csv"));
+        let title = trf("{name} (filtered)", &[("name", &d.title)]);
+        self.spawn_task(tr("Filtering rows").into(), move |progress, cancel| {
+            let r = (|| {
+                if let Some(dir) = target.parent() {
+                    std::fs::create_dir_all(dir)?;
+                }
+                let file = std::fs::File::options().write(true).create_new(true).open(&target)?;
+                let mut w = std::io::BufWriter::with_capacity(8 << 20, file);
+                let r = csv::filter_rows_to(&snap, dialect, &conds, header, &mut w, cancel, Some(progress))?;
+                std::io::Write::flush(&mut w)?;
+                Ok::<_, std::io::Error>(r)
+            })();
+            match r {
+                Ok(Some((kept, rows))) => {
+                    let message = trf("{kept} of {rows} rows meet the conditions.", &[("kept", &fmt_count(kept)), ("rows", &fmt_count(rows))]);
+                    TaskOutcome::TempTable(Box::new(super::tasks::TempTable { path: target, title, message }))
+                }
+                Ok(None) => {
+                    bigtext::decompress::remove_temp(&target);
+                    TaskOutcome::Cancelled
+                }
+                Err(e) => {
+                    bigtext::decompress::remove_temp(&target);
+                    TaskOutcome::Failed(e.to_string())
+                }
+            }
+        });
+    }
+
+    /// Saves the groups shown to a CSV file the user picks.
+    fn export_groups(&mut self) {
+        let Some((title, g)) = self.csv.groups.clone() else { return };
+        let stem = std::path::Path::new(&title).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let Some(target) = self.pick_output_file(tr("Export groups"), &format!("{stem}.groups.csv")) else { return };
+        self.spawn_task(tr("Exporting groups").into(), move |_, _| {
+            tasks::write_via_temp(&target, |w| {
+                csv::groups_to_csv(&g, w)?;
+                Ok(Some(trf("Saved {n} groups.", &[("n", &fmt_count(g.groups.len() as u64))])))
+            })
+        });
     }
 
     /// Runs a rewrite in memory, or asks first when it has to go to disk (no undo).
@@ -279,6 +390,127 @@ impl BigTextApp {
             if !open {
                 self.csv.stats = None;
             }
+        }
+        self.group_windows(ctx);
+        self.conditions_window(ctx);
+    }
+
+    fn group_windows(&mut self, ctx: &egui::Context) {
+        if let Some(g) = &mut self.csv.group {
+            let mut open = true;
+            let mut go = false;
+            let name = g.names.get(g.col).cloned().unwrap_or_default();
+            egui::Window::new(trf("Group rows by “{name}”", &[("name", &name)])).collapsible(false).resizable(false).open(&mut open).show(ctx, |ui| {
+                ui.label(tr("Counts the rows of each value of the column, like GROUP BY."));
+                ui.horizontal(|ui| {
+                    ui.label(tr("Also sum"));
+                    let shown = g.value.and_then(|c| g.names.get(c)).cloned().unwrap_or_else(|| tr("(nothing)").into());
+                    egui::ComboBox::from_id_salt("group-sum").selected_text(shown).show_ui(ui, |ui| {
+                        ui.selectable_value(&mut g.value, None, tr("(nothing)"));
+                        for (i, n) in g.names.iter().enumerate() {
+                            ui.selectable_value(&mut g.value, Some(i), n);
+                        }
+                    });
+                });
+                go = ui.button(tr("Group")).clicked();
+            });
+            if go {
+                let (col, value) = (g.col, g.value);
+                self.csv.group = None;
+                self.start_group_by(col, value);
+            } else if !open {
+                self.csv.group = None;
+            }
+        }
+        if let Some((title, g)) = &self.csv.groups {
+            let mut open = true;
+            let mut export = false;
+            egui::Window::new(trf("Groups of “{name}”", &[("name", &g.key_name)])).open(&mut open).default_width(480.0).default_height(420.0).show(ctx, |ui| {
+                ui.weak(title.as_str());
+                ui.label(trf("{rows} rows in {n} groups", &[("rows", &fmt_count(g.rows)), ("n", &fmt_count(g.groups.len() as u64))]));
+                if g.capped {
+                    ui.colored_label(ui.visuals().warn_fg_color, trf("Only the first {n} values are counted.", &[("n", &fmt_count(csv::GROUPS_MAX as u64))]));
+                }
+                if g.groups.len() > GROUPS_SHOWN {
+                    ui.weak(trf("The largest {n} are shown; Export saves all.", &[("n", &GROUPS_SHOWN.to_string())]));
+                }
+                export = ui.button(tr("Export…")).clicked();
+                ui.separator();
+                let num = |x: f64| if x.fract() == 0.0 && x.abs() < 1e15 { format!("{x:.0}") } else { format!("{x:.4}").trim_end_matches('0').trim_end_matches('.').to_string() };
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    egui::Grid::new("groups").num_columns(if g.value_name.is_some() { 4 } else { 2 }).striped(true).show(ui, |ui| {
+                        ui.strong(&g.key_name);
+                        ui.strong(tr("Rows"));
+                        if let Some(v) = &g.value_name {
+                            ui.strong(trf("Sum of {name}", &[("name", v)]));
+                            ui.strong(tr("Mean"));
+                        }
+                        ui.end_row();
+                        for x in g.groups.iter().take(GROUPS_SHOWN) {
+                            let key: String = x.key.chars().take(60).collect();
+                            ui.monospace(if key.is_empty() { tr("(empty)").to_string() } else { key });
+                            ui.monospace(fmt_count(x.rows));
+                            if g.value_name.is_some() {
+                                ui.monospace(if x.numeric > 0 { num(x.sum) } else { String::new() });
+                                ui.monospace(x.mean().map(num).unwrap_or_default());
+                            }
+                            ui.end_row();
+                        }
+                    });
+                });
+            });
+            if export {
+                self.export_groups();
+            }
+            if !open {
+                self.csv.groups = None;
+            }
+        }
+    }
+
+    fn conditions_window(&mut self, ctx: &egui::Context) {
+        let Some(c) = &mut self.csv.conds else { return };
+        let mut open = true;
+        let mut go = false;
+        let mut remove = None;
+        egui::Window::new(tr("Filter rows by conditions")).collapsible(false).open(&mut open).default_width(520.0).show(ctx, |ui| {
+            ui.label(tr("Keeps the rows that meet every condition and opens them as a new table."));
+            egui::Grid::new("conds").num_columns(4).show(ui, |ui| {
+                for (i, cond) in c.conds.iter_mut().enumerate() {
+                    let shown = c.names.get(cond.col).cloned().unwrap_or_default();
+                    egui::ComboBox::from_id_salt(("cond-col", i)).selected_text(shown).width(140.0).show_ui(ui, |ui| {
+                        for (k, n) in c.names.iter().enumerate() {
+                            ui.selectable_value(&mut cond.col, k, n);
+                        }
+                    });
+                    egui::ComboBox::from_id_salt(("cond-op", i)).selected_text(tr(cond.op.name())).width(120.0).show_ui(ui, |ui| {
+                        for op in CondOp::ALL {
+                            ui.selectable_value(&mut cond.op, op, tr(op.name()));
+                        }
+                    });
+                    ui.add_enabled(cond.op.takes_value(), egui::TextEdit::singleline(&mut cond.value).desired_width(140.0));
+                    if ui.small_button("×").clicked() {
+                        remove = Some(i);
+                    }
+                    ui.end_row();
+                }
+            });
+            if ui.button(tr("+ Condition")).clicked() {
+                let col = c.conds.last().map(|x| x.col).unwrap_or(0);
+                c.conds.push(Cond { col, op: CondOp::Contains, value: String::new() });
+            }
+            ui.separator();
+            go = ui.add_enabled(!c.conds.is_empty(), egui::Button::new(tr("Show matching rows"))).clicked();
+        });
+        if let Some(i) = remove {
+            c.conds.remove(i);
+        }
+        if go {
+            let conds = c.conds.clone();
+            self.csv.conds = None;
+            self.start_conditions(conds);
+        } else if !open {
+            self.csv.conds = None;
         }
     }
 }

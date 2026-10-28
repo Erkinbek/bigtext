@@ -588,6 +588,240 @@ pub fn column_stats(buf: &TextBuf, d: Dialect, col: usize, header: bool, cancel:
     Ok(s)
 }
 
+/// Groups kept by [`group_by`] before it stops adding new ones.
+pub const GROUPS_MAX: usize = 1_000_000;
+
+/// The rows of one value of the grouping column.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Group {
+    pub key: String,
+    pub rows: u64,
+    /// Numbers in the summed column, their sum, minimum and maximum.
+    pub numeric: u64,
+    pub sum: f64,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+}
+
+impl Group {
+    pub fn mean(&self) -> Option<f64> {
+        (self.numeric > 0).then(|| self.sum / self.numeric as f64)
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Groups {
+    pub key_name: String,
+    pub value_name: Option<String>,
+    /// Largest groups first.
+    pub groups: Vec<Group>,
+    pub rows: u64,
+    /// More than [`GROUPS_MAX`] values: rows of the others are not counted.
+    pub capped: bool,
+}
+
+/// Counts the rows per value of column `key` and, with `value`, sums that column per group
+/// (GROUP BY). With `header`, the first record names the columns.
+pub fn group_by(buf: &TextBuf, d: Dialect, key: usize, value: Option<usize>, header: bool, cancel: &CancelToken, progress: Option<&Progress>) -> Result<Groups, ScanEnd> {
+    let codec = buf.codec;
+    let mut g = Groups::default();
+    let mut map: HashMap<String, Group> = HashMap::new();
+    let mut first = header;
+    let mut failed = false;
+    let field = |r: &Record, col: usize, failed: &mut bool| -> String {
+        match r.fields.get(col) {
+            Some(f) => match buf.read(f.clone()) {
+                Some(b) => field_value(&codec, d, &b),
+                None => {
+                    *failed = true;
+                    String::new()
+                }
+            },
+            None => String::new(),
+        }
+    };
+    let end = for_each_record(buf, d, cancel, progress, |r| {
+        let k = field(r, key, &mut failed);
+        let v = value.map(|c| field(r, c, &mut failed));
+        if failed {
+            return false;
+        }
+        if first {
+            first = false;
+            g.key_name = k;
+            g.value_name = v;
+            return true;
+        }
+        if r.content.is_empty() && r.next == r.content.end && r.fields.len() == 1 {
+            return true;
+        }
+        g.rows += 1;
+        let full = map.len() >= GROUPS_MAX;
+        let entry = match map.entry(k) {
+            std::collections::hash_map::Entry::Occupied(o) => o.into_mut(),
+            std::collections::hash_map::Entry::Vacant(v) if !full => {
+                let key = v.key().clone();
+                v.insert(Group { key, ..Default::default() })
+            }
+            std::collections::hash_map::Entry::Vacant(_) => {
+                g.capped = true;
+                return true;
+            }
+        };
+        entry.rows += 1;
+        if let Some(n) = v.as_deref().and_then(parse_number) {
+            entry.numeric += 1;
+            entry.sum += n;
+            entry.min = Some(entry.min.map_or(n, |m| m.min(n)));
+            entry.max = Some(entry.max.map_or(n, |m| m.max(n)));
+        }
+        true
+    });
+    if failed {
+        return Err(ScanEnd::Failed);
+    }
+    if end != ScanEnd::Done {
+        return Err(end);
+    }
+    g.groups = map.into_values().collect();
+    g.groups.sort_by(|a, b| b.rows.cmp(&a.rows).then_with(|| a.key.cmp(&b.key)));
+    Ok(g)
+}
+
+/// Writes groups as CSV: the value, the row count, and with a summed column its sum, mean,
+/// minimum and maximum.
+pub fn groups_to_csv<W: Write>(g: &Groups, out: &mut W) -> io::Result<()> {
+    let q = |s: &str| if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() };
+    let num = |x: Option<f64>| x.map(|x| x.to_string()).unwrap_or_default();
+    let key = if g.key_name.is_empty() { "value".to_string() } else { g.key_name.clone() };
+    match &g.value_name {
+        Some(v) => {
+            let v = if v.is_empty() { "value".to_string() } else { v.clone() };
+            writeln!(out, "{},rows,{},{},{},{}", q(&key), q(&format!("sum of {v}")), q(&format!("mean of {v}")), q(&format!("min of {v}")), q(&format!("max of {v}")))?;
+            for x in &g.groups {
+                writeln!(out, "{},{},{},{},{},{}", q(&x.key), x.rows, if x.numeric > 0 { x.sum.to_string() } else { String::new() }, num(x.mean()), num(x.min), num(x.max))?;
+            }
+        }
+        None => {
+            writeln!(out, "{},rows", q(&key))?;
+            for x in &g.groups {
+                writeln!(out, "{},{}", q(&x.key), x.rows)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// How a condition compares a field.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CondOp {
+    Contains,
+    NotContains,
+    Equals,
+    NotEquals,
+    Greater,
+    Less,
+    Empty,
+    NotEmpty,
+}
+
+impl CondOp {
+    pub const ALL: [CondOp; 8] = [CondOp::Contains, CondOp::NotContains, CondOp::Equals, CondOp::NotEquals, CondOp::Greater, CondOp::Less, CondOp::Empty, CondOp::NotEmpty];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            CondOp::Contains => "contains",
+            CondOp::NotContains => "does not contain",
+            CondOp::Equals => "is",
+            CondOp::NotEquals => "is not",
+            CondOp::Greater => ">",
+            CondOp::Less => "<",
+            CondOp::Empty => "is empty",
+            CondOp::NotEmpty => "is not empty",
+        }
+    }
+
+    pub fn takes_value(self) -> bool {
+        !matches!(self, CondOp::Empty | CondOp::NotEmpty)
+    }
+}
+
+/// A condition on one column. Text comparisons ignore case; `>` and `<` compare numbers.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Cond {
+    pub col: usize,
+    pub op: CondOp,
+    pub value: String,
+}
+
+impl Cond {
+    pub fn test(&self, field: &str) -> bool {
+        let (f, v) = (field.to_lowercase(), self.value.to_lowercase());
+        match self.op {
+            CondOp::Contains => f.contains(&v),
+            CondOp::NotContains => !f.contains(&v),
+            CondOp::Equals => f.trim() == v.trim(),
+            CondOp::NotEquals => f.trim() != v.trim(),
+            CondOp::Greater | CondOp::Less => match (parse_number(field), parse_number(&self.value)) {
+                (Some(a), Some(b)) => if self.op == CondOp::Greater { a > b } else { a < b },
+                _ => false,
+            },
+            CondOp::Empty => field.trim().is_empty(),
+            CondOp::NotEmpty => !field.trim().is_empty(),
+        }
+    }
+}
+
+/// Writes the rows that meet every condition to `out` as they are (with the header when
+/// `header`, and the byte order mark). Returns (rows kept, rows), or `None` if cancelled.
+pub fn filter_rows_to<W: Write>(buf: &TextBuf, d: Dialect, conds: &[Cond], header: bool, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<(u64, u64)>> {
+    let codec = buf.codec;
+    let read_err = || io::Error::other("could not read the document");
+    out.write_all(&buf.read(0..(codec.bom_len as u64).min(buf.len())).ok_or_else(read_err)?)?;
+    let (mut kept, mut rows) = (0u64, 0u64);
+    let mut first = header;
+    let mut err: Option<io::Error> = None;
+    let end = for_each_record(buf, d, cancel, progress, |r| {
+        let keep = if first {
+            first = false;
+            true
+        } else if r.content.is_empty() && r.next == r.content.end && r.fields.len() == 1 {
+            false
+        } else {
+            rows += 1;
+            let ok = conds.iter().all(|c| {
+                let v = r.fields.get(c.col).and_then(|f| buf.read(f.clone())).map(|b| field_value(&codec, d, &b)).unwrap_or_default();
+                c.test(&v)
+            });
+            kept += ok as u64;
+            ok
+        };
+        if keep {
+            let r2 = buf.read(r.content.start..r.next).ok_or_else(read_err).and_then(|b| out.write_all(&b));
+            if let Err(e) = r2 {
+                err = Some(e);
+                return false;
+            }
+            // The last record may have no line break.
+            if r.next == r.content.end {
+                if let Err(e) = out.write_all(&codec.encode("\n")) {
+                    err = Some(e);
+                    return false;
+                }
+            }
+        }
+        true
+    });
+    if let Some(e) = err {
+        return Err(e);
+    }
+    match end {
+        ScanEnd::Cancelled => Ok(None),
+        ScanEnd::Done => Ok(Some((kept, rows))),
+        _ => Err(read_err()),
+    }
+}
+
 /// A rewrite of every record of a CSV document.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Rewrite {
@@ -925,6 +1159,53 @@ mod tests {
         assert_eq!(det("single\ncolumn\n", b','), None);
         // A cut-off last line does not count.
         assert_eq!(detect(&c, b"a;b\n1;2\n3,4,5,6", false, b',').map(|d| d.delim), Some(b';'));
+    }
+}
+
+#[cfg(test)]
+mod group_tests {
+    use super::*;
+    use crate::file::{OpenMode, Source};
+    use crate::index::LineIndex;
+    use std::sync::Arc;
+
+    fn buf(text: &str) -> (tempfile::TempDir, TextBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.csv");
+        std::fs::write(&path, text).unwrap();
+        let src = Arc::new(Source::open(&path, OpenMode::Auto).unwrap());
+        let len = src.len();
+        (dir, TextBuf::new(src, LineIndex::new(len), Codec::utf8()))
+    }
+
+    const T: &str = "city,qty,note\r\nTashkent,3,a\r\nBukhara,5,\"b, c\"\r\nTashkent,x,d\r\nTashkent,7,e\r\n";
+
+    #[test]
+    fn groups_count_and_sum() {
+        let (_d, b) = buf(T);
+        let g = group_by(&b, Dialect::new(b','), 0, Some(1), true, &CancelToken::new(), None).unwrap();
+        assert_eq!((g.key_name.as_str(), g.value_name.as_deref(), g.rows, g.capped), ("city", Some("qty"), 4, false));
+        assert_eq!(g.groups[0], Group { key: "Tashkent".into(), rows: 3, numeric: 2, sum: 10.0, min: Some(3.0), max: Some(7.0) });
+        assert_eq!((g.groups[1].key.as_str(), g.groups[1].rows), ("Bukhara", 1));
+        let mut out = Vec::new();
+        groups_to_csv(&g, &mut out).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), "city,rows,sum of qty,mean of qty,min of qty,max of qty\nTashkent,3,10,5,3,7\nBukhara,1,5,5,5,5\n");
+        let g = group_by(&b, Dialect::new(b','), 2, None, true, &CancelToken::new(), None).unwrap();
+        assert_eq!(g.groups.iter().map(|x| x.key.as_str()).collect::<Vec<_>>(), vec!["a", "b, c", "d", "e"]);
+    }
+
+    #[test]
+    fn rows_meeting_every_condition() {
+        let (_d, b) = buf(T);
+        let conds = [Cond { col: 0, op: CondOp::Equals, value: "tashkent".into() }, Cond { col: 1, op: CondOp::Greater, value: "4".into() }];
+        let mut out = Vec::new();
+        let r = filter_rows_to(&b, Dialect::new(b','), &conds, true, &mut out, &CancelToken::new(), None).unwrap();
+        assert_eq!(r, Some((1, 4)));
+        assert_eq!(String::from_utf8(out).unwrap(), "city,qty,note\r\nTashkent,7,e\r\n");
+        let c = Cond { col: 2, op: CondOp::Contains, value: ", C".into() };
+        assert!(c.test("b, c") && !c.test("d"));
+        assert!(Cond { col: 0, op: CondOp::Empty, value: String::new() }.test("  "));
+        assert!(!Cond { col: 0, op: CondOp::Less, value: "x".into() }.test("1"));
     }
 }
 

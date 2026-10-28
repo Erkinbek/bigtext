@@ -160,6 +160,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("cli.log"), "first 10:00\nsecond 10:00 10:05\nthird\n")?;
     std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
     std::fs::write(dir.join("levels.log"), LEVELS_LOG)?;
+    std::fs::write(dir.join("sales.csv"), "city,qty\nTashkent,3\nBukhara,5\nTashkent,7\n")?;
     std::fs::write(dir.join("outline.json"), OUTLINE_JSON)?;
     std::fs::write(dir.join("events.jsonl"), "{\"id\": 1, \"msg\": \"start\"}\n{\"id\": 2, \"msg\": \"a, b\", \"user\": \"ann\"}\n")?;
     std::fs::write(dir.join("ws.txt"), "a b\tc\r\nnext\r\n")?;
@@ -1546,6 +1547,49 @@ impl SelfTest {
             }
             c.copied.clear();
             Step::Next
+        }));
+        s("open sales.csv", open_step("sales.csv"));
+        s("CSV: group rows by a column and sum another", Box::new(|app, c| {
+            if c.first() {
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if doc(app).table_state.dialect.is_none() {
+                    return if c.waited() > Duration::from_secs(3) { Step::Fail("no dialect".into()) } else { Step::Wait };
+                }
+                app.on_table_action(crate::view::table_view::TableAction::GroupBy { col: 0 });
+                let names = app.csv.group.as_ref().map(|g| g.names.clone()).unwrap_or_default();
+                if names != vec!["city".to_string(), "qty".to_string()] {
+                    return Step::Fail(format!("column names {names:?}"));
+                }
+                app.csv.group = None;
+                app.start_group_by(0, Some(1));
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let Some((_, g)) = app.csv.groups.as_ref() else {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail("no groups".into()) } else { Step::Wait };
+            };
+            let got: Vec<(String, u64, f64)> = g.groups.iter().map(|x| (x.key.clone(), x.rows, x.sum)).collect();
+            c.mark = 0;
+            let ok = got == vec![("Tashkent".to_string(), 2, 10.0), ("Bukhara".to_string(), 1, 5.0)];
+            app.csv.groups = None;
+            check(ok, format!("groups {got:?}"))
+        }));
+        s("CSV: rows meeting several conditions open as a new table", Box::new(|app, c| {
+            use bigtext::csv::{Cond, CondOp};
+            if c.first() {
+                app.start_conditions(vec![Cond { col: 0, op: CondOp::Equals, value: "tashkent".into() }, Cond { col: 1, op: CondOp::Greater, value: "4".into() }]);
+                return Step::Wait;
+            }
+            let d = doc(app);
+            if !d.title.ends_with("(filtered)") || !d.is_ready() {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("active tab {:?}", d.title)) } else { Step::Wait };
+            }
+            let table = d.table;
+            let t = text(app);
+            c.key(Key::W, CTRL);
+            check(t == "city,qty\nTashkent,7\n" && table, format!("text {t:?} table {table}"))
         }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
         s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {
