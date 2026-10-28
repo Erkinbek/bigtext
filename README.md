@@ -95,6 +95,9 @@ Single self-contained binary, no runtime dependencies.
   case, trim trailing whitespace, tabs ↔ spaces, and JSON pretty-print / minify (token by
   token: key order, numbers and escapes stay as written; JSON Lines stay one value per line).
   Runs on a worker and is one undo step.
+- **Interface languages**: English, Russian and Uzbek (View → Language), kept across sessions.
+  A unit test checks that every interface text has both translations with the same
+  placeholders. Error details that come from the operating system stay in English.
 - **Command palette** (Ctrl+Shift+P): type a few letters of any command (menus, views, text
   operations) and press Enter. **Help → Keyboard shortcuts** lists every command with its key;
   click a key and press a new one to change it (a key taken from another command is moved,

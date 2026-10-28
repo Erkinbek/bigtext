@@ -17,6 +17,7 @@ use bigtext::text::rows::{self, Pending, Row};
 use super::highlight::Lang;
 use super::text_view;
 use crate::app::document::Document;
+use crate::app::i18n::{tr, trf as tr_f};
 
 const SCROLLBAR: f32 = 14.0;
 const TOOLBAR_H: f32 = 30.0;
@@ -332,7 +333,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     let name = |col: usize| -> String {
         match &head_line {
             Some(h) => h.value(&codec, dialect, col).filter(|s| !s.trim().is_empty()).unwrap_or_else(|| format!("({})", col + 1)),
-            None => format!("Column {}", col + 1),
+            None => tr_f("Column {n}", &[("n", &(col + 1).to_string())]),
         }
     };
     let measure: Vec<usize> = visible_columns(&st.widths, default_w, st.scroll_x, body.width()).collect();
@@ -450,7 +451,11 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
             let names: Vec<String> = cols.iter().map(|&c| name(c)).collect();
             column_menu(ui, env.actions, col, &n, ncols, cols, names, editable)
         });
-        r.on_hover_text(format!("{n}\nColumn {}\nClick to select; Ctrl+click adds, Shift+click selects a range", col + 1));
+        r.on_hover_text(format!(
+            "{n}\n{}\n{}",
+            tr_f("Column {n}", &[("n", &(col + 1).to_string())]),
+            tr("Click to select; Ctrl+click adds, Shift+click selects a range; right-click for more")
+        ));
         header_cells.push((col, hit));
     }
     doc.table_state.header_cells = header_cells;
@@ -501,11 +506,11 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         doc.view.first_paint = Some(std::time::Instant::now());
     }
     if lines.is_empty() && !pending && doc.is_ready() {
-        let msg = if len == 0 { "Empty file" } else { "No data rows" };
+        let msg = tr(if len == 0 { "Empty file" } else { "No data rows" });
         painter.text(body.center(), Align2::CENTER_CENTER, msg, FontId::proportional(16.0), weak);
     }
     if pending {
-        painter.text(body.right_top() + vec2(-8.0, 4.0), Align2::RIGHT_TOP, "Loading…", FontId::proportional(13.0), weak);
+        painter.text(body.right_top() + vec2(-8.0, 4.0), Align2::RIGHT_TOP, tr("Loading…"), FontId::proportional(13.0), weak);
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(30));
     }
 
@@ -518,7 +523,6 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
 /// Right-click menu of a column header.
 #[allow(clippy::too_many_arguments)]
 fn column_menu(ui: &mut Ui, actions: &mut Vec<TableAction>, col: usize, name: &str, ncols: usize, cols: Vec<usize>, names: Vec<String>, editable: bool) {
-    use crate::app::i18n::tr;
     let mut act = |ui: &mut Ui, enabled: bool, label: &str, a: TableAction| {
         if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
             actions.push(a);
@@ -575,40 +579,40 @@ fn toolbar(ui: &mut Ui, doc: &mut Document, rect: Rect, ncols: usize, can_delete
     ui.scope_builder(UiBuilder::new().max_rect(rect.shrink2(vec2(8.0, 3.0))).layout(Layout::left_to_right(Align::Center)), |ui| {
         let st = &mut doc.table_state;
         let cur = st.dialect.unwrap_or(Dialect::new(b','));
-        ui.label("Delimiter");
-        egui::ComboBox::from_id_salt(("delimiter", doc_id)).selected_text(cur.name()).show_ui(ui, |ui| {
+        ui.label(tr("Delimiter"));
+        egui::ComboBox::from_id_salt(("delimiter", doc_id)).selected_text(tr(cur.name())).show_ui(ui, |ui| {
             for delim in DELIMITERS {
-                if ui.selectable_label(cur.delim == delim, Dialect::new(delim).name()).clicked() && cur.delim != delim {
+                if ui.selectable_label(cur.delim == delim, tr(Dialect::new(delim).name())).clicked() && cur.delim != delim {
                     st.dialect = Some(Dialect::new(delim));
                     st.reset_columns();
                 }
             }
         });
-        ui.checkbox(&mut st.header, "First row is header");
+        ui.checkbox(&mut st.header, tr("First row is header"));
         ui.separator();
         if st.selected.is_empty() {
-            ui.weak(format!("{ncols} columns · click a column header to select it"));
+            ui.weak(tr_f("{n} columns · click a column header to select it", &[("n", &ncols.to_string())]));
         } else {
             let n = st.selected.len();
-            ui.label(format!("{n} of {ncols} columns selected"));
-            let label = if n == 1 { "Delete column" } else { "Delete columns" };
-            let tip = if read_only {
+            ui.label(tr_f("{n} of {total} columns selected", &[("n", &n.to_string()), ("total", &ncols.to_string())]));
+            let label = tr(if n == 1 { "Delete column" } else { "Delete columns" });
+            let tip = tr(if read_only {
                 "The document is read-only"
             } else if n >= ncols {
                 "Keep at least one column"
             } else {
                 "Delete the selected columns and their values from every row (Delete key)"
-            };
+            });
             let button = egui::Button::new(egui::RichText::new(label).color(ui.visuals().error_fg_color));
             if ui.add_enabled(can_delete, button).on_hover_text(tip).on_disabled_hover_text(tip).clicked() {
                 delete = true;
             }
-            if ui.button("Clear selection").on_hover_text("Esc").clicked() {
+            if ui.button(tr("Clear selection")).on_hover_text("Esc").clicked() {
                 st.selected.clear();
             }
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if ui.button("Text view").on_hover_text("Show the file as text (Ctrl+T)").clicked() {
+            if ui.button(tr("Text view")).on_hover_text(tr("Show the file as text (Ctrl+T)")).clicked() {
                 doc.table = false;
             }
         });

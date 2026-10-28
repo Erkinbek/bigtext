@@ -20,6 +20,7 @@ use bigtext::search::Matcher;
 use bigtext::text::Piece;
 
 use super::document::{Banner, DocState};
+use super::i18n::{tr, trf};
 use super::{open_worker, same_path, BigTextApp, Confirm, ConfirmAction, Msg, Opened};
 
 /// Replacements up to this count are applied as undoable piece-table edits.
@@ -134,7 +135,7 @@ impl BigTextApp {
             WriteKind::DeleteColumns(_) => "Deleting columns",
             WriteKind::Csv(_) => "Rewriting",
         };
-        d.save_job = Some(SaveJob { cancel: cancel.clone(), progress: progress.clone(), label: label.into() });
+        d.save_job = Some(SaveJob { cancel: cancel.clone(), progress: progress.clone(), label: super::i18n::tr(label).into() });
         let snap = d.buf.snapshot();
         let tx = self.tx.clone();
         let waker = self.waker.clone();
@@ -173,10 +174,10 @@ impl BigTextApp {
         let weak: Weak<Source> = Arc::downgrade(&d.buf.source);
         d.buf = d.buf.with_source(Arc::new(Source::empty()), LineIndex::new(0));
         d.state = DocState::Finalizing(match tw.kind {
-            WriteKind::Save | WriteKind::Transcode(_) => "Saving…".into(),
-            WriteKind::Replace => "Replacing on disk…".into(),
-            WriteKind::DeleteColumns(_) => "Deleting columns on disk…".into(),
-            WriteKind::Csv(_) => "Rewriting on disk…".into(),
+            WriteKind::Save | WriteKind::Transcode(_) => tr("Saving…").into(),
+            WriteKind::Replace => tr("Replacing on disk…").into(),
+            WriteKind::DeleteColumns(_) => tr("Deleting columns on disk…").into(),
+            WriteKind::Csv(_) => tr("Rewriting on disk…").into(),
         });
         let original = d.path.clone();
         jobs::spawn("finalize", move || {
@@ -188,7 +189,7 @@ impl BigTextApp {
                 Ok(()) => open_worker(&tw.target, match tw.kind {
                     WriteKind::Transcode(enc) => Some(enc),
                     _ => None,
-                }).map_err(|e| (format!("Saved, but reopening failed: {e}"), Err(e))),
+                }).map_err(|e| (trf("Saved, but reopening failed: {e}", &[("e", &e)]), Err(e))),
                 Err(e) => {
                     let reopened = match &original {
                         Some(p) => open_worker(p, None),
@@ -237,12 +238,12 @@ impl BigTextApp {
                 d.eol_on_save = None;
                 let secs = f.elapsed.as_secs_f64();
                 d.banner = Some(Banner::Info(match &f.kind {
-                    WriteKind::Replace => format!("Replaced {} matches; wrote {} in {secs:.2}s.", f.stats.count, human_bytes(f.stats.bytes_out)),
+                    WriteKind::Replace => trf("Replaced {n} matches; wrote {size} in {secs}s.", &[("n", &f.stats.count.to_string()), ("size", &human_bytes(f.stats.bytes_out)), ("secs", &format!("{secs:.2}"))]),
                     WriteKind::DeleteColumns(cols) => {
                         d.table_state.columns_deleted(cols);
-                        format!("Deleted {} from all {} lines; wrote {} in {secs:.2}s.", super::columns::count_label(cols.len()), f.stats.count, human_bytes(f.stats.bytes_out))
+                        trf("Deleted {cols} from all {n} lines; wrote {size} in {secs}s.", &[("cols", &super::columns::count_label(cols.len())), ("n", &f.stats.count.to_string()), ("size", &human_bytes(f.stats.bytes_out)), ("secs", &format!("{secs:.2}"))])
                     }
-                    WriteKind::Save => format!("Saved {} in {secs:.2}s.", human_bytes(d.buf.len())),
+                    WriteKind::Save => trf("Saved {size} in {secs}s.", &[("size", &human_bytes(d.buf.len())), ("secs", &format!("{secs:.2}"))]),
                     WriteKind::Csv(rw) => {
                         if let bigtext::csv::Rewrite::Swap(a, b) = rw {
                             d.table_state.columns_swapped(*a, *b);
@@ -283,7 +284,7 @@ impl BigTextApp {
             d.save_job = None;
             d.close_after_save = false;
             if msg.is_none() {
-                d.banner = Some(Banner::Info("Cancelled. The file on disk was not modified.".into()));
+                d.banner = Some(Banner::Info(tr("Cancelled. The file on disk was not modified.").into()));
             }
         }
         if let Some(m) = msg {
@@ -300,7 +301,7 @@ impl BigTextApp {
             return None;
         }
         if d.read_only {
-            self.search.status = "Document is read-only".into();
+            self.search.status = tr("Document is read-only").into();
             return None;
         }
         let m = match self.search.matcher(d.buf.codec) {
@@ -342,7 +343,7 @@ impl BigTextApp {
         }
         let cancel = CancelToken::new();
         let progress = Progress::new(range.end - range.start);
-        d.save_job = Some(SaveJob { cancel: cancel.clone(), progress: progress.clone(), label: "Counting matches".into() });
+        d.save_job = Some(SaveJob { cancel: cancel.clone(), progress: progress.clone(), label: tr("Counting matches").into() });
         let snap = d.buf.snapshot();
         let version = d.version;
         let tx = self.tx.clone();
@@ -366,17 +367,17 @@ impl BigTextApp {
         let Some(d) = self.docs.iter_mut().find(|d| d.id == doc) else { return };
         d.save_job = None;
         if d.version != version || d.buf.add_len() != add_len {
-            self.search.status = "Document changed during replace; nothing replaced".into();
+            self.search.status = tr("Document changed during replace; nothing replaced").into();
             return;
         }
         if count == 0 {
-            self.search.status = "No matches".into();
+            self.search.status = tr("No matches").into();
             return;
         }
         let (s, _) = d.selection();
         let swap = d.buf.apply_batch(pieces, &add);
         d.record(swap, (s, s));
-        self.search.status = format!("Replaced {count} matches (undo with Ctrl+Z)");
+        self.search.status = trf("Replaced {n} matches (undo with Ctrl+Z)", &[("n", &count.to_string())]);
     }
 
     pub(super) fn on_replace_too_many(&mut self, doc: u64, version: u64, matcher: Arc<Matcher>, template: Template, range: std::ops::Range<u64>) {
@@ -386,20 +387,22 @@ impl BigTextApp {
             return;
         }
         if d.path.is_none() {
-            self.error = Some(format!("More than {UNDO_THRESHOLD} matches. Save the document to a file first; large replacements are streamed to disk."));
+            self.error = Some(trf("More than {n} matches. Save the document to a file first; large replacements are streamed to disk.", &[("n", &UNDO_THRESHOLD.to_string())]));
             return;
         }
         self.pending_replace = Some((doc, matcher, template, range));
         self.confirm = Some(Confirm {
-            title: "Replace All on disk".into(),
+            title: tr("Replace All on disk").into(),
             message: format!(
-                "More than {UNDO_THRESHOLD} matches. Replace All will stream the result to a new file and atomically \
-                 replace “{}”. Undo will not be available{}.",
-                d.title,
-                if d.is_modified() { "; your unsaved edits are included" } else { "" }
+                "{}{}",
+                trf(
+                    "More than {n} matches. Replace All will stream the result to a new file and atomically replace “{file}”. Undo will not be available.",
+                    &[("n", &UNDO_THRESHOLD.to_string()), ("file", &d.title)]
+                ),
+                if d.is_modified() { tr(" Your unsaved edits are included.") } else { "" }
             ),
             action: ConfirmAction::ReplaceOnDisk { doc },
-            checkbox: Some(("Keep a backup (.bak)".into(), true)),
+            checkbox: Some((tr("Keep a backup (.bak)").into(), true)),
         });
     }
 

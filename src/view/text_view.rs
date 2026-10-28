@@ -332,7 +332,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         }
         crate::app::document::DocState::Ready => {
             if pending {
-                painter.text(text_rect.right_top() + egui::vec2(-8.0, 4.0), Align2::RIGHT_TOP, "Loading…", FontId::proportional(13.0), weak);
+                painter.text(text_rect.right_top() + egui::vec2(-8.0, 4.0), Align2::RIGHT_TOP, crate::app::i18n::tr("Loading…"), FontId::proportional(13.0), weak);
                 ui.ctx().request_repaint_after(std::time::Duration::from_millis(30));
             } else if doc.view.first_paint.is_none() && !rows.is_empty() {
                 doc.view.first_paint = Some(std::time::Instant::now());

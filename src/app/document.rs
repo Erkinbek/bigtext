@@ -248,7 +248,7 @@ impl Document {
     pub fn untitled(id: u64, n: usize) -> Document {
         let mut d = Document::loading(id, PathBuf::new());
         d.path = None;
-        d.title = format!("Untitled-{n}");
+        d.title = super::i18n::trf("Untitled-{n}", &[("n", &n.to_string())]);
         d.state = DocState::Ready;
         d
     }
@@ -358,7 +358,7 @@ impl Document {
     /// Called every frame: lets line counts catch up with the background indexer.
     pub fn tick(&mut self) -> bool {
         if self.is_ready() && (self.buf.index.failed() || self.buf.source.has_io_error()) && self.banner.is_none() {
-            self.banner = Some(Banner::Error("Reading the file failed (was it removed, truncated or is the drive unavailable?). Display may be incomplete.".into()));
+            self.banner = Some(Banner::Error(super::i18n::tr("Reading the file failed (was it removed, truncated or is the drive unavailable?). Display may be incomplete.").into()));
         }
         let idx = self.buf.index.indexed_bytes();
         let mut changed = false;
@@ -645,7 +645,7 @@ impl Document {
             return;
         }
         let Some((ls, _ce, next)) = self.line_bounds(self.view.caret, LINE_CMD_LIMIT) else {
-            self.banner = Some(Banner::Info("Line is too long to duplicate".into()));
+            self.banner = Some(Banner::Info(super::i18n::tr("Line is too long to duplicate").into()));
             return;
         };
         let caret = self.view.caret;
@@ -682,7 +682,7 @@ impl Document {
             return;
         }
         let Some((ls, _ce, next)) = self.line_bounds(self.view.caret, LINE_CMD_LIMIT) else {
-            self.banner = Some(Banner::Info("Line is too long to delete with this command; select it instead".into()));
+            self.banner = Some(Banner::Info(super::i18n::tr("Line is too long to delete with this command; select it instead").into()));
             return;
         };
         let start = if next == self.buf.len() && ls > 0 && !self.ends_with_nl() {

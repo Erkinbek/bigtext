@@ -7,6 +7,7 @@ use bigtext::jobs::{self, human_bytes, CancelToken, Progress};
 use bigtext::text::Piece;
 
 use super::document::Banner;
+use super::i18n::{tr, trf};
 use super::ops::{SaveJob, WriteSpec};
 use super::{BigTextApp, Confirm, ConfirmAction, Msg};
 
@@ -26,9 +27,9 @@ pub struct ColumnsDeleted {
 /// "1 column" / "3 columns".
 pub fn count_label(n: usize) -> String {
     if n == 1 {
-        "1 column".into()
+        tr("1 column").into()
     } else {
-        format!("{n} columns")
+        trf("{n} columns", &[("n", &n.to_string())])
     }
 }
 
@@ -37,7 +38,7 @@ fn name_list(names: &[String]) -> String {
     const SHOWN: usize = 6;
     let mut s = names.iter().take(SHOWN).map(|n| format!("“{n}”")).collect::<Vec<_>>().join(", ");
     if names.len() > SHOWN {
-        s.push_str(&format!(" and {} more", names.len() - SHOWN));
+        s.push_str(&trf(" and {n} more", &[("n", &(names.len() - SHOWN).to_string())]));
     }
     s
 }
@@ -52,26 +53,27 @@ impl BigTextApp {
         }
         let on_disk = d.buf.len() > IN_MEMORY_MAX;
         if on_disk && d.path.is_none() {
-            self.error = Some("Save the document to a file first; columns of large documents are deleted by rewriting the file.".into());
+            self.error = Some(tr("Save the document to a file first; columns of large documents are deleted by rewriting the file.").into());
             return;
         }
-        let what = format!("Delete {} {} and their values from every row?", if cols.len() == 1 { "the column" } else { "the columns" }, name_list(&names));
+        let what = trf(if cols.len() == 1 { "Delete the column {names} and its values from every row?" } else { "Delete the columns {names} and their values from every row?" }, &[("names", &name_list(&names))]);
         let message = if on_disk {
             format!(
-                "{what}\n\n“{}” is {}, so the result is written to a new file that atomically replaces it, \
-                 as Replace All does on large files. Undo will not be available{}.",
-                d.title,
-                human_bytes(d.buf.len()),
-                if d.is_modified() { "; your unsaved edits are included" } else { "" }
+                "{what}\n\n{}{}",
+                trf(
+                    "“{file}” is {size}, so the result is written to a new file that atomically replaces it, as Replace All does on large files. Undo will not be available.",
+                    &[("file", &d.title), ("size", &human_bytes(d.buf.len()))]
+                ),
+                if d.is_modified() { tr(" Your unsaved edits are included.") } else { "" }
             )
         } else {
-            format!("{what}\n\nYou can undo it with Ctrl+Z.")
+            format!("{what}\n\n{}", tr("You can undo it with Ctrl+Z."))
         };
         self.confirm = Some(Confirm {
-            title: if cols.len() == 1 { "Delete column".into() } else { "Delete columns".into() },
+            title: tr(if cols.len() == 1 { "Delete column" } else { "Delete columns" }).into(),
             message,
             action: ConfirmAction::DeleteColumns { doc: d.id, dialect, cols, on_disk },
-            checkbox: on_disk.then(|| ("Keep a backup (.bak)".into(), true)),
+            checkbox: on_disk.then(|| (tr("Keep a backup (.bak)").into(), true)),
         });
     }
 
@@ -87,7 +89,7 @@ impl BigTextApp {
         }
         let cancel = CancelToken::new();
         let progress = Progress::new(d.buf.len());
-        d.save_job = Some(SaveJob { cancel: cancel.clone(), progress: progress.clone(), label: "Deleting columns".into() });
+        d.save_job = Some(SaveJob { cancel: cancel.clone(), progress: progress.clone(), label: tr("Deleting columns").into() });
         let snap = d.buf.snapshot();
         let version = d.version;
         let (tx, waker) = (self.tx.clone(), self.waker.clone());
@@ -100,7 +102,7 @@ impl BigTextApp {
                     Msg::ColumnsDeleted(Box::new(ColumnsDeleted { doc, version, add_len: snap.add_len(), pieces, add, cols, records: stats.count }))
                 }
                 Ok(None) => Msg::JobFailed { doc, msg: None },
-                Err(e) => Msg::JobFailed { doc, msg: Some(format!("Deleting columns failed: {e}")) },
+                Err(e) => Msg::JobFailed { doc, msg: Some(trf("Deleting columns failed: {e}", &[("e", &e.to_string())])) },
             };
             let _ = tx.send(msg);
             waker();
@@ -111,7 +113,7 @@ impl BigTextApp {
         let Some(d) = self.docs.iter_mut().find(|d| d.id == c.doc) else { return };
         d.save_job = None;
         if d.version != c.version || d.buf.add_len() != c.add_len {
-            d.banner = Some(Banner::Info("The document changed while the columns were being deleted; nothing was deleted.".into()));
+            d.banner = Some(Banner::Info(tr("The document changed while the columns were being deleted; nothing was deleted.").into()));
             return;
         }
         // Rows get shorter, so keep the caret and the first visible row on their lines.
@@ -123,6 +125,6 @@ impl BigTextApp {
         d.record(swap, (caret, caret));
         d.view.top = top;
         d.table_state.columns_deleted(&c.cols);
-        d.banner = Some(Banner::Info(format!("Deleted {} from all {} lines. Undo with Ctrl+Z.", count_label(c.cols.len()), c.records)));
+        d.banner = Some(Banner::Info(trf("Deleted {cols} from all {n} lines. Undo with Ctrl+Z.", &[("cols", &count_label(c.cols.len())), ("n", &c.records.to_string())])));
     }
 }

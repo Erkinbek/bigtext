@@ -79,5 +79,194 @@ pub fn trf(s: &'static str, args: &[(&str, &str)]) -> String {
     out
 }
 
-/// English, Russian, Uzbek.
-static TEXTS: &[[&str; 3]] = &[];
+use super::i18n_texts::TEXTS;
+
+impl super::BigTextApp {
+    /// View → Language.
+    pub(super) fn language_menu(&mut self, ui: &mut egui::Ui) {
+        ui.menu_button(format!("{} (Language)", tr("Language")), |ui| {
+            for l in Lang::ALL {
+                if ui.radio(lang() == l, l.name()).clicked() {
+                    set_lang(l);
+                    self.persist_state();
+                    ui.close();
+                }
+            }
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::commands::Cmd;
+
+    const SOURCES: &[&str] = &[
+        include_str!("mod.rs"),
+        include_str!("columns.rs"),
+        include_str!("commands.rs"),
+        include_str!("csv_tools.rs"),
+        include_str!("document.rs"),
+        include_str!("export.rs"),
+        include_str!("extras.rs"),
+        include_str!("filter_panel.rs"),
+        include_str!("marks.rs"),
+        include_str!("ops.rs"),
+        include_str!("search_panel.rs"),
+        include_str!("tasks.rs"),
+        include_str!("text_tools.rs"),
+        include_str!("update.rs"),
+        include_str!("../view/block.rs"),
+        include_str!("../view/hex_view.rs"),
+        include_str!("../view/table_view.rs"),
+        include_str!("../view/text_view.rs"),
+    ];
+
+    /// Texts translated through a variable rather than a literal at the call.
+    const DYNAMIC: &[&str] = &[
+        "Comma",
+        "Semicolon",
+        "Tab",
+        "Pipe",
+        "Other",
+        "Discard",
+        "Replace on disk",
+        "Copy",
+        "Delete",
+        "Rewrite",
+        "Could not check for updates",
+        "The update failed",
+        "Saving",
+        "Replacing",
+        "Deleting columns",
+        "Rewriting",
+        "Go to line",
+        "Go to byte offset",
+        "Go to time",
+        "UTF-8 with BOM",
+        "GitHub",
+        "Repository",
+        "Telegram",
+        "E-mail",
+        "Word movement / delete word",
+        "Line start (smart) / end, document start / end",
+        "Zoom",
+        "Select word / line",
+        "Column (block) selection",
+        "Search history",
+        "Language",
+    ];
+
+    /// String literals in `span` (escapes resolved).
+    fn literals(span: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut it = span.chars().peekable();
+        let mut prev = ' ';
+        while let Some(c) = it.next() {
+            if c == '"' && prev != '\'' {
+                let mut s = String::new();
+                while let Some(c) = it.next() {
+                    match c {
+                        '"' => break,
+                        '\\' => match it.next() {
+                            Some('n') => s.push('\n'),
+                            Some('t') => s.push('\t'),
+                            Some(o) => s.push(o),
+                            None => {}
+                        },
+                        _ => s.push(c),
+                    }
+                }
+                out.push(s);
+                prev = '"';
+            } else {
+                prev = c;
+            }
+        }
+        out
+    }
+
+    /// Texts passed to `tr(…)` (every literal) and `trf(…)` / `tr_f(…)` (the first argument).
+    fn keys_in(src: &str) -> Vec<String> {
+        let b: Vec<char> = src.chars().collect();
+        let mut keys = Vec::new();
+        let mut i = 0;
+        while i < b.len() {
+            let name_len = ["tr_f(", "trf(", "tr("].iter().find(|n| b[i..].starts_with(&n.chars().collect::<Vec<_>>())).map(|n| n.len());
+            let word_start = i == 0 || !(b[i - 1].is_alphanumeric() || b[i - 1] == '_');
+            let (Some(n), true) = (name_len, word_start) else {
+                i += 1;
+                continue;
+            };
+            let first_only = n > 3;
+            let mut j = i + n;
+            let (mut depth, mut in_str, mut first_end) = (1, false, None);
+            while j < b.len() && depth > 0 {
+                let c = b[j];
+                if in_str {
+                    if c == '\\' {
+                        j += 1;
+                    } else if c == '"' {
+                        in_str = false;
+                    }
+                } else if c == '"' && b[j - 1] != '\'' {
+                    in_str = true;
+                } else if c == '(' || c == '[' || c == '{' {
+                    depth += 1;
+                } else if c == ')' || c == ']' || c == '}' {
+                    depth -= 1;
+                } else if c == ',' && depth == 1 && first_end.is_none() {
+                    first_end = Some(j);
+                }
+                j += 1;
+            }
+            let end = if first_only { first_end.unwrap_or(j - 1) } else { j - 1 };
+            keys.extend(literals(&b[i + n..end].iter().collect::<String>()).into_iter().filter(|s| !s.is_empty()));
+            i += n;
+        }
+        keys
+    }
+
+    fn placeholders(s: &str) -> Vec<String> {
+        let mut v: Vec<String> = s.split('{').skip(1).filter_map(|p| p.split_once('}').map(|x| x.0.to_string())).collect();
+        v.sort();
+        v.dedup();
+        v
+    }
+
+    #[test]
+    fn every_text_is_translated() {
+        let mut keys: Vec<String> = SOURCES.iter().flat_map(|s| keys_in(s)).collect();
+        keys.extend(Cmd::all().flat_map(|c| [c.label(), c.group()]).map(String::from));
+        keys.extend(DYNAMIC.iter().map(|s| s.to_string()));
+        let known: HashMap<&str, &[&str; 3]> = TEXTS.iter().map(|t| (t[0], t)).collect();
+        let mut missing: Vec<&String> = keys.iter().filter(|k| !known.contains_key(k.as_str())).collect();
+        missing.sort();
+        missing.dedup();
+        assert!(missing.is_empty(), "texts without a translation: {missing:#?}");
+        assert!(keys.len() > 300, "the scan found only {} texts", keys.len());
+    }
+
+    #[test]
+    fn translations_are_complete_and_keep_placeholders() {
+        let mut seen = std::collections::HashSet::new();
+        for t in TEXTS {
+            assert!(seen.insert(t[0]), "duplicate entry {:?}", t[0]);
+            for (i, x) in t.iter().enumerate().skip(1) {
+                assert!(!x.trim().is_empty(), "{:?}: empty translation {i}", t[0]);
+                assert_eq!(placeholders(x), placeholders(t[0]), "{:?} → {x:?}", t[0]);
+            }
+        }
+    }
+
+    #[test]
+    fn lookup_and_fill() {
+        set_lang(Lang::Ru);
+        assert_eq!(tr("File"), "Файл");
+        assert_eq!(trf("{n} lines", &[("n", "5")]), "строк: 5");
+        set_lang(Lang::Uz);
+        assert_eq!(tr("Not in the table"), "Not in the table");
+        set_lang(Lang::En);
+        assert_eq!(tr("File"), "File");
+    }
+}

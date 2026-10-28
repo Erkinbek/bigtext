@@ -12,6 +12,7 @@ use bigtext::jobs::{self, human_bytes, CancelToken, Progress};
 use bigtext::update::{self, Block, Method, Span, Version};
 
 use super::extras::{self, Persisted};
+use super::i18n::{tr, trf};
 use super::{BigTextApp, Msg};
 
 /// Automatic checks run at most this often (seconds).
@@ -214,7 +215,7 @@ impl BigTextApp {
                     let setup = update::download_dir().join(&asset.name);
                     update::download(&asset, &setup, &p, &c).map(|()| Pending::Installer { version, setup })
                 }
-                Method::Cargo | Method::Manual => Err("This copy of BigText cannot update itself.".into()),
+                Method::Cargo | Method::Manual => Err(tr("This copy of BigText cannot update itself.").into()),
             };
             let _ = tx.send(Msg::Update(Event::Downloaded(result)));
             waker();
@@ -242,7 +243,7 @@ impl BigTextApp {
             rfd::MessageDialog::new()
                 .set_level(rfd::MessageLevel::Error)
                 .set_title("BigText")
-                .set_description(format!("Could not start the update: {e}"))
+                .set_description(trf("Could not start the update: {e}", &[("e", &e.to_string())]))
                 .set_buttons(rfd::MessageButtons::Ok)
                 .show();
         }
@@ -264,67 +265,67 @@ impl BigTextApp {
                 Stage::Checking => {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label("Checking for updates…");
+                        ui.label(tr("Checking for updates…"));
                     });
                     ui.add_space(6.0);
-                    if ui.button("Cancel").clicked() {
+                    if ui.button(tr("Cancel")).clicked() {
                         action = Some(Action::Close);
                     }
                 }
                 Stage::Offer(o) => {
-                    ui.heading("Update available");
-                    ui.label(format!("BigText {} is available. You have {current}.", o.version));
+                    ui.heading(tr("Update available"));
+                    ui.label(trf("BigText {new} is available. You have {current}.", &[("new", &o.version.to_string()), ("current", &current.to_string())]));
                     ui.add_space(6.0);
                     notes_ui(ui, o);
                     ui.add_space(6.0);
                     match &o.method {
                         Method::Cargo => {
-                            ui.label("This copy was installed with cargo. To update it, run:");
+                            ui.label(tr("This copy was installed with cargo. To update it, run:"));
                             ui.horizontal(|ui| {
                                 ui.code(CARGO_INSTALL);
-                                if ui.small_button("Copy").clicked() {
+                                if ui.small_button(tr("Copy")).clicked() {
                                     action = Some(Action::Copy(CARGO_INSTALL));
                                 }
                             });
                         }
                         Method::Manual => {
-                            ui.label("This release has no download for your platform.");
+                            ui.label(tr("This release has no download for your platform."));
                         }
                         Method::Replace { .. } | Method::Installer { .. } => {}
                     }
                     ui.horizontal(|ui| {
                         match &o.method {
                             Method::Replace { .. } | Method::Installer { .. } => {
-                                if ui.button(RichText::new("Update now").strong()).clicked() {
+                                if ui.button(RichText::new(tr("Update now")).strong()).clicked() {
                                     action = Some(Action::Update);
                                 }
                             }
                             Method::Manual => {
-                                if ui.button("Open download page").clicked() {
+                                if ui.button(tr("Open download page")).clicked() {
                                     action = Some(Action::Open(o.page.clone()));
                                 }
                             }
                             Method::Cargo => {}
                         }
-                        if ui.button("Remind me later").clicked() {
+                        if ui.button(tr("Remind me later")).clicked() {
                             action = Some(Action::Close);
                         }
-                        if ui.button("Skip this version").clicked() {
+                        if ui.button(tr("Skip this version")).clicked() {
                             action = Some(Action::Skip);
                         }
                     });
                     ui.add_space(2.0);
-                    ui.checkbox(&mut u.auto, "Check for updates automatically");
+                    ui.checkbox(&mut u.auto, tr("Check for updates automatically"));
                 }
                 Stage::Downloading { offer, progress, cancel } => {
-                    ui.heading(format!("Downloading BigText {}", offer.version));
+                    ui.heading(trf("Downloading BigText {v}", &[("v", &offer.version.to_string())]));
                     ui.add_space(6.0);
-                    let text = format!("{} of {}", human_bytes(progress.done()), human_bytes(progress.total()));
+                    let text = trf("{done} of {total}", &[("done", &human_bytes(progress.done())), ("total", &human_bytes(progress.total()))]);
                     ui.add(egui::ProgressBar::new(progress.fraction()).text(text));
                     ui.add_space(6.0);
                     if cancel.is_cancelled() {
-                        ui.add_enabled(false, egui::Button::new("Cancelling…"));
-                    } else if ui.button("Cancel").clicked() {
+                        ui.add_enabled(false, egui::Button::new(tr("Cancelling…")));
+                    } else if ui.button(tr("Cancel")).clicked() {
                         action = Some(Action::Cancel);
                     }
                     ui.ctx().request_repaint_after(Duration::from_millis(100));
@@ -332,42 +333,42 @@ impl BigTextApp {
                 Stage::Ready => {
                     let (version, text) = match &u.pending {
                         Some(Pending::Replaced { version, .. }) => {
-                            (*version, "The new version starts the next time you open BigText. Restart now to switch to it; your open files reopen.")
+                            (*version, tr("The new version starts the next time you open BigText. Restart now to switch to it; your open files reopen."))
                         }
                         Some(Pending::Installer { version, .. }) => {
-                            (*version, "The installer runs when BigText closes. Restart now to install it; BigText then reopens with your files.")
+                            (*version, tr("The installer runs when BigText closes. Restart now to install it; BigText then reopens with your files."))
                         }
                         None => (current, ""),
                     };
-                    ui.heading(format!("BigText {version} is ready"));
+                    ui.heading(trf("BigText {v} is ready", &[("v", &version.to_string())]));
                     ui.label(text);
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        if ui.button(RichText::new("Restart now").strong()).clicked() {
+                        if ui.button(RichText::new(tr("Restart now")).strong()).clicked() {
                             action = Some(Action::Restart);
                         }
-                        if ui.button("Later").clicked() {
+                        if ui.button(tr("Later")).clicked() {
                             action = Some(Action::Close);
                         }
                     });
                 }
                 Stage::UpToDate => {
-                    ui.heading("BigText is up to date");
-                    ui.label(format!("You have the latest version, {current}."));
+                    ui.heading(tr("BigText is up to date"));
+                    ui.label(trf("You have the latest version, {v}.", &[("v", &current.to_string())]));
                     ui.add_space(6.0);
-                    if ui.button("OK").clicked() {
+                    if ui.button(tr("OK")).clicked() {
                         action = Some(Action::Close);
                     }
                 }
                 Stage::Failed { title, message } => {
-                    ui.heading(*title);
+                    ui.heading(tr(title));
                     ui.label(message);
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Open download page").clicked() {
+                        if ui.button(tr("Open download page")).clicked() {
                             action = Some(Action::Open(update::RELEASES_PAGE.into()));
                         }
-                        if ui.button("Close").clicked() {
+                        if ui.button(tr("Close")).clicked() {
                             action = Some(Action::Close);
                         }
                     });
@@ -397,7 +398,7 @@ impl BigTextApp {
             }
             Some(Action::Restart) => {
                 if self.writes_in_progress() {
-                    self.error = Some("A file is being saved. Restart BigText when saving has finished.".into());
+                    self.error = Some(tr("A file is being saved. Restart BigText when saving has finished.").into());
                 } else {
                     self.update.stage = Stage::Idle;
                     self.update.restart = true;
@@ -418,9 +419,9 @@ fn notes_ui(ui: &mut egui::Ui, o: &Offer) {
     egui::Frame::new().fill(ui.visuals().extreme_bg_color).corner_radius(4.0).inner_margin(10.0).show(ui, |ui| {
         egui::ScrollArea::vertical().max_height(360.0).auto_shrink([false, true]).show(ui, |ui| {
             for (v, blocks) in &o.notes {
-                ui.label(RichText::new(format!("What's new in {v}")).strong().size(16.0));
+                ui.label(RichText::new(trf("What's new in {v}", &[("v", &v.to_string())])).strong().size(16.0));
                 if blocks.is_empty() {
-                    ui.weak("No release notes.");
+                    ui.weak(tr("No release notes."));
                 }
                 for b in blocks {
                     block_ui(ui, b);
@@ -429,7 +430,7 @@ fn notes_ui(ui: &mut egui::Ui, o: &Offer) {
             }
         });
     });
-    ui.hyperlink_to("Full release notes on GitHub", &o.page);
+    ui.hyperlink_to(tr("Full release notes on GitHub"), &o.page);
 }
 
 fn block_ui(ui: &mut egui::Ui, b: &Block) {

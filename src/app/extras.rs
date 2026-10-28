@@ -9,6 +9,7 @@ use bigtext::file::{self, OpenMode, Source};
 use bigtext::jobs::{self, CancelToken, Progress};
 
 use super::document::Restore;
+use super::i18n::{tr, trf};
 use super::BigTextApp;
 
 pub const RECENT_MAX: usize = 15;
@@ -44,6 +45,8 @@ pub struct Persisted {
     pub history: Vec<String>,
     /// Changed key bindings: command id and binding ("none" = removed).
     pub keys: Vec<(String, String)>,
+    /// Interface language code (en, ru, uz).
+    pub lang: Option<String>,
 }
 
 fn query_flags(q: &bigtext::search::Query) -> String {
@@ -104,6 +107,7 @@ fn parse(text: &str) -> Persisted {
             "update_checked" => p.update_checked = v.parse().ok(),
             "mark" => p.marks.extend(parse_mark(v)),
             "find" => p.history.push(v.to_string()),
+            "lang" => p.lang = Some(v.to_string()),
             "key" => p.keys.extend(v.split_once('=').map(|(a, b)| (a.to_string(), b.to_string()))),
             "tab" => {
                 let parts: Vec<&str> = v.splitn(5, '|').collect();
@@ -143,6 +147,9 @@ fn serialize(p: &Persisted) -> String {
     }
     if let Some(v) = &p.skip_version {
         s.push_str(&format!("skip_version={v}\n"));
+    }
+    if let Some(l) = &p.lang {
+        s.push_str(&format!("lang={l}\n"));
     }
     if let Some(t) = p.update_checked {
         s.push_str(&format!("update_checked={t}\n"));
@@ -251,6 +258,7 @@ impl BigTextApp {
             update_checked: Some(self.update.last_check).filter(|&t| t > 0),
             marks: self.settings.marks.clone(),
             history: self.search.history.clone(),
+            lang: Some(super::i18n::lang().code().to_string()),
             keys: self.keymap.changed.iter().map(|(c, k)| (c.id(), super::commands::key_to_string(*k))).collect(),
         }
     }
@@ -290,10 +298,10 @@ impl BigTextApp {
     pub(super) fn compare_dialog(&mut self) {
         let Some(d) = self.docs.get(self.active) else { return };
         if d.path.is_none() || !d.is_ready() {
-            self.error = Some("Open a saved file first; the comparison reads both files from disk.".into());
+            self.error = Some(tr("Open a saved file first; the comparison reads both files from disk.").into());
             return;
         }
-        if let Some(other) = rfd::FileDialog::new().set_title("Compare with…").pick_file() {
+        if let Some(other) = rfd::FileDialog::new().set_title(tr("Compare with…")).pick_file() {
             self.start_diff(other);
         }
     }
@@ -309,7 +317,7 @@ impl BigTextApp {
         let progress = Progress::default();
         self.diff = Some(DiffResults { doc: d.id, other_path: other.clone(), data: data.clone(), cancel: cancel.clone(), progress: progress.clone() });
         if d.is_modified() {
-            self.search.status = "Comparing the saved file; unsaved edits are not included".into();
+            self.search.status = tr("Comparing the saved file; unsaved edits are not included").into();
         }
         let waker = self.waker.clone();
         jobs::spawn("diff", move || {
@@ -350,7 +358,7 @@ impl BigTextApp {
             g.done = true;
             g.elapsed = Some(t.elapsed());
             if end == DiffEnd::Failed {
-                g.error = Some("Reading one of the files failed.".into());
+                g.error = Some(tr("Reading one of the files failed.").into());
             }
             drop(g);
             waker();
@@ -387,19 +395,23 @@ impl BigTextApp {
         let mut open_other: Option<u64> = None;
         let mut jump: Option<u64> = None;
         ui.horizontal(|ui| {
-            ui.strong(format!("Compare with {}", file::display_path(&r.other_path)));
+            ui.strong(trf("Compare with {file}", &[("file", &file::display_path(&r.other_path))]));
             if let Some(e) = &err {
                 ui.colored_label(ui.visuals().error_fg_color, e);
             } else if !done {
-                ui.add(egui::ProgressBar::new(r.progress.fraction()).desired_width(160.0).text(format!("comparing {:.0}%", r.progress.fraction() * 100.0)));
+                ui.add(egui::ProgressBar::new(r.progress.fraction()).desired_width(160.0).text(format!("{} {:.0}%", tr("comparing"), r.progress.fraction() * 100.0)));
                 ui.ctx().request_repaint_after(Duration::from_millis(50));
-                if ui.small_button("Cancel").clicked() {
+                if ui.small_button(tr("Cancel")).clicked() {
                     r.cancel.cancel();
                 }
             } else if n == 0 {
-                ui.label(format!("files are identical ({:.2}s)", elapsed.unwrap_or_default().as_secs_f64()));
+                ui.label(trf("files are identical ({secs}s)", &[("secs", &format!("{:.2}", elapsed.unwrap_or_default().as_secs_f64()))]));
             } else {
-                ui.label(format!("{n} difference(s){} in {:.2}s", if capped { " (capped, more exist)" } else { "" }, elapsed.unwrap_or_default().as_secs_f64()));
+                ui.label(format!(
+                    "{}{}",
+                    trf("{n} difference(s) in {secs}s", &[("n", &n.to_string()), ("secs", &format!("{:.2}", elapsed.unwrap_or_default().as_secs_f64()))]),
+                    if capped { tr(" (capped, more exist)") } else { "" }
+                ));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button("×").clicked() {
@@ -434,10 +446,10 @@ impl BigTextApp {
                 };
                 ui.horizontal(|ui| {
                     let label = format!("A {:>8} −{:<5} B {:>8} +{:<5}", h.a_line + 1, h.a_count, h.b_line + 1, h.b_count);
-                    if ui.add(egui::Button::new(egui::RichText::new(label).font(font.clone())).frame(false)).on_hover_text("Go to this line in A").clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(label).font(font.clone())).frame(false)).on_hover_text(tr("Go to this line in A")).clicked() {
                         jump = Some(h.a_line + 1);
                     }
-                    if ui.small_button("B").on_hover_text("Open the other file at this line").clicked() {
+                    if ui.small_button("B").on_hover_text(tr("Open the other file at this line")).clicked() {
                         open_other = Some(h.b_line + 1);
                     }
                     // Both sides get half of the remaining width so B stays visible next to a long A line.
@@ -509,7 +521,9 @@ mod tests {
             }],
             history: vec!["ERROR".into(), "a|b=c".into()],
             keys: vec![("goto_time".into(), "ctrl+alt+T".into()), ("find_all".into(), "none".into())],
+            lang: Some("uz".into()),
         };
+        assert_eq!(parse(&serialize(&p)).lang.as_deref(), Some("uz"));
         let q = parse(&serialize(&p));
         assert_eq!((q.marks.clone(), q.history.clone(), q.keys.clone()), (p.marks.clone(), p.history.clone(), p.keys.clone()));
         assert_eq!(q.recent, p.recent);

@@ -8,6 +8,7 @@ pub mod export;
 pub mod extras;
 pub mod filter_panel;
 pub mod i18n;
+mod i18n_texts;
 pub mod marks;
 pub mod ops;
 pub mod search_panel;
@@ -183,9 +184,9 @@ pub struct BigTextApp {
 pub fn friendly_io(e: &std::io::Error, path: &Path) -> String {
     let p = file::display_path(path);
     match (e.kind(), e.raw_os_error()) {
-        (_, Some(32)) | (_, Some(33)) => format!("“{p}” is in use by another process."),
-        (std::io::ErrorKind::PermissionDenied, _) => format!("Access denied: “{p}”. Check permissions or the read-only attribute."),
-        (std::io::ErrorKind::NotFound, _) => format!("File not found: “{p}”."),
+        (_, Some(32)) | (_, Some(33)) => i18n::trf("“{p}” is in use by another process.", &[("p", &p)]),
+        (std::io::ErrorKind::PermissionDenied, _) => i18n::trf("Access denied: “{p}”. Check permissions or the read-only attribute.", &[("p", &p)]),
+        (std::io::ErrorKind::NotFound, _) => i18n::trf("File not found: “{p}”.", &[("p", &p)]),
         _ => format!("{p}: {e}"),
     }
 }
@@ -295,6 +296,9 @@ impl BigTextApp {
             jobs::spawn("cleanup-unpacked", bigtext::decompress::cleanup_old);
             app.settings.marks = std::mem::take(&mut state.marks);
             app.search.history = std::mem::take(&mut state.history);
+            if let Some(l) = state.lang.as_deref().and_then(i18n::Lang::from_code) {
+                i18n::set_lang(l);
+            }
             for (id, k) in std::mem::take(&mut state.keys) {
                 if let (Some(c), Some(k)) = (commands::Cmd::from_id(&id), commands::key_from_string(&k)) {
                     app.keymap.changed.insert(c, k);
@@ -490,8 +494,8 @@ impl BigTextApp {
         let Some(i) = self.docs.iter().position(|d| d.id == id) else { return };
         if !force && self.docs[i].is_modified() {
             self.confirm = Some(Confirm {
-                title: "Unsaved changes".into(),
-                message: format!("“{}” has unsaved changes. Close it anyway?", self.docs[i].title),
+                title: i18n::tr("Unsaved changes").into(),
+                message: i18n::trf("“{name}” has unsaved changes. Close it anyway?", &[("name", &self.docs[i].title)]),
                 action: ConfirmAction::CloseTab(id),
                 checkbox: None,
             });
@@ -520,14 +524,14 @@ impl BigTextApp {
         let tx = self.tx.clone();
         let waker = self.waker.clone();
         jobs::spawn("copy", move || {
-            let result = snap.read(s..e).map(|b| snap.codec.decode_lossy(&b)).ok_or_else(|| "Could not read the selection".to_string());
+            let result = snap.read(s..e).map(|b| snap.codec.decode_lossy(&b)).ok_or_else(|| i18n::tr("Could not read the selection").to_string());
             let _ = tx.send(Msg::Copied { doc: id, result, cut });
             waker();
         });
     }
 
     fn open_dialog(&mut self) {
-        if let Some(files) = rfd::FileDialog::new().set_title("Open").pick_files() {
+        if let Some(files) = rfd::FileDialog::new().set_title(i18n::tr("Open")).pick_files() {
             for f in files {
                 self.open_path(f);
             }
@@ -541,7 +545,7 @@ impl BigTextApp {
         let Some(d) = self.docs.get_mut(self.active) else { return };
         let Some(path) = d.path.clone() else { return };
         if d.is_modified() {
-            self.error = Some("Save or discard your changes before reopening with another encoding.".into());
+            self.error = Some(i18n::tr("Save or discard your changes before reopening with another encoding.").into());
             return;
         }
         d.state = DocState::Loading;
@@ -594,13 +598,13 @@ impl BigTextApp {
                     Some((ls, _)) if caret >= ls => format!("~{}", caret - ls + 1),
                     _ => "?".into(),
                 };
-                ui.label(format!("Ln {}{}, Col {}", if exact { "" } else { "~" }, line + 1, col));
+                ui.label(i18n::trf("Ln {line}, Col {col}", &[("line", &format!("{}{}", if exact { "" } else { "~" }, line + 1)), ("col", &col)]));
                 ui.separator();
-                ui.label(format!("Offset {caret} (0x{caret:X})"));
+                ui.label(i18n::trf("Offset {n}", &[("n", &format!("{caret} (0x{caret:X})"))]));
                 let (s, e) = d.selection();
                 if s != e {
                     ui.separator();
-                    ui.label(format!("Sel {} bytes", e - s));
+                    ui.label(i18n::trf("Sel {n} bytes", &[("n", &(e - s).to_string())]));
                     if let Some(ms) = d.selection_time_delta() {
                         ui.separator();
                         ui.label(format!("Δt {}", bigtext::timestamp::format_delta(ms))).on_hover_text(i18n::tr("Time between the timestamps of the first and last selected lines"));
@@ -608,36 +612,36 @@ impl BigTextApp {
                 }
                 let (lines, lexact) = d.buf.line_count();
                 ui.separator();
-                ui.label(format!("{}{} lines", if lexact { "" } else { "~" }, lines));
+                ui.label(i18n::trf("{n} lines", &[("n", &format!("{}{}", if lexact { "" } else { "~" }, lines))]));
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 self.tasks_status(ui);
                 let Some(d) = self.docs.get(self.active) else { return };
                 if let Some(j) = &d.save_job {
-                    if ui.small_button("Cancel").clicked() {
+                    if ui.small_button(i18n::tr("Cancel")).clicked() {
                         j.cancel.cancel();
                     }
                     ui.add(egui::ProgressBar::new(j.progress.fraction()).desired_width(160.0).text(format!("{} {:.0}%", j.label, j.progress.fraction() * 100.0)));
                     ui.separator();
                 }
                 if d.follow {
-                    ui.label(RichText::new("FOLLOW").color(Color32::from_rgb(90, 180, 90)));
+                    ui.label(RichText::new(i18n::tr("FOLLOW")).color(Color32::from_rgb(90, 180, 90)));
                     ui.separator();
                 }
                 if d.table && !d.hex {
-                    let delim = d.table_state.dialect.map(|x| x.name()).unwrap_or("…");
-                    ui.label(RichText::new(format!("TABLE · {delim}")).color(Color32::from_rgb(90, 160, 220)));
+                    let delim = d.table_state.dialect.map(|x| i18n::tr(x.name())).unwrap_or("…");
+                    ui.label(RichText::new(format!("{} · {delim}", i18n::tr("TABLE"))).color(Color32::from_rgb(90, 160, 220)));
                     ui.separator();
                 }
                 if let Some(r) = d.results.as_ref().filter(|r| r.is_running()) {
-                    ui.add(egui::ProgressBar::new(r.progress.fraction()).desired_width(140.0).text(format!("Searching {:.0}%", r.progress.fraction() * 100.0)));
+                    ui.add(egui::ProgressBar::new(r.progress.fraction()).desired_width(140.0).text(format!("{} {:.0}%", i18n::tr("Searching"), r.progress.fraction() * 100.0)));
                     ui.separator();
                 } else if d.find_job.is_some() {
-                    ui.label("Searching…");
+                    ui.label(i18n::tr("Searching…"));
                     ui.separator();
                 }
                 if d.read_only {
-                    ui.label(RichText::new("READ-ONLY").color(Color32::from_rgb(220, 150, 60)));
+                    ui.label(RichText::new(i18n::tr("READ-ONLY")).color(Color32::from_rgb(220, 150, 60)));
                     ui.separator();
                 }
                 ui.label(d.buf.source.kind_name());
@@ -649,11 +653,11 @@ impl BigTextApp {
                 ui.label(d.buf.codec.enc.name());
                 if d.is_ready() && !d.buf.index.is_done() && !d.buf.is_empty() {
                     ui.separator();
-                    ui.add(egui::ProgressBar::new(d.buf.index.progress()).desired_width(120.0).text(format!("Indexing {:.0}%", d.buf.index.progress() * 100.0)));
+                    ui.add(egui::ProgressBar::new(d.buf.index.progress()).desired_width(120.0).text(format!("{} {:.0}%", i18n::tr("Indexing"), d.buf.index.progress() * 100.0)));
                 } else if let Some(t) = d.buf.index.finished_after() {
                     if t > Duration::ZERO {
                         ui.separator();
-                        ui.label(format!("Indexed in {:.2}s", t.as_secs_f32()));
+                        ui.label(i18n::trf("Indexed in {t}s", &[("t", &format!("{:.2}", t.as_secs_f32()))]));
                     }
                 }
             });
@@ -670,26 +674,26 @@ impl BigTextApp {
             ui.horizontal(|ui| {
                 match &b {
                     Banner::Binary => {
-                        ui.label("This file looks binary.");
-                        if ui.button("Switch to hex view").clicked() {
+                        ui.label(i18n::tr("This file looks binary."));
+                        if ui.button(i18n::tr("Switch to hex view")).clicked() {
                             d.hex = true;
                             d.banner = None;
                         }
                     }
                     Banner::ChangedOnDisk { deleted, grown } => {
                         ui.label(if *deleted {
-                            "The file was deleted or moved on disk."
+                            i18n::tr("The file was deleted or moved on disk.")
                         } else if *grown {
-                            "The file grew on disk."
+                            i18n::tr("The file grew on disk.")
                         } else {
-                            "The file changed on disk."
+                            i18n::tr("The file changed on disk.")
                         });
-                        if !*deleted && ui.button(if d.is_modified() { "Reload (discard edits)" } else { "Reload" }).clicked() {
+                        if !*deleted && ui.button(i18n::tr(if d.is_modified() { "Reload (discard edits)" } else { "Reload" })).clicked() {
                             d.banner = None;
                             reload(d, &self.tx, &self.waker, false);
                             return;
                         }
-                        if *grown && !*deleted && !d.is_modified() && ui.button("Follow").clicked() {
+                        if *grown && !*deleted && !d.is_modified() && ui.button(i18n::tr("Follow")).clicked() {
                             d.banner = None;
                             d.follow = true;
                             reload(d, &self.tx, &self.waker, true);
@@ -703,7 +707,7 @@ impl BigTextApp {
                         ui.colored_label(ui.visuals().error_fg_color, s);
                     }
                 }
-                if ui.button("Dismiss").clicked() {
+                if ui.button(i18n::tr("Dismiss")).clicked() {
                     d.banner = None;
                 }
             });
@@ -817,7 +821,7 @@ impl BigTextApp {
                 }
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    if is_close && ui.button("Save").clicked() {
+                    if is_close && ui.button(i18n::tr("Save")).clicked() {
                         decision = Some(2);
                     }
                     let primary = match c.action {
@@ -827,10 +831,10 @@ impl BigTextApp {
                         ConfirmAction::DeleteColumns { .. } => "Delete",
                         ConfirmAction::CsvRewrite { .. } => "Rewrite",
                     };
-                    if ui.button(primary).clicked() {
+                    if ui.button(i18n::tr(primary)).clicked() {
                         decision = Some(1);
                     }
-                    if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
+                    if ui.button(i18n::tr("Cancel")).clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
                         decision = Some(0);
                     }
                 });
@@ -845,9 +849,9 @@ impl BigTextApp {
             let mut open = true;
             let mut jump = None;
             let same_doc = self.docs.get(self.active).map(|d| d.id) == Some(*doc);
-            egui::Window::new(format!("Replace preview (first {})", items.len())).open(&mut open).default_size([640.0, 400.0]).show(ctx, |ui| {
+            egui::Window::new(i18n::trf("Replace preview (first {n})", &[("n", &items.len().to_string())])).open(&mut open).default_size([640.0, 400.0]).show(ctx, |ui| {
                 if items.is_empty() {
-                    ui.label("No matches.");
+                    ui.label(i18n::tr("No matches."));
                 }
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     egui::Grid::new("preview").striped(true).show(ui, |ui| {
@@ -876,16 +880,16 @@ impl BigTextApp {
 
         if let Some(e) = self.error.clone() {
             egui::Modal::new(egui::Id::new("error")).show(ctx, |ui| {
-                ui.heading("Error");
+                ui.heading(i18n::tr("Error"));
                 ui.label(e);
-                if ui.button("OK").clicked() {
+                if ui.button(i18n::tr("OK")).clicked() {
                     self.error = None;
                 }
             });
         }
 
         if self.show_about {
-            egui::Window::new("About BigText").open(&mut self.show_about).collapsible(false).resizable(false).show(ctx, |ui| {
+            egui::Window::new(i18n::tr("About BigText")).open(&mut self.show_about).collapsible(false).resizable(false).show(ctx, |ui| {
                 about_contents(ui);
             });
         }
@@ -981,8 +985,8 @@ impl BigTextApp {
             if n > 0 {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 self.confirm = Some(Confirm {
-                    title: "Unsaved changes".into(),
-                    message: format!("{n} document(s) have unsaved changes. Exit and discard them?"),
+                    title: i18n::tr("Unsaved changes").into(),
+                    message: i18n::trf("{n} document(s) have unsaved changes. Exit and discard them?", &[("n", &n.to_string())]),
                     action: ConfirmAction::Exit,
                     checkbox: None,
                 });
@@ -1073,22 +1077,22 @@ pub const AUTHOR_LINKS: &[(&str, &str, &str)] = &[
 fn about_contents(ui: &mut egui::Ui) {
     ui.vertical_centered(|ui| {
         ui.heading("BigText");
-        ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
-        ui.label("A fast, non-freezing large-file text editor.");
+        ui.label(i18n::trf("Version {v}", &[("v", env!("CARGO_PKG_VERSION"))]));
+        ui.label(i18n::tr("A fast, non-freezing large-file text editor."));
     });
     ui.separator();
     egui::Grid::new("author").num_columns(2).spacing([16.0, 6.0]).show(ui, |ui| {
-        ui.strong("Author");
+        ui.strong(i18n::tr("Author"));
         ui.label(AUTHOR);
         ui.end_row();
         for (label, text, url) in AUTHOR_LINKS {
-            ui.strong(*label);
+            ui.strong(i18n::tr(label));
             ui.hyperlink_to(*text, *url);
             ui.end_row();
         }
     });
     ui.separator();
-    ui.small("Licensed under the MIT license. Built with Rust and egui.");
+    ui.small(i18n::tr("Licensed under the MIT license. Built with Rust and egui."));
 }
 
 
@@ -1226,8 +1230,8 @@ impl eframe::App for BigTextApp {
                     if let Some(id) = self.docs.get(self.active).map(|d| d.id) {
                         if len > 100 * 1024 * 1024 {
                             self.confirm = Some(Confirm {
-                                title: "Large copy".into(),
-                                message: format!("Copy {} to the clipboard? This needs that much memory.", human_bytes(len)),
+                                title: i18n::tr("Large copy").into(),
+                                message: i18n::trf("Copy {size} to the clipboard? This needs that much memory.", &[("size", &human_bytes(len))]),
                                 action: ConfirmAction::CopyLarge { doc: id, cut },
                                 checkbox: None,
                             });

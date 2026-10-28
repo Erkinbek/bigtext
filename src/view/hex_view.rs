@@ -96,7 +96,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, font_size: f32, take_focus: bool) {
     let start = doc.view.hex_top * PER_ROW;
     let end = (start + n * PER_ROW).min(len);
     let Some(bytes) = doc.buf.read(start..end) else {
-        painter.text(text.center(), Align2::CENTER_CENTER, "Loading…", FontId::proportional(16.0), v.weak_text_color());
+        painter.text(text.center(), Align2::CENTER_CENTER, crate::app::i18n::tr("Loading…"), FontId::proportional(16.0), v.weak_text_color());
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(30));
         return;
     };

@@ -637,6 +637,7 @@ impl BigTextApp {
                 run = run.or(self.item(ui, Cmd::Highlights));
                 ui.separator();
                 run = run.or(self.item(ui, Cmd::DarkTheme));
+                self.language_menu(ui);
                 for c in [Cmd::ZoomIn, Cmd::ZoomOut, Cmd::ZoomReset, Cmd::PerfOverlay] {
                     run = run.or(self.item(ui, c));
                 }

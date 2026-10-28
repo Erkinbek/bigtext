@@ -593,6 +593,29 @@ impl SelfTest {
             doc(app).filter = None;
             check(v == vec![0, 17, 35, 67], format!("inverted filter lines {v:?}"))
         }));
+        s("interface in Russian and Uzbek", Box::new(|app, c| {
+            use crate::app::i18n::{lang, set_lang, tr, Lang};
+            if c.first() {
+                set_lang(Lang::Ru);
+                app.search.status = tr("Wrapped around").into();
+                return Step::Wait;
+            }
+            if c.frames < 4 {
+                return Step::Wait;
+            }
+            if lang() == Lang::Ru {
+                let ok = tr("File") == "Файл" && app.search.status == "Поиск начат сначала";
+                if !ok {
+                    return Step::Fail(format!("status {:?}", app.search.status));
+                }
+                set_lang(Lang::Uz);
+                return Step::Wait;
+            }
+            let uz = tr("Search") == "Qidiruv";
+            set_lang(Lang::En);
+            app.search.status.clear();
+            check(uz, "Uzbek texts missing")
+        }));
         s("command palette (Ctrl+Shift+P) runs a command", Box::new(|app, c| {
             if c.first() {
                 c.key(Key::P, CTRL_SHIFT);
