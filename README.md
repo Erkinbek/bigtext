@@ -286,7 +286,7 @@ python scripts/build-site.py
      `WINGET_TOKEN` (a classic token with the `public_repo` scope) and a fork of winget-pkgs
      under the repository owner, and it only updates a package that is already in winget: the
      first version is submitted by hand from the manifests in `packaging/winget/`, which pass
-     `winget validate`.
+     `winget validate`. Until that submission is merged the job skips itself.
 
 ## Measured performance
 
