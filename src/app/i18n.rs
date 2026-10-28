@@ -120,6 +120,7 @@ mod tests {
         "app" / "fonts.rs",
         "app" / "levels.rs",
         "app" / "marks.rs",
+        "app" / "merge_logs.rs",
         "app" / "ops.rs",
         "app" / "search_panel.rs",
         "app" / "tasks.rs",

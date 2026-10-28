@@ -25,6 +25,8 @@ pub enum TaskOutcome {
     Failed(String),
     /// Column statistics (document title, figures) for the stats window.
     Stats(Box<(String, bigtext::csv::ColumnStats)>),
+    /// Logs merged into a temporary file, to open as a document.
+    Merged(Box<super::merge_logs::MergedLogs>),
 }
 
 /// A short message in the status bar that disappears after a while.
@@ -94,6 +96,7 @@ impl BigTextApp {
             TaskOutcome::Cancelled => self.notify(super::i18n::trf("{task}: cancelled.", &[("task", &label)]), None),
             TaskOutcome::Failed(e) => self.error = Some(e),
             TaskOutcome::Stats(s) => self.csv.stats = Some(*s),
+            TaskOutcome::Merged(m) => self.on_merged(*m),
         }
     }
 

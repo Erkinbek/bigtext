@@ -12,6 +12,11 @@ All notable changes to BigText. Each release on
   jump to the next / previous error line, or to the next line of the levels shown. Upper-case
   level words count anywhere; `[error]`, `level=error` and `"level":"error"` count too, but
   "no error found" does not. View → Log level bar hides it.
+- **File → Merge logs by time…**: the lines of several open logs (say `app.log` and
+  `nginx.log`) in timestamp order in a new read-only document. Each line starts with its file's
+  name in that file's colour (the status bar shows the legend); lines without a time, like
+  stack traces, stay with the line above. Logs in different encodings can be merged, and the
+  files are read once from front to back, so it works on logs of any size.
 - Files without a telling extension (`syslog`, `stdin`, `app.txt`) are recognised as logs when
   their lines start with a time, and as JSON or XML by their first line.
 

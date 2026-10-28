@@ -433,4 +433,21 @@ pub static TEXTS: &[[&str; 3]] = &[
         "Faqat shu darajadagi satrlarni ko'rsatish (boshqa darajalarni qo'shish uchun ularni ham bosing)",
     ],
     ["Hide the level bar (View → Log level bar)", "Скрыть панель уровней (Вид → Панель уровней лога)", "Darajalar panelini yashirish (Ko'rinish → Log darajalari paneli)"],
+    // Merge logs by time.
+    ["Merge logs by time…", "Объединить логи по времени…", "Loglarni vaqt bo'yicha birlashtirish…"],
+    ["Merge logs by time", "Объединение логов по времени", "Loglarni vaqt bo'yicha birlashtirish"],
+    [
+        "Puts the lines of the ticked logs in time order in a new read-only document. Lines without a time (stack traces) stay with the line above. Each line starts with its file's name in that file's colour.",
+        "Выстраивает строки отмеченных логов по времени в новом документе только для чтения. Строки без времени (трассировки стека) остаются со строкой над ними. Каждая строка начинается с имени своего файла, выделенного цветом этого файла.",
+        "Belgilangan loglarning satrlarini yangi, faqat o'qish uchun hujjatda vaqt tartibida joylaydi. Vaqti yo'q satrlar (stek izlari) o'zidan yuqoridagi satr bilan qoladi. Har bir satr o'z faylining nomi bilan, shu faylning rangida boshlanadi.",
+    ],
+    ["Add files…", "Добавить файлы…", "Fayl qo'shish…"],
+    ["Merge", "Объединить", "Birlashtirish"],
+    ["Tick at least two logs that have finished opening", "Отметьте хотя бы два уже открытых лога", "Ochilib bo'lgan kamida ikkita logni belgilang"],
+    ["opening…", "открывается…", "ochilmoqda…"],
+    ["Merging logs", "Объединение логов", "Loglar birlashtirilmoqda"],
+    ["Merged:", "Объединено:", "Birlashtirilgan:"],
+    ["Merged {files} logs: {lines} lines ({size}).", "Объединено логов: {files}, строк: {lines} ({size}).", "{files} ta log birlashtirildi: {lines} satr ({size})."],
+    ["{n} of them had no times; their lines come first.", "В {n} из них нет времени; их строки идут первыми.", "Ulardan {n} tasida vaqt yo'q; ularning satrlari boshida keladi."],
+    ["Could not merge the logs into {file}: {e}", "Не удалось объединить логи в {file}: {e}", "Loglarni {file} ga birlashtirib bo'lmadi: {e}"],
 ];

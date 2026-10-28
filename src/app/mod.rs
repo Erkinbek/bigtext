@@ -12,6 +12,7 @@ pub mod i18n;
 mod i18n_texts;
 pub mod levels;
 pub mod marks;
+pub mod merge_logs;
 pub mod ops;
 pub mod search_panel;
 pub mod tasks;
@@ -191,6 +192,7 @@ pub struct BigTextApp {
     pub marks: marks::MarksUi,
     pub export: export::ExportUi,
     pub csv: csv_tools::CsvUi,
+    pub merge: merge_logs::MergeUi,
     pub keymap: commands::Keymap,
     pub palette: Option<commands::Palette>,
     pub shortcuts_ui: commands::ShortcutsUi,
@@ -304,6 +306,7 @@ impl BigTextApp {
             marks: marks::MarksUi::default(),
             export: export::ExportUi::default(),
             csv: csv_tools::CsvUi::default(),
+            merge: merge_logs::MergeUi::default(),
             keymap: commands::Keymap::default(),
             palette: None,
             shortcuts_ui: commands::ShortcutsUi::default(),
@@ -707,6 +710,14 @@ impl BigTextApp {
                 let (lines, lexact) = d.buf.line_count();
                 ui.separator();
                 ui.label(i18n::trf("{n} lines", &[("n", &format!("{}{}", if lexact { "" } else { "~" }, lines))]));
+                // The colours of a merged log's files.
+                if let Some(t) = &d.merged {
+                    ui.separator();
+                    let dark = ui.visuals().dark_mode;
+                    for (i, l) in t.labels.iter().enumerate() {
+                        ui.label(RichText::new(l).background_color(marks::fill(i, dark)));
+                    }
+                }
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 self.tasks_status(ui);
@@ -1346,6 +1357,7 @@ impl eframe::App for BigTextApp {
         self.marks_window(&ctx);
         self.export_windows(&ctx);
         self.csv_windows(&ctx);
+        self.merge_window(&ctx);
         self.palette_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);

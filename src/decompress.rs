@@ -57,8 +57,14 @@ pub fn temp_dir() -> PathBuf {
 
 /// A fresh path in [`temp_dir`] for unpacking `path`.
 pub fn temp_path_for(path: &Path) -> PathBuf {
+    temp_file(&inner_name(path))
+}
+
+/// A fresh path for a temporary file named `name`, in its own folder in [`temp_dir`] (which
+/// [`remove_temp`] deletes with it, and [`cleanup_old`] after a crash).
+pub fn temp_file(name: &str) -> PathBuf {
     let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-    temp_dir().join(format!("{}-{nanos:x}", std::process::id())).join(inner_name(path))
+    temp_dir().join(format!("{}-{nanos:x}", std::process::id())).join(name)
 }
 
 /// Removes unpacked copies left behind (by a crash) more than two days ago. Files still open

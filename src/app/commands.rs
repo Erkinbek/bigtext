@@ -26,6 +26,7 @@ pub enum Cmd {
     SaveSelection,
     SplitFile,
     Compare,
+    MergeLogs,
     Undo,
     Redo,
     SelectAll,
@@ -76,7 +77,7 @@ const CTRL: Modifiers = Modifiers::COMMAND;
 const CTRL_SHIFT: Modifiers = Modifiers { alt: false, ctrl: false, shift: true, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 50] = [
+    pub const ALL: [Cmd; 51] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -88,6 +89,7 @@ impl Cmd {
         Cmd::SaveSelection,
         Cmd::SplitFile,
         Cmd::Compare,
+        Cmd::MergeLogs,
         Cmd::Undo,
         Cmd::Redo,
         Cmd::SelectAll,
@@ -169,6 +171,7 @@ impl Cmd {
             Cmd::SaveSelection => "Save selection as…",
             Cmd::SplitFile => "Split file…",
             Cmd::Compare => "Compare with…",
+            Cmd::MergeLogs => "Merge logs by time…",
             Cmd::Undo => "Undo",
             Cmd::Redo => "Redo",
             Cmd::SelectAll => "Select all",
@@ -215,7 +218,7 @@ impl Cmd {
     /// Menu the command lives in (shown in the palette).
     pub fn group(self) -> &'static str {
         match self {
-            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::NextTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare => "File",
+            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::NextTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::MergeLogs => "File",
             Cmd::Undo
             | Cmd::Redo
             | Cmd::SelectAll
@@ -415,6 +418,7 @@ impl BigTextApp {
             Cmd::SaveSelection => self.save_selection_as(),
             Cmd::SplitFile => self.open_split(),
             Cmd::Compare => self.compare_dialog(),
+            Cmd::MergeLogs => self.open_merge(),
             Cmd::Undo => doc(self).into_iter().for_each(|d| d.undo()),
             Cmd::Redo => doc(self).into_iter().for_each(|d| d.redo()),
             Cmd::SelectAll => {
@@ -604,7 +608,7 @@ impl BigTextApp {
                     });
                 });
                 ui.separator();
-                for c in [Cmd::ExportLines, Cmd::SaveSelection, Cmd::SplitFile, Cmd::Compare] {
+                for c in [Cmd::ExportLines, Cmd::SaveSelection, Cmd::SplitFile, Cmd::Compare, Cmd::MergeLogs] {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();

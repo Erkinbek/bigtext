@@ -574,11 +574,16 @@ impl BigTextApp {
             None => Vec::new(),
         };
         let occ = self.occurrence_matcher();
+        // The file labels of a merged log, each in its file's colour.
+        let tags: Vec<(Arc<Matcher>, usize)> = self.docs.get(self.active).and_then(|d| d.merged.as_ref()).map(|t| t.matchers.iter().cloned().zip(0..).collect()).unwrap_or_default();
         let found_color = if dark { Color32::from_rgba_unmultiplied(200, 160, 0, 90) } else { Color32::from_rgba_unmultiplied(255, 200, 0, 120) };
         let occ_color = if dark { Color32::from_white_alpha(30) } else { Color32::from_black_alpha(30) };
         move |b: &TextBuf, r: Range<u64>| {
             let mut v = Vec::new();
             let mut add = |m: &Matcher, color: Color32| v.extend(search::matches_in_view(b, m, r.clone(), 2000).into_iter().map(|(s, e)| (s, e, color)));
+            for (m, c) in &tags {
+                add(m, super::marks::fill(*c, dark));
+            }
             for (m, c) in &marks {
                 add(m, super::marks::fill(*c, dark));
             }

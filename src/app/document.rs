@@ -166,6 +166,8 @@ pub struct Document {
     pub lang: Option<crate::view::highlight::Lang>,
     /// Format guessed from the first lines, for files whose extension says nothing.
     pub sniffed_lang: crate::view::highlight::Lang,
+    /// The file labels of a merged log (File → Merge logs by time), painted in their colours.
+    pub merged: Option<super::merge_logs::MergeTags>,
     /// Shown as a table (CSV / TSV); on by default for .csv and .tsv files.
     pub table: bool,
     pub table_state: crate::view::table_view::TableState,
@@ -255,6 +257,7 @@ impl Document {
             active_pane: 0,
             lang: None,
             sniffed_lang: crate::view::highlight::Lang::Plain,
+            merged: None,
             table,
             table_state: Default::default(),
             restore: None,

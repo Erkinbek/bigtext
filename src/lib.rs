@@ -10,6 +10,7 @@ pub mod filter;
 pub mod index;
 pub mod jobs;
 pub mod loglevel;
+pub mod merge;
 pub mod replace;
 pub mod save;
 pub mod split;

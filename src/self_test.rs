@@ -158,6 +158,8 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("cli.log"), "first 10:00\nsecond 10:00 10:05\nthird\n")?;
     std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
     std::fs::write(dir.join("levels.log"), LEVELS_LOG)?;
+    std::fs::write(dir.join("merge-a.log"), "2024-05-01 10:00:00 a1\n2024-05-01 10:00:02 a2\n  at x()\n")?;
+    std::fs::write(dir.join("merge-b.log"), "2024-05-01 10:00:01 b1\r\n2024-05-01 10:00:03 b2\r\n")?;
     std::fs::write(dir.join("journal"), "Jan  1 00:00:01 host app[1]: started\nJan  1 00:00:02 host app[1]: ERROR boom\n")?;
     std::fs::write(dir.join("no-newline.txt"), "first\nsecond without newline")?;
     std::fs::write(dir.join("cr-only.txt"), "old\rmac\rline\rendings\r")?;
@@ -1187,6 +1189,57 @@ impl SelfTest {
         s("journal: log highlighting and level bar", Box::new(|app, _c| {
             let d = doc(app);
             check(d.effective_lang() == crate::view::highlight::Lang::Log && app.level_bar_visible(), format!("lang {:?}", doc(app).effective_lang()))
+        }));
+        s("open merge-a.log", open_step("merge-a.log"));
+        s("open merge-b.log", open_step("merge-b.log"));
+        s("merge logs by time: a new read-only document with coloured file labels", Box::new(|app, c| {
+            if c.first() {
+                app.open_merge();
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let ids: Vec<u64> = app.docs.iter().filter(|d| d.title.starts_with("merge-")).map(|d| d.id).collect();
+                if ids.len() != 2 || !app.merge.open {
+                    return Step::Fail(format!("{} merge files open, window open {}", ids.len(), app.merge.open));
+                }
+                app.test_pick_for_merge(&ids);
+                app.start_merge();
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let d = doc(app);
+            if !d.title.starts_with("Merged:") || !d.is_ready() {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("active tab {:?}", d.title)) } else { Step::Wait };
+            }
+            c.mark = 0;
+            let (ro, temp, tags) = (d.read_only, d.temporary, d.merged.as_ref().map(|t| t.labels.clone()));
+            let want = "merge-a.log │ 2024-05-01 10:00:00 a1\nmerge-b.log │ 2024-05-01 10:00:01 b1\nmerge-a.log │ 2024-05-01 10:00:02 a2\nmerge-a.log │   at x()\nmerge-b.log │ 2024-05-01 10:00:03 b2\n";
+            let t = text(app);
+            let hl = app.view_highlights(true);
+            let d = doc(app);
+            let label_colors = [crate::app::marks::fill(0, true), crate::app::marks::fill(1, true)];
+            let painted = hl(&d.buf, 0..d.buf.len()).iter().filter(|h| label_colors.contains(&h.2)).count();
+            check(
+                t == want && ro && temp && tags == Some(vec!["merge-a.log".into(), "merge-b.log".into()]) && painted == 5,
+                format!("text {t:?} read-only {ro} temporary {temp} tags {tags:?} painted labels {painted}"),
+            )
+        }));
+        s("closing the merged log deletes its temporary file", Box::new(|app, c| {
+            if c.first() {
+                let temp = doc(app).path.clone().unwrap_or_default();
+                if !temp.exists() {
+                    return Step::Fail(format!("{temp:?} missing"));
+                }
+                c.copied = vec![temp.to_string_lossy().into_owned()];
+                c.key(Key::W, CTRL);
+                return Step::Wait;
+            }
+            let temp = PathBuf::from(&c.copied[0]);
+            if temp.exists() {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("{temp:?} still exists")) } else { Step::Wait };
+            }
+            c.copied.clear();
+            Step::Next
         }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
         s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {
