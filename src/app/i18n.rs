@@ -128,6 +128,7 @@ mod tests {
         "app" / "ops.rs",
         "app" / "saved_searches.rs",
         "app" / "search_panel.rs",
+        "app" / "tabs.rs",
         "app" / "tasks.rs",
         "app" / "text_tools.rs",
         "app" / "timeline.rs",
@@ -201,6 +202,11 @@ mod tests {
         "JSON Lines",
         "Markdown table",
         "Excel workbook (.xlsx)",
+        "Pin tab",
+        "Unpin tab",
+        "Close",
+        "Close tabs to the right",
+        "Copy path",
     ];
 
     /// String literals in `span` (escapes resolved).

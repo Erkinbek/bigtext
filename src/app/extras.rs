@@ -53,6 +53,8 @@ pub struct Persisted {
     /// Saved searches.
     pub saved: Vec<super::saved_searches::SavedSearch>,
     pub show_ws: Option<bool>,
+    /// Paths of pinned tabs.
+    pub pinned: Vec<PathBuf>,
 }
 
 fn query_flags(q: &bigtext::search::Query) -> String {
@@ -130,6 +132,7 @@ fn parse(text: &str) -> Persisted {
             "update_checked" => p.update_checked = v.parse().ok(),
             "mark" => p.marks.extend(parse_mark(v)),
             "saved" => p.saved.extend(parse_saved(v)),
+            "pinned" => p.pinned.push(PathBuf::from(v)),
             "find" => p.history.push(v.to_string()),
             "lang" => p.lang = Some(v.to_string()),
             "font" => p.font = Some(PathBuf::from(v)),
@@ -197,6 +200,9 @@ fn serialize(p: &Persisted) -> String {
     for x in p.saved.iter().filter(|x| !x.query.pattern.contains(['\n', '\r'])) {
         let col = x.column.map(|c| c.to_string()).unwrap_or_default();
         s.push_str(&format!("saved={}|{}|{}|{col}|{}\n", x.name.replace('|', "/"), query_flags(&x.query), b(x.invert), x.query.pattern));
+    }
+    for x in &p.pinned {
+        s.push_str(&format!("pinned={}\n", x.display()));
     }
     for (cmd, k) in &p.keys {
         s.push_str(&format!("key={cmd}={k}\n"));
@@ -303,6 +309,7 @@ impl BigTextApp {
             level_bar: Some(self.settings.level_bar),
             saved: self.settings.saved.clone(),
             show_ws: Some(self.settings.show_ws),
+            pinned: self.docs.iter().filter(|d| d.pinned).filter_map(|d| Some(PathBuf::from(file::display_path(d.unpacked_from.as_deref().or(d.path.as_deref())?)))).collect(),
             keys: self.keymap.changed.iter().map(|(c, k)| (c.id(), super::commands::key_to_string(*k))).collect(),
         }
     }
@@ -329,8 +336,10 @@ impl BigTextApp {
         }
         self.recent = p.recent;
         for t in p.tabs {
+            let pinned = p.pinned.contains(&t.path);
             self.open_path(t.path.clone());
             if let Some(d) = self.docs.last_mut() {
+                d.pinned = pinned;
                 d.restore = Some(Restore { caret: t.caret, top: t.top, wrap: t.wrap, bookmarks: t.bookmarks, ..Default::default() });
             }
         }
@@ -569,6 +578,7 @@ mod tests {
             font: Some(PathBuf::from(r"C:\Windows\Fonts\consola.ttf")),
             level_bar: Some(false),
             show_ws: Some(true),
+            pinned: vec![PathBuf::from(r"D:\big file.txt")],
             saved: vec![
                 super::super::saved_searches::SavedSearch {
                     name: "5xx responses".into(),
@@ -586,6 +596,7 @@ mod tests {
         };
         assert_eq!(parse(&serialize(&p)).saved, p.saved);
         assert_eq!(parse(&serialize(&p)).show_ws, Some(true));
+        assert_eq!(parse(&serialize(&p)).pinned, p.pinned);
         assert_eq!(parse(&serialize(&p)).font, p.font);
         assert_eq!(parse(&serialize(&p)).level_bar, Some(false));
         assert_eq!(parse(&serialize(&p)).lang.as_deref(), Some("uz"));

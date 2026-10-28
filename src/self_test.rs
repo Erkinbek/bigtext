@@ -160,6 +160,9 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("cli.log"), "first 10:00\nsecond 10:00 10:05\nthird\n")?;
     std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
     std::fs::write(dir.join("levels.log"), LEVELS_LOG)?;
+    for n in 1..=3 {
+        std::fs::write(dir.join(format!("tab{n}.txt")), format!("tab {n}\n"))?;
+    }
     std::fs::write(dir.join("sales.csv"), "city,qty\nTashkent,3\nBukhara,5\nTashkent,7\n")?;
     std::fs::write(dir.join("outline.json"), OUTLINE_JSON)?;
     std::fs::write(dir.join("events.jsonl"), "{\"id\": 1, \"msg\": \"start\"}\n{\"id\": 2, \"msg\": \"a, b\", \"user\": \"ann\"}\n")?;
@@ -1610,6 +1613,52 @@ impl SelfTest {
             let t = text(app);
             c.key(Key::W, CTRL);
             check(t == "city,qty\nTashkent,7\n" && table, format!("text {t:?} table {table}"))
+        }));
+        s("Ctrl+Tab goes back to the tab used before", Box::new(|app, c| {
+            if c.first() {
+                c.copied = vec![doc(app).id.to_string()];
+                app.open_path(c.file("levels.log"));
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                c.mark = 1;
+                c.key(Key::Tab, CTRL);
+                return Step::Wait;
+            }
+            let want: u64 = c.copied[0].parse().unwrap_or(0);
+            let open = app.switcher.is_some();
+            if doc(app).id != want || open {
+                let title = doc(app).title.clone();
+                return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("active {title:?}, switcher open {open}")) } else { Step::Wait };
+            }
+            c.mark = 0;
+            c.copied.clear();
+            Step::Next
+        }));
+        s("open tab1.txt", open_step("tab1.txt"));
+        s("open tab2.txt", open_step("tab2.txt"));
+        s("open tab3.txt", open_step("tab3.txt"));
+        s("close tabs to the right, pin a tab, move a tab", Box::new(|app, _c| {
+            let title_at = |app: &BigTextApp, i: usize| app.docs.get(i).map(|d| d.title.clone()).unwrap_or_default();
+            let Some(t1) = app.docs.iter().find(|d| d.title == "tab1.txt").map(|d| d.id) else { return Step::Fail("tab1 not open".into()) };
+            app.close_to_right(t1);
+            let left: Vec<String> = app.docs.iter().map(|d| d.title.clone()).filter(|t| t.starts_with("tab") && t.ends_with(".txt")).collect();
+            if left != vec!["tab1.txt".to_string()] {
+                return Step::Fail(format!("after closing to the right: {left:?}"));
+            }
+            app.toggle_pin(t1);
+            if title_at(app, 0) != "tab1.txt" || !app.docs[0].pinned {
+                return Step::Fail(format!("pinned tab is at {:?}", app.docs.iter().position(|d| d.id == t1)));
+            }
+            // A pinned tab cannot move among the unpinned ones; unpinned, it can.
+            let last = app.docs.len() - 1;
+            app.move_tab(0, last);
+            if title_at(app, 0) != "tab1.txt" {
+                return Step::Fail("a pinned tab moved out of the pinned group".into());
+            }
+            app.toggle_pin(t1);
+            app.move_tab(0, last);
+            check(title_at(app, last) == "tab1.txt" && !app.docs[last].pinned, format!("last tab {:?}", title_at(app, last)))
         }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
         s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {

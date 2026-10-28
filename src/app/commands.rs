@@ -20,7 +20,10 @@ pub enum Cmd {
     Save,
     SaveAs,
     CloseTab,
+    CloseOthers,
+    PinTab,
     NextTab,
+    PrevTab,
     Exit,
     ExportLines,
     SaveSelection,
@@ -82,16 +85,20 @@ const fn key(m: Modifiers, k: Key) -> Option<KeyboardShortcut> {
 
 const CTRL: Modifiers = Modifiers::COMMAND;
 const CTRL_SHIFT: Modifiers = Modifiers { alt: false, ctrl: false, shift: true, mac_cmd: false, command: true };
+const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: true, mac_cmd: false, command: false };
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 58] = [
+    pub const ALL: [Cmd; 61] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
         Cmd::SaveAs,
         Cmd::CloseTab,
+        Cmd::CloseOthers,
+        Cmd::PinTab,
         Cmd::NextTab,
+        Cmd::PrevTab,
         Cmd::Exit,
         Cmd::ExportLines,
         Cmd::SaveSelection,
@@ -180,7 +187,10 @@ impl Cmd {
             Cmd::Save => "Save",
             Cmd::SaveAs => "Save As…",
             Cmd::CloseTab => "Close tab",
+            Cmd::CloseOthers => "Close other tabs",
+            Cmd::PinTab => "Pin / unpin tab",
             Cmd::NextTab => "Next tab",
+            Cmd::PrevTab => "Previous tab",
             Cmd::Exit => "Exit",
             Cmd::ExportLines => "Export lines…",
             Cmd::SaveSelection => "Save selection as…",
@@ -240,7 +250,7 @@ impl Cmd {
     /// Menu the command lives in (shown in the palette).
     pub fn group(self) -> &'static str {
         match self {
-            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::NextTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::MergeLogs => "File",
+            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::MergeLogs => "File",
             Cmd::Undo
             | Cmd::Redo
             | Cmd::SelectAll
@@ -267,6 +277,7 @@ impl Cmd {
             Cmd::SaveAs => key(CTRL_SHIFT, Key::S),
             Cmd::CloseTab => key(CTRL, Key::W),
             Cmd::NextTab => key(Modifiers::CTRL, Key::Tab),
+            Cmd::PrevTab => key(CTRL_SHIFT_RAW, Key::Tab),
             Cmd::Undo => key(CTRL, Key::Z),
             Cmd::Redo => key(CTRL, Key::Y),
             Cmd::SelectAll => key(CTRL, Key::A),
@@ -438,9 +449,16 @@ impl BigTextApp {
                     self.close_tab(id, false);
                 }
             }
-            Cmd::NextTab => {
-                if !self.docs.is_empty() {
-                    self.active = (self.active + 1) % self.docs.len();
+            Cmd::NextTab => self.switch_tab(true),
+            Cmd::PrevTab => self.switch_tab(false),
+            Cmd::CloseOthers => {
+                if let Some(id) = self.docs.get(active).map(|d| d.id) {
+                    self.close_others(id);
+                }
+            }
+            Cmd::PinTab => {
+                if let Some(id) = self.docs.get(active).map(|d| d.id) {
+                    self.toggle_pin(id);
                 }
             }
             Cmd::Exit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
@@ -672,7 +690,7 @@ impl BigTextApp {
                     });
                 });
                 ui.separator();
-                for c in [Cmd::CloseTab, Cmd::Exit] {
+                for c in [Cmd::CloseTab, Cmd::CloseOthers, Cmd::PinTab, Cmd::Exit] {
                     run = run.or(self.item(ui, c));
                 }
             });

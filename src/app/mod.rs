@@ -20,6 +20,7 @@ pub mod multi_cursor;
 pub mod ops;
 pub mod saved_searches;
 pub mod search_panel;
+pub mod tabs;
 pub mod tasks;
 pub mod text_tools;
 pub mod timeline;
@@ -210,6 +211,9 @@ pub struct BigTextApp {
     pairs: match_bracket::PairCache,
     /// View → JSON structure is shown.
     pub json_open: bool,
+    /// Document ids, most recently used first (for Ctrl+Tab).
+    mru: Vec<u64>,
+    pub switcher: Option<tabs::TabSwitcher>,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -329,6 +333,8 @@ impl BigTextApp {
             saved_ui: saved_searches::SavedUi::default(),
             pairs: match_bracket::PairCache::default(),
             json_open: false,
+            mru: Vec::new(),
+            switcher: None,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -673,36 +679,6 @@ impl BigTextApp {
         d.index_cancel.cancel();
         let id = d.id;
         self.spawn_open(id, path, Some(enc));
-    }
-
-    fn tab_bar(&mut self, ui: &mut egui::Ui) {
-        let mut close = None;
-        egui::ScrollArea::horizontal().show(ui, |ui| {
-            ui.horizontal(|ui| {
-                for (i, d) in self.docs.iter().enumerate() {
-                    let mut label = d.title.clone();
-                    if d.is_modified() {
-                        label.push_str(" *");
-                    }
-                    let r = ui.selectable_label(i == self.active, label);
-                    if r.clicked() {
-                        self.active = i;
-                    }
-                    if r.middle_clicked() {
-                        close = Some(d.id);
-                    }
-                    let r = r.on_hover_text(d.path.as_deref().map(file::display_path).unwrap_or_default());
-                    let _ = r;
-                    if ui.small_button("×").clicked() {
-                        close = Some(d.id);
-                    }
-                    ui.separator();
-                }
-            });
-        });
-        if let Some(id) = close {
-            self.close_tab(id, false);
-        }
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {
@@ -1292,10 +1268,12 @@ impl eframe::App for BigTextApp {
         }
 
         self.update_tick();
-        let modal_open = self.goto.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
+        let modal_open = self.goto.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
         if !modal_open {
             self.shortcuts(&ctx);
         }
+        self.switcher_keys(&ctx);
+        self.track_mru();
 
         for d in &mut self.docs {
             d.tick();
@@ -1408,6 +1386,7 @@ impl eframe::App for BigTextApp {
         self.csv_windows(&ctx);
         self.merge_window(&ctx);
         self.find_in_files_window(&ctx);
+        self.switcher_window(&ctx);
         self.palette_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);

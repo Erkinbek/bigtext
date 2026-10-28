@@ -5,6 +5,16 @@ All notable changes to BigText. Each release on
 
 ## Unreleased
 
+### Tabs
+
+- **Ctrl+Tab** shows the tabs in most-recently-used order: hold Ctrl, press Tab (Shift+Tab back)
+  to step, release Ctrl to switch, so a quick Ctrl+Tab goes back to the previous tab.
+- **Pinned tabs** (right-click a tab → Pin tab, or File → Pin / unpin tab) stay first, have no
+  close button and are kept by **Close other tabs** and **Close tabs to the right** (also in the
+  tab's right-click menu, which can copy the file's path too). Tabs with unsaved changes are
+  never closed by these. Pinned tabs are restored as pinned.
+- **Drag a tab** to move it.
+
 ### Logs
 
 - **Level bar** above log files: **ERROR**, **WARN**, **INFO** and **DEBUG** buttons list only the

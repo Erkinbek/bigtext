@@ -181,6 +181,8 @@ pub struct Document {
     pub timeline: Option<super::timeline::TimelineResults>,
     /// Outline for View → JSON structure.
     pub json: Option<super::json_panel::JsonTree>,
+    /// Pinned tabs stay first and are not closed by "Close other tabs".
+    pub pinned: bool,
     /// Shown as a table (CSV / TSV); on by default for .csv and .tsv files.
     pub table: bool,
     pub table_state: crate::view::table_view::TableState,
@@ -275,6 +277,7 @@ impl Document {
             merged: None,
             timeline: None,
             json: None,
+            pinned: false,
             table,
             table_state: Default::default(),
             restore: None,

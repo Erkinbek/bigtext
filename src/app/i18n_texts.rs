@@ -532,6 +532,16 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Filtering rows", "Фильтрация строк", "Qatorlar filtrlanmoqda"],
     ["{name} (filtered)", "{name} (отфильтровано)", "{name} (filtrlangan)"],
     ["{kept} of {rows} rows meet the conditions.", "Условиям удовлетворяют {kept} из {rows} строк.", "{rows} qatordan {kept} tasi shartlarga mos."],
+    // Tabs.
+    ["Close other tabs", "Закрыть другие вкладки", "Boshqa tablarni yopish"],
+    ["Close tabs to the right", "Закрыть вкладки справа", "O'ngdagi tablarni yopish"],
+    ["Copy path", "Копировать путь", "Yo'lni nusxalash"],
+    ["Pin tab", "Закрепить вкладку", "Tabni qadash"],
+    ["Unpin tab", "Открепить вкладку", "Tabni bo'shatish"],
+    ["Pin / unpin tab", "Закрепить / открепить вкладку", "Tabni qadash / bo'shatish"],
+    ["Previous tab", "Предыдущая вкладка", "Oldingi tab"],
+    ["Hold Ctrl, press Tab to step, release to switch", "Держите Ctrl, нажимайте Tab для выбора, отпустите для перехода", "Ctrl ni bosib turing, Tab bilan tanlang, qo'yib yuborsangiz o'tadi"],
+    ["{n} tabs with unsaved changes were kept open.", "Вкладки с несохранёнными изменениями оставлены открытыми: {n}.", "Saqlanmagan o'zgarishli {n} ta tab ochiq qoldirildi."],
     // Table export.
     ["Export table as", "Экспорт таблицы как", "Jadvalni eksport qilish"],
     ["Export table", "Экспорт таблицы", "Jadvalni eksport qilish"],
