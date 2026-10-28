@@ -21,7 +21,7 @@ DOCS = ROOT / "docs"
 BASE = "https://erkinbek.github.io/bigtext/"
 REPO = "https://github.com/Erkinbek/bigtext"
 RELEASES = REPO + "/releases/latest"
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 UPDATED = "2026-10-24"
 LANGS = ["en", "ru", "uz"]
 LOCALE = {"en": "en_US", "ru": "ru_RU", "uz": "uz_UZ"}
@@ -94,6 +94,12 @@ T = {
              "CSV, SQL and INI, bookmarks and a split view of one file."),
             ("Compare huge files", "A streaming line diff of two multi-gigabyte files: 1 GB against 1 GB in 0.6 s using "
              "about 2 MB of memory. Click a difference to jump to it."),
+            ("Filter and highlight", "Show only the lines that match, or only those that don't, like grep over the whole file, and save them to a new file. Paint patterns such as ERROR in their own colours and see on the scrollbar where the matches cluster."),
+            ("Jump to a time", "Type 14:32:05 and land on the first log line at that time: a binary search reads a few hundred kilobytes of a 50 GB log. Select lines to see the time between them."),
+            ("Compressed logs and pipes", "Open .gz and .zst files directly, pipe a command into BigText (journalctl -f | bigtext -), or open app.log:120 at a line from the command line."),
+            ("CSV tables", "CSV and TSV files open as a table that scrolls as fast as text. Sort by a column, get column statistics, filter by a column, and rename, move, export or delete columns."),
+            ("Text tools", "Sort, de-duplicate and reverse lines, change case, trim whitespace, pretty-print or minify JSON, and edit many lines at once with an Alt+drag column selection."),
+            ("Your way", "A command palette (Ctrl+Shift+P), shortcuts you can change, any monospaced font, and an interface in English, Russian or Uzbek."),
         ],
         "gallery_h2": "Screenshots",
         "gallery": {
@@ -225,6 +231,12 @@ T = {
              "CSV, SQL и INI, закладки и разделённый вид одного файла."),
             ("Сравнение огромных файлов", "Потоковое построчное сравнение двух многогигабайтных файлов: 1 ГБ с 1 ГБ "
              "за 0,6 с и около 2 МБ памяти. Щелчок по отличию переходит к нему."),
+            ("Фильтр и подсветка", "Показывайте только строки с совпадениями или, наоборот, без них, как grep по всему файлу, и сохраняйте их в новый файл. Подсвечивайте шаблоны вроде ERROR своими цветами и смотрите на полосе прокрутки, где скапливаются совпадения."),
+            ("Переход ко времени", "Введите 14:32:05 и окажетесь на первой строке лога с этим временем: двоичный поиск читает несколько сотен килобайт из лога на 50 ГБ. Выделите строки, чтобы увидеть время между ними."),
+            ("Сжатые логи и конвейеры", "Открывайте файлы .gz и .zst напрямую, передавайте BigText вывод команды (journalctl -f | bigtext -) или открывайте app.log:120 сразу на нужной строке из командной строки."),
+            ("Таблицы CSV", "CSV и TSV открываются таблицей, которая прокручивается так же быстро, как текст. Сортировка по столбцу, статистика столбца, фильтр по столбцу, переименование, перемещение, экспорт и удаление столбцов."),
+            ("Инструменты для текста", "Сортировка, удаление повторов и разворот строк, смена регистра, удаление пробелов, форматирование и сжатие JSON, правка многих строк сразу выделением столбцом (Alt+перетаскивание)."),
+            ("Как вам удобно", "Палитра команд (Ctrl+Shift+P), настраиваемые сочетания клавиш, любой моноширинный шрифт и интерфейс на английском, русском или узбекском."),
         ],
         "gallery_h2": "Скриншоты",
         "gallery": {
@@ -356,6 +368,12 @@ T = {
              "SQL va INI uchun rangli ko'rinish, xatcho'plar va bitta faylni ikki panelda ko'rish."),
             ("Ulkan fayllarni taqqoslash", "Ikki ko'p gigabaytli faylni oqim bilan satrma-satr taqqoslash: 1 GB ga "
              "1 GB — 0,6 soniya va taxminan 2 MB xotira. Farqni bosib, unga o'tasiz."),
+            ("Filtr va ajratish", "Faqat mosligi bor satrlarni yoki, aksincha, mosligi yo'qlarini butun fayl bo'ylab grep kabi ko'rsating va yangi faylga saqlang. ERROR kabi shablonlarni o'z rangida ajrating va mosliklar qayerda to'planganini aylantirish chizig'ida ko'ring."),
+            ("Vaqtga o'tish", "14:32:05 ni yozing va logdagi shu vaqtli birinchi satrga o'tasiz: ikkilik qidiruv 50 GB logning bir necha yuz kilobaytinigina o'qiydi. Satrlarni belgilab, ular orasidagi vaqtni ko'ring."),
+            ("Siqilgan loglar va konveyer", ".gz va .zst fayllarni to'g'ridan-to'g'ri oching, buyruq chiqishini BigText ga uzating (journalctl -f | bigtext -) yoki buyruq qatoridan app.log:120 ni kerakli satrda oching."),
+            ("CSV jadvallar", "CSV va TSV fayllar matn kabi tez aylanadigan jadval bo'lib ochiladi. Ustun bo'yicha saralash, ustun statistikasi, ustun bo'yicha filtr, ustunlarni qayta nomlash, surish, eksport qilish va o'chirish."),
+            ("Matn vositalari", "Satrlarni saralash, takrorlarini olib tashlash va teskari tartiblash, harf registrini o'zgartirish, bo'shliqlarni tozalash, JSON ni formatlash va ixchamlash, Alt+sudrash bilan ustunli belgilab ko'p satrni birdaniga tahrirlash."),
+            ("O'zingizga qulay", "Buyruqlar palitrasi (Ctrl+Shift+P), o'zgartiriladigan tezkor tugmalar, istalgan bir xil kenglikdagi shrift va ingliz, rus yoki o'zbek tilidagi interfeys."),
         ],
         "gallery_h2": "Skrinshotlar",
         "gallery": {

@@ -164,7 +164,7 @@ The screenshots are made by the app itself: `bigtext --screenshots DIR testdata/
 
 ## Download
 
-Latest release: [all files and release notes](https://github.com/Erkinbek/bigtext/releases/latest)
+Latest release: [all files and release notes](https://github.com/Erkinbek/bigtext/releases/latest) · [changelog](CHANGELOG.md)
 
 | Platform | Download |
 | --- | --- |
@@ -342,8 +342,9 @@ python scripts/build-site.py
 
 ## Releasing
 
-1. Bump the version in `Cargo.toml`, `installer/bigtext.iss` and `scripts/build-site.py`, run
-   `python scripts/build-site.py --no-images` and commit.
+1. Bump the version in `Cargo.toml`, `installer/bigtext.iss` and `scripts/build-site.py`, add
+   the release to [CHANGELOG.md](CHANGELOG.md), run `python scripts/build-site.py --no-images`
+   and commit.
 2. Push a tag: `git tag -a v0.1.2 -m "BigText 0.1.2"` and `git push origin v0.1.2`.
 3. CI builds every platform and publishes a GitHub release with version-free asset names
    (so `releases/latest/download/<file>` links keep working, and the in-app updater finds
