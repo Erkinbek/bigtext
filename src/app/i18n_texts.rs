@@ -417,4 +417,20 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["What's new in {v}", "Что нового в {v}", "{v} da nimalar yangi"],
     ["No release notes.", "Нет описания выпуска.", "Reliz izohi yo'q."],
     ["Full release notes on GitHub", "Полное описание выпуска на GitHub", "To'liq reliz izohi GitHub'da"],
+    // Log level bar.
+    ["Levels:", "Уровни:", "Darajalar:"],
+    ["Log level bar", "Панель уровней лога", "Log darajalari paneli"],
+    ["Next error line", "Следующая строка с ошибкой", "Keyingi xato satri"],
+    ["Previous error line", "Предыдущая строка с ошибкой", "Oldingi xato satri"],
+    ["Next {levels} line", "Следующая строка {levels}", "Keyingi {levels} satri"],
+    ["Previous {levels} line", "Предыдущая строка {levels}", "Oldingi {levels} satri"],
+    ["No {levels} lines", "Нет строк {levels}", "{levels} satrlari yo'q"],
+    ["{n} lines of level {levels}", "{n} строк уровня {levels}", "{levels} darajali {n} ta satr"],
+    ["Click to stop showing these lines", "Нажмите, чтобы больше не показывать эти строки", "Bu satrlarni ko'rsatmaslik uchun bosing"],
+    [
+        "Show only the lines of this level (click more levels to add them)",
+        "Показать только строки этого уровня (нажмите другие уровни, чтобы добавить их)",
+        "Faqat shu darajadagi satrlarni ko'rsatish (boshqa darajalarni qo'shish uchun ularni ham bosing)",
+    ],
+    ["Hide the level bar (View → Log level bar)", "Скрыть панель уровней (Вид → Панель уровней лога)", "Darajalar panelini yashirish (Ko'rinish → Log darajalari paneli)"],
 ];

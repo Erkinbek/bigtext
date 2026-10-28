@@ -9,6 +9,7 @@ use egui::{Color32, FontId};
 
 use bigtext::filter::{self, FilterSpec};
 use bigtext::jobs::{self, human_bytes, CancelToken, Progress, Throttle};
+use bigtext::loglevel::Levels;
 use bigtext::search::{Matcher, Query, SearchEnd};
 use bigtext::text::TextBuf;
 
@@ -35,6 +36,8 @@ pub struct FilterData {
 
 pub struct FilterResults {
     pub query: Query,
+    /// Set when the lines were picked by log level (the level bar), not by the search query.
+    pub levels: Option<Levels>,
     pub spec: FilterSpec,
     pub matcher: Arc<Matcher>,
     pub version: u64,
@@ -69,7 +72,13 @@ impl BigTextApp {
         };
         let column = self.search.filter_column.and_then(|c| Some((d.table_state.dialect?, c))).filter(|_| d.table);
         let spec = FilterSpec { invert: self.search.invert, column };
-        let d = &mut self.docs[self.active];
+        self.search.remember();
+        self.run_filter(self.search.query.clone(), m, spec, None);
+    }
+
+    /// Filters the active document with `m` in the background, replacing its previous filter.
+    pub(crate) fn run_filter(&mut self, query: Query, m: Arc<Matcher>, spec: FilterSpec, levels: Option<Levels>) {
+        let Some(d) = self.docs.get_mut(self.active) else { return };
         if let Some(r) = d.filter.take() {
             r.cancel.cancel();
         }
@@ -77,7 +86,8 @@ impl BigTextApp {
         let cancel = CancelToken::new();
         let progress = Progress::new(d.buf.len());
         d.filter = Some(FilterResults {
-            query: self.search.query.clone(),
+            query,
+            levels,
             spec,
             matcher: m.clone(),
             version: d.version,
@@ -86,7 +96,6 @@ impl BigTextApp {
             progress: progress.clone(),
         });
         self.search.show_filter = true;
-        self.search.remember();
         let snap = d.buf.snapshot();
         let waker = self.waker.clone();
         jobs::spawn("filter", move || {
@@ -195,8 +204,13 @@ impl BigTextApp {
             };
             let stale = r.version != d.version;
             ui.horizontal(|ui| {
-                let what = if r.spec.invert { tr("lines without") } else { tr("lines with") };
-                ui.strong(format!("{} {what} “{}”", fmt_count(n as u64), r.query.pattern));
+                match r.levels {
+                    Some(lv) => ui.strong(trf("{n} lines of level {levels}", &[("n", &fmt_count(n as u64)), ("levels", &lv.names())])),
+                    None => {
+                        let what = if r.spec.invert { tr("lines without") } else { tr("lines with") };
+                        ui.strong(format!("{} {what} “{}”", fmt_count(n as u64), r.query.pattern))
+                    }
+                };
                 if let Some((_, c)) = r.spec.column {
                     ui.label(trf("in column {n}", &[("n", &(c + 1).to_string())]));
                 }
@@ -264,10 +278,14 @@ impl BigTextApp {
             self.search.show_filter = false;
         }
         if rerun {
-            if let Some(q) = self.docs.get(self.active).and_then(|d| d.filter.as_ref()).map(|r| (r.query.clone(), r.spec.invert)) {
-                self.search.query = q.0;
-                self.search.invert = q.1;
-                self.start_filter();
+            if let Some(q) = self.docs.get(self.active).and_then(|d| d.filter.as_ref()).map(|r| (r.query.clone(), r.spec.invert, r.levels)) {
+                if let Some(lv) = q.2 {
+                    self.filter_levels(lv);
+                } else {
+                    self.search.query = q.0;
+                    self.search.invert = q.1;
+                    self.start_filter();
+                }
             }
         }
         if export {

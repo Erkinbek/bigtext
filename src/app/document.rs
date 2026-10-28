@@ -164,6 +164,8 @@ pub struct Document {
     pub active_pane: u8,
     /// Syntax highlighting override (None = from the file extension).
     pub lang: Option<crate::view::highlight::Lang>,
+    /// Format guessed from the first lines, for files whose extension says nothing.
+    pub sniffed_lang: crate::view::highlight::Lang,
     /// Shown as a table (CSV / TSV); on by default for .csv and .tsv files.
     pub table: bool,
     pub table_state: crate::view::table_view::TableState,
@@ -252,6 +254,7 @@ impl Document {
             split: None,
             active_pane: 0,
             lang: None,
+            sniffed_lang: crate::view::highlight::Lang::Plain,
             table,
             table_state: Default::default(),
             restore: None,
@@ -297,7 +300,23 @@ impl Document {
         self.view.caret = self.view.caret.clamp(min, self.buf.len());
         self.view.anchor = self.view.caret;
         self.view.top = self.view.top.min(self.buf.len());
+        let head = self.buf.read(0..self.buf.len().min(16 * 1024)).map(|b| self.buf.codec.decode_lossy(&b)).unwrap_or_default();
+        self.sniffed_lang = crate::view::highlight::Lang::sniff(&head);
         self.state = DocState::Ready;
+    }
+
+    /// The format highlighting uses when none was chosen: from the extension, otherwise from
+    /// the content.
+    pub fn auto_lang(&self) -> crate::view::highlight::Lang {
+        match crate::view::highlight::Lang::from_path(self.path.as_deref()) {
+            crate::view::highlight::Lang::Plain => self.sniffed_lang,
+            l => l,
+        }
+    }
+
+    /// The format the document is highlighted as.
+    pub fn effective_lang(&self) -> crate::view::highlight::Lang {
+        self.lang.unwrap_or_else(|| self.auto_lang())
     }
 
     pub fn is_modified(&self) -> bool {

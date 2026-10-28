@@ -10,6 +10,7 @@ pub mod filter_panel;
 pub mod fonts;
 pub mod i18n;
 mod i18n_texts;
+pub mod levels;
 pub mod marks;
 pub mod ops;
 pub mod search_panel;
@@ -74,6 +75,7 @@ pub enum Msg {
     TextOp(Box<text_tools::TextOpDone>),
     CsvRewritten(Box<csv_tools::CsvRewritten>),
     TimeFound { doc: u64, version: u64, result: Result<u64, bigtext::timestamp::TimeError> },
+    LevelFound(Box<levels::LevelFound>),
 }
 
 pub struct Settings {
@@ -86,6 +88,8 @@ pub struct Settings {
     pub marks: Vec<marks::Mark>,
     /// Font file of the text (None: the built-in font).
     pub font_path: Option<PathBuf>,
+    /// The log level bar above log files.
+    pub level_bar: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -275,7 +279,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None },
+            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, level_bar: true },
             goto: None,
             confirm: None,
             error: None,
@@ -315,6 +319,7 @@ impl BigTextApp {
             jobs::spawn("cleanup-unpacked", bigtext::decompress::cleanup_old);
             app.settings.marks = std::mem::take(&mut state.marks);
             app.search.history = std::mem::take(&mut state.history);
+            app.settings.level_bar = state.level_bar.unwrap_or(true);
             // A font that is gone or broken is forgotten; the built-in one is used.
             if let Some(p) = state.font.take() {
                 if fonts::apply_font(&cc.egui_ctx, Some(&p)).is_ok() {
@@ -543,6 +548,7 @@ impl BigTextApp {
                 Msg::TextOp(r) => self.on_text_op(*r),
                 Msg::CsvRewritten(c) => self.on_csv_rewritten(*c),
                 Msg::TimeFound { doc, version, result } => self.on_time_found(doc, version, result),
+                Msg::LevelFound(f) => self.on_level_found(*f),
             }
         }
     }
@@ -1254,6 +1260,9 @@ impl eframe::App for BigTextApp {
         if self.search.open {
             egui::Panel::top("search").show(ui, |ui| self.search_panel(ui));
         }
+        if self.level_bar_visible() {
+            egui::Panel::top("levels").show(ui, |ui| self.level_bar(ui));
+        }
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
         if self.search.show_results && self.docs.get(self.active).is_some_and(|d| d.results.is_some()) {
             egui::Panel::bottom("results").resizable(true).default_size(220.0).show(ui, |ui| self.results_panel(ui));
@@ -1281,7 +1290,7 @@ impl eframe::App for BigTextApp {
                     let mut env = table_view::TableEnv { font_size, focus: !modal_open, actions: &mut table_actions };
                     table_view::show(ui, d, &mut env);
                 } else {
-                    let lang = if syntax { d.lang.unwrap_or_else(|| crate::view::highlight::Lang::from_path(d.path.as_deref())) } else { crate::view::highlight::Lang::Plain };
+                    let lang = if syntax { d.effective_lang() } else { crate::view::highlight::Lang::Plain };
                     match d.split.take() {
                         None => {
                             let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0 };

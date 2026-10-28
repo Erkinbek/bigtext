@@ -49,6 +49,7 @@ pub struct Persisted {
     pub lang: Option<String>,
     /// Font file of the text.
     pub font: Option<PathBuf>,
+    pub level_bar: Option<bool>,
 }
 
 fn query_flags(q: &bigtext::search::Query) -> String {
@@ -104,6 +105,7 @@ fn parse(text: &str) -> Persisted {
             "dark" => p.dark = Some(v == "1"),
             "backup_on_save" => p.backup_on_save = Some(v == "1"),
             "syntax" => p.syntax = Some(v == "1"),
+            "level_bar" => p.level_bar = Some(v == "1"),
             "update_check" => p.update_check = Some(v == "1"),
             "skip_version" => p.skip_version = Some(v.to_string()),
             "update_checked" => p.update_checked = v.parse().ok(),
@@ -144,6 +146,9 @@ fn serialize(p: &Persisted) -> String {
     }
     if let Some(d) = p.syntax {
         s.push_str(&format!("syntax={}\n", b(d)));
+    }
+    if let Some(d) = p.level_bar {
+        s.push_str(&format!("level_bar={}\n", b(d)));
     }
     if let Some(d) = p.update_check {
         s.push_str(&format!("update_check={}\n", b(d)));
@@ -268,6 +273,7 @@ impl BigTextApp {
             history: self.search.history.clone(),
             lang: Some(super::i18n::lang().code().to_string()),
             font: self.settings.font_path.clone(),
+            level_bar: Some(self.settings.level_bar),
             keys: self.keymap.changed.iter().map(|(c, k)| (c.id(), super::commands::key_to_string(*k))).collect(),
         }
     }
@@ -532,8 +538,10 @@ mod tests {
             keys: vec![("goto_time".into(), "ctrl+alt+T".into()), ("find_all".into(), "none".into())],
             lang: Some("uz".into()),
             font: Some(PathBuf::from(r"C:\Windows\Fonts\consola.ttf")),
+            level_bar: Some(false),
         };
         assert_eq!(parse(&serialize(&p)).font, p.font);
+        assert_eq!(parse(&serialize(&p)).level_bar, Some(false));
         assert_eq!(parse(&serialize(&p)).lang.as_deref(), Some("uz"));
         let q = parse(&serialize(&p));
         assert_eq!((q.marks.clone(), q.history.clone(), q.keys.clone()), (p.marks.clone(), p.history.clone(), p.keys.clone()));

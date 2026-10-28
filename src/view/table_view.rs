@@ -199,7 +199,7 @@ fn detect_dialect(doc: &mut Document) {
     let end = (start + 64 * 1024).min(doc.buf.len());
     // Not loaded yet (slow drive): try again on the next frame.
     let Some(sample) = doc.buf.read(start..end) else { return };
-    let preferred = match doc.lang.unwrap_or_else(|| Lang::from_path(doc.path.as_deref())) {
+    let preferred = match doc.effective_lang() {
         Lang::Csv(sep) => sep,
         _ => b',',
     };

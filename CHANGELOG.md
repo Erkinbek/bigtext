@@ -3,6 +3,18 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## Unreleased
+
+### Logs
+
+- **Level bar** above log files: **ERROR**, **WARN**, **INFO** and **DEBUG** buttons list only the
+  lines of those levels in the filter view (click several to combine them). **F8** / **Shift+F8**
+  jump to the next / previous error line, or to the next line of the levels shown. Upper-case
+  level words count anywhere; `[error]`, `level=error` and `"level":"error"` count too, but
+  "no error found" does not. View → Log level bar hides it.
+- Files without a telling extension (`syslog`, `stdin`, `app.txt`) are recognised as logs when
+  their lines start with a time, and as JSON or XML by their first line.
+
 ## 0.3.0 — 2026-10-28
 
 ### Logs

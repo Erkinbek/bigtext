@@ -36,6 +36,23 @@ impl Lang {
         }
     }
 
+    /// Guesses the format of a file whose name says nothing from its first lines: most lines
+    /// starting with a time make a log, a `{` or `[` JSON, `<?xml` or a tag XML.
+    pub fn sniff(text: &str) -> Lang {
+        let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).take(8).collect();
+        let Some(first) = lines.first().map(|l| l.trim_start()) else { return Lang::Plain };
+        let stamped = lines.iter().filter(|l| bigtext::timestamp::parse(&l.chars().take(40).collect::<String>()).is_some()).count();
+        if stamped > 0 && stamped * 2 >= lines.len() {
+            Lang::Log
+        } else if first.starts_with("<?xml") || first.starts_with("<!DOCTYPE") || first.starts_with("<html") {
+            Lang::Xml
+        } else if first.starts_with('{') || first.starts_with("[{") || first == "[" {
+            Lang::Json
+        } else {
+            Lang::Plain
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Lang::Plain => "Plain text",

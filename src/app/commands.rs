@@ -42,6 +42,8 @@ pub enum Cmd {
     FindPrev,
     FindAll,
     Filter,
+    NextLevel,
+    PrevLevel,
     GotoLine,
     GotoOffset,
     GotoTime,
@@ -53,6 +55,7 @@ pub enum Cmd {
     Syntax,
     DarkTheme,
     Highlights,
+    LevelBar,
     ZoomIn,
     ZoomOut,
     ZoomReset,
@@ -73,7 +76,7 @@ const CTRL: Modifiers = Modifiers::COMMAND;
 const CTRL_SHIFT: Modifiers = Modifiers { alt: false, ctrl: false, shift: true, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 47] = [
+    pub const ALL: [Cmd; 50] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -101,6 +104,8 @@ impl Cmd {
         Cmd::FindPrev,
         Cmd::FindAll,
         Cmd::Filter,
+        Cmd::NextLevel,
+        Cmd::PrevLevel,
         Cmd::GotoLine,
         Cmd::GotoOffset,
         Cmd::GotoTime,
@@ -112,6 +117,7 @@ impl Cmd {
         Cmd::Syntax,
         Cmd::DarkTheme,
         Cmd::Highlights,
+        Cmd::LevelBar,
         Cmd::ZoomIn,
         Cmd::ZoomOut,
         Cmd::ZoomReset,
@@ -179,6 +185,8 @@ impl Cmd {
             Cmd::FindPrev => "Find previous",
             Cmd::FindAll => "Find all",
             Cmd::Filter => "Filter lines",
+            Cmd::NextLevel => "Next error line",
+            Cmd::PrevLevel => "Previous error line",
             Cmd::GotoLine => "Go to line…",
             Cmd::GotoOffset => "Go to byte offset…",
             Cmd::GotoTime => "Go to time…",
@@ -190,6 +198,7 @@ impl Cmd {
             Cmd::Syntax => "Syntax highlighting",
             Cmd::DarkTheme => "Dark theme",
             Cmd::Highlights => "Highlights…",
+            Cmd::LevelBar => "Log level bar",
             Cmd::ZoomIn => "Zoom in",
             Cmd::ZoomOut => "Zoom out",
             Cmd::ZoomReset => "Reset zoom",
@@ -218,7 +227,7 @@ impl Cmd {
             | Cmd::ClearBookmarks
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
-            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime => "Search",
+            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::NextLevel | Cmd::PrevLevel | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime => "Search",
             Cmd::Palette | Cmd::Shortcuts | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
@@ -245,6 +254,8 @@ impl Cmd {
             Cmd::FindNext => key(Modifiers::NONE, Key::F3),
             Cmd::FindPrev => key(Modifiers::SHIFT, Key::F3),
             Cmd::Filter => key(CTRL_SHIFT, Key::F),
+            Cmd::NextLevel => key(Modifiers::NONE, Key::F8),
+            Cmd::PrevLevel => key(Modifiers::SHIFT, Key::F8),
             Cmd::GotoLine => key(CTRL, Key::G),
             Cmd::GotoOffset => key(CTRL_SHIFT, Key::G),
             Cmd::GotoTime => key(CTRL_SHIFT, Key::T),
@@ -431,6 +442,8 @@ impl BigTextApp {
                 self.open_search(false);
                 self.start_filter();
             }
+            Cmd::NextLevel => self.next_level(true),
+            Cmd::PrevLevel => self.next_level(false),
             Cmd::GotoLine => self.goto = GotoDialog::new(GotoMode::Line),
             Cmd::GotoOffset => self.goto = GotoDialog::new(GotoMode::Offset),
             Cmd::GotoTime => self.goto = GotoDialog::new(GotoMode::Time),
@@ -454,6 +467,10 @@ impl BigTextApp {
                 ctx.set_theme(if self.settings.dark { egui::Theme::Dark } else { egui::Theme::Light });
             }
             Cmd::Highlights => self.marks.open = true,
+            Cmd::LevelBar => {
+                self.settings.level_bar = !self.settings.level_bar;
+                self.persist_state();
+            }
             Cmd::ZoomIn => self.settings.font_size = (self.settings.font_size + 1.0).min(72.0),
             Cmd::ZoomOut => self.settings.font_size = (self.settings.font_size - 1.0).max(6.0),
             Cmd::ZoomReset => self.settings.font_size = 14.0,
@@ -480,12 +497,13 @@ impl BigTextApp {
             Cmd::Syntax => self.settings.syntax,
             Cmd::DarkTheme => self.settings.dark,
             Cmd::PerfOverlay => self.settings.show_perf,
+            Cmd::LevelBar => self.settings.level_bar,
             _ => false,
         }
     }
 
     fn is_toggle(cmd: Cmd) -> bool {
-        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::Follow | Cmd::SplitView | Cmd::Syntax | Cmd::DarkTheme | Cmd::PerfOverlay)
+        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::Follow | Cmd::SplitView | Cmd::Syntax | Cmd::DarkTheme | Cmd::PerfOverlay | Cmd::LevelBar)
     }
 
     fn enabled(&self, cmd: Cmd) -> bool {
@@ -611,7 +629,7 @@ impl BigTextApp {
                 run = run.or(self.item(ui, Cmd::ReadOnly));
             });
             ui.menu_button(tr("Search"), |ui| {
-                for c in [Cmd::Find, Cmd::Replace, Cmd::FindNext, Cmd::FindPrev, Cmd::FindAll, Cmd::Filter] {
+                for c in [Cmd::Find, Cmd::Replace, Cmd::FindNext, Cmd::FindPrev, Cmd::FindAll, Cmd::Filter, Cmd::NextLevel, Cmd::PrevLevel] {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
@@ -626,7 +644,7 @@ impl BigTextApp {
                 ui.separator();
                 run = run.or(self.item(ui, Cmd::Syntax));
                 if let Some(d) = self.docs.get_mut(self.active) {
-                    let auto = crate::view::highlight::Lang::from_path(d.path.as_deref());
+                    let auto = d.auto_lang();
                     ui.menu_button(tr("Highlight as"), |ui| {
                         if ui.radio(d.lang.is_none(), trf("Auto ({lang})", &[("lang", auto.name())])).clicked() {
                             d.lang = None;
@@ -638,7 +656,9 @@ impl BigTextApp {
                         }
                     });
                 }
-                run = run.or(self.item(ui, Cmd::Highlights));
+                for c in [Cmd::Highlights, Cmd::LevelBar] {
+                    run = run.or(self.item(ui, c));
+                }
                 ui.separator();
                 run = run.or(self.item(ui, Cmd::DarkTheme));
                 self.language_menu(ui);

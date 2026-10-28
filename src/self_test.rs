@@ -64,6 +64,7 @@ pub struct SelfTest {
 
 const ORIGINAL: &str = "alpha beta gamma\n    indented line\nthird line here\nfoo bar foo baz\nlast line\n";
 const CSV: &str = "id;name;age;city\r\n1;Ann;30;Tashkent\r\n2;\"Bob; Jr\";41;Samarkand\r\n3;Cy;25;Bukhara\r\n";
+const LEVELS_LOG: &str = "2024-05-01 10:00:00 INFO start\n2024-05-01 10:00:01 DEBUG cfg loaded\n2024-05-01 10:00:02 WARN slow disk\n2024-05-01 10:00:03 ERROR db timeout\n2024-05-01 10:00:04 INFO no error here\n2024-05-01 10:00:05 [error] nginx style\n";
 const CSV_WITHOUT_NAME_CITY: &str = "id;age\r\n1;30\r\n2;41\r\n3;25\r\n";
 
 fn doc(app: &mut BigTextApp) -> &mut Document {
@@ -156,6 +157,8 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("packed.log.gz"), gz.finish()?)?;
     std::fs::write(dir.join("cli.log"), "first 10:00\nsecond 10:00 10:05\nthird\n")?;
     std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
+    std::fs::write(dir.join("levels.log"), LEVELS_LOG)?;
+    std::fs::write(dir.join("journal"), "Jan  1 00:00:01 host app[1]: started\nJan  1 00:00:02 host app[1]: ERROR boom\n")?;
     std::fs::write(dir.join("no-newline.txt"), "first\nsecond without newline")?;
     std::fs::write(dir.join("cr-only.txt"), "old\rmac\rline\rendings\r")?;
     std::fs::write(dir.join("bom-middle.txt"), "start\n\u{FEFF}after bom\nend\n")?;
@@ -1137,6 +1140,53 @@ impl SelfTest {
                 enc == bigtext::encoding::Encoding::Utf16Le && bytes.starts_with(&[0xFF, 0xFE, b'2', 0]) && t.starts_with("\u{feff}2024-05-01 10:00:00 start\n"),
                 format!("encoding {enc:?}, first bytes {:?}, text {:?}", &bytes[..bytes.len().min(6)], &t[..t.len().min(30)]),
             )
+        }));
+        s("open levels.log", open_step("levels.log"));
+        s("log level bar: ERROR lines in the filter, F8 / Shift+F8", Box::new(|app, c| {
+            use bigtext::loglevel::{Level, Levels};
+            let line = |n: usize| LEVELS_LOG.split_inclusive('\n').take(n).map(str::len).sum::<usize>() as u64;
+            if c.first() {
+                if !app.level_bar_visible() {
+                    return Step::Fail("the level bar is not shown for a .log file".into());
+                }
+                app.filter_levels(Levels::only(Level::Error));
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let Some(r) = doc(app).filter.as_ref() else { return Step::Fail("no filter".into()) };
+                let g = r.data.lock().unwrap();
+                if !g.done {
+                    return Step::Wait;
+                }
+                if g.lines != vec![line(3), line(5)] || r.levels != Some(Levels::only(Level::Error)) {
+                    return Step::Fail(format!("filter lines {:?}", g.lines));
+                }
+                drop(g);
+                c.mark = 1;
+                doc(app).set_caret(0, false);
+                c.key(Key::F8, NONE);
+                return Step::Wait;
+            }
+            // F8 from the top: ERROR, then [error], then around to ERROR; Shift+F8 back to [error].
+            let want = [(1, line(3) + 20, line(3) + 25), (2, line(5) + 20, line(5) + 27), (3, line(3) + 20, line(3) + 25), (4, line(5) + 20, line(5) + 27)];
+            let (_, s0, e0) = want[(c.mark - 1) as usize];
+            let sel = doc(app).selection();
+            if sel != (s0, e0) || doc(app).find_job.is_some() {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("step {} selection {sel:?}, want {:?}", c.mark, (s0, e0))) } else { Step::Wait };
+            }
+            if c.mark == 4 {
+                c.mark = 0;
+                app.filter_levels(Levels::default());
+                return check(doc(app).filter.is_none(), "an empty level set keeps the filter");
+            }
+            c.mark += 1;
+            c.key(Key::F8, if c.mark == 4 { SHIFT } else { NONE });
+            Step::Wait
+        }));
+        s("a log without an extension is recognised by its timestamps", open_step("journal"));
+        s("journal: log highlighting and level bar", Box::new(|app, _c| {
+            let d = doc(app);
+            check(d.effective_lang() == crate::view::highlight::Lang::Log && app.level_bar_visible(), format!("lang {:?}", doc(app).effective_lang()))
         }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
         s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {
