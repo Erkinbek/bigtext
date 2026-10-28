@@ -66,6 +66,7 @@ const ORIGINAL: &str = "alpha beta gamma\n    indented line\nthird line here\nfo
 const CSV: &str = "id;name;age;city\r\n1;Ann;30;Tashkent\r\n2;\"Bob; Jr\";41;Samarkand\r\n3;Cy;25;Bukhara\r\n";
 const LEVELS_LOG: &str = "2024-05-01 10:00:00 INFO start\n2024-05-01 10:00:01 DEBUG cfg loaded\n2024-05-01 10:00:02 WARN slow disk\n2024-05-01 10:00:03 ERROR db timeout\n2024-05-01 10:00:04 INFO no error here\n2024-05-01 10:00:05 [error] nginx style\n";
 const BRACKETS_JSON: &str = "{\"a\": [1, \"]\", {\"b\": 2}]}\n";
+const OUTLINE_JSON: &str = "{\"name\": \"demo\", \"items\": [{\"id\": 10}, {\"id\": 11}, {\"id\": 12}]}\n";
 const CSV_WITHOUT_NAME_CITY: &str = "id;age\r\n1;30\r\n2;41\r\n3;25\r\n";
 
 fn doc(app: &mut BigTextApp) -> &mut Document {
@@ -159,6 +160,8 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("cli.log"), "first 10:00\nsecond 10:00 10:05\nthird\n")?;
     std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
     std::fs::write(dir.join("levels.log"), LEVELS_LOG)?;
+    std::fs::write(dir.join("outline.json"), OUTLINE_JSON)?;
+    std::fs::write(dir.join("events.jsonl"), "{\"id\": 1, \"msg\": \"start\"}\n{\"id\": 2, \"msg\": \"a, b\", \"user\": \"ann\"}\n")?;
     std::fs::write(dir.join("ws.txt"), "a b\tc\r\nnext\r\n")?;
     std::fs::write(dir.join("brackets.json"), BRACKETS_JSON)?;
     std::fs::write(dir.join("multi.txt"), "foo x foo y foo\nfirst\nsecond\n")?;
@@ -1463,7 +1466,6 @@ impl SelfTest {
             app.settings.show_ws = true;
             Step::Next
         }));
-        s("shot: whitespace", shot_step("whitespace.png"));
         s("whitespace shown as · → ↵ keeps every character in its place", Box::new(|app, c| {
             if c.mark == 0 {
                 c.mark = 1;
@@ -1478,6 +1480,71 @@ impl SelfTest {
             }
             c.mark = 0;
             app.settings.show_ws = false;
+            Step::Next
+        }));
+        s("open outline.json", open_step("outline.json"));
+        s("JSON structure: the top level's keys in the side panel", Box::new(|app, c| {
+            if c.first() {
+                app.json_open = false;
+                app.toggle_json_panel();
+                return Step::Wait;
+            }
+            let Some(t) = doc(app).json.as_ref() else { return Step::Fail("no outline".into()) };
+            let keys: Vec<String> = t.nodes.iter().skip(1).filter_map(|n| n.child.key.clone()).collect();
+            if keys.len() < 2 {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("keys {keys:?}, error {:?}", t.error)) } else { Step::Wait };
+            }
+            check(keys == vec!["name".to_string(), "items".to_string()], format!("keys {keys:?}"))
+        }));
+        s("JSON path: go to $.items[2].id, and the path at the caret", Box::new(|app, c| {
+            let at = |s: &str| OUTLINE_JSON.find(s).unwrap() as u64;
+            if c.first() {
+                app.json_goto("$.items[2].id");
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let sel = doc(app).selection();
+                if sel != (at("12"), at("12") + 2) {
+                    return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("selection {sel:?}")) } else { Step::Wait };
+                }
+                c.mark = 1;
+                doc(app).set_caret(at("11"), false);
+                app.json_path_at_caret();
+                return Step::Wait;
+            }
+            let path = doc(app).json.as_ref().map(|t| t.path.clone()).unwrap_or_default();
+            if path != "$.items[1].id" {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("path {path:?}")) } else { Step::Wait };
+            }
+            c.mark = 0;
+            app.json_open = false;
+            Step::Next
+        }));
+        s("open events.jsonl", open_step("events.jsonl"));
+        s("JSON Lines as a table: a column per key", Box::new(|app, c| {
+            if c.first() {
+                app.open_jsonl_table();
+                return Step::Wait;
+            }
+            let d = doc(app);
+            if !d.title.ends_with("(table)") || !d.is_ready() {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("active tab {:?}", d.title)) } else { Step::Wait };
+            }
+            let (table, ro, temp) = (d.table, d.read_only, d.temporary);
+            let t = text(app);
+            check(t == "id,msg,user\n1,start,\n2,\"a, b\",ann\n" && table && ro && temp, format!("text {t:?} table {table} read-only {ro} temporary {temp}"))
+        }));
+        s("close the JSON Lines table", Box::new(|app, c| {
+            if c.first() {
+                c.copied = vec![doc(app).path.clone().unwrap_or_default().to_string_lossy().into_owned()];
+                c.key(Key::W, CTRL);
+                return Step::Wait;
+            }
+            let temp = PathBuf::from(&c.copied[0]);
+            if temp.exists() {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("{temp:?} still exists")) } else { Step::Wait };
+            }
+            c.copied.clear();
             Step::Next
         }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));

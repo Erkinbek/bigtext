@@ -37,6 +37,19 @@ All notable changes to BigText. Each release on
 - Files without a telling extension (`syslog`, `stdin`, `app.txt`) are recognised as logs when
   their lines start with a time, and as JSON or XML by their first line.
 
+### JSON
+
+- **View → JSON structure** (Ctrl+Shift+J): the outline of a JSON file in a side panel, opened
+  node by node, 200 children at a time, so even a root array of millions of items opens at
+  once. Click a node to go to its value. Type a path such as `$.items[1234].id` (or
+  `items[3]["a b"]`) to jump there, and **Copy path at caret** gives the path of the value under
+  the caret. Everything is read in a streaming pass in the background; nothing is held as a
+  tree in memory.
+- **View → Open JSON Lines as table**: a `.jsonl` / `.ndjson` file becomes a table with a column
+  per key (keys from the first 1,000 lines, strings unescaped, nested values as JSON), so the
+  table's sorting, statistics and filters work on it. It is converted into a temporary CSV in
+  the background and opens read-only.
+
 ### Search
 
 - **Saved searches**: the ★ menu of the search bar keeps a pattern with its options, the **!**

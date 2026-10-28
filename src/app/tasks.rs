@@ -27,6 +27,8 @@ pub enum TaskOutcome {
     Stats(Box<(String, bigtext::csv::ColumnStats)>),
     /// Logs merged into a temporary file, to open as a document.
     Merged(Box<super::merge_logs::MergedLogs>),
+    /// JSON Lines converted to a temporary CSV, to open as a table.
+    JsonlTable(Box<super::json_panel::JsonlTable>),
 }
 
 /// A short message in the status bar that disappears after a while.
@@ -97,6 +99,7 @@ impl BigTextApp {
             TaskOutcome::Failed(e) => self.error = Some(e),
             TaskOutcome::Stats(s) => self.csv.stats = Some(*s),
             TaskOutcome::Merged(m) => self.on_merged(*m),
+            TaskOutcome::JsonlTable(t) => self.on_jsonl_table(*t),
         }
     }
 

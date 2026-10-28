@@ -496,4 +496,20 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Go to matching bracket", "Перейти к парной скобке", "Juft qavsga o'tish"],
     ["No matching bracket", "Нет парной скобки", "Juft qavs topilmadi"],
     ["Show whitespace and line breaks", "Показывать пробелы и переводы строк", "Bo'shliqlar va satr oxirlarini ko'rsatish"],
+    // JSON structure and JSON Lines.
+    ["JSON structure", "Структура JSON", "JSON tuzilmasi"],
+    ["Open JSON Lines as table", "Открыть JSON Lines как таблицу", "JSON Lines ni jadval sifatida ochish"],
+    ["Copy path at caret", "Копировать путь под курсором", "Kursordagi yo'lni nusxalash"],
+    ["Copied {path}", "Скопировано: {path}", "Nusxalandi: {path}"],
+    ["Show {n} more (after {shown})", "Показать ещё {n} (после {shown})", "Yana {n} tasini ko'rsatish ({shown} tadan keyin)"],
+    ["This is not a JSON object or array.", "Это не объект и не массив JSON.", "Bu JSON obyekt yoki massiv emas."],
+    ["Converting JSON Lines", "Преобразование JSON Lines", "JSON Lines o'girilmoqda"],
+    ["{name} (table)", "{name} (таблица)", "{name} (jadval)"],
+    ["{rows} rows, {cols} columns.", "Строк: {rows}, столбцов: {cols}.", "{rows} qator, {cols} ustun."],
+    ["{n} lines that are not JSON objects were left out.", "Пропущено строк, не являющихся объектами JSON: {n}.", "JSON obyekt bo'lmagan {n} ta satr tashlab ketildi."],
+    [
+        "{n} values of keys first seen after line {lines} were left out.",
+        "Пропущено значений ключей, впервые встреченных после строки {lines}: {n}.",
+        "{lines}-satrdan keyin birinchi uchragan kalitlarning {n} ta qiymati tashlab ketildi.",
+    ],
 ];

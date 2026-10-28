@@ -179,6 +179,8 @@ pub struct Document {
     pub merged: Option<super::merge_logs::MergeTags>,
     /// Time histogram (Search → Time histogram).
     pub timeline: Option<super::timeline::TimelineResults>,
+    /// Outline for View → JSON structure.
+    pub json: Option<super::json_panel::JsonTree>,
     /// Shown as a table (CSV / TSV); on by default for .csv and .tsv files.
     pub table: bool,
     pub table_state: crate::view::table_view::TableState,
@@ -272,6 +274,7 @@ impl Document {
             sniffed_lang: crate::view::highlight::Lang::Plain,
             merged: None,
             timeline: None,
+            json: None,
             table,
             table_state: Default::default(),
             restore: None,

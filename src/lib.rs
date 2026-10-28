@@ -12,6 +12,7 @@ pub mod find_files;
 pub mod histogram;
 pub mod index;
 pub mod jobs;
+pub mod json;
 pub mod lines;
 pub mod loglevel;
 pub mod merge;

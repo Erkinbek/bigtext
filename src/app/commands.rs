@@ -55,6 +55,8 @@ pub enum Cmd {
     WordWrap,
     HexView,
     TableView,
+    JsonStructure,
+    JsonlTable,
     Follow,
     SplitView,
     Syntax,
@@ -83,7 +85,7 @@ const CTRL_SHIFT: Modifiers = Modifiers { alt: false, ctrl: false, shift: true, 
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 56] = [
+    pub const ALL: [Cmd; 58] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -124,6 +126,8 @@ impl Cmd {
         Cmd::WordWrap,
         Cmd::HexView,
         Cmd::TableView,
+        Cmd::JsonStructure,
+        Cmd::JsonlTable,
         Cmd::Follow,
         Cmd::SplitView,
         Cmd::Syntax,
@@ -211,6 +215,8 @@ impl Cmd {
             Cmd::WordWrap => "Word wrap",
             Cmd::HexView => "Hex view",
             Cmd::TableView => "Table view (CSV / TSV)",
+            Cmd::JsonStructure => "JSON structure",
+            Cmd::JsonlTable => "Open JSON Lines as table",
             Cmd::Follow => "Follow (tail) file changes",
             Cmd::SplitView => "Split view",
             Cmd::Syntax => "Syntax highlighting",
@@ -285,6 +291,7 @@ impl Cmd {
             Cmd::MatchBracket => key(CTRL, Key::CloseBracket),
             Cmd::WordWrap => key(Modifiers::ALT, Key::Z),
             Cmd::TableView => key(CTRL, Key::T),
+            Cmd::JsonStructure => key(CTRL_SHIFT, Key::J),
             Cmd::SplitView => key(CTRL, Key::Backslash),
             Cmd::ZoomIn => key(CTRL, Key::Equals),
             Cmd::ZoomOut => key(CTRL, Key::Minus),
@@ -496,6 +503,8 @@ impl BigTextApp {
                 d.table = !d.table;
                 d.view.scroll_to_caret = true;
             }),
+            Cmd::JsonStructure => self.toggle_json_panel(),
+            Cmd::JsonlTable => self.open_jsonl_table(),
             Cmd::Follow => doc(self).into_iter().for_each(|d| d.follow = !d.follow),
             Cmd::SplitView => doc(self).into_iter().for_each(toggle_split),
             Cmd::Syntax => self.settings.syntax = !self.settings.syntax,
@@ -533,6 +542,7 @@ impl BigTextApp {
             Cmd::WordWrap => d.is_some_and(|d| d.view.wrap),
             Cmd::HexView => d.is_some_and(|d| d.hex),
             Cmd::TableView => d.is_some_and(|d| d.table),
+            Cmd::JsonStructure => self.json_open,
             Cmd::Follow => d.is_some_and(|d| d.follow),
             Cmd::SplitView => d.is_some_and(|d| d.split.is_some()),
             Cmd::Syntax => self.settings.syntax,
@@ -546,7 +556,7 @@ impl BigTextApp {
     }
 
     fn is_toggle(cmd: Cmd) -> bool {
-        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::Follow | Cmd::SplitView | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
+        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::Follow | Cmd::SplitView | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
     }
 
     fn enabled(&self, cmd: Cmd) -> bool {
@@ -681,7 +691,7 @@ impl BigTextApp {
                 }
             });
             ui.menu_button(tr("View"), |ui| {
-                for c in [Cmd::WordWrap, Cmd::HexView, Cmd::TableView, Cmd::Follow, Cmd::SplitView] {
+                for c in [Cmd::WordWrap, Cmd::HexView, Cmd::TableView, Cmd::JsonStructure, Cmd::JsonlTable, Cmd::Follow, Cmd::SplitView] {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();

@@ -119,6 +119,7 @@ mod tests {
         "app" / "filter_panel.rs",
         "app" / "find_in_files.rs",
         "app" / "fonts.rs",
+        "app" / "json_panel.rs",
         "app" / "levels.rs",
         "app" / "marks.rs",
         "app" / "match_bracket.rs",

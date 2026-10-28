@@ -11,6 +11,7 @@ pub mod find_in_files;
 pub mod fonts;
 pub mod i18n;
 mod i18n_texts;
+pub mod json_panel;
 pub mod levels;
 pub mod marks;
 pub mod match_bracket;
@@ -84,6 +85,7 @@ pub enum Msg {
     LevelFound(Box<levels::LevelFound>),
     CursorFound(Box<multi_cursor::CursorFound>),
     BracketJump(Box<match_bracket::BracketJump>),
+    Json(Box<json_panel::JsonDone>),
 }
 
 pub struct Settings {
@@ -206,6 +208,8 @@ pub struct BigTextApp {
     pub merge: merge_logs::MergeUi,
     pub saved_ui: saved_searches::SavedUi,
     pairs: match_bracket::PairCache,
+    /// View → JSON structure is shown.
+    pub json_open: bool,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -324,6 +328,7 @@ impl BigTextApp {
             merge: merge_logs::MergeUi::default(),
             saved_ui: saved_searches::SavedUi::default(),
             pairs: match_bracket::PairCache::default(),
+            json_open: false,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -580,6 +585,7 @@ impl BigTextApp {
                 Msg::LevelFound(f) => self.on_level_found(*f),
                 Msg::CursorFound(f) => self.on_cursor_found(*f),
                 Msg::BracketJump(j) => self.on_bracket_jump(*j),
+                Msg::Json(j) => self.on_json(*j),
             }
         }
     }
@@ -1324,6 +1330,10 @@ impl eframe::App for BigTextApp {
         }
         if self.docs.get(self.active).is_some_and(|d| d.banner.is_some()) {
             egui::Panel::top("banner").show_separator_line(false).show(ui, |ui| self.banner(ui));
+        }
+
+        if self.json_open && self.docs.get(self.active).is_some_and(|d| d.is_ready() && !d.hex) {
+            egui::Panel::left("json").resizable(true).default_size(320.0).show(ui, |ui| self.json_panel(ui));
         }
 
         let mut actions = Vec::new();
