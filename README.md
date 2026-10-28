@@ -83,6 +83,10 @@ Single self-contained binary, no runtime dependencies.
 - **Other**: line numbers, zoom (Ctrl+wheel), word wrap (off by default), light/dark theme,
   read-only toggle (auto for read-only files), external change detection with Reload, and a
   **follow (tail) mode** for growing logs that resumes indexing where it stopped.
+- **Column (block) selection**: Alt+drag selects a rectangle. Copy copies it line by line;
+  typing, Backspace, Delete and Tab change every row at once (one undo step); pasting as many
+  lines as the block has rows puts one on each row. Works without word wrap, up to 10,000
+  rows.
 - **Text operations** (Edit → Text) on the selection, or on the whole document up to 64 MB:
   sort lines (A→Z, Z→A, by leading number), reverse, remove duplicate lines, UPPER / lower
   case, trim trailing whitespace, tabs ↔ spaces, and JSON pretty-print / minify (token by
@@ -174,6 +178,7 @@ bigtext [FILE ...]
 | Ctrl+F2 / F2 / Shift+F2 | Toggle / next / previous bookmark |
 | Ctrl+\\ | Split view |
 | Double / triple click | Select word / line |
+| Alt+drag | Column (block) selection |
 | F12 | Performance overlay (frame time, private memory, index size) |
 
 View → Hex view, View → Follow (tail), View → Syntax highlighting, File → Open recent,

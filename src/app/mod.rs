@@ -1411,6 +1411,7 @@ pub const SHORTCUTS: &[(&str, &str)] = &[
     ("Ctrl+F2 / F2 / Shift+F2", "Toggle / next / previous bookmark"),
     ("Ctrl+\\", "Split view"),
     ("Ctrl+T", "Table view for CSV / TSV"),
+    ("Alt+drag", "Column (block) selection"),
     ("F12", "Performance overlay"),
 ];
 

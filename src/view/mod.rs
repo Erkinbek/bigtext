@@ -1,5 +1,6 @@
 //! Custom views: the virtualized text view, the CSV table view and the hex view.
 
+pub mod block;
 pub mod hex_view;
 pub mod highlight;
 pub mod table_view;

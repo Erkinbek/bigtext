@@ -649,6 +649,35 @@ impl SelfTest {
             }
             check(text(app) == ORIGINAL, "undo of the sort failed")
         }));
+        s("block selection: Alt+drag, copy, type on every row, undo", Box::new(|app, c| {
+            if c.first() {
+                c.copied.clear();
+                let (a, b) = (pos(app, 0, 0.0), pos(app, 2, 4.0));
+                c.push(vec![Event::PointerMoved(a), Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: ALT }], ALT);
+                c.push(vec![Event::PointerMoved(Pos2::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0))], ALT);
+                c.push(vec![Event::PointerMoved(b)], ALT);
+                c.push(vec![Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: ALT }], ALT);
+                c.push(vec![], NONE);
+                c.event(Event::Copy, CTRL);
+                c.typed("X");
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let t = text(app);
+                if t == ORIGINAL {
+                    return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("no block edit, block {:?}", doc(app).view.block)) } else { Step::Wait };
+                }
+                let copied = c.copied.last().cloned().unwrap_or_default();
+                // One row per line, joined with the document's line break (LF here).
+                if !t.starts_with("Xa beta gamma\nXindented line\nXd line here\nfoo") || copied != "alph\n    \nthir" {
+                    return Step::Fail(format!("text {t:?} copied {copied:?}"));
+                }
+                c.mark = 1;
+                c.key(Key::Z, CTRL);
+                return Step::Wait;
+            }
+            check(text(app) == ORIGINAL && doc(app).view.block.is_none(), "undo of the block edit failed")
+        }));
         s("go to line (Ctrl+G) and byte offset (Ctrl+Shift+G)", Box::new(|app, c| {
             if c.first() {
                 c.key(Key::G, CTRL);

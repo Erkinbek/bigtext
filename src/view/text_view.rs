@@ -12,6 +12,7 @@ use egui::{pos2, Align2, Color32, CursorIcon, Event, EventFilter, FontId, Key, M
 use bigtext::text::rows::{self, CellKind, Pending, Row};
 use bigtext::text::TextBuf;
 
+use super::block::{block_rows, block_text, edit_block, Block, BlockEdit};
 use crate::app::document::Document;
 
 const SCROLLBAR: f32 = 14.0;
@@ -99,6 +100,14 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     if doc.view.width_cache_version != doc.version {
         doc.view.width_cache.clear();
         doc.view.width_cache_version = doc.version;
+    }
+    // A block selection needs rows that are lines, and rows that still start where they did.
+    if let Some(b) = doc.view.block {
+        let stale = |at: u64| !matches!(rows::row_at(&doc.buf, at.min(doc.buf.len()), None), Ok(r) if r.start == at);
+        if wrap.is_some() || !doc.is_ready() || stale(b.anchor) || stale(b.caret) {
+            doc.view.block = None;
+            doc.view.block_drag = false;
+        }
     }
 
     let mut pending = false;
@@ -253,6 +262,13 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                 let x1 = x_of(cell_for(he.min(row.end))).max(x0 + 2.0);
                 text_painter.rect_filled(Rect::from_min_max(pos2(x0, y), pos2(x1, y + m.rh)), 2.0, color);
             }
+        }
+        if let Some(b) = doc.view.block.filter(|b| b.contains_row(row.start)) {
+            let (lo, hi) = b.cells();
+            let x0 = text_rect.left() + lo as f32 * m.cw - doc.view.scroll_x;
+            let x1 = text_rect.left() + hi as f32 * m.cw - doc.view.scroll_x;
+            let r = Rect::from_min_max(pos2(x0 - if lo == hi { 0.5 } else { 0.0 }, y), pos2(if lo == hi { x0 + 1.5 } else { x1 }, y + m.rh));
+            text_painter.rect_filled(r, 0.0, if lo == hi { visuals.text_cursor.stroke.color } else { sel_color });
         }
         if sel_s < sel_e && sel_e > row.start && sel_s <= row.end {
             let x0 = x_of(cell_for(sel_s.max(row.start)));
@@ -539,7 +555,8 @@ fn handle_wheel(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, m: Metri
     }
 }
 
-fn hit_test(doc: &Document, rows: &[Row], text_rect: Rect, m: Metrics, pos: Pos2) -> Option<u64> {
+/// The row under `pos` and the nearest cell boundary.
+fn hit_cell(doc: &Document, rows: &[Row], text_rect: Rect, m: Metrics, pos: Pos2) -> Option<(Row, u32)> {
     if rows.is_empty() {
         return None;
     }
@@ -551,6 +568,11 @@ fn hit_test(doc: &Document, rows: &[Row], text_rect: Rect, m: Metrics, pos: Pos2
         rows[i]
     };
     let col = ((pos.x - text_rect.left() + doc.view.scroll_x) / m.cw).round().max(0.0) as u32;
+    Some((row, col))
+}
+
+fn hit_test(doc: &Document, rows: &[Row], text_rect: Rect, m: Metrics, pos: Pos2) -> Option<u64> {
+    let (row, col) = hit_cell(doc, rows, text_rect, m, pos)?;
     rows::offset_at_cell(&doc.buf, &row, col).ok()
 }
 
@@ -567,7 +589,45 @@ fn handle_mouse(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, text_rec
         )
     });
     let Some(pos) = pos else { return };
+    // Alt+drag: column (block) selection.
+    if pressed && text_rect.contains(pos) && resp.hovered() && mods.alt && wrap.is_none() {
+        if let Some((row, col)) = hit_cell(doc, rows, text_rect, m, pos) {
+            doc.view.block = Some(Block::at(row.start, col));
+            doc.view.block_drag = true;
+            if let Ok(off) = rows::offset_at_cell(&doc.buf, &row, col) {
+                doc.set_caret(off, false);
+                doc.view.scroll_to_caret = false;
+            }
+        }
+        return;
+    }
+    if doc.view.block_drag && active_pane {
+        if !down {
+            doc.view.block_drag = false;
+            return;
+        }
+        if pos.y < text_rect.top() || pos.y > text_rect.bottom() {
+            let n = if pos.y < text_rect.top() { -1 } else { 1 };
+            if let Ok(top) = rows::row_at(&doc.buf, doc.view.top, wrap) {
+                if let Ok(r) = rows::step_rows(&doc.buf, top, n, wrap) {
+                    doc.view.top = r.start;
+                }
+            }
+            ui.ctx().request_repaint();
+        }
+        let clamped = pos2(pos.x.max(text_rect.left()), pos.y.clamp(text_rect.top(), text_rect.bottom() - 1.0));
+        if let (Some((row, col)), Some(b)) = (hit_cell(doc, rows, text_rect, m, clamped), doc.view.block.as_mut()) {
+            b.caret = row.start;
+            b.caret_cell = col;
+            if let Ok(off) = rows::offset_at_cell(&doc.buf, &row, col) {
+                doc.view.caret = off;
+                doc.view.anchor = off;
+            }
+        }
+        return;
+    }
     if pressed && text_rect.contains(pos) && resp.hovered() {
+        doc.view.block = None;
         if let Some(off) = hit_test(doc, rows, text_rect, m, pos) {
             doc.set_caret(off, mods.shift);
             doc.view.desired_cell = None;
@@ -646,9 +706,74 @@ fn ime_output(ui: &mut Ui, text_rect: Rect) {
     });
 }
 
+/// Input while a block selection is active. Returns true if the event was used; keys that
+/// move the caret or edit normally end the block first.
+fn handle_block_event(ui: &mut Ui, doc: &mut Document, ev: &Event) -> bool {
+    let Some(mut b) = doc.view.block else { return false };
+    let used = match ev {
+        Event::Text(t) if !t.chars().all(|c| c.is_control()) => {
+            edit_block(doc, &mut b, BlockEdit::Insert(t.clone()));
+            true
+        }
+        Event::Ime(egui::ImeEvent::Commit(t)) if !t.is_empty() => {
+            edit_block(doc, &mut b, BlockEdit::Insert(t.clone()));
+            true
+        }
+        Event::Paste(s) => {
+            let lines: Vec<String> = s.lines().map(str::to_string).collect();
+            let n = block_rows(doc, &b).map(|r| r.len()).unwrap_or(0);
+            let e = if n > 1 && lines.len() == n { BlockEdit::PerRow(lines) } else { BlockEdit::Insert(s.replace(['\r', '\n'], " ")) };
+            edit_block(doc, &mut b, e);
+            true
+        }
+        Event::Copy | Event::Cut => {
+            if let Some(t) = block_text(doc, &b) {
+                ui.ctx().copy_text(t);
+            }
+            if matches!(ev, Event::Cut) {
+                edit_block(doc, &mut b, BlockEdit::Insert(String::new()));
+            }
+            true
+        }
+        Event::Key { key: Key::Backspace, pressed: true, modifiers, .. } if !modifiers.command => {
+            edit_block(doc, &mut b, BlockEdit::Backspace);
+            true
+        }
+        Event::Key { key: Key::Delete, pressed: true, modifiers, .. } if !modifiers.command => {
+            edit_block(doc, &mut b, BlockEdit::Delete);
+            true
+        }
+        Event::Key { key: Key::Tab, pressed: true, modifiers, .. } if !modifiers.command && !modifiers.shift => {
+            edit_block(doc, &mut b, BlockEdit::Insert("\t".into()));
+            true
+        }
+        Event::Key { key, pressed: true, modifiers, .. } => {
+            let ends = matches!(
+                key,
+                Key::ArrowLeft | Key::ArrowRight | Key::ArrowUp | Key::ArrowDown | Key::Home | Key::End | Key::PageUp | Key::PageDown | Key::Escape | Key::Enter
+            ) || (modifiers.command && matches!(key, Key::Z | Key::Y | Key::A | Key::D | Key::K));
+            if ends {
+                doc.view.block = None;
+                if *key == Key::Escape {
+                    return true;
+                }
+            }
+            return false;
+        }
+        _ => false,
+    };
+    if used {
+        doc.view.block = Some(b);
+    }
+    used
+}
+
 fn handle_keys(ui: &mut Ui, doc: &mut Document, wrap: Option<usize>, env: &mut ViewEnv) {
     let events = ui.input(|i| i.events.clone());
     for ev in events {
+        if handle_block_event(ui, doc, &ev) {
+            continue;
+        }
         match ev {
             Event::Text(t) => {
                 if doc.editable() && !t.chars().all(|c| c.is_control()) {

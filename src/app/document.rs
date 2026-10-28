@@ -74,6 +74,9 @@ pub struct ViewState {
     pub text_rect: Option<egui::Rect>,
     pub cell: egui::Vec2,
     pub scroll_marks: crate::view::text_view::ScrollMarks,
+    /// Column (block) selection, made with Alt+drag.
+    pub block: Option<crate::view::block::Block>,
+    pub block_drag: bool,
 }
 
 impl Default for ViewState {
@@ -100,6 +103,8 @@ impl Default for ViewState {
             text_rect: None,
             cell: egui::Vec2::ZERO,
             scroll_marks: Default::default(),
+            block: None,
+            block_drag: false,
         }
     }
 }
