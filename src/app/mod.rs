@@ -643,6 +643,23 @@ impl BigTextApp {
                         ui.radio_value(&mut d.eol_on_save, Some(LineEnding::Cr), "Convert to CR");
                     });
                 }
+                ui.menu_button("Save with encoding", |ui| {
+                    let choices = [
+                        (Encoding::Utf8, false, "UTF-8"),
+                        (Encoding::Utf8, true, "UTF-8 with BOM"),
+                        (Encoding::Utf16Le, true, "UTF-16 LE"),
+                        (Encoding::Utf16Be, true, "UTF-16 BE"),
+                        (Encoding::Windows1251, false, "Windows-1251"),
+                        (Encoding::Windows1252, false, "Windows-1252"),
+                        (Encoding::Latin1, false, "ISO-8859-1"),
+                    ];
+                    for (enc, bom, label) in choices {
+                        if ui.button(i18n::tr(label)).clicked() {
+                            self.save_with(true, Some((enc, bom)));
+                            ui.close();
+                        }
+                    }
+                });
                 ui.menu_button("Reopen with encoding", |ui| {
                     for enc in Encoding::ALL {
                         if ui.button(enc.name()).clicked() {

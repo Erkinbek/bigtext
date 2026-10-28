@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::csv::{self, Dialect};
-use crate::encoding::{Codec, LineEnding, NlByte};
+use crate::encoding::{Codec, Encoding, LineEnding, NlByte};
 use crate::jobs::{CancelToken, Progress};
 use crate::replace::{self, ReplaceStats, Template};
 use crate::search::Matcher;
@@ -28,6 +28,85 @@ pub enum Transform<'a> {
     Replace { matcher: &'a Matcher, template: &'a Template, range: std::ops::Range<u64> },
     /// Delete the columns `cols` (sorted, distinct) of a CSV document.
     DeleteColumns { dialect: Dialect, cols: &'a [usize] },
+    /// Re-encode into `enc` (with a byte order mark if `bom`), optionally converting line
+    /// breaks. `ReplaceStats::count` is the number of characters `enc` cannot represent
+    /// (written as '?').
+    Transcode { enc: Encoding, bom: bool, eol: Option<LineEnding> },
+}
+
+const TRANSCODE_STEP: u64 = 4 * 1024 * 1024;
+
+/// Streams `buf` re-encoded into `enc`. Pieces are cut at character boundaries, and a CR at
+/// the end of a piece waits for the next one so a CRLF is never split.
+pub fn transcode_to<W: Write>(buf: &TextBuf, enc: Encoding, bom: bool, eol: Option<LineEnding>, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<ReplaceStats>> {
+    let target = Codec::new(enc, NlByte::Lf, 0);
+    let len = buf.len();
+    let mut stats = ReplaceStats { count: 0, bytes_in: len, bytes_out: 0 };
+    let mut emit = |b: &[u8], stats: &mut ReplaceStats| -> io::Result<()> {
+        stats.bytes_out += b.len() as u64;
+        out.write_all(b)
+    };
+    if bom {
+        emit(enc.bom(), &mut stats)?;
+    }
+    let breaks = eol.map(|e| target.line_break(e));
+    let mut pending_cr = false;
+    let mut pos = buf.codec.bom_len as u64;
+    while pos < len {
+        if cancel.is_cancelled() {
+            return Ok(None);
+        }
+        let mut end = buf.snap_char((pos + TRANSCODE_STEP).min(len));
+        if end <= pos {
+            end = buf.next_char(pos);
+        }
+        let raw = buf.read(pos..end).ok_or_else(|| io::Error::other("Could not read the document"))?;
+        let mut text = buf.codec.decode_lossy(&raw);
+        if let Some(nl) = &breaks {
+            if pending_cr {
+                text.insert(0, '\r');
+            }
+            pending_cr = end < len && text.ends_with('\r');
+            if pending_cr {
+                text.pop();
+            }
+            let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+            let encoded = count_and_encode(&target, &normalized, &mut stats);
+            if nl.as_slice() == target.encode("\n").as_slice() {
+                emit(&encoded, &mut stats)?;
+            } else {
+                // Re-encode with the wanted break (it is ASCII, so splitting is safe).
+                let mut first = true;
+                for part in normalized.split('\n') {
+                    if !first {
+                        emit(nl, &mut stats)?;
+                    }
+                    first = false;
+                    emit(&target.encode(part), &mut stats)?;
+                }
+            }
+        } else {
+            let encoded = count_and_encode(&target, &text, &mut stats);
+            emit(&encoded, &mut stats)?;
+        }
+        if let Some(p) = progress {
+            p.set_done(end);
+        }
+        pos = end;
+    }
+    if pending_cr {
+        if let Some(nl) = &breaks {
+            emit(nl, &mut stats)?;
+        }
+    }
+    Ok(Some(stats))
+}
+
+fn count_and_encode(target: &Codec, text: &str, stats: &mut ReplaceStats) -> Vec<u8> {
+    if !target.can_encode(text) {
+        stats.count += text.chars().filter(|c| !target.can_encode(c.encode_utf8(&mut [0; 4]))).count() as u64;
+    }
+    target.encode(text)
 }
 
 #[derive(Debug)]
@@ -191,6 +270,10 @@ pub fn write_temp(buf: &TextBuf, target: &Path, transform: Transform, cancel: &C
                 }
             }
             Transform::DeleteColumns { dialect, cols } => match csv::delete_columns_to(buf, dialect, cols, &mut w, cancel, Some(progress)).map_err(io)? {
+                Some(s) => s,
+                None => return Err(SaveError::Cancelled),
+            },
+            Transform::Transcode { enc, bom, eol } => match transcode_to(buf, enc, bom, eol, &mut w, cancel, Some(progress)).map_err(io)? {
                 Some(s) => s,
                 None => return Err(SaveError::Cancelled),
             },
@@ -474,6 +557,44 @@ mod tests {
         finalize(&temp, &path, true).unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"id,age\n7,30\n2,41\n");
         assert_eq!(fs::read(backup_path_for(&path)).unwrap(), b"id,name,age\n1,ann,30\n2,bob,41\n");
+    }
+
+    #[test]
+    fn transcode_between_encodings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.txt");
+        let u16 = Codec::new(Encoding::Utf16Le, crate::encoding::NlByte::Lf, 2);
+        let mut data = vec![0xFF, 0xFE];
+        data.extend(u16.encode("Привет\r\nмир € 😀\r\n"));
+        fs::write(&path, &data).unwrap();
+        let t = open(&path, u16);
+        let run = |enc, bom, eol| {
+            let mut out = Vec::new();
+            let s = transcode_to(&t, enc, bom, eol, &mut out, &CancelToken::new(), None).unwrap().unwrap();
+            (out, s.count)
+        };
+        assert_eq!(run(Encoding::Utf8, false, None), ("Привет\r\nмир € 😀\r\n".as_bytes().to_vec(), 0));
+        let (with_bom, _) = run(Encoding::Utf8, true, Some(LineEnding::Lf));
+        assert_eq!(with_bom, [&[0xEF, 0xBB, 0xBF][..], "Привет\nмир € 😀\n".as_bytes()].concat());
+        // Windows-1251 has the euro sign (0x88) but no emoji: one '?'.
+        let (cp, missing) = run(Encoding::Windows1251, false, None);
+        assert_eq!(missing, 1);
+        assert_eq!(Codec::new(Encoding::Windows1251, crate::encoding::NlByte::Lf, 0).decode_lossy(&cp), "Привет\r\nмир € ?\r\n");
+        // Through the save protocol, with a CRLF split across steps never doubled.
+        let (temp, stats) = write_temp(&t, &path, Transform::Transcode { enc: Encoding::Utf16Be, bom: true, eol: Some(LineEnding::CrLf) }, &CancelToken::new(), &Progress::default()).unwrap();
+        let be = Codec::new(Encoding::Utf16Be, crate::encoding::NlByte::Lf, 2);
+        assert_eq!(fs::read(&temp).unwrap(), [&[0xFE, 0xFF][..], &be.encode("Привет\r\nмир € 😀\r\n")].concat());
+        assert_eq!(stats.count, 0);
+        // A CRLF across the step boundary becomes exactly one LF.
+        let p2 = dir.path().join("u.txt");
+        let mut big = vec![b'a'; TRANSCODE_STEP as usize - 1];
+        big.extend_from_slice(b"\r\nz");
+        fs::write(&p2, &big).unwrap();
+        let t2 = open(&p2, Codec::utf8());
+        let mut out = Vec::new();
+        transcode_to(&t2, Encoding::Utf8, false, Some(LineEnding::Lf), &mut out, &CancelToken::new(), None).unwrap().unwrap();
+        assert_eq!(&out[out.len() - 3..], b"a\nz");
+        assert_eq!(out.len(), big.len() - 1);
     }
 
     #[test]

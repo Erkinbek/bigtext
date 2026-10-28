@@ -10,7 +10,7 @@ use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 use bigtext::csv::Dialect;
-use bigtext::encoding::LineEnding;
+use bigtext::encoding::{Encoding, LineEnding};
 use bigtext::file::{self, Source};
 use bigtext::index::LineIndex;
 use bigtext::jobs::{self, human_bytes, CancelToken, Progress};
@@ -37,6 +37,7 @@ pub enum WriteSpec {
     Eol(LineEnding),
     Replace { matcher: Arc<Matcher>, template: Template, range: std::ops::Range<u64> },
     DeleteColumns { dialect: Dialect, cols: Vec<usize> },
+    Transcode { enc: Encoding, bom: bool, eol: Option<LineEnding> },
 }
 
 /// What a write to disk does, for its progress label and the message when it is done.
@@ -46,6 +47,8 @@ pub enum WriteKind {
     Replace,
     /// These columns (sorted) were deleted.
     DeleteColumns(Vec<usize>),
+    /// Saved in another encoding.
+    Transcode(Encoding),
 }
 
 pub struct TempWritten {
@@ -70,10 +73,17 @@ pub struct Finalized {
 
 impl BigTextApp {
     pub(crate) fn save(&mut self, save_as: bool) {
+        self.save_with(save_as, None);
+    }
+
+    /// Save, or Save As when `save_as`; with `encoding` (and whether to write a byte order
+    /// mark) the document is re-encoded, always through the Save As dialog.
+    pub(crate) fn save_with(&mut self, save_as: bool, encoding: Option<(Encoding, bool)>) {
         let Some(d) = self.docs.get(self.active) else { return };
         if !d.is_ready() || d.save_job.is_some() {
             return;
         }
+        let save_as = save_as || encoding.is_some();
         let target = match (&d.path, save_as) {
             // An unpacked copy lives in the temp folder: Save means Save As.
             (Some(p), false) if d.unpacked_from.is_none() => p.clone(),
@@ -89,16 +99,17 @@ impl BigTextApp {
                 }
             }
         };
-        let spec = match d.eol_on_save {
-            Some(le) => WriteSpec::Eol(le),
-            None => WriteSpec::Identity,
+        let spec = match (encoding, d.eol_on_save) {
+            (Some((enc, bom)), eol) => WriteSpec::Transcode { enc, bom, eol },
+            (None, Some(le)) => WriteSpec::Eol(le),
+            (None, None) => WriteSpec::Identity,
         };
         let id = d.id;
         let backup = self.settings.backup_on_save;
         self.start_write(id, target, spec, backup);
     }
 
-    pub(super) fn start_write(&mut self, id: u64, target: PathBuf, spec: WriteSpec, backup: bool) {
+    pub(crate) fn start_write(&mut self, id: u64, target: PathBuf, spec: WriteSpec, backup: bool) {
         let Some(d) = self.docs.iter_mut().find(|d| d.id == id) else { return };
         let same_file = d.path.as_deref().is_some_and(|p| same_path(p, &target));
         let prefix = match spec {
@@ -108,12 +119,13 @@ impl BigTextApp {
         let kind = match &spec {
             WriteSpec::Replace { .. } => WriteKind::Replace,
             WriteSpec::DeleteColumns { cols, .. } => WriteKind::DeleteColumns(cols.clone()),
+            WriteSpec::Transcode { enc, .. } => WriteKind::Transcode(*enc),
             WriteSpec::Identity | WriteSpec::Eol(_) => WriteKind::Save,
         };
         let cancel = CancelToken::new();
         let progress = Progress::new(d.buf.len());
         let label = match kind {
-            WriteKind::Save => "Saving",
+            WriteKind::Save | WriteKind::Transcode(_) => "Saving",
             WriteKind::Replace => "Replacing",
             WriteKind::DeleteColumns(_) => "Deleting columns",
         };
@@ -128,6 +140,7 @@ impl BigTextApp {
                 WriteSpec::Eol(le) => Transform::Eol(*le),
                 WriteSpec::Replace { matcher, template, range } => Transform::Replace { matcher, template, range: range.clone() },
                 WriteSpec::DeleteColumns { dialect, cols } => Transform::DeleteColumns { dialect: *dialect, cols },
+                WriteSpec::Transcode { enc, bom, eol } => Transform::Transcode { enc: *enc, bom: *bom, eol: *eol },
             };
             let r = save::write_temp(&snap, &target, transform, &cancel, &progress);
             drop(snap);
@@ -154,7 +167,7 @@ impl BigTextApp {
         let weak: Weak<Source> = Arc::downgrade(&d.buf.source);
         d.buf = d.buf.with_source(Arc::new(Source::empty()), LineIndex::new(0));
         d.state = DocState::Finalizing(match tw.kind {
-            WriteKind::Save => "Saving…".into(),
+            WriteKind::Save | WriteKind::Transcode(_) => "Saving…".into(),
             WriteKind::Replace => "Replacing on disk…".into(),
             WriteKind::DeleteColumns(_) => "Deleting columns on disk…".into(),
         });
@@ -165,7 +178,10 @@ impl BigTextApp {
                 std::thread::sleep(Duration::from_millis(5));
             }
             let result = match save::finalize(&tw.temp, &tw.target, tw.backup) {
-                Ok(()) => open_worker(&tw.target, None).map_err(|e| (format!("Saved, but reopening failed: {e}"), Err(e))),
+                Ok(()) => open_worker(&tw.target, match tw.kind {
+                    WriteKind::Transcode(enc) => Some(enc),
+                    _ => None,
+                }).map_err(|e| (format!("Saved, but reopening failed: {e}"), Err(e))),
                 Err(e) => {
                     let reopened = match &original {
                         Some(p) => open_worker(p, None),
@@ -207,7 +223,9 @@ impl BigTextApp {
                 let codec = d.buf.codec;
                 let mut det = o.detected;
                 // Keep the user's encoding choice rather than re-sniffing it.
-                det.codec.enc = codec.enc;
+                if !matches!(f.kind, WriteKind::Transcode(_)) {
+                    det.codec.enc = codec.enc;
+                }
                 d.install(o.source, det, if same { f.prefix } else { None }, waker.clone());
                 d.eol_on_save = None;
                 let secs = f.elapsed.as_secs_f64();
@@ -218,6 +236,11 @@ impl BigTextApp {
                         format!("Deleted {} from all {} lines; wrote {} in {secs:.2}s.", super::columns::count_label(cols.len()), f.stats.count, human_bytes(f.stats.bytes_out))
                     }
                     WriteKind::Save => format!("Saved {} in {secs:.2}s.", human_bytes(d.buf.len())),
+                    WriteKind::Transcode(enc) if f.stats.count > 0 => super::i18n::trf(
+                        "Saved as {enc} ({size}). {n} characters do not exist in {enc} and were written as “?”.",
+                        &[("enc", enc.name()), ("size", &human_bytes(f.stats.bytes_out)), ("n", &f.stats.count.to_string())],
+                    ),
+                    WriteKind::Transcode(enc) => super::i18n::trf("Saved as {enc} ({size}) in {secs}s.", &[("enc", enc.name()), ("size", &human_bytes(f.stats.bytes_out)), ("secs", &format!("{secs:.2}"))]),
                 }));
                 if d.close_after_save {
                     close = Some(d.id);

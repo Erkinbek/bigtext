@@ -35,7 +35,10 @@ Single self-contained binary, no runtime dependencies.
   the tab closes, and the session remembers the compressed file.
 - **Encodings**: BOM, UTF-8, UTF-16 LE/BE (with or without BOM), heuristic Windows-1251 /
   Windows-1252 / ISO-8859-1; File → Reopen with encoding. Invalid bytes show as U+FFFD, control
-  characters and NUL as dim placeholders. Binary-looking files open as text with a one-click
+  characters and NUL as dim placeholders. **File → Save with encoding** writes a copy in
+  UTF-8 (with or without BOM), UTF-16 LE/BE, Windows-1251/1252 or ISO-8859-1, streaming
+  (with the line-ending conversion if one is chosen); characters the target cannot represent
+  become `?` and are counted in the message. Binary-looking files open as text with a one-click
   **hex view**.
 - **Line endings**: LF / CRLF / CR / Mixed detection in the status bar, optional conversion on
   save.

@@ -996,6 +996,26 @@ impl SelfTest {
             doc(app).select(0, 0);
             check(dt == Some(60_000), format!("Δt {dt:?}"))
         }));
+        s("save in another encoding (UTF-16 LE with BOM)", Box::new(|app, c| {
+            let target = c.file("time-utf16.log");
+            if c.first() {
+                let id = doc(app).id;
+                let spec = crate::app::ops::WriteSpec::Transcode { enc: bigtext::encoding::Encoding::Utf16Le, bom: true, eol: None };
+                app.start_write(id, target, spec, false);
+                return Step::Wait;
+            }
+            let d = doc(app);
+            if d.save_job.is_some() || !d.is_ready() || !d.path.as_ref().is_some_and(|p| p.ends_with("time-utf16.log")) {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("state {:?} path {:?}", d.state, d.path)) } else { Step::Wait };
+            }
+            let enc = d.buf.codec.enc;
+            let bytes = std::fs::read(&target).unwrap_or_default();
+            let t = text(app);
+            check(
+                enc == bigtext::encoding::Encoding::Utf16Le && bytes.starts_with(&[0xFF, 0xFE, b'2', 0]) && t.starts_with("\u{feff}2024-05-01 10:00:00 start\n"),
+                format!("encoding {enc:?}, first bytes {:?}, text {:?}", &bytes[..bytes.len().min(6)], &t[..t.len().min(30)]),
+            )
+        }));
         s("open a .gz file: unpacked copy, read-only", open_step("packed.log.gz"));
         s("unpacked copy content; closing the tab deletes the copy", Box::new(|app, c| {
             if c.first() {
