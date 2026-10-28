@@ -399,15 +399,20 @@ impl BigTextApp {
             if ui.small_button("×").clicked() {
                 do_close = true;
             }
-            if !self.search.query.pattern.is_empty() {
-                if let Err(e) = self.search.matcher(codec) {
-                    ui.colored_label(ui.visuals().error_fg_color, first_line(&e)).on_hover_text(e);
-                }
-            }
             if !self.search.status.is_empty() {
                 ui.label(&self.search.status);
             }
         });
+        // The engine's message points at the error with a caret, so it is shown in full, in
+        // monospace, while typing.
+        if !self.search.query.pattern.is_empty() {
+            if let Err(e) = self.search.matcher(codec) {
+                let color = ui.visuals().error_fg_color;
+                egui::Frame::new().inner_margin(egui::Margin::symmetric(8, 2)).show(ui, |ui| {
+                    ui.label(RichText::new(regex_error_text(&e)).monospace().color(color));
+                });
+            }
+        }
         if self.search.replace_open {
             ui.horizontal(|ui| {
                 ui.label(tr("Replace"));
@@ -605,8 +610,12 @@ impl BigTextApp {
     }
 }
 
-fn first_line(s: &str) -> String {
-    s.lines().find(|l| !l.trim().is_empty()).unwrap_or(s).chars().take(80).collect()
+/// A regex error without blank lines and the generic first line, its indentation removed
+/// evenly so the caret still points at the right character.
+fn regex_error_text(e: &str) -> String {
+    let lines: Vec<&str> = e.lines().filter(|l| !l.trim().is_empty() && l.trim() != "error parsing regex").collect();
+    let indent = lines.iter().map(|l| l.len() - l.trim_start().len()).min().unwrap_or(0);
+    lines.iter().map(|l| &l[indent.min(l.len())..]).collect::<Vec<_>>().join("\n")
 }
 
 fn snippet_job(buf: &TextBuf, s: u64, e: u64, line: u64, exact: bool, font: &FontId, v: &egui::Visuals, stale: bool) -> LayoutJob {
@@ -650,4 +659,21 @@ fn snippet_job(buf: &TextBuf, s: u64, e: u64, line: u64, exact: bool, font: &Fon
 
 fn skip_partial<'a>(codec: &Codec, b: &'a [u8]) -> &'a [u8] {
     &b[codec.snap_forward(b).min(b.len())..]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regex_error_keeps_the_caret_under_the_error() {
+        let q = Query { pattern: "ab(cd".into(), regex: true, ..Default::default() };
+        let e = Matcher::new(&q, Codec::utf8()).err().unwrap();
+        let t = regex_error_text(&e);
+        let lines: Vec<&str> = t.lines().collect();
+        let pat = lines.iter().position(|l| l.contains("ab(cd")).expect(&t);
+        let caret = lines[pat + 1];
+        assert_eq!(caret.trim(), "^", "{t}");
+        assert_eq!(caret.find('^'), lines[pat].find('('), "{t}");
+    }
 }

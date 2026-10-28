@@ -88,7 +88,8 @@ pub fn build_regex(q: &Query, codec: &Codec) -> Result<Regex, String> {
         .syntax(sc)
         .configure(Regex::config().utf8_empty(true))
         .build(&regex_pattern(q))
-        .map_err(|e| e.to_string())
+        // The syntax error carries the pattern with a caret under the problem.
+        .map_err(|e| e.syntax_error().map(|s| s.to_string()).unwrap_or_else(|| e.to_string()))
 }
 
 impl Matcher {
