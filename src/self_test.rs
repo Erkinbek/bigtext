@@ -65,6 +65,7 @@ pub struct SelfTest {
 const ORIGINAL: &str = "alpha beta gamma\n    indented line\nthird line here\nfoo bar foo baz\nlast line\n";
 const CSV: &str = "id;name;age;city\r\n1;Ann;30;Tashkent\r\n2;\"Bob; Jr\";41;Samarkand\r\n3;Cy;25;Bukhara\r\n";
 const LEVELS_LOG: &str = "2024-05-01 10:00:00 INFO start\n2024-05-01 10:00:01 DEBUG cfg loaded\n2024-05-01 10:00:02 WARN slow disk\n2024-05-01 10:00:03 ERROR db timeout\n2024-05-01 10:00:04 INFO no error here\n2024-05-01 10:00:05 [error] nginx style\n";
+const REQUESTS_LOG: &str = "2024-05-01 10:00:00 INFO request_id=r-1 GET /a\n2024-05-01 10:00:01 INFO request_id=r-2 GET /b\n2024-05-01 10:00:02 INFO request_id=r-1 done\n2024-05-01 10:00:03 ERROR request_id=r-2 failed\njava.lang.IllegalStateException: boom\n\tat x.Y.z(Y.java:1)\n2024-05-01 10:00:05 INFO request_id=r-2 done\n";
 const BRACKETS_JSON: &str = "{\"a\": [1, \"]\", {\"b\": 2}]}\n";
 const OUTLINE_JSON: &str = "{\"name\": \"demo\", \"items\": [{\"id\": 10}, {\"id\": 11}, {\"id\": 12}]}\n";
 const CSV_WITHOUT_NAME_CITY: &str = "id;age\r\n1;30\r\n2;41\r\n3;25\r\n";
@@ -160,6 +161,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("cli.log"), "first 10:00\nsecond 10:00 10:05\nthird\n")?;
     std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
     std::fs::write(dir.join("levels.log"), LEVELS_LOG)?;
+    std::fs::write(dir.join("requests.log"), REQUESTS_LOG)?;
     for n in 1..=3 {
         std::fs::write(dir.join(format!("tab{n}.txt")), format!("tab {n}\n"))?;
     }
@@ -1224,6 +1226,29 @@ impl SelfTest {
             check(ok, got)
         }));
         s("a log without an extension is recognised by its timestamps", open_step("journal"));
+        s("open requests.log", open_step("requests.log"));
+        s("follow an id: chips for the caret line, Ctrl+Shift+I filters to its entries", Box::new(|app, c| {
+            let line = |n: usize| REQUESTS_LOG.split_inclusive('\n').take(n).map(str::len).sum::<usize>() as u64;
+            if c.first() {
+                doc(app).set_caret(line(1) + 5, false);
+                let ids = app.caret_ids();
+                if ids.len() != 1 || ids[0].value != "r-2" || ids[0].key != "request_id" {
+                    return Step::Fail(format!("ids {ids:?}"));
+                }
+                c.key(Key::I, CTRL_SHIFT);
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).filter.as_ref() else { return if c.waited() > Duration::from_secs(5) { Step::Fail("no filter".into()) } else { Step::Wait } };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let ok = g.lines == vec![line(1), line(3), line(4), line(5), line(6)] && g.hits == 3 && g.summary.errors == 1 && r.follow.as_deref() == Some("r-2");
+            let span = g.summary.describe();
+            let got = format!("lines {:?} hits {} summary {span}", g.lines, g.hits);
+            drop(g);
+            check(ok && span.contains("10:00:01") && span.contains("10:00:05"), got)
+        }));
         s("journal: log highlighting and level bar", Box::new(|app, _c| {
             let d = doc(app);
             check(d.effective_lang() == crate::view::highlight::Lang::Log && app.level_bar_visible(), format!("lang {:?}", doc(app).effective_lang()))

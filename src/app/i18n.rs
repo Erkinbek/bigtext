@@ -118,6 +118,7 @@ mod tests {
         "app" / "extras.rs",
         "app" / "filter_panel.rs",
         "app" / "find_in_files.rs",
+        "app" / "follow_id.rs",
         "app" / "fonts.rs",
         "app" / "json_panel.rs",
         "app" / "levels.rs",

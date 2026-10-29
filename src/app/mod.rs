@@ -8,6 +8,7 @@ pub mod export;
 pub mod extras;
 pub mod filter_panel;
 pub mod find_in_files;
+pub mod follow_id;
 pub mod fonts;
 pub mod i18n;
 mod i18n_texts;
@@ -110,6 +111,8 @@ pub struct Settings {
     /// Filter view: lines shown before and after each match, and whole log entries.
     pub filter_context: u32,
     pub filter_entries: bool,
+    /// Keys whose values are ids (None: the defaults).
+    pub id_keys: Option<Vec<String>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -221,6 +224,7 @@ pub struct BigTextApp {
     pub switcher: Option<tabs::TabSwitcher>,
     pub sessions: sessions::SessionsUi,
     pub portable: portable::PortableUi,
+    pub ids: follow_id::IdUi,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -311,7 +315,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false },
+            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None },
             goto: None,
             confirm: None,
             error: None,
@@ -344,6 +348,7 @@ impl BigTextApp {
             switcher: None,
             sessions: sessions::SessionsUi::default(),
             portable: portable::PortableUi::default(),
+            ids: follow_id::IdUi::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -364,10 +369,7 @@ impl BigTextApp {
             app.settings.level_bar = state.level_bar.unwrap_or(true);
             app.settings.saved = std::mem::take(&mut state.saved);
             app.settings.show_ws = state.show_ws.unwrap_or(false);
-            if let Some((n, e)) = state.filter_ctx {
-                app.settings.filter_context = n.min(bigtext::filter::CONTEXT_MAX);
-                app.settings.filter_entries = e;
-            }
+            app.settings.id_keys = state.id_keys.take();
             if let Some((n, e)) = state.filter_ctx {
                 app.settings.filter_context = n.min(bigtext::filter::CONTEXT_MAX);
                 app.settings.filter_entries = e;
@@ -700,6 +702,8 @@ impl BigTextApp {
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {
+        let ids = self.caret_ids();
+        let mut follow = None;
         ui.horizontal(|ui| {
             let Some(d) = self.docs.get(self.active) else { return };
             if d.is_ready() {
@@ -742,6 +746,10 @@ impl BigTextApp {
                 let (lines, lexact) = d.buf.line_count();
                 ui.separator();
                 ui.label(i18n::trf("{n} lines", &[("n", &format!("{}{}", if lexact { "" } else { "~" }, lines))]));
+                if !ids.is_empty() {
+                    ui.separator();
+                    follow = follow_id::id_chips(ui, &ids);
+                }
                 // The colours of a merged log's files.
                 if let Some(t) = &d.merged {
                     ui.separator();
@@ -799,6 +807,9 @@ impl BigTextApp {
                 }
             });
         });
+        if let Some(id) = follow {
+            self.follow_id(&id);
+        }
     }
 
     fn banner(&mut self, ui: &mut egui::Ui) {
@@ -1410,6 +1421,7 @@ impl eframe::App for BigTextApp {
         self.find_in_files_window(&ctx);
         self.switcher_window(&ctx);
         self.portable_window(&ctx);
+        self.id_patterns_window(&ctx);
         self.palette_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);

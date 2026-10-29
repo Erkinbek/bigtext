@@ -150,6 +150,10 @@ Single self-contained binary, no runtime dependencies.
   **File → Merge logs by time…**, several logs in timestamp order with each line labelled in its
   file's colour. Timestamps: ISO 8601 with time zones, Unix seconds / milliseconds, syslog,
   Apache, Java and .NET formats with AM/PM; hovering a Unix time shows it as a date.
+- **Follow an id**: request, trace, span and session ids on the caret's line (`request_id=…`,
+  `"traceId": "…"`, bare UUIDs) show as chips in the status bar; a click or Ctrl+Shift+I filters
+  the file to that id's whole log entries and shows when it was first and last seen, how long it
+  took and how many errors it had. **Search → Id patterns…** edits the keys.
 - **Find in files** (Search, Ctrl+Alt+F): the pattern in every `*.log` (or any pattern) file of a
   folder and its sub-folders, listed as `file:line`; click to open the file there.
 - **Saved searches** (★ in the search bar): a pattern with its options, `!` and column under a
@@ -251,6 +255,7 @@ bigtext-cli convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]  tables (and JSON 
 | Ctrl+Alt+F | Find in files |
 | F8 / Shift+F8 | Next / previous error line (or line of the levels shown) |
 | Ctrl+Shift+H | Time histogram |
+| Ctrl+Shift+I | Follow the id at the caret (or the selected text) |
 | Ctrl+] | Go to the matching bracket or tag |
 | Ctrl+Shift+J | JSON structure |
 | Ctrl+Shift+C | Copy file:line |

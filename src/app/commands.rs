@@ -51,6 +51,8 @@ pub enum Cmd {
     FindInFiles,
     NextLevel,
     PrevLevel,
+    FollowId,
+    IdPatterns,
     GotoLine,
     GotoOffset,
     GotoTime,
@@ -93,7 +95,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 65] = [
+    pub const ALL: [Cmd; 67] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -130,6 +132,8 @@ impl Cmd {
         Cmd::FindInFiles,
         Cmd::NextLevel,
         Cmd::PrevLevel,
+        Cmd::FollowId,
+        Cmd::IdPatterns,
         Cmd::GotoLine,
         Cmd::GotoOffset,
         Cmd::GotoTime,
@@ -226,6 +230,8 @@ impl Cmd {
             Cmd::FindInFiles => "Find in files…",
             Cmd::NextLevel => "Next error line",
             Cmd::PrevLevel => "Previous error line",
+            Cmd::FollowId => "Follow id at caret",
+            Cmd::IdPatterns => "Id patterns…",
             Cmd::GotoLine => "Go to line…",
             Cmd::GotoOffset => "Go to byte offset…",
             Cmd::GotoTime => "Go to time…",
@@ -276,7 +282,7 @@ impl Cmd {
             | Cmd::ClearBookmarks
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
-            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::MatchBracket => "Search",
+            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::MatchBracket => "Search",
             Cmd::Palette | Cmd::Shortcuts | Cmd::ExportSettings | Cmd::ImportSettings | Cmd::Portable | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
@@ -309,6 +315,7 @@ impl Cmd {
             Cmd::FindInFiles => key(CTRL_ALT, Key::F),
             Cmd::NextLevel => key(Modifiers::NONE, Key::F8),
             Cmd::PrevLevel => key(Modifiers::SHIFT, Key::F8),
+            Cmd::FollowId => key(CTRL_SHIFT, Key::I),
             Cmd::GotoLine => key(CTRL, Key::G),
             Cmd::GotoOffset => key(CTRL_SHIFT, Key::G),
             Cmd::GotoTime => key(CTRL_SHIFT, Key::T),
@@ -513,6 +520,8 @@ impl BigTextApp {
             Cmd::FindInFiles => self.open_find_in_files(),
             Cmd::NextLevel => self.next_level(true),
             Cmd::PrevLevel => self.next_level(false),
+            Cmd::FollowId => self.follow_id_at_caret(),
+            Cmd::IdPatterns => self.open_id_patterns(),
             Cmd::GotoLine => self.goto = GotoDialog::new(GotoMode::Line),
             Cmd::GotoOffset => self.goto = GotoDialog::new(GotoMode::Offset),
             Cmd::GotoTime => self.goto = GotoDialog::new(GotoMode::Time),
@@ -730,7 +739,7 @@ impl BigTextApp {
                 run = run.or(self.item(ui, Cmd::ReadOnly));
             });
             ui.menu_button(tr("Search"), |ui| {
-                for c in [Cmd::Find, Cmd::Replace, Cmd::FindNext, Cmd::FindPrev, Cmd::FindAll, Cmd::Filter, Cmd::FindInFiles, Cmd::NextLevel, Cmd::PrevLevel] {
+                for c in [Cmd::Find, Cmd::Replace, Cmd::FindNext, Cmd::FindPrev, Cmd::FindAll, Cmd::Filter, Cmd::FindInFiles, Cmd::NextLevel, Cmd::PrevLevel, Cmd::FollowId, Cmd::IdPatterns] {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();

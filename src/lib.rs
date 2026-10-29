@@ -2,6 +2,7 @@
 //! Nothing in this crate depends on the GUI; `main.rs` hosts the egui front end.
 
 pub mod brackets;
+pub mod correlate;
 pub mod csv;
 pub mod decompress;
 pub mod diff;

@@ -9,10 +9,11 @@ use egui::{Color32, FontId};
 
 use bigtext::filter::{self, FilterSpec, LineKind};
 use bigtext::jobs::{self, human_bytes, CancelToken, Progress, Throttle};
-use bigtext::loglevel::Levels;
+use bigtext::loglevel::{self, Level, Levels};
 use bigtext::search::{Matcher, Query, SearchEnd};
 use bigtext::text::TextBuf;
 
+use super::follow_id::FollowSummary;
 use super::i18n::{tr, trf};
 use super::tasks::{self, TaskOutcome};
 use super::{same_path, BigTextApp, Msg};
@@ -37,6 +38,8 @@ pub struct FilterData {
     pub kinds: Vec<u8>,
     /// Lines with a match (without the context lines).
     pub hits: usize,
+    /// When following an id: its first and last time and errors.
+    pub summary: FollowSummary,
     pub capped: bool,
     pub done: bool,
     pub end: Option<SearchEnd>,
@@ -54,6 +57,8 @@ pub struct FilterResults {
     pub query: Query,
     /// Set when the lines were picked by log level (the level bar), not by the search query.
     pub levels: Option<Levels>,
+    /// Set when following an id (Search → Follow id at caret).
+    pub follow: Option<String>,
     pub spec: FilterSpec,
     pub matcher: Arc<Matcher>,
     pub version: u64,
@@ -102,7 +107,9 @@ impl BigTextApp {
     pub(crate) fn rerun_filter(&mut self) {
         let Some(r) = self.docs.get(self.active).and_then(|d| d.filter.as_ref()) else { return };
         let (query, invert, levels) = (r.query.clone(), r.spec.invert, r.levels);
-        if let Some(lv) = levels {
+        if let Some(id) = r.follow.clone() {
+            self.follow_id(&id);
+        } else if let Some(lv) = levels {
             self.filter_levels(lv);
         } else {
             self.search.query = query;
@@ -113,6 +120,12 @@ impl BigTextApp {
 
     /// Filters the active document with `m` in the background, replacing its previous filter.
     pub(crate) fn run_filter(&mut self, query: Query, m: Arc<Matcher>, spec: FilterSpec, levels: Option<Levels>) {
+        self.run_filter_for(query, m, spec, levels, None);
+    }
+
+    /// [`Self::run_filter`]; with `follow`, the lines are an id's, and the job also notes their
+    /// first and last time and how many are errors.
+    pub(crate) fn run_filter_for(&mut self, query: Query, m: Arc<Matcher>, spec: FilterSpec, levels: Option<Levels>, follow: Option<String>) {
         let Some(d) = self.docs.get_mut(self.active) else { return };
         if let Some(r) = d.filter.take() {
             r.cancel.cancel();
@@ -120,9 +133,11 @@ impl BigTextApp {
         let data = Arc::new(Mutex::new(FilterData::default()));
         let cancel = CancelToken::new();
         let progress = Progress::new(d.buf.len());
+        let errors = follow.as_ref().and_then(|_| loglevel::query(Levels::only(Level::Error))).and_then(|q| Matcher::new(&q, d.buf.codec).ok());
         d.filter = Some(FilterResults {
             query,
             levels,
+            follow,
             spec,
             matcher: m.clone(),
             version: d.version,
@@ -140,12 +155,22 @@ impl BigTextApp {
             let with_kinds = spec.has_context();
             let mut prev_end = None;
             let (mut count, mut hits) = (0usize, 0usize);
+            let mut summary = FollowSummary::default();
             let mut capped = false;
             let mut throttle = Throttle::new(Duration::from_millis(50));
             let end = filter::filter_lines(&snap, &m, spec, &cancel, Some(&progress), |ls, le, kind| {
                 if count >= FILTER_CAP {
                     capped = true;
                     return false;
+                }
+                if let Some(em) = &errors {
+                    if let Some(st) = bigtext::timestamp::stamp_at(&snap, ls) {
+                        summary.first.get_or_insert(st);
+                        summary.last = Some(st);
+                    }
+                    if !bigtext::search::matches_in_view(&snap, em, ls..le.min(ls + 64 * 1024), 1).is_empty() {
+                        summary.errors += 1;
+                    }
                 }
                 batch.push(ls);
                 if with_kinds {
@@ -160,6 +185,7 @@ impl BigTextApp {
                     g.lines.append(&mut batch);
                     g.kinds.append(&mut kinds);
                     g.hits = hits;
+                    g.summary = summary;
                     drop(g);
                     waker();
                 }
@@ -169,6 +195,7 @@ impl BigTextApp {
             g.lines.append(&mut batch);
             g.kinds.append(&mut kinds);
             g.hits = hits;
+            g.summary = summary;
             g.capped = capped;
             g.done = true;
             g.end = Some(end);
@@ -246,18 +273,20 @@ impl BigTextApp {
         let mut rerun = false;
         let mut jump = None;
         let (mut context, mut entries) = (self.settings.filter_context, self.settings.filter_entries);
+        let mut mark = None;
         {
             let Some(d) = self.docs.get_mut(self.active) else { return };
             let Some(r) = &d.filter else { return };
-            let (n, hits, capped, done, elapsed, end) = {
+            let (n, hits, capped, done, elapsed, end, summary) = {
                 let g = r.data.lock().unwrap();
-                (g.lines.len(), g.hits, g.capped, g.done, g.elapsed, g.end)
+                (g.lines.len(), g.hits, g.capped, g.done, g.elapsed, g.end, g.summary)
             };
             let stale = r.version != d.version;
             ui.horizontal(|ui| {
-                match r.levels {
-                    Some(lv) => ui.strong(trf("{n} lines of level {levels}", &[("n", &fmt_count(hits as u64)), ("levels", &lv.names())])),
-                    None => {
+                match (&r.follow, r.levels) {
+                    (Some(id), _) => ui.strong(trf("{n} lines with id “{id}”", &[("n", &fmt_count(hits as u64)), ("id", id)])),
+                    (None, Some(lv)) => ui.strong(trf("{n} lines of level {levels}", &[("n", &fmt_count(hits as u64)), ("levels", &lv.names())])),
+                    (None, None) => {
                         let what = if r.spec.invert { tr("lines without") } else { tr("lines with") };
                         ui.strong(format!("{} {what} “{}”", fmt_count(hits as u64), r.query.pattern))
                     }
@@ -268,7 +297,12 @@ impl BigTextApp {
                 if let Some((_, c)) = r.spec.column {
                     ui.label(trf("in column {n}", &[("n", &(c + 1).to_string())]));
                 }
-                if !r.spec.invert {
+                if r.follow.is_some() {
+                    ui.label(summary.describe());
+                    if ui.small_button(tr("Highlight")).on_hover_text(tr("Highlight this id everywhere (View → Highlights)")).clicked() {
+                        mark = Some(r.query.clone());
+                    }
+                } else if !r.spec.invert {
                     ui.separator();
                     ui.add(egui::DragValue::new(&mut context).range(0..=filter::CONTEXT_MAX).prefix("± "))
                         .on_hover_text(tr("Lines shown before and after each line with a match"));
@@ -351,6 +385,9 @@ impl BigTextApp {
         }
         if rerun {
             self.rerun_filter();
+        }
+        if let Some(q) = mark {
+            self.add_mark(q);
         }
         if export {
             self.export_filter();

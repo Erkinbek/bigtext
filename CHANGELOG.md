@@ -56,6 +56,13 @@ All notable changes to BigText. Each release on
   the same lines (files get `--` between groups); the header counts the matches and the lines
   around them; scrollbar marks stay on the matches. `bigtext-cli filter` and `levels` take
   `-A` / `-B` / `-C N`, `--entries` and `-n` (line numbers, `12:` a match, `13-` context).
+- **Follow an id**: the request, trace, span or session ids on the caret's line
+  (`request_id=r-42`, `"traceId": "4bf9…"`, `[req_id: 7]`, or a bare UUID) appear as chips in
+  the status bar. Click one, or press **Ctrl+Shift+I** (which takes the selected text when there
+  is one), to filter the file to that id with whole log entries; the filter header shows when
+  the id was first and last seen, the time between, and how many of its lines are errors, with
+  a button to highlight the id everywhere. **Search → Id patterns…** edits the list of keys
+  (kept with the settings).
 - **Level bar** above log files: **ERROR**, **WARN**, **INFO** and **DEBUG** buttons list only the
   lines of those levels in the filter view (click several to combine them). **F8** / **Shift+F8**
   jump to the next / previous error line, or to the next line of the levels shown. Upper-case

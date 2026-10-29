@@ -623,4 +623,31 @@ pub static TEXTS: &[[&str; 3]] = &[
         "Не разрывать записи лога: стек вызовов под строкой или первая строка записи над ней",
         "Log yozuvini bo'lmaslik: satr ostidagi stack trace yoki yozuvning yuqoridagi birinchi satri",
     ],
+    // Following an id.
+    ["Follow id at caret", "Следовать за id под курсором", "Kursordagi id bo'yicha kuzatish"],
+    ["Id patterns…", "Шаблоны id…", "Id kalitlari…"],
+    ["Id patterns", "Шаблоны id", "Id kalitlari"],
+    ["first {time}", "первая {time}", "birinchi {time}"],
+    ["last {time}", "последняя {time}", "oxirgi {time}"],
+    ["no errors", "без ошибок", "xatosiz"],
+    ["{n} errors", "ошибок: {n}", "{n} ta xato"],
+    ["{n} lines with id “{id}”", "{n} строк с id «{id}»", "“{id}” id li {n} ta satr"],
+    ["Highlight", "Подсветить", "Ajratish"],
+    ["Highlight this id everywhere (View → Highlights)", "Подсветить этот id везде (Вид → Подсветка)", "Bu id ni hamma joyda ajratish (Ko'rinish → Ajratishlar)"],
+    [
+        "No id on this line (select one, or add its key in Search → Id patterns…)",
+        "В этой строке нет id (выделите его или добавьте ключ в Поиск → Шаблоны id…)",
+        "Bu satrda id yo'q (uni belgilang yoki kalitini Qidiruv → Id kalitlari… ga qo'shing)",
+    ],
+    [
+        "Keys whose values are ids, one per line (key=value, key: value, \"key\": \"value\"). UUIDs count when no key matches.",
+        "Ключи, значения которых — id, по одному в строке (key=value, key: value, \"key\": \"value\"). UUID учитываются, когда ни один ключ не найден.",
+        "Qiymati id bo'lgan kalitlar, har satrda bittadan (key=value, key: value, \"key\": \"value\"). Hech bir kalit topilmasa, UUID lar olinadi.",
+    ],
+    ["Reset to defaults", "Сбросить по умолчанию", "Standartga qaytarish"],
+    [
+        "Follow {id}: show only its lines and log entries (Ctrl+Shift+I)",
+        "Следовать за {id}: показать только его строки и записи лога (Ctrl+Shift+I)",
+        "{id} ni kuzatish: faqat uning satrlari va log yozuvlarini ko'rsatish (Ctrl+Shift+I)",
+    ],
 ];
