@@ -248,6 +248,7 @@ impl BigTextApp {
         let mut jump = None;
         let mut goto = None;
         let mut path_at = false;
+        let mut fields = false;
         {
             let Some(d) = self.docs.get_mut(self.active) else { return };
             let buf = d.buf.snapshot();
@@ -264,9 +265,14 @@ impl BigTextApp {
                     goto = Some(t.path.clone());
                 }
             });
-            if ui.button(tr("Copy path at caret")).clicked() {
-                path_at = true;
-            }
+            ui.horizontal(|ui| {
+                if ui.button(tr("Copy path at caret")).clicked() {
+                    path_at = true;
+                }
+                if !t.xml && ui.button(tr("Fields…")).on_hover_text(tr("Every key path of the records with its types and values")).clicked() {
+                    fields = true;
+                }
+            });
             if !t.status.is_empty() {
                 ui.label(RichText::new(&t.status).small());
             }
@@ -349,6 +355,9 @@ impl BigTextApp {
         }
         if path_at {
             self.json_path_at_caret();
+        }
+        if fields {
+            self.start_json_fields();
         }
     }
 

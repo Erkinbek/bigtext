@@ -19,6 +19,7 @@ pub mod goto;
 pub mod i18n;
 mod i18n_texts;
 pub mod join_tables;
+pub mod json_fields_window;
 pub mod json_panel;
 pub mod json_validate;
 pub mod keynav;
@@ -253,6 +254,7 @@ pub struct BigTextApp {
     pub derive: Option<derive_column::DeriveDialog>,
     pub chart: column_chart::ChartUi,
     pub json_check: json_validate::JsonCheckUi,
+    pub json_fields: json_fields_window::JsonFieldsUi,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -389,6 +391,7 @@ impl BigTextApp {
             derive: None,
             chart: column_chart::ChartUi::default(),
             json_check: json_validate::JsonCheckUi::default(),
+            json_fields: json_fields_window::JsonFieldsUi::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1493,6 +1496,7 @@ impl eframe::App for BigTextApp {
         self.join_window(&ctx);
         self.pivot_window(&ctx);
         self.derive_window(&ctx);
+        self.json_fields_window(&ctx);
         self.palette_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);

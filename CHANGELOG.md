@@ -136,6 +136,12 @@ All notable changes to BigText. Each release on
 
 ### JSON
 
+- **View → JSON fields…** (also **Fields…** in the structure panel): reads a JSON Lines file —
+  or the items of a JSON array — once and lists every key path to three levels
+  (`user.address.city`, array items as `tags[]`) with its types, how often it appears, nulls, the
+  minimum, maximum and mean of numbers, the number of distinct values and examples; filter the
+  list, **Copy as JSON Schema** (a sketch with `required` for keys every record has) or **Export
+  CSV…**. `bigtext-cli stats --fields FILE` prints the same as CSV.
 - **View → Structure (JSON / XML)** (Ctrl+Shift+J) now also outlines XML: the element tree in the
   same side panel, opened element by element (200 at a time), each shown as `item id="42"` with
   its text, click to go there; paths like `/catalog/item[1234]/price` (1-based, as in XPath) jump

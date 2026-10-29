@@ -79,6 +79,7 @@ pub enum Cmd {
     TableView,
     JsonStructure,
     LogFields,
+    JsonFields,
     CheckRows,
     JsonlTable,
     Follow,
@@ -113,7 +114,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 83] = [
+    pub const ALL: [Cmd; 84] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -176,6 +177,7 @@ impl Cmd {
         Cmd::TableView,
         Cmd::JsonStructure,
         Cmd::LogFields,
+        Cmd::JsonFields,
         Cmd::CheckRows,
         Cmd::JsonlTable,
         Cmd::Follow,
@@ -292,6 +294,7 @@ impl Cmd {
             Cmd::TableView => "Table view (CSV / TSV)",
             Cmd::JsonStructure => "Structure (JSON / XML)",
             Cmd::LogFields => "Log fields",
+            Cmd::JsonFields => "JSON fields…",
             Cmd::CheckRows => "Check table rows…",
             Cmd::JsonlTable => "Open JSON Lines as table",
             Cmd::Follow => "Follow (tail) file changes",
@@ -622,6 +625,7 @@ impl BigTextApp {
             }),
             Cmd::JsonStructure => self.toggle_json_panel(),
             Cmd::LogFields => self.fields.open = !self.fields.open,
+            Cmd::JsonFields => self.start_json_fields(),
             Cmd::CheckRows => self.check_rows(),
             Cmd::JsonlTable => self.open_jsonl_table(),
             Cmd::Follow => doc(self).into_iter().for_each(|d| d.follow = !d.follow),
@@ -833,7 +837,7 @@ impl BigTextApp {
                 }
             });
             ui.menu_button(tr("View"), |ui| {
-                for c in [Cmd::WordWrap, Cmd::HexView, Cmd::TableView, Cmd::CheckRows, Cmd::JsonStructure, Cmd::LogFields, Cmd::JsonlTable, Cmd::Follow, Cmd::SplitView] {
+                for c in [Cmd::WordWrap, Cmd::HexView, Cmd::TableView, Cmd::CheckRows, Cmd::JsonStructure, Cmd::JsonFields, Cmd::LogFields, Cmd::JsonlTable, Cmd::Follow, Cmd::SplitView] {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();

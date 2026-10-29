@@ -190,6 +190,8 @@ Single self-contained binary, no runtime dependencies.
   (File menu, `bigtext-cli convert`).
 - **Check JSON** (Search): strict checking of a JSON document or of JSON Lines line by line, with
   the problems listed and clickable (`bigtext-cli validate`).
+- **JSON fields…** (View): every key path of JSON records with types, counts, nulls, number
+  ranges and examples; copy as a JSON Schema sketch (`bigtext-cli stats --fields`).
 - **Tables find their header**: Excel's `sep=;` line, comment and title lines before the table
   are skipped (and kept as they are by sorting and other rewrites), and a table of numbers is
   shown without a header row. The toolbar's **Table…** menu sets the lines to skip and the quote

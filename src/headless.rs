@@ -46,8 +46,10 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         The number of lines with a match.
   split (--size 100MB | --lines 1000000) FILE [--out-dir DIR]
         Parts name.part001.ext, … cut at line breaks; prints their paths.
-  stats FILE...
-        Size, lines, encoding, line endings and the first and last times.
+  stats [--fields] FILE...
+        Size, lines, encoding, line endings and the first and last times;
+        with --fields, the key paths of JSON records (JSON Lines or an array's
+        items) with their types, counts, nulls, numbers and examples, as CSV.
   merge FILE FILE... [-o OUT]
         Log lines of all files in time order, each labelled with its file.
   gaps FILE [--min 30s]
@@ -424,9 +426,17 @@ fn cmd_split(args: &[String], out: &mut dyn Write) -> Res<i32> {
 }
 
 fn cmd_stats(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &[], &[])?;
+    let a = Args::parse(args, &["--fields"], &[])?;
     if a.rest.is_empty() {
         return fail("needs FILE");
+    }
+    if a.flag(&["--fields"]) {
+        for file in &a.rest {
+            let (buf, _) = open(Path::new(file))?;
+            let f = crate::json_fields::field_stats(&buf, &CancelToken::new(), None).map_err(Fail)?.unwrap_or_default();
+            crate::json_fields::fields_to_csv(&f, &mut &mut *out)?;
+        }
+        return Ok(0);
     }
     for file in &a.rest {
         let path = Path::new(file);

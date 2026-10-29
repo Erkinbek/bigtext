@@ -31,6 +31,8 @@ pub enum TaskOutcome {
     Groups(Box<(String, bigtext::csv::Groups)>),
     /// A temporary CSV (converted JSON Lines, filtered rows) to open read-only as a table.
     TempTable(Box<TempTable>),
+    /// The fields of JSON records (document title, fields) for the fields window.
+    JsonFields(Box<(String, bigtext::json_fields::Fields)>),
 }
 
 pub struct TempTable {
@@ -109,6 +111,7 @@ impl BigTextApp {
             TaskOutcome::Merged(m) => self.on_merged(*m),
             TaskOutcome::TempTable(t) => self.open_temp_table(*t),
             TaskOutcome::Groups(g) => self.csv.groups = Some(*g),
+            TaskOutcome::JsonFields(f) => self.json_fields.result = Some(*f),
         }
     }
 

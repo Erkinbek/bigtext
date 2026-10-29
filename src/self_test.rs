@@ -1916,6 +1916,18 @@ impl SelfTest {
             app.json_check.open = false;
             check(mode && lines == 2 && n == 0 && values == 7, format!("lines mode {mode}, {lines} lines, {n} problems, {values} values"))
         }));
+        s("JSON fields: every key with its counts", Box::new(|app, c| {
+            if c.first() {
+                app.json_fields.result = None;
+                app.start_json_fields();
+                return Step::Wait;
+            }
+            let Some((_, f)) = app.json_fields.result.as_ref() else { return if c.waited() > Duration::from_secs(5) { Step::Fail("no fields".into()) } else { Step::Wait } };
+            let got: Vec<(String, u64)> = f.stats.iter().map(|s| (s.path.clone(), s.count)).collect();
+            let records = f.records;
+            app.json_fields.result = None;
+            check(records == 2 && got == [("id".to_string(), 2), ("msg".to_string(), 2), ("user".to_string(), 1)], format!("{records} records, {got:?}"))
+        }));
         s("filter JSON Lines by a field query", Box::new(|app, c| {
             if c.first() {
                 app.search.query.pattern = ".user exists and .id > 1".into();

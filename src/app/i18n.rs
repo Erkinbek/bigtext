@@ -126,6 +126,7 @@ mod tests {
         "app" / "gaps_panel.rs",
         "app" / "fonts.rs",
         "app" / "join_tables.rs",
+        "app" / "json_fields_window.rs",
         "app" / "json_panel.rs",
         "app" / "json_validate.rs",
         "app" / "keynav.rs",
