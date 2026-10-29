@@ -863,4 +863,17 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Field queries need a UTF-8 file", "Запросам по полям нужен файл в UTF-8", "Maydon so'rovlari uchun UTF-8 fayl kerak"],
     ["lines not where", "строк, где не", "shart bajarilmagan satrlar:"],
     ["lines where", "строк, где", "shart bajarilgan satrlar:"],
+    // Converting JSON and logfmt.
+    ["JSON array → JSON Lines…", "Массив JSON → JSON Lines…", "JSON massiv → JSON Lines…"],
+    ["JSON Lines → JSON array…", "JSON Lines → массив JSON…", "JSON Lines → JSON massiv…"],
+    ["Open logfmt as table", "Открыть logfmt как таблицу", "logfmt ni jadval sifatida ochish"],
+    ["Save as JSON Lines", "Сохранить как JSON Lines", "JSON Lines sifatida saqlash"],
+    ["Converting to JSON Lines", "Преобразование в JSON Lines", "JSON Lines ga o'girilmoqda"],
+    ["Wrote the {n} items of {path} to {file}.", "Записано элементов {path}: {n} в {file}.", "{path} ning {n} ta elementi {file} ga yozildi."],
+    ["Save as a JSON array", "Сохранить как массив JSON", "JSON massiv sifatida saqlash"],
+    ["Converting to a JSON array", "Преобразование в массив JSON", "JSON massivga o'girilmoqda"],
+    ["Wrote {n} items to {file}.", "Записано элементов: {n} в {file}.", "{n} ta element {file} ga yozildi."],
+    ["Reading logfmt", "Чтение logfmt", "logfmt o'qilmoqda"],
+    ["{n} lines without key=value pairs were left out.", "Пропущено строк без пар key=value: {n}.", "key=value juftliklari yo'q {n} ta satr tashlab ketildi."],
+    ["No line has key=value pairs (logfmt).", "Ни в одной строке нет пар key=value (logfmt).", "Hech bir satrda key=value juftliklari (logfmt) yo'q."],
 ];

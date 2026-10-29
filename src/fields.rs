@@ -317,6 +317,55 @@ pub fn value_counts(buf: &TextBuf, key: &str, syntax: Syntax, cancel: &CancelTok
     Ok(Some(out))
 }
 
+/// Lines read for the column names of a logfmt table.
+const LOGFMT_SAMPLE: usize = 10_000;
+
+/// logfmt lines as a CSV table: a column per key of the first lines (in the order first seen),
+/// a row per line with two or more pairs. Returns (rows, columns, lines left out), or `None`
+/// when cancelled.
+pub fn logfmt_to_csv<W: Write>(buf: &TextBuf, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<(u64, usize, u64)>> {
+    let q = |s: &str| if s.contains([',', '"', '\n', '\r']) || s.trim() != s { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() };
+    let text = |l: &[u8]| String::from_utf8_lossy(l).into_owned();
+    let mut keys: Vec<String> = Vec::new();
+    let mut r = LineReader::new(buf);
+    for _ in 0..LOGFMT_SAMPLE {
+        let Some((_, line)) = r.next()? else { break };
+        for f in logfmt(&text(line)) {
+            if !keys.contains(&f.key) {
+                keys.push(f.key);
+            }
+        }
+    }
+    if let Some(p) = progress {
+        p.set_total(buf.len());
+    }
+    writeln!(out, "{}", keys.iter().map(|k| q(k)).collect::<Vec<_>>().join(","))?;
+    let (mut rows, mut skipped) = (0u64, 0u64);
+    let mut r = LineReader::new(buf);
+    let mut n = 0u64;
+    while let Some((_, line)) = r.next()? {
+        let f = logfmt(&text(line));
+        let blank = line.trim_ascii().is_empty();
+        n += 1;
+        if n.is_multiple_of(4096) {
+            if cancel.is_cancelled() {
+                return Ok(None);
+            }
+            if let Some(p) = progress {
+                p.set_done(r.taken());
+            }
+        }
+        if f.len() < 2 {
+            skipped += u64::from(!blank);
+            continue;
+        }
+        let row: Vec<String> = keys.iter().map(|k| f.iter().find(|x| &x.key == k).map(|x| q(&x.value)).unwrap_or_default()).collect();
+        writeln!(out, "{}", row.join(","))?;
+        rows += 1;
+    }
+    Ok(Some((rows, keys.len(), skipped)))
+}
+
 /// The counts as CSV: value, lines, percent, first and last time.
 pub fn counts_to_csv<W: Write>(c: &ValueCounts, key: &str, out: &mut W) -> io::Result<()> {
     let q = |s: &str| if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() };
@@ -374,6 +423,21 @@ mod tests {
         assert_eq!(find_value(l, "level", Syntax::Logfmt).as_deref(), Some("info"));
         assert_eq!(find_value(b"a=1 xlevel=2", "level", Syntax::Logfmt), None);
         assert_eq!(find_value(b"msg=\"a b\"", "msg", Syntax::Logfmt).as_deref(), Some("a b"));
+    }
+
+    #[test]
+    fn logfmt_as_a_table() {
+        let data = b"time=1 level=info msg=\"a, b\"\nnot logfmt\ntime=2 level=error user=7\n";
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(data).unwrap();
+        f.flush().unwrap();
+        let src = Arc::new(Source::open(f.path(), OpenMode::Auto).unwrap());
+        let idx = index::build_blocking(&src, Codec::utf8());
+        let mut t = TextBuf::new(src, idx, Codec::utf8());
+        t.blocking = true;
+        let mut out = Vec::new();
+        assert_eq!(logfmt_to_csv(&t, &mut out, &CancelToken::new(), None).unwrap(), Some((2, 4, 1)));
+        assert_eq!(String::from_utf8(out).unwrap(), "time,level,msg,user\n1,info,\"a, b\",\n2,error,,7\n");
     }
 
     #[test]

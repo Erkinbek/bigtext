@@ -168,6 +168,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("sales.csv"), "city,qty\nTashkent,3\nBukhara,5\nTashkent,7\n")?;
     std::fs::write(dir.join("broken.csv"), "id,qty\n1,2\n2\n3,x\n")?;
     std::fs::write(dir.join("cities.csv"), "city,country\nTashkent,UZ\nBukhara,UZ\n")?;
+    std::fs::write(dir.join("app.logfmt"), "level=info msg=ok\nlevel=error msg=\"bad x\" code=7\n")?;
     std::fs::write(dir.join("excel.csv"), "sep=;\n# exported\nname;qty\nann;1\nbob;2\n")?;
     std::fs::write(dir.join("numbers.csv"), "1,2\n3,4\n5,6\n")?;
     std::fs::write(dir.join("outline.json"), OUTLINE_JSON)?;
@@ -1906,6 +1907,31 @@ impl SelfTest {
             c.key(Key::W, CTRL);
             app.fields.open = false;
             Step::Wait
+        }));
+        s("open app.logfmt", open_step("app.logfmt"));
+        s("logfmt lines as a table", Box::new(|app, c| {
+            if c.first() {
+                app.open_logfmt_table();
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let d = doc(app);
+                if !d.title.ends_with("(table)") || !d.is_ready() {
+                    return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("active tab {:?}", d.title)) } else { Step::Wait };
+                }
+                let t = text(app);
+                if t != "level,msg,code\ninfo,ok,\nerror,bad x,7\n" {
+                    return Step::Fail(format!("text {t:?}"));
+                }
+                c.key(Key::W, CTRL);
+                c.mark = 1;
+                return Step::Wait;
+            }
+            if app.docs.iter().any(|d| d.title == "app.logfmt (table)") {
+                return Step::Wait;
+            }
+            c.mark = 0;
+            Step::Next
         }));
         s("open broken.csv", open_step("broken.csv"));
         s("check table rows: a short row and text in a number column", Box::new(|app, c| {

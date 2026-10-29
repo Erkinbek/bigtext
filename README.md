@@ -185,6 +185,8 @@ Single self-contained binary, no runtime dependencies.
   path at the caret; **View → Open JSON Lines as table**.
 - **Field queries over JSON Lines** (the search bar's **{}**): `.level == "error" and
   .duration > 500` in the filter view (`bigtext-cli jsonl -q`).
+- **Convert**: a JSON array to JSON Lines and back, and logfmt (`key=value`) logs to a table
+  (File menu, `bigtext-cli convert`).
 - **Tables find their header**: Excel's `sep=;` line, comment and title lines before the table
   are skipped (and kept as they are by sorting and other rewrites), and a table of numbers is
   shown without a header row. The toolbar's **Table…** menu sets the lines to skip and the quote

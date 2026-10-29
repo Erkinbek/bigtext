@@ -241,6 +241,165 @@ impl<'a> Reader<'a> {
             }
         }
     }
+
+    /// Copies one value to `out` without the white space between its parts (strings as they
+    /// are).
+    fn copy_value(&mut self, out: &mut dyn std::io::Write) -> Result<(), String> {
+        let werr = |e: std::io::Error| e.to_string();
+        self.skip_ws()?;
+        let Some(first) = self.peek()? else { return Err("expected a value at the end of the file".into()) };
+        let (mut depth, mut s, mut esc) = (0u64, false, false);
+        let scalar = !matches!(first, b'{' | b'[' | b'"');
+        loop {
+            if !self.fill()? {
+                return if scalar { Ok(()) } else { Err("unexpected end of the file inside a value".into()) };
+            }
+            let data = &self.data[self.i..];
+            let (mut k, mut seg) = (0, 0);
+            while k < data.len() {
+                let c = data[k];
+                if s {
+                    if esc {
+                        esc = false;
+                    } else if c == b'\\' {
+                        esc = true;
+                    } else if c == b'"' {
+                        s = false;
+                        if depth == 0 {
+                            out.write_all(&data[seg..k + 1]).map_err(werr)?;
+                            self.i += k + 1;
+                            return Ok(());
+                        }
+                    }
+                    k += 1;
+                    continue;
+                }
+                if scalar {
+                    if matches!(c, b',' | b'}' | b']' | b' ' | b'\t' | b'\r' | b'\n') {
+                        out.write_all(&data[seg..k]).map_err(werr)?;
+                        self.i += k;
+                        return Ok(());
+                    }
+                    k += 1;
+                    continue;
+                }
+                match c {
+                    b' ' | b'\t' | b'\r' | b'\n' => {
+                        out.write_all(&data[seg..k]).map_err(werr)?;
+                        seg = k + 1;
+                    }
+                    b'"' => s = true,
+                    b'{' | b'[' => depth += 1,
+                    b'}' | b']' => {
+                        depth = depth.saturating_sub(1);
+                        if depth == 0 {
+                            out.write_all(&data[seg..k + 1]).map_err(werr)?;
+                            self.i += k + 1;
+                            return Ok(());
+                        }
+                    }
+                    _ => {}
+                }
+                k += 1;
+            }
+            out.write_all(&data[seg..]).map_err(werr)?;
+            self.i += k;
+        }
+    }
+}
+
+/// Writes each item of the array at `at` (an offset from [`root`] or [`resolve`]) on a line of
+/// its own, without white space (JSON Lines). Returns the number of items, or `None` when
+/// cancelled.
+pub fn array_to_lines<W: std::io::Write>(buf: &TextBuf, at: u64, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> Result<Option<u64>, String> {
+    if buf.codec.unit() != 1 {
+        return Err("JSON must be UTF-8".into());
+    }
+    if let Some(p) = progress {
+        p.set_total(buf.len());
+    }
+    let mut r = Reader::new(buf, at, cancel);
+    let wrap = |e: String| if e == CANCELLED { None } else { Some(e) };
+    let run = (|| -> Result<u64, String> {
+        r.expect(b'[')?;
+        let mut n = 0u64;
+        r.skip_ws()?;
+        if r.peek()? == Some(b']') {
+            return Ok(0);
+        }
+        loop {
+            r.copy_value(out)?;
+            out.write_all(b"\n").map_err(|e| e.to_string())?;
+            n += 1;
+            if let Some(p) = progress {
+                p.set_done(r.pos());
+            }
+            r.skip_ws()?;
+            match r.peek()? {
+                Some(b',') => r.bump(),
+                Some(b']') => return Ok(n),
+                Some(c) => return Err(format!("expected ',' or ']' at byte {}, found '{}'", r.pos(), c as char)),
+                None => return Err("the array does not end".into()),
+            }
+        }
+    })();
+    match run {
+        Ok(n) => Ok(Some(n)),
+        Err(e) => match wrap(e) {
+            Some(e) => Err(e),
+            None => Ok(None),
+        },
+    }
+}
+
+/// The array to turn into lines: the top-level value when it is an array, otherwise the first
+/// array under a key of the top-level object (`{"events": [...]}`), with its path.
+pub fn find_array(buf: &TextBuf, cancel: &CancelToken) -> Result<(u64, String), String> {
+    let at = root(buf, cancel)?;
+    let mut r = Reader::new(buf, at, cancel);
+    match r.peek()? {
+        Some(b'[') => return Ok((at, "$".into())),
+        Some(b'{') => {}
+        _ => return Err("the file is not a JSON array or object".into()),
+    }
+    let page = children(buf, at, None, 1000, cancel)?;
+    for c in page.items {
+        if c.kind == Kind::Array {
+            let name = c.key.clone().unwrap_or_else(|| c.index.to_string());
+            return Ok((c.start, format!("$.{name}")));
+        }
+    }
+    Err("no array in the file's top-level object".into())
+}
+
+/// Writes JSON Lines as one JSON array, an item per line. Returns the number of items, or
+/// `None` when cancelled.
+pub fn lines_to_array<W: std::io::Write>(buf: &TextBuf, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> std::io::Result<Option<u64>> {
+    if let Some(p) = progress {
+        p.set_total(buf.len());
+    }
+    let mut r = crate::lines::LineReader::new(buf);
+    let mut n = 0u64;
+    out.write_all(b"[")?;
+    while let Some((_, line)) = r.next()? {
+        let line = line.trim_ascii();
+        if line.is_empty() {
+            continue;
+        }
+        out.write_all(if n == 0 { b"\n" } else { b",\n" })?;
+        out.write_all(line)?;
+        n += 1;
+        if n.is_multiple_of(4096) {
+            if cancel.is_cancelled() {
+                return Ok(None);
+            }
+            if let Some(p) = progress {
+                p.set_done(r.taken());
+            }
+        }
+    }
+    out.write_all(if n == 0 { b"]\n" } else { b"\n]\n" })?;
+    Ok(Some(n))
 }
 
 const CANCELLED: &str = "cancelled";
@@ -673,6 +832,48 @@ pub fn jsonl_to_csv<W: Write>(buf: &TextBuf, out: &mut W, cancel: &CancelToken, 
         }
     }
     Ok(Some(stats))
+}
+
+#[cfg(test)]
+mod convert_tests {
+    use super::*;
+    use crate::encoding::Codec;
+    use crate::file::{OpenMode, Source};
+    use std::sync::Arc;
+
+    fn buf(data: &[u8]) -> (tempfile::NamedTempFile, TextBuf) {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(data).unwrap();
+        f.flush().unwrap();
+        let src = Arc::new(Source::open(f.path(), OpenMode::Auto).unwrap());
+        let idx = crate::index::build_blocking(&src, Codec::utf8());
+        let mut t = TextBuf::new(src, idx, Codec::utf8());
+        t.blocking = true;
+        (f, t)
+    }
+
+    #[test]
+    fn array_and_lines() {
+        let (_f, t) = buf(b"[\n  {\"a\": 1, \"s\": \"x y\\\" ]\"},\n  [1, 2],\n  \"text\", 42, null\n]\n");
+        let c = CancelToken::new();
+        let at = root(&t, &c).unwrap();
+        let mut out = Vec::new();
+        assert_eq!(array_to_lines(&t, at, &mut out, &c, None).unwrap(), Some(5));
+        assert_eq!(String::from_utf8(out.clone()).unwrap(), "{\"a\":1,\"s\":\"x y\\\" ]\"}\n[1,2]\n\"text\"\n42\nnull\n");
+        let (_g, lines) = buf(&out);
+        let mut back = Vec::new();
+        assert_eq!(lines_to_array(&lines, &mut back, &c, None).unwrap(), Some(5));
+        assert!(String::from_utf8(back).unwrap().starts_with("[\n{\"a\":1,"));
+        // An array under a key of the top-level object.
+        let (_h, o) = buf(b"{\"meta\": {\"n\": 2}, \"events\": [{\"id\": 1}, {\"id\": 2}]}");
+        let (at, path) = find_array(&o, &c).unwrap();
+        assert_eq!(path, "$.events");
+        let mut out = Vec::new();
+        assert_eq!(array_to_lines(&o, at, &mut out, &c, None).unwrap(), Some(2));
+        assert_eq!(out, b"{\"id\":1}\n{\"id\":2}\n");
+        let (_i, bad) = buf(b"[1 2]");
+        assert!(array_to_lines(&bad, 0, &mut Vec::new(), &c, None).is_err());
+    }
 }
 
 #[cfg(test)]

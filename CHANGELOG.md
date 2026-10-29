@@ -136,6 +136,13 @@ All notable changes to BigText. Each release on
 
 ### JSON
 
+- **File → JSON array → JSON Lines…** writes each item of a JSON array — the top-level one, or
+  the first array of the top-level object (`{"events": [...]}`) — on a line of its own, streamed
+  at any size; **File → JSON Lines → JSON array…** does the opposite, and **File → Open logfmt
+  as table** turns `key=value` log lines into a table (sort, group, filter by conditions,
+  export). `bigtext-cli convert` takes these too: `--to jsonl` for a JSON array (`--path
+  $.events`), `--to json` for JSON Lines, `--to csv` for logfmt, with `--from` when a file is
+  not what it looks like.
 - **Filter JSON Lines by fields**: with the search bar's **{}** switch (or in a JSON file, a
   pattern starting with a dot) the filter takes a field query instead of a pattern —
   `.level == "error" and .duration > 500`, `.user.id = 42`, `.msg contains timeout`,

@@ -82,9 +82,12 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         The values of a JSON Lines or logfmt (key=value) field with how many
         lines have each and their first and last time, as CSV, most frequent
         first. Nested JSON keys: user.id.
-  convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]
+  convert FILE --to json|jsonl|md|xlsx|csv [--from KIND] [--path $.a] [-o OUT]
         A CSV / TSV table as JSON, JSON Lines, Markdown or Excel (.xlsx needs
-        -o), or JSON Lines as CSV. The header and lines before the table
+        -o); JSON Lines as CSV or one JSON array; a JSON array (or the one at
+        --path, or the first under the top object) as JSON Lines; logfmt
+        (key=value) lines as CSV. --from json|jsonl|logfmt|csv when the
+        kind is not what it looks like. The header and lines before the table
         (sep=;, comments) are detected; --header / --no-header, --skip N and
         --quote ' override that (also for validate).
 
@@ -501,18 +504,73 @@ fn cmd_merge(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(0)
 }
 
+/// What a file holds, from its first lines: json, jsonl, logfmt or csv.
+fn sniff_kind(buf: &TextBuf) -> &'static str {
+    let mut r = LineReader::new(buf);
+    let mut lines = Vec::new();
+    while lines.len() < 10 {
+        let Ok(Some((_, l))) = r.next() else { break };
+        let t = l.trim_ascii();
+        if !t.is_empty() {
+            lines.push(t.to_vec());
+        }
+    }
+    match lines.first().and_then(|l| l.first()) {
+        Some(b'[') => "json",
+        Some(b'{') if lines.len() > 1 && lines.iter().all(|l| l.first() == Some(&b'{') && l.last() == Some(&b'}')) => "jsonl",
+        Some(b'{') => "json",
+        _ if lines.iter().filter(|l| crate::fields::line_fields(&String::from_utf8_lossy(l)).is_some_and(|f| f.0 == crate::fields::Syntax::Logfmt)).count() * 2 > lines.len() => "logfmt",
+        _ => "csv",
+    }
+}
+
 fn cmd_convert(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["--no-header", "--header"], &["--to", "-o", "--output", "--skip", "--quote"])?;
+    let a = Args::parse(args, &["--no-header", "--header"], &["--to", "--from", "--path", "-o", "--output", "--skip", "--quote"])?;
     let [file] = &a.rest[..] else { return fail("needs FILE") };
     let to = a.opt(&["--to"]).ok_or_else(|| Fail("give --to json, jsonl, md, xlsx or csv".into()))?.to_ascii_lowercase();
     let target = a.opt(&["-o", "--output"]);
     let (buf, _) = open(Path::new(file))?;
-    if to == "csv" {
-        with_output(target, out, |w| {
-            crate::json::jsonl_to_csv(&buf, &mut &mut *w, &CancelToken::new(), None)?;
-            Ok(())
-        })?;
-        return Ok(0);
+    let cancel = CancelToken::new();
+    let from = match a.opt(&["--from"]) {
+        Some(f) => f.to_ascii_lowercase(),
+        None => sniff_kind(&buf).to_string(),
+    };
+    match (from.as_str(), to.as_str()) {
+        ("json", "jsonl") => {
+            let at = match a.opt(&["--path"]) {
+                Some(p) => crate::json::resolve(&buf, &crate::json::parse_path(p).map_err(Fail)?, &cancel).map_err(Fail)?.0,
+                None => crate::json::find_array(&buf, &cancel).map_err(Fail)?.0,
+            };
+            with_output(target, out, |w| {
+                crate::json::array_to_lines(&buf, at, &mut &mut *w, &cancel, None).map_err(Fail)?;
+                Ok(())
+            })?;
+            return Ok(0);
+        }
+        ("jsonl", "json") => {
+            with_output(target, out, |w| {
+                crate::json::lines_to_array(&buf, &mut &mut *w, &cancel, None)?;
+                Ok(())
+            })?;
+            return Ok(0);
+        }
+        // One object (per line) as a table, too.
+        ("jsonl", "csv") | ("json", "csv") => {
+            with_output(target, out, |w| {
+                crate::json::jsonl_to_csv(&buf, &mut &mut *w, &cancel, None)?;
+                Ok(())
+            })?;
+            return Ok(0);
+        }
+        ("logfmt", "csv") => {
+            with_output(target, out, |w| {
+                crate::fields::logfmt_to_csv(&buf, &mut &mut *w, &cancel, None)?;
+                Ok(())
+            })?;
+            return Ok(0);
+        }
+        ("csv", _) => {}
+        (f, t) => return fail(format!("cannot convert {f} to {t} (json → jsonl, jsonl → json or csv, logfmt → csv, csv → json, jsonl, md, xlsx)")),
     }
     let format = Format::ALL.into_iter().find(|f| f.ext() == to || (to == "markdown" && *f == Format::Markdown)).ok_or_else(|| Fail(format!("unknown format {to}")))?;
     if format == Format::Xlsx && target.is_none() {
@@ -912,6 +970,19 @@ mod tests {
         run_args(&["filter", "-n", "-A", "1", "ERROR", &log, "-o", &o.to_string_lossy()]);
         assert_eq!(std::fs::read_to_string(&o).unwrap(), "2:2024-05-01 10:00:01 ERROR b\n3-\tat x.Y(Y.java:1)\n--\n6:2024-05-01 10:00:04 ERROR e\n");
         assert_eq!(run_args(&["filter", "-A", "x", "ERROR", &log]).0, 2);
+    }
+
+    #[test]
+    fn convert_json_and_logfmt() {
+        let d = tempfile::tempdir().unwrap();
+        let j = file(&d, "a.json", b"{\"n\": 2, \"events\": [ {\"id\": 1}, {\"id\": 2} ]}");
+        assert_eq!(run_args(&["convert", &j, "--to", "jsonl"]).1, "{\"id\":1}\n{\"id\":2}\n");
+        assert_eq!(run_args(&["convert", &j, "--to", "jsonl", "--path", "$.events[1]"]).0, 2);
+        let l = file(&d, "a.jsonl", b"{\"id\":1}\n{\"id\":2}\n");
+        assert_eq!(run_args(&["convert", &l, "--to", "json"]).1, "[\n{\"id\":1},\n{\"id\":2}\n]\n");
+        let f = file(&d, "a.log", b"level=info msg=ok\nlevel=error msg=\"bad x\"\n");
+        assert_eq!(run_args(&["convert", &f, "--to", "csv"]).1, "level,msg\ninfo,ok\nerror,bad x\n");
+        assert_eq!(run_args(&["convert", &f, "--to", "json"]).0, 2);
     }
 
     #[test]

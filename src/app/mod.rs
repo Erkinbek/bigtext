@@ -3,6 +3,7 @@
 pub mod column_chart;
 pub mod columns;
 pub mod commands;
+pub mod convert;
 pub mod csv_tools;
 pub mod derive_column;
 pub mod document;
