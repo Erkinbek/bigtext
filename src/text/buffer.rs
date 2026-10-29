@@ -185,6 +185,13 @@ impl TextBuf {
         if out.len() < n {
             out.resize(n, 0);
         }
+        self.read_into(start, &mut out[..n])?;
+        Some(n)
+    }
+
+    /// Fills `out` with the bytes at `start` (`None` past the end or when data is unavailable).
+    pub fn read_into(&self, start: u64, out: &mut [u8]) -> Option<()> {
+        let end = start.checked_add(out.len() as u64).filter(|&e| e <= self.len())?;
         let mut pos = start;
         let mut w = 0usize;
         while pos < end {
@@ -203,7 +210,7 @@ impl TextBuf {
             w += len;
             pos = e;
         }
-        Some(n)
+        Some(())
     }
 
     /// Calls `f` with consecutive chunks (at most 4 MB each) covering `range`.

@@ -150,6 +150,8 @@ Single self-contained binary, no runtime dependencies.
   0.6 s, ~2 MB of memory). Click a difference to jump there in either file; F7 / Shift+F7 step
   through them; **Compare with tab ▸** picks another open file; Swap A↔B turns it round.
   It can ignore white space, case, timestamps and a mask regex (`bigtext diff -w -i -t --mask`).
+  Unsaved edits are compared too; **Compare with the saved file** shows what you changed
+  before Ctrl+S, **Compare with the backup (.bak)** what the last save changed.
 - **Log tools**: a **level bar** above logs (ERROR / WARN / INFO / DEBUG lines in the filter view,
   F8 / Shift+F8 to the next / previous error); **Search → Time histogram** (Ctrl+Shift+H), a bar
   chart of lines and errors per second, minute, hour or day, click a bar to go there;
@@ -550,8 +552,9 @@ from `bigtext-bench`. Raw reports: `scripts/bench.ps1` reproduces them.
   several rows (the text is unchanged). Deleting columns reads whole records and handles such
   fields correctly.
 - The file comparison compares lines by 64-bit hash + length (a collision would hide a
-  difference; astronomically unlikely) and re-synchronises within 4,096 lines / 16 MB; it
-  compares the files on disk, not unsaved edits.
+  difference; astronomically unlikely) and re-synchronises within 4,096 lines / 16 MB. It
+  reads the whole document again however small the edit, and a comparison does not follow
+  later edits (the panel says when it is outdated).
 
 ## Author
 

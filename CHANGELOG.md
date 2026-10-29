@@ -16,6 +16,11 @@ All notable changes to BigText. Each release on
   two runs of the same job compare by what they did, not when; the header says what is ignored.
   On the command line, `bigtext diff A B [-w] [-i] [-t] [--mask RE]` prints `@@ -12,2 +12,3 @@`
   hunks and exits 0 when the files are the same, 1 when they differ.
+- **File → Compare with the saved file** shows exactly what you changed before Ctrl+S, and
+  **Compare with the backup (.bak)** what the last save changed (with Keep backup on). Every
+  comparison now reads the document as you see it, unsaved edits included, so the scrollbar
+  marks and jumps are right on edited files; the panel says "(outdated, run again)" after
+  further edits, and a save closes a comparison that holds the file open.
 
 ### Command line
 

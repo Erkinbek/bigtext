@@ -316,9 +316,32 @@ impl DiffSwitches {
     }
 }
 
+/// What a document is compared with.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DiffOther {
+    /// Another file.
+    File(PathBuf),
+    /// The document's own file as saved, so its unsaved edits show.
+    Saved,
+    /// The copy saving left beside the file (`name.bak`).
+    Backup(PathBuf),
+}
+
+impl DiffOther {
+    /// The file B is read from, when it is not the document's own.
+    pub fn path(&self) -> Option<&Path> {
+        match self {
+            DiffOther::File(p) | DiffOther::Backup(p) => Some(p),
+            DiffOther::Saved => None,
+        }
+    }
+}
+
 pub struct DiffResults {
     pub doc: u64,
-    pub other_path: PathBuf,
+    pub other: DiffOther,
+    /// The document's version when the comparison started.
+    pub version: u64,
     /// The switches it ran with.
     pub switches: DiffSwitches,
     pub data: Arc<Mutex<DiffData>>,
@@ -410,9 +433,7 @@ impl BigTextApp {
     }
 
     pub(super) fn compare_dialog(&mut self) {
-        let Some(d) = self.docs.get(self.active) else { return };
-        if d.path.is_none() || !d.is_ready() {
-            self.error = Some(tr("Open a saved file first; the comparison reads both files from disk.").into());
+        if !self.docs.get(self.active).is_some_and(|d| d.is_ready()) {
             return;
         }
         if let Some(other) = rfd::FileDialog::new().set_title(tr("Compare with…")).pick_file() {
@@ -442,9 +463,9 @@ impl BigTextApp {
     /// Compares the other way round: the other file becomes the document, this one the file
     /// compared with.
     pub(crate) fn swap_diff(&mut self) {
-        let Some(r) = &self.diff else { return };
-        let other = r.other_path.clone();
-        let Some(a) = self.docs.iter().find(|d| d.id == r.doc).and_then(|d| d.path.clone()) else { return };
+        let Some(DiffResults { other: DiffOther::File(other), doc, .. }) = &self.diff else { return };
+        let other = other.clone();
+        let Some(a) = self.docs.iter().find(|d| d.id == *doc).and_then(|d| d.path.clone()) else { return };
         self.open_path(other);
         if let Some(d) = self.docs.get(self.active) {
             self.diff_pending = Some((d.id, a));
@@ -466,6 +487,11 @@ impl BigTextApp {
     }
 
     pub(crate) fn start_diff(&mut self, other: PathBuf) {
+        self.start_diff_with(DiffOther::File(other));
+    }
+
+    /// Compares the active document, unsaved edits included, with `other`.
+    pub(crate) fn start_diff_with(&mut self, other: DiffOther) {
         let Some(d) = self.docs.get(self.active) else { return };
         if let Some(r) = self.diff.take() {
             r.cancel.cancel();
@@ -478,33 +504,35 @@ impl BigTextApp {
                 return;
             }
         };
-        let a = d.buf.source.clone();
+        let a = d.buf.snapshot();
+        let saved = (other == DiffOther::Saved).then(|| d.buf.source.clone());
         let data = Arc::new(Mutex::new(DiffData::default()));
         let cancel = CancelToken::new();
         let progress = Progress::default();
-        self.diff = Some(DiffResults { doc: d.id, other_path: other.clone(), switches, data: data.clone(), cancel: cancel.clone(), progress: progress.clone() });
-        if d.is_modified() {
-            self.search.status = tr("Comparing the saved file; unsaved edits are not included").into();
-        }
+        self.diff = Some(DiffResults { doc: d.id, other: other.clone(), version: d.version, switches, data: data.clone(), cancel: cancel.clone(), progress: progress.clone() });
         let waker = self.waker.clone();
         jobs::spawn("diff", move || {
             let t = Instant::now();
-            let b = match Source::open(&other, OpenMode::Auto) {
-                Ok(b) => Arc::new(b),
-                Err(e) => {
-                    let mut g = data.lock().unwrap();
-                    g.error = Some(super::friendly_io(&e, &other));
-                    g.done = true;
-                    waker();
-                    return;
-                }
+            let b = match (saved, other.path()) {
+                (Some(s), _) => s,
+                (None, Some(p)) => match Source::open(p, OpenMode::Auto) {
+                    Ok(b) => Arc::new(b),
+                    Err(e) => {
+                        let mut g = data.lock().unwrap();
+                        g.error = Some(super::friendly_io(&e, p));
+                        g.done = true;
+                        waker();
+                        return;
+                    }
+                },
+                (None, None) => return,
             };
             data.lock().unwrap().other = Some(b.clone());
             let mut batch = Vec::new();
             let mut count = 0usize;
             let mut capped = false;
             let mut last_wake = Instant::now();
-            let end = diff::diff_with(&a, &b, &opts, &cancel, Some(&progress), |h| {
+            let end = diff::diff_with(&a, &*b, &opts, &cancel, Some(&progress), |h| {
                 if count >= DIFF_CAP {
                     capped = true;
                     return false;
@@ -564,8 +592,14 @@ impl BigTextApp {
         let (mut swap, mut step) = (false, None);
         let mut switches = self.diff_switches.clone();
         let mut rerun = false;
+        let a_doc = self.docs.iter().find(|d| d.id == r.doc);
+        let outdated = a_doc.is_some_and(|d| d.version != r.version);
         ui.horizontal(|ui| {
-            ui.strong(trf("Compare with {file}", &[("file", &file::display_path(&r.other_path))]));
+            ui.strong(match &r.other {
+                DiffOther::File(p) => trf("Compare with {file}", &[("file", &file::display_path(p))]),
+                DiffOther::Saved => tr("Unsaved edits compared with the saved file").into(),
+                DiffOther::Backup(p) => trf("Compare with the backup {file}", &[("file", &file::display_path(p))]),
+            });
             if let Some(e) = &err {
                 ui.colored_label(ui.visuals().error_fg_color, e);
             } else if !done {
@@ -586,11 +620,14 @@ impl BigTextApp {
             if let Some(what) = r.switches.summary() {
                 ui.weak(trf("ignoring {what}", &[("what", &what)]));
             }
+            if outdated && done {
+                ui.colored_label(ui.visuals().warn_fg_color, tr("(outdated, run again)"));
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button("×").clicked() {
                     close = true;
                 }
-                if ui.small_button(tr("Swap A↔B")).on_hover_text(tr("Compare the other way round: open the other file and compare it with this one")).clicked() {
+                if matches!(r.other, DiffOther::File(_)) && ui.small_button(tr("Swap A↔B")).on_hover_text(tr("Compare the other way round: open the other file and compare it with this one")).clicked() {
                     swap = true;
                 }
                 if ui.small_button("◀").on_hover_text(tr("Previous difference (Shift+F7)")).clicked() {
@@ -609,33 +646,34 @@ impl BigTextApp {
             ui.label(tr("mask"));
             let resp = ui.add(egui::TextEdit::singleline(&mut switches.mask).desired_width(160.0).hint_text("req=[0-9a-f]+").font(egui::TextStyle::Monospace));
             resp.on_hover_text(tr("A regular expression; its matches do not count (ids, durations)"));
-            if switches != r.switches && ui.button(tr("Run again")).clicked() {
+            if (switches != r.switches || outdated) && ui.button(tr("Run again")).clicked() {
                 rerun = true;
             }
         });
-        let a_src = self.docs.iter().find(|d| d.id == r.doc).map(|d| (d.buf.source.clone(), d.buf.codec));
+        let a_buf = a_doc.map(|d| &d.buf);
+        let has_b_file = r.other.path().is_some();
         let data = r.data.clone();
         egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, row_h, n, |ui, range| {
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
             let g = data.lock().unwrap();
             for i in range {
                 let Some(h) = g.hunks.get(i).copied() else { break };
-                let snippet = |src: &Source, off: u64, codec: bigtext::encoding::Codec| -> String {
-                    match src.get(off..(off + 160).min(src.len()), false) {
+                let snippet = |b: Option<&[u8]>, codec: bigtext::encoding::Codec| -> String {
+                    match b {
                         Some(b) => {
-                            let s = codec.decode_lossy(&b);
+                            let s = codec.decode_lossy(b);
                             s.lines().next().unwrap_or("").chars().map(|c| if c.is_control() { '·' } else { c }).collect()
                         }
                         None => "…".into(),
                     }
                 };
-                let (a_text, codec) = match &a_src {
-                    Some((s, c)) if h.a_count > 0 => (snippet(s, h.a_off, *c), *c),
-                    Some((_, c)) => (String::new(), *c),
+                let (a_text, codec) = match a_buf {
+                    Some(buf) if h.a_count > 0 => (snippet(buf.read(h.a_off..h.a_off + 160).as_deref(), buf.codec), buf.codec),
+                    Some(buf) => (String::new(), buf.codec),
                     None => (String::new(), bigtext::encoding::Codec::utf8()),
                 };
                 let b_text = match &other {
-                    Some(s) if h.b_count > 0 => snippet(s, h.b_off, codec),
+                    Some(s) if h.b_count > 0 => snippet(s.get(h.b_off..(h.b_off + 160).min(s.len()), false).as_deref(), codec),
                     _ => String::new(),
                 };
                 ui.horizontal(|ui| {
@@ -643,7 +681,7 @@ impl BigTextApp {
                     if ui.add(egui::Button::new(egui::RichText::new(label).font(font.clone())).frame(false)).on_hover_text(tr("Go to this line in A")).clicked() {
                         jump = Some(h.a_line + 1);
                     }
-                    if ui.small_button("B").on_hover_text(tr("Open the other file at this line")).clicked() {
+                    if has_b_file && ui.small_button("B").on_hover_text(tr("Open the other file at this line")).clicked() {
                         open_other = Some(h.b_line + 1);
                     }
                     // Both sides get half of the remaining width so B stays visible next to a long A line.
@@ -661,14 +699,14 @@ impl BigTextApp {
                 });
             }
         });
-        let (doc_id, other_path) = (r.doc, r.other_path.clone());
+        let (doc_id, other_path) = (r.doc, r.other.path().map(Path::to_path_buf));
         if let Some(line) = jump {
             if let Some(i) = self.docs.iter().position(|d| d.id == doc_id) {
                 self.active = i;
                 self.docs[i].goto_line(line);
             }
         }
-        if let Some(line) = open_other {
+        if let (Some(line), Some(other_path)) = (open_other, other_path) {
             let existing = self.docs.iter().position(|d| d.path.as_deref().is_some_and(|p| super::same_path(p, &other_path)));
             match existing {
                 Some(i) => {
@@ -691,10 +729,10 @@ impl BigTextApp {
         self.diff_switches = switches;
         if rerun {
             if let Some(r) = &self.diff {
-                let (doc, other) = (r.doc, r.other_path.clone());
+                let (doc, other) = (r.doc, r.other.clone());
                 if let Some(i) = self.docs.iter().position(|d| d.id == doc) {
                     self.active = i;
-                    self.start_diff(other);
+                    self.start_diff_with(other);
                 }
             }
         }

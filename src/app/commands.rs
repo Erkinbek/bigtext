@@ -33,6 +33,8 @@ pub enum Cmd {
     SaveSelection,
     SplitFile,
     Compare,
+    CompareSaved,
+    CompareBackup,
     MergeLogs,
     JoinTables,
     CompareJson,
@@ -117,7 +119,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 87] = [
+    pub const ALL: [Cmd; 89] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -134,6 +136,8 @@ impl Cmd {
         Cmd::SaveSelection,
         Cmd::SplitFile,
         Cmd::Compare,
+        Cmd::CompareSaved,
+        Cmd::CompareBackup,
         Cmd::MergeLogs,
         Cmd::JoinTables,
         Cmd::CompareJson,
@@ -254,6 +258,8 @@ impl Cmd {
             Cmd::SaveSelection => "Save selection as…",
             Cmd::SplitFile => "Split file…",
             Cmd::Compare => "Compare with…",
+            Cmd::CompareSaved => "Compare with the saved file",
+            Cmd::CompareBackup => "Compare with the backup (.bak)",
             Cmd::MergeLogs => "Merge logs by time…",
             Cmd::JoinTables => "Join tables…",
             Cmd::CompareJson => "Compare JSON with…",
@@ -332,7 +338,7 @@ impl Cmd {
     /// Menu the command lives in (shown in the palette).
     pub fn group(self) -> &'static str {
         match self {
-            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::MergeLogs | Cmd::JoinTables | Cmd::CompareJson | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable => "File",
+            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::CompareSaved | Cmd::CompareBackup | Cmd::MergeLogs | Cmd::JoinTables | Cmd::CompareJson | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable => "File",
             Cmd::Undo
             | Cmd::Redo
             | Cmd::SelectAll
@@ -561,6 +567,13 @@ impl BigTextApp {
             Cmd::SaveSelection => self.save_selection_as(),
             Cmd::SplitFile => self.open_split(),
             Cmd::Compare => self.compare_dialog(),
+            Cmd::CompareSaved => self.start_diff_with(super::extras::DiffOther::Saved),
+            Cmd::CompareBackup => {
+                if let Some(p) = self.docs.get(self.active).and_then(|d| d.path.as_deref()) {
+                    let bak = bigtext::save::backup_path_for(p);
+                    self.start_diff_with(super::extras::DiffOther::Backup(bak));
+                }
+            }
             Cmd::MergeLogs => self.open_merge(),
             Cmd::JoinTables => self.open_join(),
             Cmd::CompareJson => self.compare_json_dialog(),
@@ -706,6 +719,8 @@ impl BigTextApp {
             Cmd::Undo => d.is_some_and(|d| !d.undo.is_empty()),
             Cmd::NavBack => !self.nav.back.is_empty(),
             Cmd::NextDiff | Cmd::PrevDiff => self.diff.is_some(),
+            Cmd::CompareSaved => d.is_some_and(|d| d.path.is_some() && d.is_ready() && d.is_modified()),
+            Cmd::CompareBackup => d.and_then(|d| d.path.as_deref()).is_some_and(|p| bigtext::save::backup_path_for(p).exists()),
             Cmd::CheckRows => d.is_some_and(|d| d.table),
             Cmd::NavForward => !self.nav.forward.is_empty(),
             Cmd::Redo => d.is_some_and(|d| !d.redo.is_empty()),
@@ -818,7 +833,7 @@ impl BigTextApp {
                     .filter(|(i, d)| *i != self.active && d.is_ready() && !d.temporary)
                     .filter_map(|(_, d)| Some((d.title.clone(), d.path.clone()?)))
                     .collect();
-                let can = self.docs.get(self.active).is_some_and(|d| d.path.is_some() && d.is_ready());
+                let can = self.docs.get(self.active).is_some_and(|d| d.is_ready());
                 ui.add_enabled_ui(can && !others.is_empty(), |ui| {
                     ui.menu_button(tr("Compare with tab"), |ui| {
                         for (title, path) in others {
@@ -829,6 +844,9 @@ impl BigTextApp {
                         }
                     });
                 });
+                for c in [Cmd::CompareSaved, Cmd::CompareBackup] {
+                    run = run.or(self.item(ui, c));
+                }
                 for c in [Cmd::CompareJson, Cmd::MergeLogs, Cmd::JoinTables, Cmd::ArrayToLines, Cmd::LinesToArray, Cmd::LogfmtTable] {
                     run = run.or(self.item(ui, c));
                 }

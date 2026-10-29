@@ -701,6 +701,11 @@ impl BigTextApp {
             return;
         }
         let mut d = self.docs.remove(i);
+        if self.diff.as_ref().is_some_and(|r| r.doc == id) {
+            if let Some(r) = self.diff.take() {
+                r.cancel.cancel();
+            }
+        }
         d.cancel_jobs();
         d.watch_cancel.cancel();
         if let Some(j) = &d.save_job {

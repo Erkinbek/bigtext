@@ -786,7 +786,7 @@ fn cmd_diff(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let (ba, _) = open(Path::new(fa))?;
     let (bb, _) = open(Path::new(fb))?;
     let mut hunks = Vec::new();
-    match crate::diff::diff_with(&ba.source, &bb.source, &opts, &CancelToken::new(), None, |h| {
+    match crate::diff::diff_with(&*ba.source, &*bb.source, &opts, &CancelToken::new(), None, |h| {
         hunks.push(h);
         true
     }) {

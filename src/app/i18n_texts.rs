@@ -942,4 +942,10 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["mask", "маска", "maska"],
     ["A regular expression; its matches do not count (ids, durations)", "Регулярное выражение; его совпадения не учитываются (идентификаторы, длительности)", "Muntazam ifoda; uning mosliklari hisobga olinmaydi (identifikatorlar, davomiyliklar)"],
     ["ignoring {what}", "без учёта: {what}", "hisobga olinmadi: {what}"],
+    // Comparing unsaved edits and backups.
+    ["Compare with the saved file", "Сравнить с сохранённым файлом", "Saqlangan fayl bilan solishtirish"],
+    ["Compare with the backup (.bak)", "Сравнить с резервной копией (.bak)", "Zaxira nusxa (.bak) bilan solishtirish"],
+    ["Unsaved edits compared with the saved file", "Несохранённые правки в сравнении с сохранённым файлом", "Saqlanmagan tahrirlar saqlangan fayl bilan solishtirildi"],
+    ["Compare with the backup {file}", "Сравнение с резервной копией {file}", "{file} zaxira nusxasi bilan solishtirish"],
+    ["(outdated, run again)", "(устарело, запустите снова)", "(eskirgan, qayta ishga tushiring)"],
 ];

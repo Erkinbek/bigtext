@@ -220,6 +220,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let times = |h: u32| (0..200).map(|i| format!("2024-05-01 {h:02}:{:02}:{:02} INFO step {i} req=r{}\n", i / 60, i % 60, i * h)).collect::<String>();
     std::fs::write(dir.join("times-a.log"), times(9))?;
     std::fs::write(dir.join("times-b.log"), times(14))?;
+    std::fs::write(dir.join("cmp-saved.txt"), (0..300).map(|i| format!("entry {i}\n")).collect::<String>())?;
     Ok(())
 }
 
@@ -1047,6 +1048,76 @@ impl SelfTest {
             c.key(Key::F7, if c.mark == 3 { SHIFT } else { NONE });
             c.mark += 1;
             Step::Wait
+        }));
+        s("compare with the saved file shows unsaved edits; after a save, with the .bak", Box::new({
+            let mut backup_was = false;
+            move |app, c| {
+                use crate::app::extras::DiffOther;
+                if c.first() {
+                    app.open_path(c.file("cmp-saved.txt"));
+                    return Step::Wait;
+                }
+                let result = |app: &BigTextApp| {
+                    let r = app.diff.as_ref()?;
+                    let g = r.data.lock().unwrap();
+                    g.done.then(|| (r.other.clone(), g.hunks.iter().map(|h| (h.a_line, h.a_count, h.b_line, h.b_count)).collect::<Vec<_>>()))
+                };
+                let waited = c.waited() > Duration::from_secs(10);
+                match c.mark {
+                    0 => {
+                        if !wait_ready(app) {
+                            return Step::Wait;
+                        }
+                        c.key(Key::Home, CTRL);
+                        c.typed("NEW ");
+                        c.mark = 1;
+                        Step::Wait
+                    }
+                    1 => {
+                        if !doc(app).is_modified() {
+                            return if waited { Step::Fail("typing did not modify the file".into()) } else { Step::Wait };
+                        }
+                        app.start_diff_with(DiffOther::Saved);
+                        c.mark = 2;
+                        Step::Wait
+                    }
+                    2 => match result(app) {
+                        None => Step::Wait,
+                        Some((DiffOther::Saved, h)) if h == vec![(0, 1, 0, 1)] => {
+                            c.mark = 3;
+                            backup_was = app.settings.backup_on_save;
+                            app.settings.backup_on_save = true;
+                            c.key(Key::S, CTRL);
+                            Step::Wait
+                        }
+                        Some(other) => Step::Fail(format!("saved compare: {other:?}")),
+                    },
+                    3 => {
+                        let d = doc(app);
+                        if d.save_job.is_some() || d.is_modified() {
+                            return if waited { Step::Fail("save did not finish".into()) } else { Step::Wait };
+                        }
+                        app.settings.backup_on_save = backup_was;
+                        if app.diff.is_some() {
+                            return Step::Fail("the comparison with the saved file was kept through the save".into());
+                        }
+                        let bak = bigtext::save::backup_path_for(&c.file("cmp-saved.txt"));
+                        if !bak.exists() {
+                            return Step::Fail("no .bak after saving".into());
+                        }
+                        app.start_diff_with(DiffOther::Backup(bak));
+                        c.mark = 4;
+                        Step::Wait
+                    }
+                    _ => match result(app) {
+                        None => Step::Wait,
+                        Some((other, h)) => {
+                            app.diff = None;
+                            check(matches!(other, DiffOther::Backup(_)) && h == vec![(0, 1, 0, 1)], format!("backup compare: {other:?} {h:?}"))
+                        }
+                    },
+                }
+            }
         }));
         s("compare ignoring timestamps and a mask: logs that differ only there are the same", Box::new(|app, c| {
             if c.first() {

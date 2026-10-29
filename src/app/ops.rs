@@ -114,6 +114,17 @@ impl BigTextApp {
     }
 
     pub(crate) fn start_write(&mut self, id: u64, target: PathBuf, spec: WriteSpec, backup: bool) {
+        // A comparison holding the file (or its backup) open would hold up replacing it.
+        let holds = self.diff.as_ref().is_some_and(|r| {
+            let running = !r.data.lock().unwrap().done;
+            (r.doc == id && (running || !matches!(r.other, super::extras::DiffOther::File(_))))
+                || r.other.path().is_some_and(|p| same_path(p, &target))
+        });
+        if holds {
+            if let Some(r) = self.diff.take() {
+                r.cancel.cancel();
+            }
+        }
         let Some(d) = self.docs.iter_mut().find(|d| d.id == id) else { return };
         let same_file = d.path.as_deref().is_some_and(|p| same_path(p, &target));
         let prefix = match spec {

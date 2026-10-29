@@ -14,6 +14,38 @@ use std::ops::Range;
 use crate::encoding::count_byte;
 use crate::file::Source;
 use crate::jobs::{CancelToken, Progress};
+use crate::text::TextBuf;
+
+/// What can be compared: a file, or a document with its unsaved edits.
+pub trait LineSource: Sync {
+    fn len(&self) -> u64;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    /// Fills `out` with the bytes at `off`.
+    fn read_into(&self, off: u64, out: &mut [u8]) -> Option<()>;
+}
+
+impl LineSource for Source {
+    fn len(&self) -> u64 {
+        Source::len(self)
+    }
+
+    fn read_into(&self, off: u64, out: &mut [u8]) -> Option<()> {
+        Source::read_into(self, off, out).ok()
+    }
+}
+
+/// Use a blocking snapshot ([`TextBuf::snapshot`]) on a worker.
+impl LineSource for TextBuf {
+    fn len(&self) -> u64 {
+        TextBuf::len(self)
+    }
+
+    fn read_into(&self, off: u64, out: &mut [u8]) -> Option<()> {
+        TextBuf::read_into(self, off, out)
+    }
+}
 
 const CHUNK: usize = 4 * 1024 * 1024;
 /// Look-ahead per side when re-synchronising.
@@ -144,7 +176,7 @@ impl LineHasher {
 
 /// Sequential reader over a source with a reusable chunk buffer.
 struct Reader<'a> {
-    src: &'a Source,
+    src: &'a dyn LineSource,
     pos: u64,
     line: u64,
     buf: Vec<u8>,
@@ -156,7 +188,7 @@ struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
-    fn new(src: &'a Source, opts: &'a DiffOptions) -> Self {
+    fn new(src: &'a dyn LineSource, opts: &'a DiffOptions) -> Self {
         Reader { src, pos: 0, line: 0, buf: vec![0; CHUNK], buf_start: 0, buf_len: 0, opts, text: Vec::new() }
     }
 
@@ -172,7 +204,7 @@ impl<'a> Reader<'a> {
         }
         if self.pos < self.buf_start || self.pos >= self.buf_start + self.buf_len as u64 {
             let n = ((len - self.pos) as usize).min(CHUNK);
-            self.src.read_into(self.pos, &mut self.buf[..n]).ok()?;
+            self.src.read_into(self.pos, &mut self.buf[..n])?;
             self.buf_start = self.pos;
             self.buf_len = n;
         }
@@ -339,12 +371,12 @@ fn find_anchor(a: &[Line], b: &[Line], a_eof: bool, b_eof: bool) -> Option<(usiz
 
 /// Compares `a` and `b`, calling `on_hunk` for each differing region in order (return false to
 /// stop). Progress is reported in bytes of `a` + `b` consumed.
-pub fn diff(a: &Source, b: &Source, cancel: &CancelToken, progress: Option<&Progress>, on_hunk: impl FnMut(Hunk) -> bool) -> DiffEnd {
+pub fn diff(a: &dyn LineSource, b: &dyn LineSource, cancel: &CancelToken, progress: Option<&Progress>, on_hunk: impl FnMut(Hunk) -> bool) -> DiffEnd {
     diff_with(a, b, &DiffOptions::default(), cancel, progress, on_hunk)
 }
 
 /// [`diff`] where lines that differ only in what `opts` ignores count as the same.
-pub fn diff_with(a: &Source, b: &Source, opts: &DiffOptions, cancel: &CancelToken, progress: Option<&Progress>, mut on_hunk: impl FnMut(Hunk) -> bool) -> DiffEnd {
+pub fn diff_with(a: &dyn LineSource, b: &dyn LineSource, opts: &DiffOptions, cancel: &CancelToken, progress: Option<&Progress>, mut on_hunk: impl FnMut(Hunk) -> bool) -> DiffEnd {
     let mut ra = Reader::new(a, opts);
     let mut rb = Reader::new(b, opts);
     if let Some(p) = progress {
@@ -427,7 +459,7 @@ pub fn diff_with(a: &Source, b: &Source, opts: &DiffOptions, cancel: &CancelToke
 }
 
 /// Convenience for tests and small inputs: all hunks.
-pub fn diff_all(a: &Source, b: &Source) -> Vec<Hunk> {
+pub fn diff_all(a: &dyn LineSource, b: &dyn LineSource) -> Vec<Hunk> {
     let mut v = Vec::new();
     diff(a, b, &CancelToken::new(), None, |h| {
         v.push(h);
@@ -496,6 +528,34 @@ mod tests {
         });
         assert_eq!(n, 0);
         assert!(t.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    #[test]
+    fn edited_document_against_its_file() {
+        use crate::index::LineIndex;
+        use std::sync::Arc;
+        let text = lines(3000);
+        let (_f, s) = src(text.as_bytes());
+        let s = Arc::new(s);
+        let codec = crate::encoding::Codec::utf8();
+        let mut buf = TextBuf::new(s.clone(), LineIndex::new(s.len()), codec);
+        assert!(diff_all(&*s, &buf.snapshot()).is_empty());
+        // Insert a line after line 2000, then change line 9.
+        let at = text.find("line number 2000\n").unwrap() as u64 + 17;
+        buf.replace(at..at, b"new line\n");
+        let at = text.find("line number 9\n").unwrap() as u64;
+        buf.replace(at..at + 13, b"line number nine");
+        let mut v = Vec::new();
+        diff(&buf.snapshot(), &*s, &CancelToken::new(), None, |h| {
+            v.push(h);
+            true
+        });
+        assert_eq!(summary(&v), vec![(9, 1, 9, 1), (2001, 1, 2001, 0)]);
+        assert_eq!(v[0].a_off, at_line(&text, 9));
+    }
+
+    fn at_line(text: &str, n: usize) -> u64 {
+        text.split_inclusive('\n').take(n).map(str::len).sum::<usize>() as u64
     }
 
     #[test]
