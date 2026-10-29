@@ -33,6 +33,8 @@ pub enum TaskOutcome {
     TempTable(Box<TempTable>),
     /// The fields of JSON records (document title, fields) for the fields window.
     JsonFields(Box<(String, bigtext::json_fields::Fields)>),
+    /// Where a patch's hunks go, to apply to the document.
+    Patch(Box<super::extras::PatchDone>),
 }
 
 pub struct TempTable {
@@ -112,6 +114,7 @@ impl BigTextApp {
             TaskOutcome::TempTable(t) => self.open_temp_table(*t),
             TaskOutcome::Groups(g) => self.csv.groups = Some(*g),
             TaskOutcome::JsonFields(f) => self.json_fields.result = Some(*f),
+            TaskOutcome::Patch(p) => self.on_patch_done(*p),
         }
     }
 

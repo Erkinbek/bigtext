@@ -26,6 +26,15 @@ All notable changes to BigText. Each release on
   green with a +, the changed middle of a changed line brighter, and a line where the other side
   has extra lines. The panes keep corresponding lines at the top as you scroll either one; the
   difference list stays below for jumping.
+- **Save as .diff…** in the compare panel writes a unified diff (`diff -u`, 3 lines of context)
+  of files of any size, streamed from both sides, that GNU patch and git apply accept; for the
+  saved file and the backup it records what was changed. **File → Apply patch…** applies a
+  .diff/.patch to the document in one pass as a single undo step: each hunk where it says, or
+  up to 4,096 lines away when it matches one place only; the hunks it cannot place are listed.
+- `bigtext diff A B` now prints a unified diff with context (`-U N`, default 3), `-q` only says
+  whether the files differ, `-o OUT` writes it to a file.
+- Fixed: a comparison where one file's last line lost its line break ("b\n" against "b")
+  reported a difference in the middle of the line.
 
 ### Command line
 

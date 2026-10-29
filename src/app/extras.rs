@@ -10,6 +10,7 @@ use bigtext::jobs::{self, CancelToken, Progress};
 
 use super::document::{Document, Restore};
 use super::i18n::{tr, trf};
+use super::tasks::TaskOutcome;
 use crate::view::text_view::{self, DiffOverlay, ViewEnv};
 use super::BigTextApp;
 
@@ -495,6 +496,16 @@ pub(super) fn show_side_by_side(ui: &mut egui::Ui, a: &mut Document, r: &mut Dif
     }
 }
 
+/// Where a patch's hunks go in a document (from a worker).
+pub struct PatchDone {
+    pub doc: u64,
+    pub version: u64,
+    /// The patch's file name and its number of hunks.
+    pub name: String,
+    pub total: usize,
+    pub planned: bigtext::patch::Planned,
+}
+
 pub struct DiffResults {
     pub doc: u64,
     pub other: DiffOther,
@@ -731,6 +742,162 @@ impl BigTextApp {
         });
     }
 
+    pub(super) fn save_diff_dialog(&mut self) {
+        let Some(r) = &self.diff else { return };
+        let stem = |p: &Path| p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let a = self.docs.iter().find(|d| d.id == r.doc).and_then(|d| d.path.as_deref().map(stem)).unwrap_or_else(|| "a".into());
+        let name = match r.other.path() {
+            Some(p) if !matches!(r.other, DiffOther::Backup(_)) => format!("{a}-vs-{}.diff", stem(p)),
+            _ => format!("{a}.diff"),
+        };
+        if let Some(target) = rfd::FileDialog::new().set_title(tr("Save as .diff…")).set_file_name(name).add_filter("diff", &["diff", "patch"]).save_file() {
+            self.export_diff(target);
+        }
+    }
+
+    /// Writes the comparison as a unified diff to `target`, on a worker: from the document to
+    /// the other file, or for the saved file and the backup, from them to the document (what was
+    /// changed).
+    pub(crate) fn export_diff(&mut self, target: PathBuf) {
+        let Some(r) = &self.diff else { return };
+        let Some(d) = self.docs.iter().find(|d| d.id == r.doc) else { return };
+        let opts = match r.switches.options() {
+            Ok(o) => o,
+            Err(e) => {
+                self.notify(e, None);
+                return;
+            }
+        };
+        let doc = d.buf.snapshot();
+        let doc_name = d.path.as_deref().map(file::display_path).unwrap_or_else(|| d.title.clone());
+        let (other, doc_first) = match &r.other {
+            DiffOther::File(p) => (p.clone(), true),
+            DiffOther::Backup(p) => (p.clone(), false),
+            DiffOther::Saved => match &d.path {
+                Some(p) => (p.clone(), false),
+                None => return,
+            },
+        };
+        let saved = (r.other == DiffOther::Saved).then(|| d.buf.source.clone());
+        self.spawn_task(tr("Saving the diff").into(), move |progress, cancel| {
+            let src = match saved {
+                Some(s) => s,
+                None => match Source::open(&other, OpenMode::Auto) {
+                    Ok(s) => Arc::new(s),
+                    Err(e) => return TaskOutcome::Failed(super::friendly_io(&e, &other)),
+                },
+            };
+            let other_name = file::display_path(&other);
+            let (a, b, a_name, b_name): (&dyn diff::LineSource, &dyn diff::LineSource, &str, &str) =
+                if doc_first { (&doc, &*src, &doc_name, &other_name) } else { (&*src, &doc, &other_name, &doc_name) };
+            let u = bigtext::unified::Unified { a, b, a_name, b_name, opts: &opts, context: 3 };
+            let file_name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            super::tasks::write_via_temp(&target, |w| {
+                let differ = bigtext::unified::write_unified(&u, w, cancel, Some(progress))?;
+                Ok(differ.map(|d| if d { trf("Saved the differences as {file}.", &[("file", &file_name)]) } else { tr("The files are the same; the diff is empty.").into() }))
+            })
+        });
+    }
+
+    pub(crate) fn apply_patch_dialog(&mut self) {
+        if !self.docs.get(self.active).is_some_and(|d| d.is_ready()) {
+            return;
+        }
+        if let Some(p) = rfd::FileDialog::new().set_title(tr("Apply patch…")).add_filter("diff, patch", &["diff", "patch"]).add_filter("*", &["*"]).pick_file() {
+            self.apply_patch_file(p);
+        }
+    }
+
+    /// Applies the unified diff in `patch` to the active document as one undo step: each hunk
+    /// where it says or, found in one place only, a few lines away.
+    pub(crate) fn apply_patch_file(&mut self, patch: PathBuf) {
+        let Some(d) = self.docs.get(self.active) else { return };
+        if !d.editable() {
+            self.notify(tr("The document is read-only").into(), None);
+            return;
+        }
+        let pname = patch.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let text = match std::fs::metadata(&patch) {
+            Ok(m) if m.len() > 512 << 20 => {
+                self.error = Some(trf("{file} is too large for a patch ({size}).", &[("file", &pname), ("size", &jobs::human_bytes(m.len()))]));
+                return;
+            }
+            _ => match std::fs::read(&patch) {
+                Ok(t) => t,
+                Err(e) => {
+                    self.error = Some(super::friendly_io(&e, &patch));
+                    return;
+                }
+            },
+        };
+        let mut files = match bigtext::patch::parse(&text) {
+            Ok(f) => f,
+            Err(e) => {
+                self.error = Some(trf("{file} is not a patch: {error}", &[("file", &pname), ("error", &e)]));
+                return;
+            }
+        };
+        // The file named like the document, or the only one.
+        let name = d.path.as_deref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| d.title.clone());
+        let named = |n: &str| n.replace('\\', "/").rsplit('/').next() == Some(name.as_str());
+        let Some(i) = files.iter().position(|f| named(&f.new_name) || named(&f.old_name)).or((files.len() == 1).then_some(0)) else {
+            self.error = Some(trf("{file} changes {n} files, none of them named {name}.", &[("file", &pname), ("n", &files.len().to_string()), ("name", &name)]));
+            return;
+        };
+        let hunks = files.swap_remove(i).hunks;
+        let eol: &[u8] = match d.line_ending {
+            bigtext::encoding::LineEnding::CrLf => b"\r\n",
+            bigtext::encoding::LineEnding::Cr => b"\r",
+            _ => b"\n",
+        };
+        let eol = eol.to_vec();
+        let snap = d.buf.snapshot();
+        let (doc, version, total) = (d.id, d.version, hunks.len());
+        self.spawn_task(trf("Applying {file}", &[("file", &pname)]), move |progress, cancel| match bigtext::patch::plan(&snap, &hunks, &eol, cancel, Some(progress)) {
+            Some(planned) => TaskOutcome::Patch(Box::new(PatchDone { doc, version, name: pname, total, planned })),
+            None if cancel.is_cancelled() => TaskOutcome::Cancelled,
+            None => TaskOutcome::Failed(tr("Reading the document failed.").into()),
+        });
+    }
+
+    pub(super) fn on_patch_done(&mut self, p: PatchDone) {
+        let Some(d) = self.docs.iter_mut().find(|d| d.id == p.doc) else { return };
+        if d.version != p.version {
+            self.error = Some(tr("The document changed while the patch was being placed; nothing was changed.").into());
+            return;
+        }
+        let planned = p.planned;
+        if let Some(first) = planned.edits.first().map(|e| e.0.start) {
+            let (pieces, add) = d.buf.build_batch(&planned.edits);
+            let (s, _) = d.selection();
+            let swap = d.buf.apply_batch(pieces, &add);
+            d.record(swap, (s, s));
+            d.set_caret(first.min(d.buf.len()), false);
+            d.view.center();
+        }
+        let mut msg = trf("Applied {n} of {total} hunks from {file} (undo with Ctrl+Z).", &[("n", &planned.applied.to_string()), ("total", &p.total.to_string()), ("file", &p.name)]);
+        if planned.moved > 0 {
+            msg.push(' ');
+            msg.push_str(&trf("{n} were found a few lines away.", &[("n", &planned.moved.to_string())]));
+        }
+        if !planned.rejected.is_empty() {
+            let list: Vec<String> = planned
+                .rejected
+                .iter()
+                .take(10)
+                .map(|&(k, line, why)| {
+                    let why = match why {
+                        bigtext::patch::Reject::NotFound => tr("not found"),
+                        bigtext::patch::Reject::Ambiguous => tr("matches more than one place"),
+                    };
+                    trf("#{k} (line {line}): {why}", &[("k", &(k + 1).to_string()), ("line", &line.to_string()), ("why", why)])
+                })
+                .collect();
+            d.banner = Some(super::document::Banner::Info(trf("Patch hunks not applied: {list}", &[("list", &list.join("; "))])));
+        }
+        self.notify(msg, None);
+    }
+
     /// Opens the other file beside the document, or closes it, as View → Compare side by side
     /// asks.
     pub(super) fn sync_side_doc(&mut self) {
@@ -793,6 +960,7 @@ impl BigTextApp {
         let a_doc = self.docs.iter().find(|d| d.id == r.doc);
         let outdated = a_doc.is_some_and(|d| d.version != r.version);
         let mut side = self.side_by_side;
+        let mut save_as = false;
         ui.horizontal(|ui| {
             ui.strong(match &r.other {
                 DiffOther::File(p) => trf("Compare with {file}", &[("file", &file::display_path(p))]),
@@ -827,6 +995,9 @@ impl BigTextApp {
                     close = true;
                 }
                 ui.toggle_value(&mut side, tr("Side by side")).on_hover_text(tr("Show the other file beside this one, scrolling together"));
+                if done && err.is_none() && n > 0 && ui.small_button(tr("Save as .diff…")).on_hover_text(tr("Write the differences as a unified diff (a patch) with 3 lines of context")).clicked() {
+                    save_as = true;
+                }
                 if matches!(r.other, DiffOther::File(_)) && ui.small_button(tr("Swap A↔B")).on_hover_text(tr("Compare the other way round: open the other file and compare it with this one")).clicked() {
                     swap = true;
                 }
@@ -928,6 +1099,9 @@ impl BigTextApp {
         }
         self.diff_switches = switches;
         self.side_by_side = side;
+        if save_as {
+            self.save_diff_dialog();
+        }
         if rerun {
             if let Some(r) = &self.diff {
                 let (doc, other) = (r.doc, r.other.clone());

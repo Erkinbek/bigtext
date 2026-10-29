@@ -155,6 +155,10 @@ Single self-contained binary, no runtime dependencies.
   **View → Compare side by side** shows the other file beside the document: removed lines red
   with −, added green with +, the changed part of a changed line brighter, and the two panes
   scroll together (the pane under the pointer leads).
+  **Save as .diff…** in the compare panel writes a standard unified diff (3 lines of context,
+  streamed, any size); **File → Apply patch…** applies a .diff/.patch to the document as one undo
+  step, finding a hunk up to 4,096 lines away when it matches only one place there and listing
+  the hunks it could not place.
 - **Log tools**: a **level bar** above logs (ERROR / WARN / INFO / DEBUG lines in the filter view,
   F8 / Shift+F8 to the next / previous error); **Search → Time histogram** (Ctrl+Shift+H), a bar
   chart of lines and errors per second, minute, hour or day, click a bar to go there;

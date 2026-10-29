@@ -142,6 +142,13 @@ impl DiffOptions {
     }
 }
 
+/// The hash of a line's bytes (its length mixed in), as comparisons use it.
+pub fn line_hash(b: &[u8]) -> u64 {
+    let mut h = LineHasher::new();
+    h.update(b);
+    h.finish() ^ b.len() as u64
+}
+
 /// Streaming 64-bit hash (FNV-1a over 8-byte words with a final mix).
 #[derive(Clone, Copy)]
 struct LineHasher {
@@ -407,14 +414,19 @@ pub fn diff_with(a: &dyn LineSource, b: &dyn LineSource, opts: &DiffOptions, can
             p.set_done(ra.pos + rb.pos);
         }
         // Fast path: skip identical bytes chunk by chunk, stopping at line starts.
+        let left = (ra.src.len() - ra.pos.min(ra.src.len()), rb.src.len() - rb.pos.min(rb.src.len()));
         let (Some(x), Some(y)) = (ra.peek(), rb.peek()) else { return DiffEnd::Failed };
         if x.is_empty() && y.is_empty() {
             return DiffEnd::Completed;
         }
         let lim = x.len().min(y.len());
         let n = common_prefix(x, y);
-        if n == lim && lim > 0 {
-            let adv = memchr::memrchr(b'\n', &x[..lim]).map(|i| i + 1).unwrap_or(lim);
+        // A same start without a line break where a file ends ("b\n" against "b") is not a
+        // same line.
+        let line_break = memchr::memrchr(b'\n', &x[..lim]);
+        let ends = lim as u64 >= left.0 || lim as u64 >= left.1;
+        if n == lim && lim > 0 && (line_break.is_some() || !ends) {
+            let adv = line_break.map(|i| i + 1).unwrap_or(lim);
             let nl = count_byte(&x[..adv], b'\n');
             ra.advance(adv as u64, nl);
             rb.advance(adv as u64, nl);
@@ -570,6 +582,17 @@ mod tests {
         });
         assert_eq!(summary(&v), vec![(9, 1, 9, 1), (2001, 1, 2001, 0)]);
         assert_eq!(v[0].a_off, at_line(&text, 9));
+    }
+
+    #[test]
+    fn last_line_losing_its_line_break() {
+        let (_a, sa) = src(b"a\nb\n");
+        let (_b, sb) = src(b"a\nb");
+        let h = diff_all(&sa, &sb);
+        assert_eq!(summary(&h), vec![(1, 1, 1, 1)]);
+        assert_eq!((h[0].a_off, h[0].a_end, h[0].b_off, h[0].b_end), (2, 4, 2, 3));
+        let (_c, sc) = src(b"a\nb");
+        assert!(diff_all(&sb, &sc).is_empty());
     }
 
     #[test]

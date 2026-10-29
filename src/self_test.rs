@@ -216,6 +216,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("app.log"), "2026-10-24 10:00:00.000 [ERROR] failed\n2026-10-24 10:00:01.000 [INFO] ok\n")?;
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
+    std::fs::write(dir.join("patch-me.txt"), &base)?;
     std::fs::write(dir.join("diff-b.txt"), base.replace("row 100\n", "row one hundred\n").replace("row 1500\n", "row 1500\nextra line\n"))?;
     let times = |h: u32| (0..200).map(|i| format!("2024-05-01 {h:02}:{:02}:{:02} INFO step {i} req=r{}\n", i / 60, i % 60, i * h)).collect::<String>();
     std::fs::write(dir.join("times-a.log"), times(9))?;
@@ -1078,6 +1079,61 @@ impl SelfTest {
             app.side_by_side = false;
             app.diff = None;
             check(b_top == 1601 && spans == 2, format!("B top line {b_top}, {spans} spans in B"))
+        }));
+        s("save the comparison as a .diff and apply it to a copy: it becomes B", Box::new(|app, c| {
+            if c.first() {
+                let _ = std::fs::remove_file(c.file("a-b.diff"));
+                app.open_path(c.file("diff-a.txt"));
+                app.start_diff(c.file("diff-b.txt"));
+                return Step::Wait;
+            }
+            let waited = c.waited() > Duration::from_secs(10);
+            match c.mark {
+                0 => {
+                    if !app.diff.as_ref().is_some_and(|r| r.data.lock().unwrap().done) {
+                        return if waited { Step::Fail("the comparison did not finish".into()) } else { Step::Wait };
+                    }
+                    app.export_diff(c.file("a-b.diff"));
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    if !c.file("a-b.diff").exists() || !app.tasks.is_empty() {
+                        return if waited { Step::Fail("no .diff written".into()) } else { Step::Wait };
+                    }
+                    app.diff = None;
+                    app.open_path(c.file("patch-me.txt"));
+                    c.mark = 2;
+                    Step::Wait
+                }
+                2 => {
+                    if !wait_ready(app) {
+                        return Step::Wait;
+                    }
+                    app.apply_patch_file(c.file("a-b.diff"));
+                    c.mark = 3;
+                    Step::Wait
+                }
+                3 => {
+                    if !doc(app).is_modified() {
+                        return if waited { Step::Fail("the patch was not applied".into()) } else { Step::Wait };
+                    }
+                    let want = std::fs::read_to_string(c.file("diff-b.txt")).unwrap_or_default();
+                    let got = text(app);
+                    if got != want {
+                        return Step::Fail(format!("patched text differs from B ({} vs {} bytes)", got.len(), want.len()));
+                    }
+                    c.key(Key::Z, CTRL);
+                    c.mark = 4;
+                    Step::Wait
+                }
+                _ => {
+                    if doc(app).is_modified() {
+                        return if waited { Step::Fail("undo did not restore the file".into()) } else { Step::Wait };
+                    }
+                    check(text(app) == std::fs::read_to_string(c.file("diff-a.txt")).unwrap_or_default(), "after undo")
+                }
+            }
         }));
         s("compare with the saved file shows unsaved edits; after a save, with the .bak", Box::new({
             let mut backup_was = false;

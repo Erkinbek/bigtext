@@ -72,11 +72,12 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         Two JSON files compared by structure, whatever the key order and the
         formatting: path: old -> new, path: added, path: removed. Exit code 0
         when they are the same, 1 when they differ.
-  diff A B [-w] [-i] [-t] [--mask RE]
-        The lines that differ, as @@ -12,2 +12,3 @@ hunks of -A and +B lines;
-        -w ignores white space, -i case, -t the timestamp at the start of each
-        line, --mask what RE matches (ids, durations). Exit code 0 when they
-        are the same, 1 when they differ.
+  diff A B [-w] [-i] [-t] [--mask RE] [-U N] [-q] [-o OUT]
+        A unified diff (diff -u) with N lines of context (3), of files of any
+        size; -w ignores white space, -i case, -t the timestamp at the start
+        of each line, --mask what RE matches (ids, durations); -q only says
+        whether they differ. Exit code 0 when they are the same, 1 when they
+        differ.
   derive FILE --name NAME --expr EXPR [-o OUT]
         The table with a new last column computed per row, like {price} * {qty},
         substr({ts}, 0, 10) or if({status} = \"ok\", 1, 0).
@@ -776,49 +777,40 @@ fn cmd_jsondiff(args: &[String], out: &mut dyn Write) -> Res<i32> {
 }
 
 fn cmd_diff(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["-w", "-b", "-i", "-t"], &["--mask"])?;
+    let a = Args::parse(args, &["-w", "-b", "-i", "-t", "-q", "-u"], &["--mask", "-U", "--context", "-o", "--output"])?;
     let [fa, fb] = &a.rest[..] else { return fail("needs A and B") };
     let mask = match a.opt(&["--mask"]) {
         Some(m) => Some(regex_automata::meta::Regex::new(m).map_err(|e| Fail(format!("--mask: {e}")))?),
         None => None,
     };
     let opts = crate::diff::DiffOptions { whitespace: a.flag(&["-w", "-b"]), case: a.flag(&["-i"]), timestamps: a.flag(&["-t"]), mask };
+    let context = match a.opt(&["-U", "--context"]) {
+        Some(n) => n.parse::<u64>().map_err(|_| Fail(format!("-U needs a number of lines, not {n}")))?,
+        None => 3,
+    };
     let (ba, _) = open(Path::new(fa))?;
     let (bb, _) = open(Path::new(fb))?;
-    let mut hunks = Vec::new();
-    match crate::diff::diff_with(&*ba.source, &*bb.source, &opts, &CancelToken::new(), None, |h| {
-        hunks.push(h);
-        true
-    }) {
-        crate::diff::DiffEnd::Completed => {}
-        _ => return fail("could not read the files"),
-    }
-    if hunks.is_empty() {
-        return Ok(0);
-    }
-    writeln!(out, "--- {fa}\n+++ {fb}")?;
-    let (mut ra, mut rb) = (LineReader::new(&ba), LineReader::new(&bb));
-    let (mut na, mut nb) = (0u64, 0u64);
-    // Lines `from..from + count` of a reader at line `at`, each after `mark`.
-    fn lines(r: &mut LineReader, at: &mut u64, from: u64, count: u64, mark: &[u8], out: &mut dyn Write) -> Res<()> {
-        while *at < from + count {
-            let Some((_, l)) = r.next()? else { break };
-            if *at >= from {
-                out.write_all(mark)?;
-                out.write_all(l)?;
-                out.write_all(b"\n")?;
-            }
-            *at += 1;
+    if a.flag(&["-q"]) {
+        let mut differ = false;
+        let end = crate::diff::diff_with(&*ba.source, &*bb.source, &opts, &CancelToken::new(), None, |_| {
+            differ = true;
+            false
+        });
+        if matches!(end, crate::diff::DiffEnd::Failed | crate::diff::DiffEnd::Cancelled) {
+            return fail("could not read the files");
         }
+        if differ {
+            writeln!(out, "Files {fa} and {fb} differ")?;
+        }
+        return Ok(differ as i32);
+    }
+    let u = crate::unified::Unified { a: &*ba.source, b: &*bb.source, a_name: fa, b_name: fb, opts: &opts, context };
+    let mut differ = false;
+    with_output(a.opt(&["-o", "--output"]), out, |w| {
+        differ = crate::unified::write_unified(&u, w, &CancelToken::new(), None)?.unwrap_or(false);
         Ok(())
-    }
-    let start = |line: u64, count: u64| if count == 0 { line } else { line + 1 };
-    for h in hunks {
-        writeln!(out, "@@ -{},{} +{},{} @@", start(h.a_line, h.a_count), h.a_count, start(h.b_line, h.b_count), h.b_count)?;
-        lines(&mut ra, &mut na, h.a_line, h.a_count, b"-", out)?;
-        lines(&mut rb, &mut nb, h.b_line, h.b_count, b"+", out)?;
-    }
-    Ok(1)
+    })?;
+    Ok(differ as i32)
 }
 
 fn cmd_derive(args: &[String], out: &mut dyn Write) -> Res<i32> {
@@ -1166,11 +1158,20 @@ mod tests {
         let b = file(&d, "b.log", b"11:20:01 start req=f9\n11:20:02 working\n11:20:03 end\nextra\n");
         let (code, out, _) = run_args(&["diff", &a, &b]);
         assert_eq!(code, 1);
-        assert!(out.contains("@@ -1,3 +1,4 @@\n-10:00:01 start req=a1\n"), "{out}");
+        assert!(out.starts_with(&format!("--- {a}\n+++ {b}\n@@ -1,3 +1,4 @@\n-10:00:01 start req=a1\n")), "{out}");
         assert!(out.ends_with("+11:20:03 end\n+extra\n"), "{out}");
-        let (code, out, _) = run_args(&["diff", &a, &b, "-t", "-i", "--mask", "req=[0-9a-f]+"]);
-        assert_eq!((code, out.lines().skip(2).collect::<Vec<_>>()), (1, vec!["@@ -3,0 +4,1 @@", "+extra"]));
-        assert_eq!(run_args(&["diff", &a, &a]).0, 0);
+        let masked = ["diff", &a, &b, "-t", "-i", "--mask", "req=[0-9a-f]+"];
+        let (code, out, _) = run_args(&masked);
+        let body = |out: &str| out.lines().skip(2).map(String::from).collect::<Vec<_>>();
+        assert_eq!((code, body(&out)), (1, vec!["@@ -1,3 +1,4 @@".into(), " 10:00:01 start req=a1".into(), " 10:00:02 Working".into(), " 10:00:03 end".into(), "+extra".into()]));
+        let (_, out, _) = run_args(&[&masked[..], &["-U", "0"]].concat());
+        assert_eq!(body(&out), vec!["@@ -3,0 +4,1 @@", "+extra"]);
+        assert_eq!(run_args(&["diff", &a, &b, "-q"]), (1, format!("Files {a} and {b} differ\n"), String::new()));
+        let o = d.path().join("out.diff").to_string_lossy().into_owned();
+        assert_eq!(run_args(&["diff", &a, &b, "-o", &o]).1, "");
+        assert!(std::fs::read_to_string(&o).unwrap().contains("+extra\n"));
+        assert_eq!(run_args(&["diff", &a, &a]), (0, String::new(), String::new()));
+        assert_eq!(run_args(&["diff", &a, &a, "-q"]).0, 0);
         assert_eq!(run_args(&["diff", &a, &b, "--mask", "("]).0, 2);
     }
 
