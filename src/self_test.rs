@@ -217,6 +217,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("patch-me.txt"), &base)?;
+    std::fs::write(dir.join("rot.log"), (0..500).map(|i| format!("old line {i}\n")).collect::<String>())?;
     std::fs::write(dir.join("cmp-a.csv"), "id,name,qty\n1,apple,5\n2,banana,7\n3,cherry,9\n")?;
     std::fs::write(dir.join("cmp-b.csv"), "id,qty,name\n3,9,cherry\n1,6,apple\n4,1,date\n")?;
     let tasks = |h: u32, order: &mut dyn Iterator<Item = u32>| order.map(|i| format!("2024-05-0{} {h:02}:{:02}:{:02} INFO task {i} done\n", h / 10, i / 60, i % 60)).collect::<String>();
@@ -1010,6 +1011,63 @@ impl SelfTest {
             let log = Lang::from_path(doc(app).path.as_deref());
             let json = Lang::from_path(Some(&c.file("data.json")));
             check(log == Lang::Log && json == Lang::Json && app.settings.syntax, format!("log {log:?} json {json:?}"))
+        }));
+        s("follow reads the file in chunks, not mapped", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("rot.log"));
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if !wait_ready(app) {
+                    return Step::Wait;
+                }
+                doc(app).follow = true;
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let d = doc(app);
+            let kind = d.buf.source.kind_name();
+            if kind != "chunked" || d.reloading || !d.is_ready() {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("backing {kind}")) } else { Step::Wait };
+            }
+            check(!d.buf.is_empty() && d.follow, "following")
+        }));
+        s("follow: a log truncated and written again (copytruncate) is followed from its end", Box::new(|app, c| {
+            if c.first() {
+                if let Err(e) = std::fs::write(c.file("rot.log"), "fresh 1\nfresh 2\n") {
+                    return Step::Fail(format!("could not truncate the followed file: {e}"));
+                }
+                return Step::Wait;
+            }
+            let t = text(app);
+            let d = doc(app);
+            if t != "fresh 1\nfresh 2\n" || d.rotations == 0 || d.reloading {
+                return if c.waited() > Duration::from_secs(8) { Step::Fail(format!("rotations {}, text {:?}", doc(app).rotations, t)) } else { Step::Wait };
+            }
+            let d = doc(app);
+            check(d.view.caret == d.buf.len() && matches!(d.banner, Some(crate::app::document::Banner::Rotated(_))), format!("caret {} of {}, banner {:?}", d.view.caret, d.buf.len(), d.banner.is_some()))
+        }));
+        s("follow: a log renamed away and created again is followed in the new file", Box::new(|app, c| {
+            if c.first() {
+                doc(app).banner = None;
+                let r = std::fs::rename(c.file("rot.log"), c.file("rot.log.1")).and_then(|_| std::fs::write(c.file("rot.log"), "new file line\n"));
+                if let Err(e) = r {
+                    return Step::Fail(format!("could not rotate the followed file: {e}"));
+                }
+                return Step::Wait;
+            }
+            let t = text(app);
+            let d = doc(app);
+            let to = match &d.banner {
+                Some(crate::app::document::Banner::Rotated(to)) => to.clone(),
+                _ => None,
+            };
+            if t != "new file line\n" || to.is_none() || d.reloading {
+                return if c.waited() > Duration::from_secs(8) { Step::Fail(format!("text {t:?}, rotated to {to:?}")) } else { Step::Wait };
+            }
+            let named = to.as_deref().and_then(|p| p.file_name()).is_some_and(|n| n == "rot.log.1");
+            d.follow = false;
+            check(named && d.rotations >= 2, format!("rotated to {to:?}, rotations {}", d.rotations))
         }));
         s("compare files (streaming diff)", Box::new(|app, c| {
             if c.first() {

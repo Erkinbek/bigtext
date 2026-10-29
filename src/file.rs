@@ -504,6 +504,68 @@ fn prefers_chunked(path: &Path) -> bool {
 #[link(name = "kernel32")]
 extern "system" {
     fn GetDriveTypeW(root: *const u16) -> u32;
+    fn GetFileInformationByHandle(file: *mut std::ffi::c_void, info: *mut FileInformation) -> i32;
+}
+
+/// BY_HANDLE_FILE_INFORMATION.
+#[cfg(windows)]
+#[repr(C)]
+#[derive(Default)]
+struct FileInformation {
+    attributes: u32,
+    times: [u32; 6],
+    volume_serial: u32,
+    size_high: u32,
+    size_low: u32,
+    links: u32,
+    index_high: u32,
+    index_low: u32,
+}
+
+/// Which file `path` names (volume and file number), to notice when a path comes to name
+/// another file, as when a log is rotated. Unlike the creation time it is not fooled by NTFS
+/// tunnelling. `None` when it cannot be read.
+pub fn file_id(path: &Path) -> Option<(u64, u64)> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let m = std::fs::metadata(path).ok()?;
+        Some((m.dev(), m.ino()))
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        // Opened sharing read, write and delete, so the writer is never in the way.
+        let f = File::open(path).ok()?;
+        let mut info = FileInformation::default();
+        // SAFETY: the handle is open for the call and `info` is a BY_HANDLE_FILE_INFORMATION.
+        let ok = unsafe { GetFileInformationByHandle(f.as_raw_handle(), &mut info) };
+        (ok != 0).then_some((info.volume_serial as u64, ((info.index_high as u64) << 32) | info.index_low as u64))
+    }
+}
+
+/// The file a log was most likely rotated to: a sibling whose name starts like this one's
+/// (`app.log.1`, `app-20261028.log.gz` for `app.log`), changed in the two minutes before
+/// `now`, the newest. A hint for the user, never opened by itself.
+pub fn rotated_sibling(path: &Path, now: std::time::SystemTime) -> Option<PathBuf> {
+    let dir = path.parent()?;
+    let name = path.file_name()?.to_string_lossy().into_owned();
+    let stem = path.file_stem()?.to_string_lossy().into_owned();
+    let since = now - std::time::Duration::from_secs(120);
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .filter(|e| {
+            let n = e.file_name().to_string_lossy().into_owned();
+            n != name && n.starts_with(&stem)
+        })
+        .filter_map(|e| {
+            let m = e.metadata().ok().filter(|m| m.is_file())?;
+            let t = m.modified().ok().filter(|t| *t >= since)?;
+            Some((t, e.path()))
+        })
+        .max_by_key(|x| x.0)
+        .map(|x| x.1)
 }
 
 #[cfg(not(windows))]
@@ -527,6 +589,26 @@ pub fn display_path(path: &Path) -> String {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn file_ids_and_rotated_siblings() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("app.log");
+        std::fs::write(&log, "one\n").unwrap();
+        let first = file_id(&log).expect("an id");
+        assert_eq!(file_id(&log), Some(first));
+        // Rotation by rename: the path now names a new file.
+        std::fs::rename(&log, dir.path().join("app.log.1")).unwrap();
+        std::fs::write(&log, "two\n").unwrap();
+        assert_ne!(file_id(&log), Some(first));
+        assert_eq!(file_id(&dir.path().join("app.log.1")), Some(first));
+        std::fs::write(dir.path().join("other.txt"), "x").unwrap();
+        let old = dir.path().join("app-2020.log");
+        std::fs::write(&old, "old").unwrap();
+        File::options().write(true).open(&old).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600)).unwrap();
+        assert_eq!(rotated_sibling(&log, std::time::SystemTime::now()), Some(dir.path().join("app.log.1")));
+        assert_eq!(file_id(&dir.path().join("missing.log")), None);
+    }
 
     #[test]
     fn mmap_and_chunked_agree() {

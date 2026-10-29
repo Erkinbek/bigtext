@@ -98,7 +98,7 @@ pub enum Msg {
     ReplaceBatch { doc: u64, version: u64, add_len: u64, pieces: Vec<Piece>, add: Vec<u8>, count: usize },
     ReplaceTooMany { doc: u64, version: u64, matcher: Arc<Matcher>, template: Template, range: std::ops::Range<u64> },
     Preview { doc: u64, items: Vec<(u64, String, String)>, lines: Vec<u64> },
-    FileChanged { doc: u64, deleted: bool, grown: bool },
+    FileChanged(Box<FileChange>),
     Update(update::Event),
     ColumnsDeleted(Box<columns::ColumnsDeleted>),
     TaskDone { id: u64, outcome: tasks::TaskOutcome },
@@ -290,11 +290,23 @@ pub fn friendly_io(e: &std::io::Error, path: &Path) -> String {
     }
 }
 
-fn open_worker(path: &Path, forced: Option<Encoding>) -> Result<Opened, String> {
+/// What the watcher saw happen to a document's file.
+pub struct FileChange {
+    pub doc: u64,
+    pub deleted: bool,
+    pub grown: bool,
+    pub shrunk: bool,
+    /// The path names another file now (the log was rotated).
+    pub rotated: bool,
+    /// Where the old content most likely went.
+    pub rotated_to: Option<PathBuf>,
+}
+
+fn open_worker(path: &Path, forced: Option<Encoding>, mode: OpenMode) -> Result<Opened, String> {
     let t = Instant::now();
     let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let path = canonical.as_path();
-    let src = Source::open(path, OpenMode::Auto).map_err(|e| friendly_io(&e, path))?;
+    let src = Source::open(path, mode).map_err(|e| friendly_io(&e, path))?;
     let read_only = std::fs::metadata(path).map(|m| m.permissions().readonly()).unwrap_or(false);
     let n = src.len().min(1 << 20);
     let whole = n == src.len();
@@ -310,9 +322,9 @@ fn open_worker(path: &Path, forced: Option<Encoding>) -> Result<Opened, String> 
 
 /// Opens `path`, unpacking it into a temporary file first when it is compressed.
 fn open_or_unpack(path: &Path, forced: Option<Encoding>, cancel: &CancelToken, progress: &jobs::Progress) -> Result<Opened, String> {
-    let Some(kind) = bigtext::decompress::detect(path) else { return open_worker(path, forced) };
+    let Some(kind) = bigtext::decompress::detect(path) else { return open_worker(path, forced, OpenMode::Auto) };
     match bigtext::decompress::unpack(path, kind, cancel, progress) {
-        Ok(Some(temp)) => match open_worker(&temp, forced) {
+        Ok(Some(temp)) => match open_worker(&temp, forced, OpenMode::Auto) {
             Ok(mut o) => {
                 o.unpacked = Some(path.to_path_buf());
                 Ok(o)
@@ -579,6 +591,7 @@ impl BigTextApp {
                     let tx = self.tx.clone();
                     if let Some(d) = self.doc_mut(doc) {
                         d.unpacking = None;
+                        d.reloading = false;
                         match result {
                             Ok(o) => {
                                 d.open_elapsed = Some(o.elapsed);
@@ -594,7 +607,10 @@ impl BigTextApp {
                                     d.temporary = true;
                                 }
                                 let prefix = d.reload_prefix.take();
-                                let follow_end = d.follow && prefix.is_some();
+                                let follow_end = d.follow && (prefix.is_some() || std::mem::take(&mut d.reload_to_end));
+                                if let Some(b) = d.banner_after_reload.take() {
+                                    d.banner = Some(b);
+                                }
                                 d.install(o.source, o.detected, prefix, waker.clone());
                                 if follow_end {
                                     let len = d.buf.len();
@@ -644,13 +660,20 @@ impl BigTextApp {
                 Msg::ReplaceBatch { doc, version, add_len, pieces, add, count } => self.on_replace_batch(doc, version, add_len, pieces, add, count),
                 Msg::ReplaceTooMany { doc, version, matcher, template, range } => self.on_replace_too_many(doc, version, matcher, template, range),
                 Msg::Preview { doc, items, lines } => self.preview = Some((doc, items, lines)),
-                Msg::FileChanged { doc, deleted, grown } => {
+                Msg::FileChanged(c) => {
                     let (tx, waker) = (self.tx.clone(), self.waker.clone());
-                    if let Some(d) = self.doc_mut(doc) {
-                        if d.follow && grown && !deleted && !d.is_modified() && d.save_job.is_none() {
+                    if let Some(d) = self.doc_mut(c.doc) {
+                        let quiet = !d.is_modified() && d.save_job.is_none() && !d.temporary;
+                        if d.follow && quiet && !c.deleted && (c.shrunk || c.rotated) {
+                            // Rotated (renamed away, or copied and truncated): follow the new file.
+                            d.rotations += 1;
+                            d.reload_to_end = true;
+                            d.banner_after_reload = Some(Banner::Rotated(c.rotated_to.clone()));
+                            reload(d, &tx, &waker, false);
+                        } else if d.follow && c.grown && !c.deleted && !d.is_modified() && d.save_job.is_none() {
                             reload(d, &tx, &waker, true);
                         } else if d.is_ready() {
-                            d.banner = Some(Banner::ChangedOnDisk { deleted, grown });
+                            d.banner = Some(Banner::ChangedOnDisk { deleted: c.deleted, grown: c.grown });
                         }
                     }
                 }
@@ -847,7 +870,9 @@ impl BigTextApp {
                     ui.separator();
                 }
                 if d.follow {
-                    ui.label(RichText::new(i18n::tr("FOLLOW")).color(Color32::from_rgb(90, 180, 90)));
+                    let label = if d.rotations > 0 { format!("{} ×{}", i18n::tr("FOLLOW"), d.rotations + 1) } else { i18n::tr("FOLLOW").to_string() };
+                    ui.label(RichText::new(label).color(Color32::from_rgb(90, 180, 90)))
+                        .on_hover_text(i18n::trf("Following the file; it was rotated {n} times so far", &[("n", &d.rotations.to_string())]));
                     ui.separator();
                 }
                 if d.table && !d.hex {
@@ -895,6 +920,7 @@ impl BigTextApp {
             d.banner = None;
         }
         let Some(b) = d.banner.clone() else { return };
+        let mut open_rotated: Option<PathBuf> = None;
         egui::Frame::new().fill(ui.visuals().faint_bg_color).inner_margin(6.0).show(ui, |ui| {
             ui.horizontal(|ui| {
                 match &b {
@@ -925,6 +951,15 @@ impl BigTextApp {
                             return;
                         }
                     }
+                    Banner::Rotated(to) => {
+                        ui.label(i18n::tr("The log was rotated; following the new file."));
+                        if let Some(p) = to {
+                            let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                            if ui.button(i18n::trf("Open {file}", &[("file", &name)])).on_hover_text(i18n::tr("The file the earlier lines most likely went to")).clicked() {
+                                open_rotated = Some(p.clone());
+                            }
+                        }
+                    }
                     Banner::Info(s) => {
                         ui.label(s);
                     }
@@ -937,6 +972,9 @@ impl BigTextApp {
                 }
             });
         });
+        if let Some(p) = open_rotated {
+            self.open_path(p);
+        }
     }
 
     fn dialogs(&mut self, ctx: &egui::Context) {
@@ -1242,7 +1280,11 @@ pub(super) fn watch(d: &mut Document, tx: Sender<Msg>, waker: Waker) {
     let (len0, mtime0) = (d.buf.source.len(), d.buf.source.modified());
     let id = d.id;
     jobs::spawn("watch", move || {
-        let mut last: Option<(bool, u64, Option<std::time::SystemTime>)> = None;
+        let id0 = bigtext::file::file_id(&path);
+        let mut last = None;
+        // A path that vanishes counts as deleted after two looks (a rotation renames it away
+        // and creates it again in between); it is still watched for coming back.
+        let mut missing = 0;
         while !cancel.is_cancelled() {
             for _ in 0..10 {
                 std::thread::sleep(Duration::from_millis(100));
@@ -1250,18 +1292,42 @@ pub(super) fn watch(d: &mut Document, tx: Sender<Msg>, waker: Waker) {
                     return;
                 }
             }
-            let state = match std::fs::metadata(&path) {
-                Ok(m) => (false, m.len(), m.modified().ok()),
-                Err(_) => (true, 0, None),
+            let (len, mtime) = match std::fs::metadata(&path) {
+                Ok(m) => {
+                    missing = 0;
+                    (m.len(), m.modified().ok())
+                }
+                Err(_) => {
+                    missing += 1;
+                    if missing < 2 {
+                        continue;
+                    }
+                    (0, None)
+                }
             };
-            let changed = state.0 || state.1 != len0 || state.2 != mtime0;
+            let deleted = missing >= 2;
+            let file = if deleted { None } else { bigtext::file::file_id(&path) };
+            let rotated = matches!((id0, file), (Some(a), Some(b)) if a != b);
+            let shrunk = !deleted && len < len0;
+            let changed = deleted || rotated || len != len0 || mtime != mtime0;
+            let state = (deleted, rotated, len, mtime);
             if changed && last != Some(state) {
                 last = Some(state);
-                let _ = tx.send(Msg::FileChanged { doc: id, deleted: state.0, grown: state.1 > len0 });
+                let rotated_to = if rotated || shrunk { bigtext::file::rotated_sibling(&path, std::time::SystemTime::now()) } else { None };
+                let c = FileChange { doc: id, deleted, grown: !deleted && !rotated && len > len0, shrunk, rotated, rotated_to };
+                let _ = tx.send(Msg::FileChanged(Box::new(c)));
                 waker();
             }
         }
     });
+}
+
+/// Following reads a file in chunks rather than mapped: the writer can then truncate it
+/// (copytruncate rotation) on Windows, and a shrinking file cannot fault the process on Unix.
+pub(super) fn follow_chunked(d: &mut Document, tx: &Sender<Msg>, waker: &Waker) {
+    if d.follow && d.is_ready() && d.buf.source.is_mmap() && !d.reloading && !d.temporary && !d.is_modified() && d.save_job.is_none() {
+        reload(d, tx, waker, true);
+    }
 }
 
 /// Reopens the document from disk. With `append`, the file is assumed to have only grown, so
@@ -1273,8 +1339,10 @@ pub(super) fn reload(d: &mut Document, tx: &Sender<Msg>, waker: &Waker, append: 
     let id = d.id;
     let tx = tx.clone();
     let waker = waker.clone();
+    let mode = if d.follow { OpenMode::Chunked } else { OpenMode::Auto };
+    d.reloading = true;
     jobs::spawn("reload", move || {
-        let result = open_worker(&path, Some(enc));
+        let result = open_worker(&path, Some(enc), mode);
         let _ = tx.send(Msg::Opened { doc: id, result });
         waker();
     });
@@ -1393,6 +1461,7 @@ impl eframe::App for BigTextApp {
         for d in &mut self.docs {
             d.tick();
             d.refine_goto();
+            follow_chunked(d, &self.tx, &self.waker);
         }
         if let Some(s) = self.diff.as_mut().and_then(|r| r.side.as_mut()) {
             s.doc.tick();

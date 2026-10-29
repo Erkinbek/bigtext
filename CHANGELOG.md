@@ -48,6 +48,16 @@ All notable changes to BigText. Each release on
 - Fixed: a comparison where one file's last line lost its line break ("b\n" against "b")
   reported a difference in the middle of the line.
 
+### Follow
+
+- **Follow mode survives log rotation**, like `tail -F`: when the followed file is truncated and
+  written again (copytruncate) or renamed away and created again, BigText reopens it and goes on
+  from its end, with a banner offering to open the rotated file (`app.log.1`) and FOLLOW ×n in
+  the status bar. The file is told apart by its identity (volume and file number), not its
+  creation time, and a path that vanishes for a moment is not taken as deleted.
+- A followed file is read in chunks instead of mapped, so the writer can truncate it on Windows
+  and a shrinking file cannot crash BigText with SIGBUS on Linux and macOS.
+
 ### Command line
 
 - **Script commands without a window**, in the new console program **`bigtext-cli`** (also

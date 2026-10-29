@@ -200,10 +200,10 @@ impl BigTextApp {
                 Ok(()) => open_worker(&tw.target, match tw.kind {
                     WriteKind::Transcode(enc) => Some(enc),
                     _ => None,
-                }).map_err(|e| (trf("Saved, but reopening failed: {e}", &[("e", &e)]), Err(e))),
+                }, bigtext::file::OpenMode::Auto).map_err(|e| (trf("Saved, but reopening failed: {e}", &[("e", &e)]), Err(e))),
                 Err(e) => {
                     let reopened = match &original {
-                        Some(p) => open_worker(p, None),
+                        Some(p) => open_worker(p, None, bigtext::file::OpenMode::Auto),
                         None => Err("no original file".into()),
                     };
                     Err((e, reopened))

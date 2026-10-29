@@ -51,6 +51,8 @@ pub enum DocState {
 pub enum Banner {
     Binary,
     ChangedOnDisk { deleted: bool, grown: bool },
+    /// Following went on in a new file after the log was rotated (to this file, when known).
+    Rotated(Option<std::path::PathBuf>),
     Info(String),
     Error(String),
 }
@@ -166,6 +168,14 @@ pub struct Document {
     pub save_job: Option<super::ops::SaveJob>,
     pub close_after_save: bool,
     pub reload_prefix: Option<Vec<u64>>,
+    /// A reload is on its way (follow switching to chunked reads, a rotation).
+    pub reloading: bool,
+    /// After the reload, put the caret at the end (a rotated log).
+    pub reload_to_end: bool,
+    /// How often the followed file was rotated.
+    pub rotations: u32,
+    /// The banner to show once the reload is done.
+    pub banner_after_reload: Option<Banner>,
     /// Bookmarked line starts (sorted byte offsets).
     pub bookmarks: Vec<u64>,
     /// Offsets of the differences found by File → Compare (marked on the scrollbar).
@@ -285,6 +295,10 @@ impl Document {
             save_job: None,
             close_after_save: false,
             reload_prefix: None,
+            reloading: false,
+            reload_to_end: false,
+            rotations: 0,
+            banner_after_reload: None,
             bookmarks: Vec::new(),
             diff_marks: Vec::new(),
             unpacked_from: None,

@@ -15,7 +15,7 @@ Usage: bigtext [OPTIONS] [FILE[:LINE] ...]
   -n, --line N     go to line N in the last file
   --find TEXT      search for TEXT (from the start, or from --line)
   --regex RE       search for a regular expression
-  -f, --follow     follow the files as they grow, like tail -f
+  -f, --follow     follow the files as they grow and are rotated, like tail -F
   -h, --help       show this help
 
 Script commands, without a window (bigtext-cli runs the same; on Windows use it in

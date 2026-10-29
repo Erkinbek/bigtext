@@ -95,7 +95,10 @@ Single self-contained binary, no runtime dependencies.
   and bytes, the time it spans in a log (Δt) and the width of a block selection.
 - **Other**: line numbers, zoom (Ctrl+wheel), word wrap (off by default), light/dark theme,
   read-only toggle (auto for read-only files), external change detection with Reload, and a
-  **follow (tail) mode** for growing logs that resumes indexing where it stopped.
+  **follow (tail) mode** for growing logs that resumes indexing where it stopped. Like
+  `tail -F` it survives log rotation: when the file is truncated (copytruncate) or renamed away
+  and created again, it goes on in the new file, with a button to open the rotated one
+  (`app.log.1`); the status bar shows FOLLOW ×n.
 - **Column (block) selection**: Alt+drag selects a rectangle. Copy copies it line by line;
   typing, Backspace, Delete and Tab change every row at once (one undo step); pasting as many
   lines as the block has rows puts one on each row. Works without word wrap, up to 10,000
@@ -287,7 +290,7 @@ bigtext [OPTIONS] [FILE[:LINE] ...]
   -n, --line N     go to line N in the last file
   --find TEXT      search for TEXT (from the start, or from --line)
   --regex RE       search for a regular expression
-  -f, --follow     follow the files as they grow, like tail -f
+  -f, --follow     follow the files as they grow and are rotated, like tail -F
   -h, --help       show this help
 ```
 
@@ -561,7 +564,8 @@ from `bigtext-bench`. Raw reports: `scripts/bench.ps1` reproduces them.
 - Wide (CJK) characters are drawn by the font but laid out as one cell; the default fonts do not
   include CJK glyphs.
 - On Linux/macOS, another process truncating a file while it is mapped can raise SIGBUS
-  (inherent to mmap; Windows forbids truncating mapped files). Network drives use chunked reads.
+  (inherent to mmap; Windows forbids truncating mapped files). Followed files and network
+  drives use chunked reads, so a followed log can be truncated safely.
 - Syntax highlighting is row-local: a string or comment that spans lines is not tracked.
 - The CSV table shows one line per row, so a quoted field that contains line breaks appears as
   several rows (the text is unchanged). Deleting columns reads whole records and handles such

@@ -995,4 +995,9 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Compare", "Сравнить", "Solishtirish"],
     ["Comparing tables", "Сравнение таблиц", "Jadvallar solishtirilmoqda"],
     ["{changed} rows changed, {removed} removed, {added} added; {same} the same.", "Строк изменено: {changed}, удалено: {removed}, добавлено: {added}; одинаковых: {same}.", "{changed} ta qator o'zgargan, {removed} ta o'chirilgan, {added} ta qo'shilgan; {same} tasi bir xil."],
+    // Following across log rotation.
+    ["Following the file; it was rotated {n} times so far", "Слежение за файлом; он ротировался уже {n} раз", "Fayl kuzatilmoqda; u hozirgacha {n} marta aylantirildi"],
+    ["The log was rotated; following the new file.", "Лог ротирован; слежение продолжается в новом файле.", "Log aylantirildi; yangi fayl kuzatilmoqda."],
+    ["Open {file}", "Открыть {file}", "{file} ni ochish"],
+    ["The file the earlier lines most likely went to", "Файл, в который, скорее всего, ушли прежние строки", "Oldingi qatorlar katta ehtimol bilan ko'chgan fayl"],
 ];
