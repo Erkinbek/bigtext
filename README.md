@@ -181,7 +181,8 @@ Single self-contained binary, no runtime dependencies.
 - **Matching brackets and tags** highlighted next to the caret; Ctrl+] jumps to the partner.
   **View → Show whitespace and line breaks** shows spaces, tabs and LF / CRLF / CR.
 - **JSON and XML**: **View → Structure** (Ctrl+Shift+J), an outline opened node by node (fine for a
-  root array of millions of items), jumping to a path like `$.items[1234].id` and copying the
+  root array of millions of items, or an XML element tree), jumping to a path like `$.items[1234].id`
+  (or `/catalog/item[1234]/price`) and copying the
   path at the caret; **View → Open JSON Lines as table**.
 - **Field queries over JSON Lines** (the search bar's **{}**): `.level == "error" and
   .duration > 500` in the filter view (`bigtext-cli jsonl -q`).

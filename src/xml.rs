@@ -66,7 +66,7 @@ impl<'a> Src<'a> {
     }
 
     /// Moves to the next `<`.
-    fn to_lt(&mut self) -> Res<bool> {
+    fn seek_lt(&mut self) -> Res<bool> {
         loop {
             if !self.fill()? {
                 return Ok(false);
@@ -161,7 +161,7 @@ impl<'a> Src<'a> {
         let mut depth = 1usize;
         let mut has = false;
         let mut names: Vec<Vec<u8>> = vec![name.to_vec()];
-        while self.to_lt()? {
+        while self.seek_lt()? {
             if self.skip_markup()? {
                 continue;
             }
@@ -209,7 +209,7 @@ pub fn root(buf: &TextBuf, cancel: &CancelToken) -> Result<u64, String> {
         return Err("XML in UTF-16 is not supported here".into());
     }
     let mut s = Src::new(buf, buf.codec.bom_len as u64, cancel);
-    while s.to_lt()? {
+    while s.seek_lt()? {
         if !s.skip_markup()? {
             return Ok(s.pos());
         }
@@ -235,7 +235,7 @@ pub fn children(buf: &TextBuf, at: u64, resume: Option<Resume>, max: usize, canc
         }
     }
     let mut page = Page::default();
-    while s.to_lt()? {
+    while s.seek_lt()? {
         let start = s.pos();
         if s.skip_markup()? {
             continue;
