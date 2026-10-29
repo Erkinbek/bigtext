@@ -633,6 +633,25 @@ impl Document {
     }
 
     /// Moves to the next (or previous) bookmark, wrapping around.
+    /// Goes to the next (or previous) difference of a comparison, around the ends; returns its
+    /// number and the count.
+    pub fn goto_diff(&mut self, forward: bool) -> Option<(usize, usize)> {
+        let n = self.diff_marks.len();
+        if n == 0 {
+            return None;
+        }
+        let here = self.line_bounds(self.view.caret, 64 * 1024).map(|b| b.0).unwrap_or(self.view.caret);
+        let i = if forward {
+            self.diff_marks.iter().position(|&o| o > here).unwrap_or(0)
+        } else {
+            self.diff_marks.iter().rposition(|&o| o < here).unwrap_or(n - 1)
+        };
+        let len = self.buf.len();
+        self.set_caret(self.diff_marks[i].min(len).max(self.min_caret()), false);
+        self.view.center();
+        Some((i + 1, n))
+    }
+
     pub fn goto_bookmark(&mut self, forward: bool) {
         if self.bookmarks.is_empty() {
             return;

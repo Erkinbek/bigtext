@@ -257,6 +257,8 @@ pub struct BigTextApp {
     pub json_check: json_validate::JsonCheckUi,
     pub json_fields: json_fields_window::JsonFieldsUi,
     pub json_diff: json_diff_panel::JsonDiffUi,
+    /// A comparison to start once its document is ready: (document, other file).
+    pub diff_pending: Option<(u64, PathBuf)>,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -395,6 +397,7 @@ impl BigTextApp {
             json_check: json_validate::JsonCheckUi::default(),
             json_fields: json_fields_window::JsonFieldsUi::default(),
             json_diff: json_diff_panel::JsonDiffUi::default(),
+            diff_pending: None,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1330,6 +1333,7 @@ impl eframe::App for BigTextApp {
         CTX.with(|c| *c.borrow_mut() = Some(ctx.clone()));
         self.track_jumps();
         self.poll_messages();
+        self.run_pending_diff();
         self.handle_close_request(&ctx);
 
         // Dropped files.

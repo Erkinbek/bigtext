@@ -387,6 +387,51 @@ impl BigTextApp {
         }
     }
 
+    /// Next (or previous) difference of the comparison of the active document (F7, Shift+F7).
+    pub(crate) fn step_diff(&mut self, forward: bool) {
+        let Some(r) = &self.diff else {
+            self.notify(tr("Compare the file with another first (File → Compare with…).").into(), None);
+            return;
+        };
+        let capped = r.data.lock().unwrap().capped;
+        let doc = r.doc;
+        let Some(i) = self.docs.iter().position(|d| d.id == doc) else { return };
+        self.active = i;
+        if let Some((k, n)) = self.docs[i].goto_diff(forward) {
+            let mut msg = trf("Difference {i} of {n}", &[("i", &k.to_string()), ("n", &n.to_string())]);
+            if capped {
+                msg.push_str(tr(" (capped, more exist)"));
+            }
+            self.notify(msg, None);
+        }
+    }
+
+    /// Compares the other way round: the other file becomes the document, this one the file
+    /// compared with.
+    pub(crate) fn swap_diff(&mut self) {
+        let Some(r) = &self.diff else { return };
+        let other = r.other_path.clone();
+        let Some(a) = self.docs.iter().find(|d| d.id == r.doc).and_then(|d| d.path.clone()) else { return };
+        self.open_path(other);
+        if let Some(d) = self.docs.get(self.active) {
+            self.diff_pending = Some((d.id, a));
+        }
+    }
+
+    /// Starts a comparison waiting for its document to be ready.
+    pub(super) fn run_pending_diff(&mut self) {
+        let Some((id, other)) = self.diff_pending.clone() else { return };
+        let Some(i) = self.docs.iter().position(|d| d.id == id) else {
+            self.diff_pending = None;
+            return;
+        };
+        if self.docs[i].is_ready() {
+            self.diff_pending = None;
+            self.active = i;
+            self.start_diff(other);
+        }
+    }
+
     pub(crate) fn start_diff(&mut self, other: PathBuf) {
         let Some(d) = self.docs.get(self.active) else { return };
         if let Some(r) = self.diff.take() {
@@ -475,6 +520,7 @@ impl BigTextApp {
         let mut close = false;
         let mut open_other: Option<u64> = None;
         let mut jump: Option<u64> = None;
+        let (mut swap, mut step) = (false, None);
         ui.horizontal(|ui| {
             ui.strong(trf("Compare with {file}", &[("file", &file::display_path(&r.other_path))]));
             if let Some(e) = &err {
@@ -497,6 +543,15 @@ impl BigTextApp {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button("×").clicked() {
                     close = true;
+                }
+                if ui.small_button(tr("Swap A↔B")).on_hover_text(tr("Compare the other way round: open the other file and compare it with this one")).clicked() {
+                    swap = true;
+                }
+                if ui.small_button("◀").on_hover_text(tr("Previous difference (Shift+F7)")).clicked() {
+                    step = Some(false);
+                }
+                if ui.small_button("▶").on_hover_text(tr("Next difference (F7)")).clicked() {
+                    step = Some(true);
                 }
             });
         });
@@ -574,6 +629,12 @@ impl BigTextApp {
             if let Some(r) = self.diff.take() {
                 r.cancel.cancel();
             }
+        }
+        if swap {
+            self.swap_diff();
+        }
+        if let Some(forward) = step {
+            self.step_diff(forward);
         }
     }
 }

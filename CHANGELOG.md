@@ -5,6 +5,13 @@ All notable changes to BigText. Each release on
 
 ## Unreleased
 
+### Compare
+
+- **F7 / Shift+F7** (Search → Next / Previous difference) step the caret through the differences
+  of a comparison, around the ends, with "Difference 12 of 340"; the compare panel has the same
+  as ◀ ▶ buttons and **Swap A↔B** to compare the other way round. **File → Compare with tab ▸**
+  lists the other open files, so a comparison takes one click.
+
 ### Command line
 
 - **Script commands without a window**, in the new console program **`bigtext-cli`** (also

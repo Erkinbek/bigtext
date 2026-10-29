@@ -147,7 +147,8 @@ Single self-contained binary, no runtime dependencies.
   optional `.bak`).
 - **Compare files** (File → Compare with…): streaming line diff of two huge files with bounded
   memory; identical stretches are skipped at memory speed (1 GB vs 1 GB with two changed lines:
-  0.6 s, ~2 MB of memory). Click a difference to jump there in either file.
+  0.6 s, ~2 MB of memory). Click a difference to jump there in either file; F7 / Shift+F7 step
+  through them; **Compare with tab ▸** picks another open file; Swap A↔B turns it round.
 - **Log tools**: a **level bar** above logs (ERROR / WARN / INFO / DEBUG lines in the filter view,
   F8 / Shift+F8 to the next / previous error); **Search → Time histogram** (Ctrl+Shift+H), a bar
   chart of lines and errors per second, minute, hour or day, click a bar to go there;

@@ -1021,8 +1021,29 @@ impl SelfTest {
             }
             let got: Vec<(u64, u64, u64, u64)> = g.hunks.iter().map(|h| (h.a_line, h.a_count, h.b_line, h.b_count)).collect();
             drop(g);
-            app.diff = None;
             check(got == vec![(100, 1, 100, 1), (1501, 0, 1501, 1)], format!("{got:?}"))
+        }));
+        s("F7 / Shift+F7 step through the differences, around the ends", Box::new(|app, c| {
+            if c.first() {
+                doc(app).set_caret(0, false);
+                return Step::Wait;
+            }
+            let caret = doc(app).view.caret;
+            let line = doc(app).buf.line_of(caret).0;
+            let want = [None, Some(100), Some(1501), Some(100), Some(1501)];
+            if let Some(w) = want[c.mark as usize] {
+                if line != w {
+                    return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("stage {}: line {line}, want {w}", c.mark)) } else { Step::Wait };
+                }
+            }
+            if c.mark as usize == want.len() - 1 {
+                c.mark = 0;
+                app.diff = None;
+                return Step::Next;
+            }
+            c.key(Key::F7, if c.mark == 3 { SHIFT } else { NONE });
+            c.mark += 1;
+            Step::Wait
         }));
         s("CSV opens as a table (semicolon detected)", Box::new(|app, c| {
             if c.first() {

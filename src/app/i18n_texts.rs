@@ -922,4 +922,14 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["{n} JSON differences with {other}", "Отличий JSON от {other}: {n}", "{other} bilan {n} ta JSON farqi"],
     ["added", "добавлено", "qo'shilgan"],
     ["removed", "удалено", "olib tashlangan"],
+    // Stepping through differences.
+    ["Compare the file with another first (File → Compare with…).", "Сначала сравните файл с другим (Файл → Сравнить с…).", "Avval faylni boshqasi bilan solishtiring (Fayl → Taqqoslash…)."],
+    ["Difference {i} of {n}", "Отличие {i} из {n}", "{n} tadan {i}-farq"],
+    ["Swap A↔B", "Поменять A↔B", "A↔B almashtirish"],
+    ["Compare the other way round: open the other file and compare it with this one", "Сравнить наоборот: открыть другой файл и сравнить его с этим", "Teskari solishtirish: boshqa faylni ochib, uni shu fayl bilan solishtirish"],
+    ["Previous difference (Shift+F7)", "Предыдущее отличие (Shift+F7)", "Oldingi farq (Shift+F7)"],
+    ["Next difference (F7)", "Следующее отличие (F7)", "Keyingi farq (F7)"],
+    ["Next difference", "Следующее отличие", "Keyingi farq"],
+    ["Previous difference", "Предыдущее отличие", "Oldingi farq"],
+    ["Compare with tab", "Сравнить с вкладкой", "Varaq bilan solishtirish"],
 ];
