@@ -3,7 +3,10 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
-## 0.4.0 — 2026-10-29
+## 0.4.1 — 2026-10-29
+
+0.4.0 was tagged but never released: a test failed on the Windows build. 0.4.1 is that
+version with the test fixed.
 
 ### Logs
 

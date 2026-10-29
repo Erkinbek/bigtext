@@ -3,7 +3,7 @@
 cask "bigtext" do
   arch arm: "arm64", intel: "x64"
 
-  version "0.4.0"
+  version "0.4.1"
   sha256 arm:   "REPLACE_WITH_SHA256_OF_bigtext-macos-arm64.app.zip",
          intel: "REPLACE_WITH_SHA256_OF_bigtext-macos-x64.app.zip"
 

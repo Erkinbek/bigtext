@@ -4,7 +4,7 @@
 class Bigtext < Formula
   desc "Text editor for huge files that never freezes"
   homepage "https://github.com/Erkinbek/bigtext"
-  url "https://github.com/Erkinbek/bigtext/archive/refs/tags/v0.4.0.tar.gz"
+  url "https://github.com/Erkinbek/bigtext/archive/refs/tags/v0.4.1.tar.gz"
   sha256 "REPLACE_WITH_SHA256_OF_THE_SOURCE_TARBALL"
   license "MIT"
 
