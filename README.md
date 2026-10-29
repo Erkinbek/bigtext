@@ -97,6 +97,10 @@ Single self-contained binary, no runtime dependencies.
 - **Editing**: piece table over the mmap + add buffer; insert/delete, cut/copy/paste (copies
   above 100 MB ask first and run on a worker), undo/redo, multi-line selection, duplicate line
   (zero-copy), delete line, auto-indent, large-file-safe Select All.
+- **Show in folder**, **Open terminal here** and **Open with the default app** (File menu and a
+  tab's right-click menu; for an unpacked copy, the compressed file it came from); the notice
+  after a save or an export has a Show in folder link, and an exported `.xlsx` opens in the
+  spreadsheet app.
 - **One window**: opening a file while BigText runs (`bigtext app.log:120`, Explorer's Open with, a
   grep result) opens it as a tab of the running window, at its line, and brings that window to
   the front; `--new-window` starts another one. (On macOS only terminal launches are handed

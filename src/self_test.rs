@@ -1639,6 +1639,22 @@ impl SelfTest {
                 check(exited.is_some_and(|s| s.success()) && line == 1, format!("exit {exited:?}, caret line {line}"))
             }
         }));
+        s("Show in folder points at the file, or the archive an unpacked copy came from", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("packed.log.gz"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail("the .gz did not open".into()) } else { Step::Wait };
+            }
+            let id = doc(app).id;
+            let p = app.shell_path(id);
+            let cmd = p.as_deref().map(|p| crate::app::shell::command(crate::app::shell::ShellAction::Reveal, p));
+            let args: Vec<String> = cmd.as_ref().map(|c| c.get_args().map(|a| a.to_string_lossy().into_owned()).collect()).unwrap_or_default();
+            app.test_close(id);
+            let ok = p.as_deref().is_some_and(|p| p.ends_with("packed.log.gz")) && (!cfg!(windows) || args.first().is_some_and(|a| a.starts_with("/select,") && a.contains("packed.log.gz")));
+            check(ok, format!("{p:?} {args:?}"))
+        }));
         s("compare files (streaming diff)", Box::new(|app, c| {
             if c.first() {
                 app.open_path(c.file("diff-a.txt"));

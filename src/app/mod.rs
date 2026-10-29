@@ -46,6 +46,7 @@ pub mod saved_searches;
 pub mod search_panel;
 pub mod table_compare;
 pub mod sessions;
+pub mod shell;
 pub mod tabs;
 pub mod tasks;
 pub mod text_tools;

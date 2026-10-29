@@ -66,6 +66,12 @@ All notable changes to BigText. Each release on
   the settings stay in one place. The running window listens on a loopback port named, with a
   random token, in a lock file next to the settings; `--new-window` opts out, and standard
   input always opens its own window.
+- **Show in folder**, **Open terminal here** and **Open with the default app** in the File
+  menu and a tab's right-click menu: the file selected in Explorer (Finder; the folder in a
+  Linux file manager), a terminal in its folder, or the program the system opens it with —
+  for an unpacked copy, the compressed file or archive it came from. The notice after Save
+  lines, an export or a split gets a Show in folder link, and Open on an exported `.xlsx` opens
+  the spreadsheet app instead of BigText.
 
 ### Files
 

@@ -220,6 +220,9 @@ impl BigTextApp {
                         if d.path.is_some() {
                             ui.separator();
                             item(ui, "Copy path");
+                            item(ui, "Show in folder");
+                            item(ui, "Open terminal here");
+                            item(ui, "Open with the default app");
                         }
                     });
                     if !d.pinned && ui.small_button("×").clicked() {
@@ -244,6 +247,9 @@ impl BigTextApp {
                 "Close" => self.close_tab(id, false),
                 "Close other tabs" => self.close_others(id),
                 "Close tabs to the right" => self.close_to_right(id),
+                "Show in folder" => self.shell_doc(id, super::shell::ShellAction::Reveal),
+                "Open terminal here" => self.shell_doc(id, super::shell::ShellAction::Terminal),
+                "Open with the default app" => self.shell_doc(id, super::shell::ShellAction::Default),
                 "Copy path" => {
                     if let Some(p) = self.docs.iter().find(|d| d.id == id).and_then(|d| d.unpacked_from.as_deref().or(d.path.as_deref())) {
                         ui.ctx().copy_text(file::display_path(p));

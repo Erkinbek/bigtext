@@ -156,6 +156,7 @@ impl BigTextApp {
             ui.separator();
         }
         let mut open = None;
+        let mut reveal = None;
         let mut clear = false;
         if let Some(n) = &self.notice {
             if n.at.elapsed() > NOTICE_TIME {
@@ -165,6 +166,9 @@ impl BigTextApp {
                     clear = true;
                 }
                 if let Some(p) = &n.open {
+                    if ui.small_button(super::i18n::tr("Show in folder")).clicked() {
+                        reveal = Some(p.clone());
+                    }
                     if ui.small_button(super::i18n::tr("Open")).clicked() {
                         open = Some(p.clone());
                         clear = true;
@@ -178,8 +182,16 @@ impl BigTextApp {
         if clear {
             self.notice = None;
         }
+        if let Some(p) = reveal {
+            self.shell_file(&p, super::shell::ShellAction::Reveal);
+        }
+        // A spreadsheet opens in the spreadsheet app.
         if let Some(p) = open {
-            self.open_path(p);
+            if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("xlsx")) {
+                self.shell_file(&p, super::shell::ShellAction::Default);
+            } else {
+                self.open_path(p);
+            }
         }
     }
 }

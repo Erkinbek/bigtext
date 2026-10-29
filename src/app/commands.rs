@@ -39,6 +39,9 @@ pub enum Cmd {
     CompareBackup,
     ApplyPatch,
     ColumnEditor,
+    RevealFile,
+    OpenTerminal,
+    OpenWithDefault,
     MergeLogs,
     JoinTables,
     CompareJson,
@@ -125,7 +128,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 95] = [
+    pub const ALL: [Cmd; 98] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -148,6 +151,9 @@ impl Cmd {
         Cmd::CompareBackup,
         Cmd::ApplyPatch,
         Cmd::ColumnEditor,
+        Cmd::RevealFile,
+        Cmd::OpenTerminal,
+        Cmd::OpenWithDefault,
         Cmd::MergeLogs,
         Cmd::JoinTables,
         Cmd::CompareJson,
@@ -276,6 +282,9 @@ impl Cmd {
             Cmd::CompareBackup => "Compare with the backup (.bak)",
             Cmd::ApplyPatch => "Apply patch…",
             Cmd::ColumnEditor => "Column editor…",
+            Cmd::RevealFile => "Show in folder",
+            Cmd::OpenTerminal => "Open terminal here",
+            Cmd::OpenWithDefault => "Open with the default app",
             Cmd::MergeLogs => "Merge logs by time…",
             Cmd::JoinTables => "Join tables…",
             Cmd::CompareJson => "Compare JSON with…",
@@ -356,7 +365,7 @@ impl Cmd {
     /// Menu the command lives in (shown in the palette).
     pub fn group(self) -> &'static str {
         match self {
-            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::CompareSaved | Cmd::CompareBackup | Cmd::ApplyPatch | Cmd::Properties | Cmd::MergeLogs | Cmd::JoinTables | Cmd::CompareJson | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable => "File",
+            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::CompareSaved | Cmd::CompareBackup | Cmd::ApplyPatch | Cmd::Properties | Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault | Cmd::MergeLogs | Cmd::JoinTables | Cmd::CompareJson | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable => "File",
             Cmd::Undo
             | Cmd::Redo
             | Cmd::SelectAll
@@ -590,6 +599,16 @@ impl BigTextApp {
             Cmd::CompareSaved => self.start_diff_with(super::extras::DiffOther::Saved),
             Cmd::ApplyPatch => self.apply_patch_dialog(),
             Cmd::ColumnEditor => self.open_column_editor(),
+            Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault => {
+                let action = match cmd {
+                    Cmd::RevealFile => super::shell::ShellAction::Reveal,
+                    Cmd::OpenTerminal => super::shell::ShellAction::Terminal,
+                    _ => super::shell::ShellAction::Default,
+                };
+                if let Some(id) = self.docs.get(self.active).map(|d| d.id) {
+                    self.shell_doc(id, action);
+                }
+            }
             Cmd::Properties => self.open_properties(),
             Cmd::CompareBackup => {
                 if let Some(p) = self.docs.get(self.active).and_then(|d| d.path.as_deref()) {
@@ -755,6 +774,7 @@ impl BigTextApp {
             Cmd::CompareBackup => d.and_then(|d| d.path.as_deref()).is_some_and(|p| bigtext::save::backup_path_for(p).exists()),
             Cmd::ApplyPatch => d.is_some_and(|d| d.is_ready() && d.editable()),
             Cmd::ColumnEditor => d.is_some_and(|d| d.is_ready() && d.editable() && !d.view.wrap),
+            Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault => d.is_some_and(|d| d.path.is_some()),
             Cmd::Properties => d.is_some_and(|d| d.is_ready()),
             Cmd::CheckRows => d.is_some_and(|d| d.table),
             Cmd::NavForward => !self.nav.forward.is_empty(),
@@ -887,6 +907,10 @@ impl BigTextApp {
                     });
                 });
                 for c in [Cmd::CompareSaved, Cmd::CompareBackup, Cmd::ApplyPatch, Cmd::Properties] {
+                    run = run.or(self.item(ui, c));
+                }
+                ui.separator();
+                for c in [Cmd::RevealFile, Cmd::OpenTerminal, Cmd::OpenWithDefault] {
                     run = run.or(self.item(ui, c));
                 }
                 for c in [Cmd::CompareJson, Cmd::MergeLogs, Cmd::JoinTables, Cmd::ArrayToLines, Cmd::LinesToArray, Cmd::LogfmtTable] {

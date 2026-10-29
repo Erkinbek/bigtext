@@ -1148,4 +1148,11 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Sorting", "Сортировка", "Saralash"],
     ["Sorting on disk…", "Сортировка на диске…", "Diskda saralanmoqda…"],
     ["Sorted into {n} lines; wrote {size} in {secs}s.", "Отсортировано, строк: {n}; записано {size} за {secs} с.", "{n} ta qatorga saralandi; {size} {secs} soniyada yozildi."],
+    // Shell.
+    ["Show in folder", "Показать в папке", "Papkada ko'rsatish"],
+    ["Open terminal here", "Открыть терминал здесь", "Shu yerda terminal ochish"],
+    ["Open with the default app", "Открыть в программе по умолчанию", "Standart dasturda ochish"],
+    ["Could not show the file in its folder", "Не удалось показать файл в папке", "Faylni papkada ko'rsatib bo'lmadi"],
+    ["Could not open a terminal (set the TERMINAL variable to yours)", "Не удалось открыть терминал (укажите свой в переменной TERMINAL)", "Terminalni ochib bo'lmadi (TERMINAL o'zgaruvchisiga o'zingiznikini yozing)"],
+    ["Could not open the file with its default app", "Не удалось открыть файл в программе по умолчанию", "Faylni standart dasturda ochib bo'lmadi"],
 ];

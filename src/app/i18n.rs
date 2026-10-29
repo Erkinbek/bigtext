@@ -153,6 +153,7 @@ mod tests {
         "app" / "search_panel.rs",
         "app" / "table_compare.rs",
         "app" / "sessions.rs",
+        "app" / "shell.rs",
         "app" / "tabs.rs",
         "app" / "tasks.rs",
         "app" / "text_tools.rs",
@@ -251,6 +252,9 @@ mod tests {
         "Close",
         "Close tabs to the right",
         "Copy path",
+        "Show in folder",
+        "Open terminal here",
+        "Open with the default app",
     ];
 
     /// String literals in `span` (escapes resolved).
