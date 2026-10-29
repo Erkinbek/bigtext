@@ -217,6 +217,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("patch-me.txt"), &base)?;
+    std::fs::write(dir.join("journal.txt"), "first line\nsecond line\n")?;
     std::fs::write(dir.join("props.txt"), "one\r\ntwo\nthe longest line\nend")?;
     {
         use std::io::Write as _;
@@ -1234,6 +1235,83 @@ impl SelfTest {
             let want: String = sha2::Sha256::digest(std::fs::read(c.file("props.txt")).unwrap_or_default()).iter().map(|b| format!("{b:02x}")).collect();
             app.properties = None;
             check(h == want, format!("{h} != {want}"))
+        }));
+        s("unsaved edits are journaled after a pause, and the journal goes once they are undone", Box::new(|app, c| {
+            let dir = c.dir.join("recovery");
+            if c.first() {
+                app.start_recovery(Some(dir.clone()));
+                app.recovery.enabled = true;
+                app.open_path(c.file("journal.txt"));
+                return Step::Wait;
+            }
+            let waited = c.waited() > Duration::from_secs(8);
+            let id = format!("{}-{}", std::process::id(), doc(app).id);
+            let pieces = dir.join(format!("{id}.pieces"));
+            match c.mark {
+                0 => {
+                    if !wait_ready(app) {
+                        return Step::Wait;
+                    }
+                    c.key(Key::Home, CTRL);
+                    c.typed("abc");
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    if !pieces.exists() {
+                        return if waited { Step::Fail("no journal after the pause".into()) } else { Step::Wait };
+                    }
+                    let add = std::fs::read(dir.join(format!("{id}.add"))).unwrap_or_default();
+                    if add != b"abc" {
+                        return Step::Fail(format!("journaled bytes {add:?}"));
+                    }
+                    c.key(Key::Z, CTRL);
+                    c.mark = 2;
+                    Step::Wait
+                }
+                _ => {
+                    if doc(app).is_modified() || pieces.exists() {
+                        return if waited { Step::Fail("the journal stayed after the undo".into()) } else { Step::Wait };
+                    }
+                    Step::Next
+                }
+            }
+        }));
+        s("a journal a crashed BigText left is offered and puts the edits back", Box::new(|app, c| {
+            use crate::app::recovery::{self, Journal};
+            let dir = c.dir.join("recovery");
+            if c.first() {
+                let path = c.file("journal.txt");
+                let m = std::fs::metadata(&path).unwrap();
+                let j = Journal {
+                    id: "999999-7".into(),
+                    title: "journal.txt".into(),
+                    path: Some(path.clone()),
+                    len: m.len(),
+                    mtime: m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()),
+                    codec: bigtext::encoding::Codec::utf8(),
+                    pieces: vec![(bigtext::text::Buf::Add, 0, 4), (bigtext::text::Buf::Orig, 0, m.len())],
+                    add_len: 4,
+                    saved: None,
+                };
+                let _ = std::fs::write(dir.join("999999-7.add"), b"NEW ");
+                let _ = std::fs::write(dir.join("999999-7.pieces"), recovery::format(&j));
+                app.scan_recovery();
+                let Some(i) = app.recovery.offered.iter().position(|j| j.id == "999999-7") else {
+                    return Step::Fail(format!("not offered: {:?}", app.recovery.offered.iter().map(|j| j.id.clone()).collect::<Vec<_>>()));
+                };
+                app.restore_journal(i);
+                return Step::Wait;
+            }
+            let t = text(app);
+            let d = doc(app);
+            if t != "NEW first line\nsecond line\n" || !d.is_modified() {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("text {t:?}")) } else { Step::Wait };
+            }
+            let gone = !dir.join("999999-7.pieces").exists();
+            let id = d.id;
+            app.test_close(id);
+            check(gone && app.recovery.offered.is_empty(), format!("journal removed {gone}"))
         }));
         s("compare files (streaming diff)", Box::new(|app, c| {
             if c.first() {

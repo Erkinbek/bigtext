@@ -95,6 +95,11 @@ Single self-contained binary, no runtime dependencies.
 - **Editing**: piece table over the mmap + add buffer; insert/delete, cut/copy/paste (copies
   above 100 MB ask first and run on a worker), undo/redo, multi-line selection, duplicate line
   (zero-copy), delete line, auto-indent, large-file-safe Select All.
+- **Recovery journal**: a couple of seconds after a pause in editing, the edits of a modified
+  document (its piece list and the bytes typed — a few KB for a thousand edits to a 50 GB file)
+  are written next to the settings; after a crash or a power cut the next start offers
+  Restore / Save text as… / Discard, once the file on disk is checked to be unchanged
+  (File → Keep a recovery journal of unsaved edits; the journal holds typed text in plain form).
 - **Crash-safe save**: stream to a temp file in the same folder → fsync → atomic replace
   (`ReplaceFileW` on Windows, keeps attributes/ACLs). Any failure leaves the original intact;
   "file in use" / permission errors produce clear messages. Save As, optional `.bak` backup

@@ -339,6 +339,18 @@ impl Document {
     }
 
     /// Installs a freshly opened source (initial open, reload or after save).
+    /// Puts back unsaved edits from a recovery journal: the document is modified, with no undo.
+    pub fn restore_edits(&mut self, buf: TextBuf) {
+        self.buf = buf;
+        self.undo.clear();
+        self.redo.clear();
+        self.version += 1;
+        self.content_state = self.next_content_state;
+        self.next_content_state += 1;
+        self.view.caret = self.view.caret.min(self.buf.len());
+        self.view.anchor = self.view.caret;
+    }
+
     pub fn install(&mut self, source: Arc<Source>, det: Detected, prefix: Option<Vec<u64>>, waker: Waker) {
         self.index_cancel.cancel();
         self.index_cancel = CancelToken::new();

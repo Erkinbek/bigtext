@@ -38,6 +38,7 @@ pub mod patterns_window;
 pub mod pivot;
 pub mod portable;
 pub mod properties;
+pub mod recovery;
 pub mod problems_panel;
 pub mod saved_searches;
 pub mod search_panel;
@@ -104,6 +105,8 @@ pub enum Msg {
     Preview { doc: u64, items: Vec<(u64, String, String)>, lines: Vec<u64> },
     FileChanged(Box<FileChange>),
     LowSpace(Box<LowSpace>),
+    /// A document's recovery journal was written (or failed to be).
+    Journaled { doc: u64, version: u64, add_len: u64, ok: bool },
     /// An archive's files, for the picker: (tab, archive, files).
     ArchiveListed(Box<(u64, PathBuf, Vec<bigtext::decompress::Member>)>),
     Update(update::Event),
@@ -281,6 +284,7 @@ pub struct BigTextApp {
     /// Help → Unpacked copies folder… is open.
     pub unpack_dir_open: bool,
     pub properties: Option<properties::PropertiesUi>,
+    pub recovery: recovery::RecoveryState,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -489,6 +493,7 @@ impl BigTextApp {
             archive_picker: None,
             unpack_dir_open: false,
             properties: None,
+            recovery: recovery::RecoveryState::new(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -509,6 +514,7 @@ impl BigTextApp {
             app.settings.level_bar = state.level_bar.unwrap_or(true);
             app.settings.saved = std::mem::take(&mut state.saved);
             app.settings.show_ws = state.show_ws.unwrap_or(false);
+            app.recovery.enabled = state.recovery.unwrap_or(true);
             app.settings.id_keys = state.id_keys.take();
             if let Some((n, e)) = state.filter_ctx {
                 app.settings.filter_context = n.min(bigtext::filter::CONTEXT_MAX);
@@ -536,6 +542,7 @@ impl BigTextApp {
                 app.settings.dark = state.dark.unwrap_or(true);
                 app.settings.syntax = state.syntax.unwrap_or(true);
             }
+            app.start_recovery(recovery::default_dir());
         }
         cc.egui_ctx.set_theme(if app.settings.dark { egui::Theme::Dark } else { egui::Theme::Light });
         app.apply_start(start);
@@ -841,6 +848,7 @@ impl BigTextApp {
                 Msg::ReplaceTooMany { doc, version, matcher, template, range } => self.on_replace_too_many(doc, version, matcher, template, range),
                 Msg::Preview { doc, items, lines } => self.preview = Some((doc, items, lines)),
                 Msg::LowSpace(l) => self.on_low_space(*l),
+                Msg::Journaled { doc, version, add_len, ok } => self.on_journaled(doc, version, add_len, ok),
                 Msg::ArchiveListed(a) => {
                     let (doc, archive, members) = *a;
                     self.on_archive_listed(doc, archive, members);
@@ -1355,6 +1363,8 @@ impl BigTextApp {
             }
             (1, ConfirmAction::CloseTab(id)) => self.close_tab(id, true),
             (1, ConfirmAction::Exit) => {
+                // The edits are discarded: so are their journals.
+                self.end_recovery();
                 self.exit_confirmed = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -1451,6 +1461,7 @@ impl BigTextApp {
                     checkbox: None,
                 });
             } else {
+                self.end_recovery();
                 self.persist_state();
                 for d in &mut self.docs {
                     d.cancel_jobs();
@@ -1668,6 +1679,8 @@ impl eframe::App for BigTextApp {
             d.refine_goto();
             follow_chunked(d, &self.tx, &self.waker);
         }
+        self.journal_tick();
+        self.apply_pending_journal();
         if let Some(s) = self.diff.as_mut().and_then(|r| r.side.as_mut()) {
             s.doc.tick();
         }
@@ -1821,6 +1834,7 @@ impl eframe::App for BigTextApp {
         self.archive_window(&ctx);
         self.unpack_dir_window(&ctx);
         self.properties_window(&ctx);
+        self.recovery_window(&ctx);
         self.pivot_window(&ctx);
         self.derive_window(&ctx);
         self.json_fields_window(&ctx);

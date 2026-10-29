@@ -81,6 +81,40 @@ impl TextBuf {
         t
     }
 
+    /// A buffer of `pieces` (kind, start, length) over `source` and `add`, as a recovery journal
+    /// wrote them; `None` when a piece points outside them.
+    pub fn with_pieces(source: Arc<Source>, index: Arc<LineIndex>, codec: Codec, pieces: &[(Buf, u64, u64)], add: Vec<u8>) -> Option<TextBuf> {
+        for &(b, s, l) in pieces {
+            let limit = match b {
+                Buf::Orig => source.len(),
+                Buf::Add => add.len() as u64,
+            };
+            if l == 0 || s.checked_add(l)? > limit {
+                return None;
+            }
+        }
+        let mut t = TextBuf {
+            source,
+            index,
+            codec,
+            pieces: Arc::new(Vec::new()),
+            add: Arc::new(add),
+            cum_bytes: Arc::new(vec![0]),
+            cum_lines: Arc::new(vec![0]),
+            inexact_from: 0,
+            blocking: false,
+        };
+        let ps: Vec<Piece> = pieces.iter().map(|&(b, s, l)| t.make_piece(b, s, l)).collect();
+        t.pieces = Arc::new(ps);
+        t.rebuild_cum();
+        Some(t)
+    }
+
+    /// The bytes edits inserted (what [`Buf::Add`] pieces point into).
+    pub fn add_bytes(&self) -> &[u8] {
+        &self.add
+    }
+
     /// Rebuilds this buffer on a different (but byte-identical) source, keeping all edits.
     pub fn with_source(&self, source: Arc<Source>, index: Arc<LineIndex>) -> TextBuf {
         let mut t = self.clone();
@@ -651,6 +685,23 @@ impl TextBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rebuilt_from_its_pieces() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut f, b"hello world\nsecond line\n").unwrap();
+        let src = Arc::new(Source::open(f.path(), crate::file::OpenMode::Auto).unwrap());
+        let mut t = TextBuf::new(src.clone(), LineIndex::new(src.len()), Codec::utf8());
+        t.replace(0..5, b"HELLO");
+        t.replace(12..12, b"inserted\n");
+        let pieces: Vec<(Buf, u64, u64)> = t.pieces().iter().map(|p| (p.buf, p.start, p.len)).collect();
+        let back = TextBuf::with_pieces(src.clone(), LineIndex::new(src.len()), Codec::utf8(), &pieces, t.add_bytes().to_vec()).unwrap();
+        assert_eq!(&*back.read(0..back.len()).unwrap(), b"HELLO world\ninserted\nsecond line\n");
+        assert_eq!(back.line_count().0, t.line_count().0);
+        // A piece past the end is refused.
+        assert!(TextBuf::with_pieces(src.clone(), LineIndex::new(src.len()), Codec::utf8(), &[(Buf::Orig, 0, 999)], Vec::new()).is_none());
+        assert!(TextBuf::with_pieces(src, LineIndex::new(0), Codec::utf8(), &[(Buf::Add, 0, 3)], b"ab".to_vec()).is_none());
+    }
     use crate::file::OpenMode;
     use crate::index;
     use std::io::Write;

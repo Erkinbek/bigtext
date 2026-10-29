@@ -802,6 +802,9 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.checkbox(&mut self.settings.backup_on_save, tr("Keep backup (.bak) on save"));
+                if ui.checkbox(&mut self.recovery.enabled, tr("Keep a recovery journal of unsaved edits")).on_hover_text(tr("After a crash or a power cut, the next start offers to put the edits back")).changed() {
+                    self.persist_state();
+                }
                 if let Some(d) = self.docs.get_mut(self.active) {
                     ui.menu_button(tr("Line endings on save"), |ui| {
                         ui.radio_value(&mut d.eol_on_save, None, tr("Keep as is"));

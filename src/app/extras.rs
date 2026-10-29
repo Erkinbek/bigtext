@@ -55,6 +55,8 @@ pub struct Persisted {
     pub font: Option<PathBuf>,
     /// The folder for unpacked copies.
     pub unpack_dir: Option<PathBuf>,
+    /// Keep a recovery journal of unsaved edits.
+    pub recovery: Option<bool>,
     pub level_bar: Option<bool>,
     /// Saved searches.
     pub saved: Vec<super::saved_searches::SavedSearch>,
@@ -185,6 +187,7 @@ pub(super) fn parse(text: &str) -> Persisted {
             "lang" => p.lang = Some(v.to_string()),
             "font" => p.font = Some(PathBuf::from(v)),
             "unpack_dir" => p.unpack_dir = Some(PathBuf::from(v)),
+            "recovery" => p.recovery = Some(v == "1"),
             "key" => p.keys.extend(v.split_once('=').map(|(a, b)| (a.to_string(), b.to_string()))),
             "tab" => p.tabs.extend(parse_tab(v)),
             _ => {}
@@ -228,6 +231,9 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(f) = &p.font {
         s.push_str(&format!("font={}\n", f.display()));
+    }
+    if let Some(r) = p.recovery {
+        s.push_str(&format!("recovery={}\n", if r { "1" } else { "0" }));
     }
     if let Some(d) = &p.unpack_dir {
         s.push_str(&format!("unpack_dir={}\n", d.display()));
@@ -579,6 +585,7 @@ impl BigTextApp {
             lang: Some(super::i18n::lang().code().to_string()),
             font: self.settings.font_path.clone(),
             unpack_dir: self.settings.unpack_dir.clone(),
+            recovery: Some(self.recovery.enabled),
             level_bar: Some(self.settings.level_bar),
             saved: self.settings.saved.clone(),
             show_ws: Some(self.settings.show_ws),
@@ -1172,6 +1179,7 @@ mod tests {
             lang: Some("uz".into()),
             font: Some(PathBuf::from(r"C:\Windows\Fonts\consola.ttf")),
             unpack_dir: Some(PathBuf::from(r"D:\scratch")),
+            recovery: Some(false),
             level_bar: Some(false),
             show_ws: Some(true),
             filter_ctx: Some((3, true)),
@@ -1199,6 +1207,7 @@ mod tests {
         assert_eq!(parse(&serialize(&p)).pinned, p.pinned);
         assert_eq!(parse(&serialize(&p)).font, p.font);
         assert_eq!(parse(&serialize(&p)).unpack_dir, p.unpack_dir);
+        assert_eq!(parse(&serialize(&p)).recovery, Some(false));
         assert_eq!(parse(&serialize(&p)).level_bar, Some(false));
         assert_eq!(parse(&serialize(&p)).lang.as_deref(), Some("uz"));
         let q = parse(&serialize(&p));

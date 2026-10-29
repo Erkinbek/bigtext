@@ -145,6 +145,7 @@ mod tests {
         "app" / "pivot.rs",
         "app" / "portable.rs",
         "app" / "properties.rs",
+        "app" / "recovery.rs",
         "app" / "problems_panel.rs",
         "app" / "saved_searches.rs",
         "app" / "search_panel.rs",

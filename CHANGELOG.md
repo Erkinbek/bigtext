@@ -86,6 +86,14 @@ All notable changes to BigText. Each release on
   counts, the longest line, NUL bytes and bytes that are not UTF-8 (each with Go to), whether
   it ends with a line break, and the first and last time. The SHA-256 is computed on request,
   with a Copy button. `bigtext-cli stats` prints the new figures too.
+- **Recovery journal for unsaved edits**: a couple of seconds after a pause in editing (or
+  every 30 s of typing) a modified document's piece list and the bytes typed into it are
+  journaled next to the settings — a few KB for a thousand edits to a 50 GB file, written on a
+  worker. After a crash or a power cut the next start lists the documents with Restore (once
+  the file's size and time show it unchanged), Save text as… and Discard. Each running BigText
+  holds a lock so another one's journals are left alone; journals go when the edits are saved,
+  undone or discarded and on a clean exit. File → Keep a recovery journal of unsaved edits
+  turns it off.
 
 ### Command line
 
