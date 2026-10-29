@@ -1240,4 +1240,15 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Copied", "Скопировано", "Nusxalandi"],
     ["JSON path in the status bar", "Путь JSON в строке состояния", "Holat qatorida JSON yo'li"],
     ["Reading the JSON's structure", "Чтение структуры JSON", "JSON tuzilmasi o'qilmoqda"],
+    // Folding.
+    ["Fold", "Свернуть", "Yig'ish"],
+    ["Fold all at level 1", "Свернуть всё на уровне 1", "1-darajada hammasini yig'ish"],
+    ["Fold all at level 2", "Свернуть всё на уровне 2", "2-darajada hammasini yig'ish"],
+    ["Folded the first {n} values.", "Свёрнуты первые {n} значений.", "Birinchi {n} ta qiymat yig'ildi."],
+    ["Folding", "Сворачивание", "Yig'ish"],
+    ["No objects or arrays at that level.", "На этом уровне нет объектов и массивов.", "Bu darajada obyekt yoki massiv yo'q."],
+    ["Nothing to fold here.", "Здесь нечего сворачивать.", "Bu yerda yig'iladigan narsa yo'q."],
+    ["Unfold", "Развернуть", "Yoyish"],
+    ["Unfold all", "Развернуть всё", "Hammasini yoyish"],
+    ["… {n} lines …", "… {n} строк …", "… {n} qator …"],
 ];

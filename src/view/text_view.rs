@@ -78,10 +78,15 @@ fn h_scroll(view: &crate::app::document::ViewState) -> bool {
 }
 
 pub(crate) fn layout_rows(buf: &TextBuf, top: u64, n: usize, wrap: Option<usize>) -> Result<Vec<Row>, Pending> {
+    layout_rows_folded(buf, top, n, wrap, &[])
+}
+
+/// The `n` rows shown from `top`, folded lines left out.
+pub(crate) fn layout_rows_folded(buf: &TextBuf, top: u64, n: usize, wrap: Option<usize>, folds: &[super::folds::Fold]) -> Result<Vec<Row>, Pending> {
     let mut v = Vec::with_capacity(n + 1);
     v.push(rows::row_at(buf, top, wrap)?);
     while v.len() < n {
-        match rows::next_row(buf, v.last().unwrap(), wrap)? {
+        match super::folds::next_row(buf, v.last().unwrap(), wrap, folds)? {
             Some(r) => v.push(r),
             None => break,
         }
@@ -137,6 +142,17 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     doc.view.rows_on_screen = ((text_rect.height() / m.rh).floor() as usize).max(1);
     doc.view.text_cols = ((text_rect.width() / m.cw).floor() as usize).max(4);
     let wrap = wrap_cols(&doc.view);
+    // Folds are for the text they were made on; the caret and the top are never hidden.
+    if !doc.view.folds.is_empty() {
+        if doc.view.folds_version != doc.version {
+            doc.view.folds.clear();
+        }
+        let caret = doc.view.caret;
+        doc.view.folds.retain(|f| !(f.hide_from <= caret && caret < f.end));
+        if let Some(f) = super::folds::hidden_by(&doc.view.folds, doc.view.top) {
+            doc.view.top = f.start;
+        }
+    }
     if doc.view.width_cache_version != doc.version {
         doc.view.width_cache.clear();
         doc.view.width_cache_version = doc.version;
@@ -144,7 +160,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     // A block selection needs rows that are lines, and rows that still start where they did.
     if let Some(b) = doc.view.block {
         let stale = |at: u64| !matches!(rows::row_at(&doc.buf, at.min(doc.buf.len()), None), Ok(r) if r.start == at);
-        if wrap.is_some() || !doc.is_ready() || stale(b.anchor) || stale(b.caret) {
+        if wrap.is_some() || !doc.is_ready() || stale(b.anchor) || stale(b.caret) || !doc.view.folds.is_empty() {
             doc.view.block = None;
             doc.view.block_drag = false;
         }
@@ -156,7 +172,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     let mut pending = false;
     if doc.is_ready() {
         // Input is handled against the current layout, then the layout is rebuilt for painting.
-        if let Ok(rows) = layout_rows(&doc.buf, doc.view.top, doc.view.rows_on_screen + 1, wrap) {
+        if let Ok(rows) = layout_rows_folded(&doc.buf, doc.view.top, doc.view.rows_on_screen + 1, wrap, &doc.view.folds) {
             handle_wheel(ui, doc, &resp, m, wrap, env);
             handle_mouse(ui, doc, &resp, text_rect, m, wrap, &rows, active_pane);
             epoch_tooltip(ui, doc, &resp, text_rect, m, &rows);
@@ -184,7 +200,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     painter.rect_filled(gutter_rect, 0.0, visuals.faint_bg_color);
 
     let rows = if doc.is_ready() {
-        match layout_rows(&doc.buf, doc.view.top, doc.view.rows_on_screen + 1, wrap) {
+        match layout_rows_folded(&doc.buf, doc.view.top, doc.view.rows_on_screen + 1, wrap, &doc.view.folds) {
             Ok(r) => r,
             Err(Pending) => {
                 pending = true;
@@ -225,6 +241,8 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
 
     let (mut line, line_exact) = rows.first().map(|r| doc.buf.line_of(r.start)).unwrap_or((0, true));
     let mut max_w = doc.view.max_cells;
+    // Folds whose chip was clicked.
+    let mut unfold: Vec<u64> = Vec::new();
     // Screen readers get the rows on screen as text runs.
     let a11y_on = super::a11y::enabled(ui.ctx(), id);
     let mut a11y_rows: Vec<super::a11y::Row> = Vec::new();
@@ -235,7 +253,8 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         }
         let starts_line = row.is_first_in_seg() && row.seg.line_start;
         if i > 0 && starts_line {
-            line += 1;
+            // After a fold the line number jumps.
+            line = if doc.view.folds.binary_search_by_key(&row.start, |f| f.end).is_ok() { doc.buf.line_of(row.start).0 } else { line + 1 };
         }
         let Some(bytes) = doc.buf.read(row.start..row.end) else {
             pending = true;
@@ -421,6 +440,26 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             let glyph = if env.diff.as_ref().is_some_and(|o| o.added) { "+" } else { "−" };
             painter.text(pos2(gutter_rect.left() + 2.0, y), Align2::LEFT_TOP, glyph, font.clone(), diff_color.to_opaque());
         }
+        // A folded value: ▸ in the gutter, "… N lines …" after its opening line.
+        if let Some(f) = super::folds::starting_at(&doc.view.folds, row.seg.start).filter(|_| row.seg.line_start).copied() {
+            let color = visuals.weak_text_color();
+            if starts_line {
+                let (c, r) = (pos2(gutter_rect.right() - 3.0, y + m.rh * 0.5), (m.rh * 0.22).max(2.5));
+                painter.add(egui::Shape::convex_polygon(vec![pos2(c.x - r, c.y - r), pos2(c.x + r * 0.8, c.y), pos2(c.x - r, c.y + r)], color, egui::Stroke::NONE));
+            }
+            if row.is_last_in_seg() {
+                let chip = crate::app::i18n::trf("… {n} lines …", &[("n", &crate::app::filter_panel::fmt_count(f.lines))]);
+                let galley = ui.painter().layout_no_wrap(chip, FontId::proportional((m.rh * 0.7).max(9.0)), color);
+                let x = x_of(if reached_end { end_cell } else { first_cell + vis_cells }) + m.cw;
+                let rect = Rect::from_min_size(pos2(x, y + (m.rh - galley.size().y - 2.0) / 2.0), galley.size() + egui::vec2(10.0, 2.0));
+                text_painter.rect_filled(rect, 4.0, visuals.faint_bg_color.gamma_multiply(2.0));
+                text_painter.rect_stroke(rect, 4.0, egui::Stroke::new(1.0, visuals.widgets.noninteractive.bg_stroke.color), egui::StrokeKind::Inside);
+                text_painter.galley(rect.min + egui::vec2(5.0, 1.0), galley, color);
+                if ui.interact(rect, id.with(("fold", f.start)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                    unfold.push(f.start);
+                }
+            }
+        }
         if starts_line && doc.time_mark == Some((doc.version, row.start)) {
             // ◆: where Go to this time in all tabs put this tab.
             let (c, r) = (pos2(gutter_rect.left() + 5.5, y + m.rh * 0.5), (m.rh * 0.32).max(3.0));
@@ -433,6 +472,9 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         }
     }
     doc.view.max_cells = max_w;
+    if !unfold.is_empty() {
+        doc.view.folds.retain(|f| !unfold.contains(&f.start));
+    }
     if let Some(col) = env.ruler {
         let x = x_of(col as u32);
         if text_rect.x_range().contains(x) {
@@ -701,7 +743,7 @@ fn handle_wheel(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, m: Metri
         doc.view.wheel_rem = rows_f - n as f32;
         if n != 0 {
             if let Ok(top) = rows::row_at(&doc.buf, doc.view.top, wrap) {
-                if let Ok(r) = rows::step_rows(&doc.buf, top, n, wrap) {
+                if let Ok(r) = super::folds::step_rows(&doc.buf, top, n, wrap, &doc.view.folds) {
                     doc.view.top = r.start;
                 }
             }
@@ -803,7 +845,7 @@ fn handle_mouse(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, text_rec
         if pos.y < text_rect.top() || pos.y > text_rect.bottom() {
             let n = if pos.y < text_rect.top() { -1 } else { 1 };
             if let Ok(top) = rows::row_at(&doc.buf, doc.view.top, wrap) {
-                if let Ok(r) = rows::step_rows(&doc.buf, top, n, wrap) {
+                if let Ok(r) = super::folds::step_rows(&doc.buf, top, n, wrap, &doc.view.folds) {
                     doc.view.top = r.start;
                 }
             }
@@ -847,7 +889,7 @@ fn handle_mouse(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, text_rec
             if pos.y < text_rect.top() || pos.y > text_rect.bottom() {
                 let n = if pos.y < text_rect.top() { -1 } else { 1 };
                 if let Ok(top) = rows::row_at(&doc.buf, doc.view.top, wrap) {
-                    if let Ok(r) = rows::step_rows(&doc.buf, top, n, wrap) {
+                    if let Ok(r) = super::folds::step_rows(&doc.buf, top, n, wrap, &doc.view.folds) {
                         doc.view.top = r.start;
                     }
                 }
@@ -1132,7 +1174,7 @@ fn move_vertical(doc: &mut Document, n: i64, extend: bool, wrap: Option<usize>) 
         Some(x) => x,
         None => rows::cell_of_offset(&doc.buf, &row, c).unwrap_or(0),
     };
-    let Ok(target) = rows::step_rows(&doc.buf, row, n, wrap) else { return };
+    let Ok(target) = super::folds::step_rows(&doc.buf, row, n, wrap, &doc.view.folds) else { return };
     let off = if target.start == row.start {
         if n < 0 {
             row.start
@@ -1147,7 +1189,7 @@ fn move_vertical(doc: &mut Document, n: i64, extend: bool, wrap: Option<usize>) 
     if n.unsigned_abs() > 1 {
         // Page movement scrolls the view by the same amount.
         if let Ok(top) = rows::row_at(&doc.buf, doc.view.top, wrap) {
-            if let Ok(t) = rows::step_rows(&doc.buf, top, n, wrap) {
+            if let Ok(t) = super::folds::step_rows(&doc.buf, top, n, wrap, &doc.view.folds) {
                 doc.view.top = t.start;
             }
         }
@@ -1258,7 +1300,7 @@ fn ensure_caret_visible(doc: &mut Document, wrap: Option<usize>, center: bool, m
     let crow = rows::row_at(buf, doc.view.caret, wrap)?;
     let top_row = rows::row_at(buf, doc.view.top, wrap)?;
     if center {
-        doc.view.top = rows::step_rows(buf, crow, -((n / 2) as i64), wrap)?.start;
+        doc.view.top = super::folds::step_rows(buf, crow, -((n / 2) as i64), wrap, &doc.view.folds)?.start;
     } else if crow.start < top_row.start {
         doc.view.top = crow.start;
     } else {
@@ -1268,7 +1310,7 @@ fn ensure_caret_visible(doc: &mut Document, wrap: Option<usize>, center: bool, m
             if visible {
                 break;
             }
-            match rows::next_row(buf, &r, wrap)? {
+            match super::folds::next_row(buf, &r, wrap, &doc.view.folds)? {
                 Some(x) => {
                     r = x;
                     visible = r.start == crow.start;
@@ -1277,7 +1319,7 @@ fn ensure_caret_visible(doc: &mut Document, wrap: Option<usize>, center: bool, m
             }
         }
         if !visible {
-            doc.view.top = rows::step_rows(buf, crow, -((n as i64) - 1), wrap)?.start;
+            doc.view.top = super::folds::step_rows(buf, crow, -((n as i64) - 1), wrap, &doc.view.folds)?.start;
         }
     }
     if h_scroll(&doc.view) {

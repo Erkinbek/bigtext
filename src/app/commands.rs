@@ -124,6 +124,11 @@ pub enum Cmd {
     LineNumbers,
     TimeAllTabs,
     JsonCrumb,
+    Fold,
+    Unfold,
+    FoldAll1,
+    FoldAll2,
+    UnfoldAll,
     Theme(super::theme::Theme),
     ColourBlind,
     /// Interface scale, per cent.
@@ -140,7 +145,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 107] = [
+    pub const ALL: [Cmd; 112] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -233,6 +238,11 @@ impl Cmd {
         Cmd::LineNumbers,
         Cmd::TimeAllTabs,
         Cmd::JsonCrumb,
+        Cmd::Fold,
+        Cmd::Unfold,
+        Cmd::FoldAll1,
+        Cmd::FoldAll2,
+        Cmd::UnfoldAll,
         Cmd::Highlights,
         Cmd::LevelBar,
         Cmd::ZoomIn,
@@ -358,6 +368,11 @@ impl Cmd {
             Cmd::GotoTime => "Go to time…",
             Cmd::TimeAllTabs => "Go to this time in all tabs",
             Cmd::JsonCrumb => "JSON path in the status bar",
+            Cmd::Fold => "Fold",
+            Cmd::Unfold => "Unfold",
+            Cmd::FoldAll1 => "Fold all at level 1",
+            Cmd::FoldAll2 => "Fold all at level 2",
+            Cmd::UnfoldAll => "Unfold all",
             Cmd::Timeline => "Time histogram",
             Cmd::TimeGaps => "Find time gaps…",
             Cmd::Patterns => "Message patterns…",
@@ -479,6 +494,8 @@ impl Cmd {
             Cmd::GotoOffset => key(CTRL_SHIFT, Key::G),
             Cmd::GotoTime => key(CTRL_SHIFT, Key::T),
             Cmd::TimeAllTabs => key(CTRL_ALT, Key::T),
+            Cmd::Fold => key(CTRL_SHIFT, Key::OpenCurlyBracket),
+            Cmd::Unfold => key(CTRL_SHIFT, Key::CloseCurlyBracket),
             Cmd::Timeline => key(CTRL_SHIFT, Key::H),
             Cmd::MatchBracket => key(CTRL, Key::CloseBracket),
             Cmd::WordWrap => key(Modifiers::ALT, Key::Z),
@@ -729,6 +746,11 @@ impl BigTextApp {
             Cmd::GotoOffset => self.goto = GotoDialog::new(GotoMode::Offset),
             Cmd::GotoTime => self.goto = GotoDialog::new(GotoMode::Time),
             Cmd::TimeAllTabs => self.time_all_tabs(),
+            Cmd::Fold => self.fold_at_caret(),
+            Cmd::Unfold => self.unfold_at_caret(),
+            Cmd::FoldAll1 => self.fold_all(1),
+            Cmd::FoldAll2 => self.fold_all(2),
+            Cmd::UnfoldAll => self.unfold_all(),
             Cmd::JsonCrumb => {
                 self.settings.json_crumb = !self.settings.json_crumb;
                 self.persist_state();
@@ -933,6 +955,9 @@ impl BigTextApp {
             Cmd::PasteHistory => !self.clips.items.is_empty(),
             Cmd::CopyMarkdown | Cmd::CopyHtml => d.is_some_and(|d| d.has_selection()),
             Cmd::Properties => d.is_some_and(|d| d.is_ready()),
+            Cmd::Fold => self.foldable(),
+            Cmd::FoldAll1 | Cmd::FoldAll2 => self.foldable() && d.is_some_and(|d| d.effective_lang() == crate::view::highlight::Lang::Json),
+            Cmd::Unfold | Cmd::UnfoldAll => d.is_some_and(|d| !d.view.folds.is_empty()),
             Cmd::CheckRows => d.is_some_and(|d| d.table),
             Cmd::NavForward => !self.nav.forward.is_empty(),
             Cmd::Redo => d.is_some_and(|d| !d.redo.is_empty()),
@@ -1134,6 +1159,11 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 self.link_menu(ui);
+                ui.menu_button(tr("Folding"), |ui| {
+                    for c in [Cmd::Fold, Cmd::Unfold, Cmd::FoldAll1, Cmd::FoldAll2, Cmd::UnfoldAll] {
+                        run = run.or(self.item(ui, c));
+                    }
+                });
                 ui.separator();
                 for c in [Cmd::Syntax, Cmd::ShowWhitespace, Cmd::JsonCrumb] {
                     run = run.or(self.item(ui, c));

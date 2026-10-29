@@ -359,6 +359,13 @@ All notable changes to BigText. Each release on
 
 ### JSON
 
+- **Fold objects, arrays and tags**: **View → Folding ▸ Fold** (Ctrl+Shift+{) folds the
+  object, array or XML element at the caret (or the brackets around it) into its first line with
+  a ▸ in the gutter and a "… 1,234 lines …" chip; the chip or **Unfold** (Ctrl+Shift+}) opens it.
+  **Fold all at level 1 / level 2** folds every object and array at that depth of a JSON document
+  (at most a million), and **Unfold all** opens them. The ranges are found on a worker, scrolling,
+  arrow keys and paging step over folded lines, line numbers jump past them, and a jump into a
+  fold (Find, Go to) opens it. Folds are dropped when the text changes.
 - **A live JSON path in the status bar**: `$ › items › [1234] › address › city` for the value at
   the caret (the last four parts; the whole path on hover), updated once the caret rests. Each
   part goes to that parent, a right-click copies the path. In files over 8 MB one background pass

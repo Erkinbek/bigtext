@@ -2,6 +2,7 @@
 
 pub mod a11y;
 pub mod block;
+pub mod folds;
 pub mod hex_view;
 pub mod highlight;
 pub mod multi;

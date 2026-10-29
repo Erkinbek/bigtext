@@ -266,6 +266,10 @@ Single self-contained binary, no runtime dependencies.
   root array of millions of items, or an XML element tree), jumping to a path like `$.items[1234].id`
   (or `/catalog/item[1234]/price`) and copying the
   path at the caret; **View → Open JSON Lines as table**.
+- **Folding**: View → Folding ▸ Fold (Ctrl+Shift+{) folds the object, array or XML element at
+  the caret into one row with a "… 1,234 lines …" chip (a click opens it again); Fold all at
+  level 1 or 2 folds a JSON document's values at that depth. The ranges are found in the
+  background, so folding the root of a multi-GB array does not block.
 - **JSON path in the status bar**: `$ › items › [1234] › city` for the value at the caret, live
   as it moves; a part jumps to that parent, a right-click copies the path. Deep in multi-GB files
   it is found from checkpoints one background pass records every 8 MB.
@@ -434,6 +438,7 @@ times). Exit codes: 0 done, 1 nothing matched, 2 error.
 | Ctrl+G / Ctrl+Shift+G | Go to line / go to byte offset (decimal or `0x` hex; also `50%`, `+100` / `-100` from the caret, `$-100` from the end) |
 | Ctrl+Shift+T | Go to time (first log line at or after a timestamp) |
 | Ctrl+Alt+T | Go to this time in all tabs |
+| Ctrl+Shift+{ / Ctrl+Shift+} | Fold / unfold the object, array or element at the caret |
 | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) | Undo / redo |
 | Ctrl+X / Ctrl+C / Ctrl+V | Cut / copy / paste |
 | Ctrl+A | Select all |

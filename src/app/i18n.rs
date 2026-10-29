@@ -126,6 +126,7 @@ mod tests {
         "app" / "fields_panel.rs",
         "app" / "filter_panel.rs",
         "app" / "find_in_files.rs",
+        "app" / "fold.rs",
         "app" / "follow_id.rs",
         "app" / "gaps_panel.rs",
         "app" / "fonts.rs",

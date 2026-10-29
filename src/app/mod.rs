@@ -16,6 +16,7 @@ pub mod extras;
 pub mod fields_panel;
 pub mod filter_panel;
 pub mod find_in_files;
+pub mod fold;
 pub mod follow_id;
 pub mod gaps_panel;
 pub mod fonts;
@@ -132,6 +133,7 @@ pub enum Msg {
     TimeFound { doc: u64, version: u64, result: Result<u64, bigtext::timestamp::TimeError> },
     Aligned(Box<time_link::Aligned>),
     JsonCrumb(Box<json_crumb::CrumbMsg>),
+    Folds(Box<fold::FoldMsg>),
     LevelFound(Box<levels::LevelFound>),
     CursorFound(Box<multi_cursor::CursorFound>),
     BracketJump(Box<match_bracket::BracketJump>),
@@ -1017,6 +1019,7 @@ impl BigTextApp {
                 Msg::TimeFound { doc, version, result } => self.on_time_found(doc, version, result),
                 Msg::Aligned(a) => self.on_aligned(*a),
                 Msg::JsonCrumb(m) => self.on_json_crumb(*m),
+                Msg::Folds(m) => self.on_folds(*m),
                 Msg::LevelFound(f) => self.on_level_found(*f),
                 Msg::CursorFound(f) => self.on_cursor_found(*f),
                 Msg::BracketJump(j) => self.on_bracket_jump(*j),

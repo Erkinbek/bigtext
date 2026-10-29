@@ -69,6 +69,7 @@ const REQUESTS_LOG: &str = "2024-05-01 10:00:00 INFO request_id=r-1 GET /a\n2024
 const BRACKETS_JSON: &str = "{\"a\": [1, \"]\", {\"b\": 2}]}\n";
 const CATALOG_XML: &str = "<?xml version=\"1.0\"?>\n<catalog>\n  <item id=\"1\"><price>10</price></item>\n  <item id=\"2\"><price>12</price></item>\n</catalog>\n";
 const OUTLINE_JSON: &str = "{\"name\": \"demo\", \"items\": [{\"id\": 10}, {\"id\": 11}, {\"id\": 12}]}\n";
+const FOLD_JSON: &str = "{\n  \"a\": {\n    \"x\": 1,\n    \"y\": 2\n  },\n  \"b\": [\n    1,\n    2,\n    3\n  ],\n  \"c\": 3\n}\n";
 const CSV_WITHOUT_NAME_CITY: &str = "id;age\r\n1;30\r\n2;41\r\n3;25\r\n";
 
 fn doc(app: &mut BigTextApp) -> &mut Document {
@@ -175,6 +176,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("excel.csv"), "sep=;\n# exported\nname;qty\nann;1\nbob;2\n")?;
     std::fs::write(dir.join("numbers.csv"), "1,2\n3,4\n5,6\n")?;
     std::fs::write(dir.join("semi.txt"), "id;note\n1;a,b\n2;c,d\n")?;
+    std::fs::write(dir.join("fold.json"), FOLD_JSON)?;
     // Past the 8 MB a JSON path needs checkpoints for.
     let rows: Vec<String> = (0..120_000).map(|i| format!("{{\"id\": {i}, \"name\": \"row {i:06}\", \"tags\": [\"alpha\", \"beta\"]}}")).collect();
     std::fs::write(dir.join("big.json"), format!("{{\"rows\": [\n{}\n]}}\n", rows.join(",\n")))?;
@@ -3997,6 +3999,70 @@ impl SelfTest {
                 None => Step::Wait,
             }
         }));
+        s("fold the object at the caret, step over it, fold all at level 1, unfold all", Box::new(|app, c| {
+            use crate::app::commands::Cmd;
+            let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+            if c.first() {
+                app.open_path(c.file("fold.json"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) {
+                return Step::Wait;
+            }
+            let line = |app: &mut BigTextApp, n: u64| doc(app).buf.line_start(n).map(|x| x.0).unwrap_or(u64::MAX);
+            let shown = |app: &mut BigTextApp| {
+                let d = doc(app);
+                crate::view::text_view::layout_rows_folded(&d.buf, 0, 8, None, &d.view.folds).map(|r| r.iter().map(|r| d.buf.line_of(r.start).0).collect::<Vec<u64>>()).unwrap_or_default()
+            };
+            match c.mark {
+                0 => {
+                    // In "x": 1, inside "a".
+                    let at = line(app, 2) + 5;
+                    doc(app).set_caret(at, false);
+                    app.run(&ctx, Cmd::Fold);
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    if doc(app).view.folds.is_empty() {
+                        return if c.waited() > Duration::from_secs(3) { Step::Fail("not folded".into()) } else { Step::Wait };
+                    }
+                    let rows = shown(app);
+                    let f = doc(app).view.folds[0];
+                    if rows[..4] != [0, 1, 4, 5] || f.lines != 2 || doc(app).view.caret != line(app, 1) {
+                        return Step::Fail(format!("rows {rows:?}, fold {f:?}, caret {}", doc(app).view.caret));
+                    }
+                    // Down from the folded line lands on its closing line.
+                    c.key(Key::ArrowDown, NONE);
+                    c.mark = 2;
+                    Step::Wait
+                }
+                2 => {
+                    let d = doc(app);
+                    let caret_line = d.buf.line_of(d.view.caret).0;
+                    if caret_line != 4 {
+                        return if c.waited() > Duration::from_secs(2) { Step::Fail(format!("Down went to line {caret_line}")) } else { Step::Wait };
+                    }
+                    let top = line(app, 0);
+                    doc(app).set_caret(top, false);
+                    app.run(&ctx, Cmd::FoldAll1);
+                    c.mark = 3;
+                    Step::Wait
+                }
+                _ => {
+                    if doc(app).view.folds.len() != 2 {
+                        return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("{} folds at level 1", doc(app).view.folds.len())) } else { Step::Wait };
+                    }
+                    let rows = shown(app);
+                    app.run(&ctx, Cmd::UnfoldAll);
+                    let left = doc(app).view.folds.len();
+                    let id = doc(app).id;
+                    app.test_close(id);
+                    c.mark = 0;
+                    check(rows[..5] == [0, 1, 4, 5, 9] && left == 0, format!("rows {rows:?}, {left} folds left"))
+                }
+            }
+        }));
         s("typing into an empty file", Box::new(|app, c| {
             if c.first() {
                 app.open_path(c.file("empty.txt"));
@@ -4227,6 +4293,25 @@ impl SelfTest {
             Step::Next
         }));
         s("shot json.png", shot_step("json.png"));
+        s("JSON folded at level 1", Box::new(|app, c| {
+            use crate::app::commands::Cmd;
+            if c.first() {
+                let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+                doc(app).split = None;
+                doc(app).set_caret(0, false);
+                app.run(&ctx, Cmd::FoldAll1);
+                return Step::Wait;
+            }
+            if doc(app).view.folds.is_empty() && c.waited() < Duration::from_secs(5) {
+                return Step::Wait;
+            }
+            // Open the third one again, to show both.
+            if let Some(f) = doc(app).view.folds.get(2).copied() {
+                doc(app).view.folds.retain(|x| x.start != f.start);
+            }
+            Step::Next
+        }));
+        s("shot folds.png", shot_step("folds.png"));
         s("two logs linked by time", Box::new(|app, c| {
             if c.first() {
                 app.open_path(c.file("server-b.log"));

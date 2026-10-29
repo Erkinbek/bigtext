@@ -362,7 +362,7 @@ fn page_down(d: &mut crate::app::document::Document) {
     let wrap = crate::view::text_view::wrap_cols(&d.view);
     let n = d.view.rows_on_screen.max(1) as i64;
     if let Ok(top) = rows::row_at(&d.buf, d.view.top, wrap) {
-        if let Ok(r) = rows::step_rows(&d.buf, top, n, wrap) {
+        if let Ok(r) = crate::view::folds::step_rows(&d.buf, top, n, wrap, &d.view.folds) {
             d.view.top = r.start;
             d.view.caret = r.start.max(d.min_caret());
             d.view.anchor = d.view.caret;

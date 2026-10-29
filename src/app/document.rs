@@ -59,6 +59,9 @@ pub enum Banner {
 
 /// Per-document view state (positions are byte offsets in the document).
 pub struct ViewState {
+    /// Folded values (sorted, not overlapping), for the version `folds_version`.
+    pub folds: Vec<crate::view::folds::Fold>,
+    pub folds_version: u64,
     /// View → Wrap at: the column rows wrap at (`None`: the pane's width).
     pub wrap_column: Option<usize>,
     /// What the last frame gave screen readers (tests read it).
@@ -138,6 +141,8 @@ impl Default for ViewState {
             alt_prev: None,
             a11y_last: None,
             wrap_column: None,
+            folds: Vec::new(),
+            folds_version: 0,
         }
     }
 }
