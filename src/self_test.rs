@@ -1049,6 +1049,36 @@ impl SelfTest {
             c.mark += 1;
             Step::Wait
         }));
+        s("side by side: the other file opens beside, its lines marked, scrolling along", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("diff-a.txt"));
+                app.side_by_side = true;
+                app.start_diff(c.file("diff-b.txt"));
+                return Step::Wait;
+            }
+            let waited = c.waited() > Duration::from_secs(5);
+            let Some(r) = &app.diff else { return Step::Fail("no comparison".into()) };
+            let done = r.data.lock().unwrap().done;
+            let b_ready = r.side.as_ref().is_some_and(|s| s.doc.is_ready());
+            if !done || !b_ready {
+                return if waited { Step::Fail(format!("done {done}, B ready {b_ready}")) } else { Step::Wait };
+            }
+            let b_top = r.side.as_ref().map(|s| s.doc.buf.line_of(s.doc.view.top).0).unwrap_or(0);
+            let spans = crate::app::extras::diff_spans(&r.data.lock().unwrap().hunks, 0..u64::MAX, false).len();
+            if c.mark == 0 {
+                let Some((off, true)) = doc(app).buf.line_start(1600) else { return Step::Wait };
+                doc(app).view.top = off;
+                doc(app).view.scroll_to_caret = false;
+                c.mark = 1;
+                return Step::Wait;
+            }
+            if b_top != 1601 && !waited {
+                return Step::Wait;
+            }
+            app.side_by_side = false;
+            app.diff = None;
+            check(b_top == 1601 && spans == 2, format!("B top line {b_top}, {spans} spans in B"))
+        }));
         s("compare with the saved file shows unsaved edits; after a save, with the .bak", Box::new({
             let mut backup_was = false;
             move |app, c| {
@@ -2832,6 +2862,24 @@ impl SelfTest {
             }
         }));
         s("shot compare.png", shot_step("compare.png"));
+        s("compare side by side", Box::new(|app, c| {
+            app.side_by_side = true;
+            match app.diff.as_ref().and_then(|r| r.side.as_ref()) {
+                Some(s) if s.doc.is_ready() && c.mark == 0 => {
+                    // The first difference, a few lines down.
+                    app.step_diff(true);
+                    c.mark = 1;
+                    Step::Wait
+                }
+                Some(_) if c.mark == 1 => Step::Next,
+                _ => Step::Wait,
+            }
+        }));
+        s("shot compare-side.png", shot_step("compare-side.png"));
+        s("side by side off", Box::new(|app, _| {
+            app.side_by_side = false;
+            Step::Next
+        }));
         s("JSON, light theme, split view, bookmarks", Box::new(|app, c| {
             if c.first() {
                 app.diff = None;

@@ -8,8 +8,9 @@ use bigtext::diff::{self, DiffEnd, Hunk};
 use bigtext::file::{self, OpenMode, Source};
 use bigtext::jobs::{self, CancelToken, Progress};
 
-use super::document::Restore;
+use super::document::{Document, Restore};
 use super::i18n::{tr, trf};
+use crate::view::text_view::{self, DiffOverlay, ViewEnv};
 use super::BigTextApp;
 
 pub const RECENT_MAX: usize = 15;
@@ -337,6 +338,163 @@ impl DiffOther {
     }
 }
 
+/// The other file of a comparison, shown beside the document (View → Compare side by side).
+pub struct SideBySide {
+    pub doc: Box<Document>,
+    pub path: PathBuf,
+    /// The tops of A and B after the last scroll sync.
+    pub synced: (u64, u64),
+    /// A pane still to move to a line (true: A) once its offset is exact.
+    pub pending: Option<(bool, u64)>,
+}
+
+impl Drop for SideBySide {
+    fn drop(&mut self) {
+        self.doc.cancel_jobs();
+        self.doc.watch_cancel.cancel();
+    }
+}
+
+/// The ranges of `hunks`' lines on one side (`a`: A) that meet `range`; a hunk without lines on
+/// that side gives an empty range where the other side's lines go.
+pub fn diff_spans(hunks: &[Hunk], range: std::ops::Range<u64>, a: bool) -> Vec<std::ops::Range<u64>> {
+    let span = |h: &Hunk| if a { h.a_off..h.a_end } else { h.b_off..h.b_end };
+    let k = hunks.partition_point(|h| span(h).end < range.start);
+    hunks[k..].iter().map(span).take_while(|s| s.start <= range.end).collect()
+}
+
+/// The lengths of the common start and end of two lines, on character boundaries.
+fn prefix_suffix(a: &[u8], b: &[u8]) -> (usize, usize) {
+    let mut p = a.iter().zip(b).take_while(|(x, y)| x == y).count();
+    while p > 0 && p < a.len() && a[p] & 0xC0 == 0x80 {
+        p -= 1;
+    }
+    let room = a.len().min(b.len()) - p;
+    let mut s = a.iter().rev().zip(b.iter().rev()).take(room).take_while(|(x, y)| x == y).count();
+    while s > 0 && a[a.len() - s] & 0xC0 == 0x80 {
+        s -= 1;
+    }
+    (p, s)
+}
+
+/// The changed middle of each line of the hunks that replace as many lines as they remove (and
+/// are not long), on one side, within `range`.
+fn changed_parts(hunks: &[Hunk], own: &bigtext::text::TextBuf, other: &bigtext::text::TextBuf, range: std::ops::Range<u64>, a: bool, color: egui::Color32) -> Vec<(u64, u64, egui::Color32)> {
+    const MAX_HUNK: u64 = 256 << 10;
+    const MAX_LINE: usize = 16 << 10;
+    let trim = |l: &[u8]| -> usize {
+        let l = l.strip_suffix(b"\n").unwrap_or(l);
+        l.strip_suffix(b"\r").unwrap_or(l).len()
+    };
+    let mut out = Vec::new();
+    let k = hunks.partition_point(|h| (if a { h.a_end } else { h.b_end }) <= range.start);
+    for h in &hunks[k..] {
+        let (mine, theirs) = if a { (h.a_off..h.a_end, h.b_off..h.b_end) } else { (h.b_off..h.b_end, h.a_off..h.a_end) };
+        if mine.start >= range.end {
+            break;
+        }
+        if h.a_count != h.b_count || h.a_count > 200 || mine.end - mine.start > MAX_HUNK || theirs.end - theirs.start > MAX_HUNK {
+            continue;
+        }
+        let (Some(x), Some(y)) = (own.read(mine.clone()), other.read(theirs)) else { continue };
+        let mut at = mine.start;
+        for (lx, ly) in x.split_inclusive(|&c| c == b'\n').zip(y.split_inclusive(|&c| c == b'\n')) {
+            let (nx, ny) = (trim(lx), trim(ly));
+            if nx <= MAX_LINE && ny <= MAX_LINE && lx[..nx] != ly[..ny] {
+                let (p, s) = prefix_suffix(&lx[..nx], &ly[..ny]);
+                out.push((at + p as u64, at + (nx - s) as u64, color));
+            }
+            at += lx.len() as u64;
+        }
+    }
+    out
+}
+
+/// The offset to show `line` at the top, and whether it is exact (the index may still be
+/// counting lines).
+fn line_top(buf: &bigtext::text::TextBuf, line: u64) -> (u64, bool) {
+    match buf.line_start(line) {
+        Some((o, true)) => (o, true),
+        Some((o, false)) => (bigtext::text::rows::seg_start(buf, o).unwrap_or(o), false),
+        None => {
+            let (n, exact) = buf.line_count();
+            (buf.line_start(n.saturating_sub(1)).map(|(o, _)| o).unwrap_or(0), exact)
+        }
+    }
+}
+
+/// Keeps the two panes at corresponding lines: the one the user moved leads (B only while the
+/// pointer is over it). A line found by estimate is looked up again until it is exact.
+fn sync_tops(a: &mut Document, side: &mut SideBySide, hunks: &[Hunk], lead_b: bool) {
+    let (at, bt) = (a.view.top, side.doc.view.top);
+    let first = side.synced.0 == u64::MAX;
+    // Which pane follows (true: A) and the line it should show.
+    let target = if lead_b && !first && bt != side.synced.1 {
+        Some((true, diff::map_line(hunks, side.doc.buf.line_of(bt).0, false)))
+    } else if at != side.synced.0 {
+        Some((false, diff::map_line(hunks, a.buf.line_of(at).0, true)))
+    } else {
+        side.pending
+    };
+    side.pending = None;
+    let Some((to_a, line)) = target else {
+        side.synced = (at, bt);
+        return;
+    };
+    let follower = if to_a { &mut *a } else { &mut *side.doc };
+    let (top, exact) = line_top(&follower.buf, line);
+    follower.view.top = top;
+    follower.view.scroll_to_caret = false;
+    if !exact {
+        side.pending = Some((to_a, line));
+    }
+    side.synced = if to_a { (top, bt) } else { (at, top) };
+}
+
+/// Draws the document (A, left) and the file it is compared with (B, right), their differing
+/// lines tinted, scrolling together.
+pub(super) fn show_side_by_side(ui: &mut egui::Ui, a: &mut Document, r: &mut DiffResults, env: &mut ViewEnv) {
+    let Some(side) = r.side.as_mut() else { return };
+    let g = r.data.lock().unwrap();
+    let hunks: &[Hunk] = &g.hunks;
+    // Offsets in A no longer match once it is edited.
+    let outdated = a.version != r.version;
+    let dark = ui.visuals().dark_mode;
+    let full = ui.available_rect_before_wrap();
+    let mid = full.center().x.round();
+    let left = egui::Rect::from_min_max(full.min, egui::pos2(mid - 2.0, full.bottom()));
+    let right = egui::Rect::from_min_max(egui::pos2(mid + 2.0, full.top()), full.max);
+    ui.painter().vline(mid, full.y_range(), ui.visuals().widgets.noninteractive.bg_stroke);
+    let lead_b = ui.ctx().pointer_hover_pos().is_some_and(|p| right.contains(p));
+    let alpha = if dark { 90 } else { 110 };
+    let (red, green) = (egui::Color32::from_rgba_unmultiplied(230, 70, 70, alpha), egui::Color32::from_rgba_unmultiplied(70, 190, 90, alpha));
+    {
+        let b_buf = &side.doc.buf;
+        let spans = |range: std::ops::Range<u64>| if outdated { Vec::new() } else { diff_spans(hunks, range, true) };
+        let hl = |buf: &bigtext::text::TextBuf, range: std::ops::Range<u64>| {
+            let mut v = (env.highlight)(buf, range.clone());
+            if !outdated {
+                v.extend(changed_parts(hunks, buf, b_buf, range, true, red));
+            }
+            v
+        };
+        let mut e = ViewEnv { font_size: &mut *env.font_size, highlight: &hl, actions: &mut *env.actions, focus: env.focus, lang: env.lang, pane: 0, show_ws: env.show_ws, diff: Some(DiffOverlay { spans: &spans, added: false }) };
+        ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| text_view::show(ui, a, &mut e));
+    }
+    {
+        let a_buf = &a.buf;
+        let spans = |range: std::ops::Range<u64>| diff_spans(hunks, range, false);
+        let hl = |buf: &bigtext::text::TextBuf, range: std::ops::Range<u64>| if outdated { Vec::new() } else { changed_parts(hunks, buf, a_buf, range, false, green) };
+        let lang = if env.lang == crate::view::highlight::Lang::Plain { env.lang } else { side.doc.effective_lang() };
+        let mut actions = Vec::new();
+        let mut e = ViewEnv { font_size: &mut *env.font_size, highlight: &hl, actions: &mut actions, focus: env.focus, lang, pane: 1, show_ws: env.show_ws, diff: Some(DiffOverlay { spans: &spans, added: true }) };
+        ui.scope_builder(egui::UiBuilder::new().max_rect(right), |ui| text_view::show(ui, &mut side.doc, &mut e));
+    }
+    if !outdated && a.is_ready() && side.doc.is_ready() {
+        sync_tops(a, side, hunks, lead_b);
+    }
+}
+
 pub struct DiffResults {
     pub doc: u64,
     pub other: DiffOther,
@@ -344,6 +502,8 @@ pub struct DiffResults {
     pub version: u64,
     /// The switches it ran with.
     pub switches: DiffSwitches,
+    /// B beside the document, when View → Compare side by side is on.
+    pub side: Option<SideBySide>,
     pub data: Arc<Mutex<DiffData>>,
     pub cancel: CancelToken,
     pub progress: Progress,
@@ -493,9 +653,20 @@ impl BigTextApp {
     /// Compares the active document, unsaved edits included, with `other`.
     pub(crate) fn start_diff_with(&mut self, other: DiffOther) {
         let Some(d) = self.docs.get(self.active) else { return };
-        if let Some(r) = self.diff.take() {
-            r.cancel.cancel();
-        }
+        let old_side = match self.diff.take() {
+            Some(mut r) => {
+                r.cancel.cancel();
+                r.side.take()
+            }
+            None => None,
+        };
+        // Comparing again with the same file keeps it open beside.
+        let b_path = other.path().map(Path::to_path_buf).or_else(|| d.path.clone());
+        let side = old_side.filter(|s| Some(&s.path) == b_path.as_ref() && s.doc.banner.is_none()).map(|mut s| {
+            s.synced = (u64::MAX, u64::MAX);
+            s.pending = None;
+            s
+        });
         let switches = self.diff_switches.clone();
         let opts = match switches.options() {
             Ok(o) => o,
@@ -509,7 +680,7 @@ impl BigTextApp {
         let data = Arc::new(Mutex::new(DiffData::default()));
         let cancel = CancelToken::new();
         let progress = Progress::default();
-        self.diff = Some(DiffResults { doc: d.id, other: other.clone(), version: d.version, switches, data: data.clone(), cancel: cancel.clone(), progress: progress.clone() });
+        self.diff = Some(DiffResults { doc: d.id, other: other.clone(), version: d.version, switches, side, data: data.clone(), cancel: cancel.clone(), progress: progress.clone() });
         let waker = self.waker.clone();
         jobs::spawn("diff", move || {
             let t = Instant::now();
@@ -560,6 +731,33 @@ impl BigTextApp {
         });
     }
 
+    /// Opens the other file beside the document, or closes it, as View → Compare side by side
+    /// asks.
+    pub(super) fn sync_side_doc(&mut self) {
+        let Some(r) = &mut self.diff else { return };
+        if !self.side_by_side {
+            r.side = None;
+            return;
+        }
+        if r.side.is_some() {
+            return;
+        }
+        let path = match r.other.path() {
+            Some(p) => p.to_path_buf(),
+            None => match self.docs.iter().find(|d| d.id == r.doc).and_then(|d| d.path.clone()) {
+                Some(p) => p,
+                None => return,
+            },
+        };
+        let id = self.alloc_id();
+        let mut doc = Document::loading(id, path.clone());
+        doc.read_only = true;
+        if let Some(r) = &mut self.diff {
+            r.side = Some(SideBySide { doc: Box::new(doc), path: path.clone(), synced: (u64::MAX, u64::MAX), pending: None });
+        }
+        self.spawn_open(id, path, None);
+    }
+
     /// Copies the differences' offsets into the compared document for its scrollbar marks.
     pub(super) fn sync_diff_marks(&mut self) {
         let (id, data) = match &self.diff {
@@ -594,6 +792,7 @@ impl BigTextApp {
         let mut rerun = false;
         let a_doc = self.docs.iter().find(|d| d.id == r.doc);
         let outdated = a_doc.is_some_and(|d| d.version != r.version);
+        let mut side = self.side_by_side;
         ui.horizontal(|ui| {
             ui.strong(match &r.other {
                 DiffOther::File(p) => trf("Compare with {file}", &[("file", &file::display_path(p))]),
@@ -627,6 +826,7 @@ impl BigTextApp {
                 if ui.small_button("×").clicked() {
                     close = true;
                 }
+                ui.toggle_value(&mut side, tr("Side by side")).on_hover_text(tr("Show the other file beside this one, scrolling together"));
                 if matches!(r.other, DiffOther::File(_)) && ui.small_button(tr("Swap A↔B")).on_hover_text(tr("Compare the other way round: open the other file and compare it with this one")).clicked() {
                     swap = true;
                 }
@@ -727,6 +927,7 @@ impl BigTextApp {
             }
         }
         self.diff_switches = switches;
+        self.side_by_side = side;
         if rerun {
             if let Some(r) = &self.diff {
                 let (doc, other) = (r.doc, r.other.clone());

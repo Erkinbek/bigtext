@@ -260,6 +260,8 @@ pub struct BigTextApp {
     /// A comparison to start once its document is ready: (document, other file).
     pub diff_pending: Option<(u64, PathBuf)>,
     pub diff_switches: extras::DiffSwitches,
+    /// View → Compare side by side.
+    pub side_by_side: bool,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -400,6 +402,7 @@ impl BigTextApp {
             json_diff: json_diff_panel::JsonDiffUi::default(),
             diff_pending: None,
             diff_switches: extras::DiffSwitches::default(),
+            side_by_side: false,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -553,7 +556,11 @@ impl BigTextApp {
     }
 
     fn doc_mut(&mut self, id: u64) -> Option<&mut Document> {
-        self.docs.iter_mut().find(|d| d.id == id)
+        if let Some(i) = self.docs.iter().position(|d| d.id == id) {
+            return Some(&mut self.docs[i]);
+        }
+        // The other file of a side-by-side comparison.
+        self.diff.as_mut().and_then(|r| r.side.as_mut()).map(|s| &mut *s.doc).filter(|d| d.id == id)
     }
 
     fn poll_messages(&mut self) {
@@ -1341,6 +1348,7 @@ impl eframe::App for BigTextApp {
         self.track_jumps();
         self.poll_messages();
         self.run_pending_diff();
+        self.sync_side_doc();
         self.handle_close_request(&ctx);
 
         // Dropped files.
@@ -1377,6 +1385,9 @@ impl eframe::App for BigTextApp {
         for d in &mut self.docs {
             d.tick();
             d.refine_goto();
+        }
+        if let Some(s) = self.diff.as_mut().and_then(|r| r.side.as_mut()) {
+            s.doc.tick();
         }
         self.run_pending_find();
         self.run_pending_filters();
@@ -1447,12 +1458,21 @@ impl eframe::App for BigTextApp {
                     table_view::show(ui, d, &mut env);
                 } else {
                     let lang = if syntax { d.effective_lang() } else { crate::view::highlight::Lang::Plain };
-                    match d.split.take() {
-                        None => {
-                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws };
+                    let side = match &mut self.diff {
+                        Some(r) if self.side_by_side && r.doc == d.id && r.side.is_some() => Some(r),
+                        _ => None,
+                    };
+                    match (side, d.split.take()) {
+                        (Some(r), split) => {
+                            d.split = split;
+                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, diff: None };
+                            extras::show_side_by_side(ui, d, r, &mut env);
+                        }
+                        (None, None) => {
+                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, diff: None };
                             text_view::show(ui, d, &mut env);
                         }
-                        Some(mut pane) => {
+                        (None, Some(mut pane)) => {
                             // Two panes over the same document: independent scrolling, shared caret.
                             let full = ui.available_rect_before_wrap();
                             let mid = full.center().y;
@@ -1460,12 +1480,12 @@ impl eframe::App for BigTextApp {
                             let bottom = egui::Rect::from_min_max(egui::pos2(full.left(), mid + 2.0), full.max);
                             ui.painter().hline(full.x_range(), mid, ui.visuals().widgets.noninteractive.bg_stroke);
                             ui.scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
-                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws };
+                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, diff: None };
                                 text_view::show(ui, d, &mut env);
                             });
                             pane.swap_with(&mut d.view);
                             ui.scope_builder(egui::UiBuilder::new().max_rect(bottom), |ui| {
-                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 1, show_ws };
+                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 1, show_ws, diff: None };
                                 text_view::show(ui, d, &mut env);
                             });
                             pane.swap_with(&mut d.view);

@@ -60,9 +60,26 @@ pub struct Hunk {
     pub a_line: u64,
     pub a_count: u64,
     pub a_off: u64,
+    /// The end of the hunk's lines in A (`a_off` when it has none).
+    pub a_end: u64,
     pub b_line: u64,
     pub b_count: u64,
     pub b_off: u64,
+    pub b_end: u64,
+}
+
+/// The line on the other side that corresponds to `line` on this one (`a_to_b`: from A to B):
+/// the start of the hunk it is in, or the same distance past the last hunk before it.
+pub fn map_line(hunks: &[Hunk], line: u64, a_to_b: bool) -> u64 {
+    let side = |h: &Hunk| if a_to_b { (h.a_line, h.a_count, h.b_line, h.b_count) } else { (h.b_line, h.b_count, h.a_line, h.a_count) };
+    let k = hunks.partition_point(|h| side(h).0 <= line);
+    let Some(h) = k.checked_sub(1).map(|k| side(&hunks[k])) else { return line };
+    let (from, n, to, m) = h;
+    if line < from + n {
+        to
+    } else {
+        to + m + (line - from - n)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -432,7 +449,8 @@ pub fn diff_with(a: &dyn LineSource, b: &dyn LineSource, opts: &DiffOptions, can
         let (a_eof, b_eof) = (ra.eof(), rb.eof());
         let (i, j) = find_anchor(&wa, &wb, a_eof, b_eof).unwrap_or((wa.len(), wb.len()));
         if i > 0 || j > 0 {
-            let h = Hunk { a_line: sa_line, a_count: i as u64, a_off: sa_off, b_line: sb_line, b_count: j as u64, b_off: sb_off };
+            let end = |w: &[Line], k: usize, off: u64| k.checked_sub(1).map(|k| w[k].off + w[k].len).unwrap_or(off);
+            let h = Hunk { a_line: sa_line, a_count: i as u64, a_off: sa_off, a_end: end(&wa, i, sa_off), b_line: sb_line, b_count: j as u64, b_off: sb_off, b_end: end(&wb, j, sb_off) };
             if !on_hunk(h) {
                 return DiffEnd::Stopped;
             }
@@ -552,6 +570,23 @@ mod tests {
         });
         assert_eq!(summary(&v), vec![(9, 1, 9, 1), (2001, 1, 2001, 0)]);
         assert_eq!(v[0].a_off, at_line(&text, 9));
+    }
+
+    #[test]
+    fn hunk_ends_and_line_mapping() {
+        let a = lines(100);
+        let b = a.replace("line number 10\n", "line number ten\nand more\n").replace("line number 50\n", "");
+        let (_a, sa) = src(a.as_bytes());
+        let (_b, sb) = src(b.as_bytes());
+        let h = diff_all(&sa, &sb);
+        assert_eq!(summary(&h), vec![(10, 1, 10, 2), (50, 1, 51, 0)]);
+        assert_eq!((h[0].a_end, h[0].b_end), (at_line(&a, 11), at_line(&b, 12)));
+        assert_eq!((h[1].a_end, h[1].b_end), (at_line(&a, 51), at_line(&b, 51)));
+        assert_eq!(h[1].b_off, h[1].b_end);
+        let to_b: Vec<u64> = [0, 10, 11, 40, 50, 51, 99].iter().map(|&l| map_line(&h, l, true)).collect();
+        assert_eq!(to_b, vec![0, 10, 12, 41, 51, 51, 99]);
+        let to_a: Vec<u64> = [0, 10, 11, 12, 41, 51, 98].iter().map(|&l| map_line(&h, l, false)).collect();
+        assert_eq!(to_a, vec![0, 10, 10, 11, 40, 51, 98]);
     }
 
     fn at_line(text: &str, n: usize) -> u64 {

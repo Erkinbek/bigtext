@@ -33,6 +33,7 @@ pub enum Cmd {
     SaveSelection,
     SplitFile,
     Compare,
+    CompareSideBySide,
     CompareSaved,
     CompareBackup,
     MergeLogs,
@@ -119,7 +120,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 89] = [
+    pub const ALL: [Cmd; 90] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -136,6 +137,7 @@ impl Cmd {
         Cmd::SaveSelection,
         Cmd::SplitFile,
         Cmd::Compare,
+        Cmd::CompareSideBySide,
         Cmd::CompareSaved,
         Cmd::CompareBackup,
         Cmd::MergeLogs,
@@ -258,6 +260,7 @@ impl Cmd {
             Cmd::SaveSelection => "Save selection as…",
             Cmd::SplitFile => "Split file…",
             Cmd::Compare => "Compare with…",
+            Cmd::CompareSideBySide => "Compare side by side",
             Cmd::CompareSaved => "Compare with the saved file",
             Cmd::CompareBackup => "Compare with the backup (.bak)",
             Cmd::MergeLogs => "Merge logs by time…",
@@ -657,6 +660,12 @@ impl BigTextApp {
             Cmd::JsonlTable => self.open_jsonl_table(),
             Cmd::Follow => doc(self).into_iter().for_each(|d| d.follow = !d.follow),
             Cmd::SplitView => doc(self).into_iter().for_each(toggle_split),
+            Cmd::CompareSideBySide => {
+                self.side_by_side = !self.side_by_side;
+                if self.side_by_side && self.diff.is_none() {
+                    self.notify(tr("Compare the file with another first (File → Compare with…).").into(), None);
+                }
+            }
             Cmd::Syntax => self.settings.syntax = !self.settings.syntax,
             Cmd::ShowWhitespace => {
                 self.settings.show_ws = !self.settings.show_ws;
@@ -699,6 +708,7 @@ impl BigTextApp {
             Cmd::LogFields => self.fields.open,
             Cmd::Follow => d.is_some_and(|d| d.follow),
             Cmd::SplitView => d.is_some_and(|d| d.split.is_some()),
+            Cmd::CompareSideBySide => self.side_by_side,
             Cmd::Syntax => self.settings.syntax,
             Cmd::ShowWhitespace => self.settings.show_ws,
             Cmd::DarkTheme => self.settings.dark,
@@ -710,7 +720,7 @@ impl BigTextApp {
     }
 
     fn is_toggle(cmd: Cmd) -> bool {
-        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
+        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
     }
 
     fn enabled(&self, cmd: Cmd) -> bool {
@@ -892,7 +902,7 @@ impl BigTextApp {
                 }
             });
             ui.menu_button(tr("View"), |ui| {
-                for c in [Cmd::WordWrap, Cmd::HexView, Cmd::TableView, Cmd::CheckRows, Cmd::JsonStructure, Cmd::JsonFields, Cmd::LogFields, Cmd::JsonlTable, Cmd::Follow, Cmd::SplitView] {
+                for c in [Cmd::WordWrap, Cmd::HexView, Cmd::TableView, Cmd::CheckRows, Cmd::JsonStructure, Cmd::JsonFields, Cmd::LogFields, Cmd::JsonlTable, Cmd::Follow, Cmd::SplitView, Cmd::CompareSideBySide] {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();

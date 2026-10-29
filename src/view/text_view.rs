@@ -40,6 +40,16 @@ pub struct ViewEnv<'a> {
     pub pane: u8,
     /// Spaces, tabs and line breaks shown as `·`, `→` and `↓` / `↵` / `←`.
     pub show_ws: bool,
+    /// The lines a comparison marks in this pane (side by side).
+    pub diff: Option<DiffOverlay<'a>>,
+}
+
+/// One pane's side of a comparison: its removed (A) or added (B) lines.
+pub struct DiffOverlay<'a> {
+    /// The marked line ranges within the given (visible) range; an empty range marks where the
+    /// other side has lines this one lacks.
+    pub spans: &'a dyn Fn(Range<u64>) -> Vec<Range<u64>>,
+    pub added: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -179,6 +189,14 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         (Some(a), Some(b)) => (env.highlight)(&doc.buf, a.start..b.seg.next.max(b.end)),
         _ => Vec::new(),
     };
+    let diff_spans = match (&env.diff, rows.first(), rows.last()) {
+        (Some(o), Some(a), Some(b)) => (o.spans)(a.start..b.seg.next.max(b.end)),
+        _ => Vec::new(),
+    };
+    let diff_color = match env.diff.as_ref().map(|o| o.added) {
+        Some(true) => Color32::from_rgba_unmultiplied(70, 190, 90, if visuals.dark_mode { 40 } else { 55 }),
+        _ => Color32::from_rgba_unmultiplied(230, 70, 70, if visuals.dark_mode { 40 } else { 50 }),
+    };
 
     let (mut line, line_exact) = rows.first().map(|r| doc.buf.line_of(r.start)).unwrap_or((0, true));
     let mut max_w = doc.view.max_cells;
@@ -268,6 +286,12 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             }
         };
         let row_has_caret = caret >= row.start && (caret < row.end || (caret == row.end && (row.is_last_in_seg() || row.end == doc.buf.len())));
+        let in_diff = diff_spans.iter().any(|s| s.start <= row.start && row.start < s.end);
+        if in_diff {
+            text_painter.rect_filled(Rect::from_min_max(pos2(text_rect.left(), y), pos2(text_rect.right(), y + m.rh)), 0.0, diff_color);
+        } else if starts_line && diff_spans.iter().any(|s| s.is_empty() && s.start == row.start) {
+            text_painter.hline(text_rect.x_range(), y + 0.5, egui::Stroke::new(2.0, diff_color.to_opaque()));
+        }
         if row_has_caret && focused && sel_s == sel_e {
             text_painter.rect_filled(Rect::from_min_max(pos2(text_rect.left(), y), pos2(text_rect.right(), y + m.rh)), 0.0, cur_line_bg);
         }
@@ -347,6 +371,10 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         };
         if !label.is_empty() {
             painter.text(pos2(gutter_rect.right() - 8.0, y), Align2::RIGHT_TOP, label, font.clone(), weak);
+        }
+        if in_diff && starts_line {
+            let glyph = if env.diff.as_ref().is_some_and(|o| o.added) { "+" } else { "−" };
+            painter.text(pos2(gutter_rect.left() + 2.0, y), Align2::LEFT_TOP, glyph, font.clone(), diff_color.to_opaque());
         }
         if starts_line && doc.bookmarks.binary_search(&row.start).is_ok() {
             let r = Rect::from_min_size(pos2(gutter_rect.left() + 3.0, y + m.rh * 0.2), egui::vec2(5.0, m.rh * 0.6));

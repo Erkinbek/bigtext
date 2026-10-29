@@ -21,6 +21,11 @@ All notable changes to BigText. Each release on
   comparison now reads the document as you see it, unsaved edits included, so the scrollbar
   marks and jumps are right on edited files; the panel says "(outdated, run again)" after
   further edits, and a save closes a comparison that holds the file open.
+- **View → Compare side by side** (or **Side by side** in the compare panel) opens the other file
+  read-only beside the document: removed lines tinted red with a − in the gutter, added lines
+  green with a +, the changed middle of a changed line brighter, and a line where the other side
+  has extra lines. The panes keep corresponding lines at the top as you scroll either one; the
+  difference list stays below for jumping.
 
 ### Command line
 

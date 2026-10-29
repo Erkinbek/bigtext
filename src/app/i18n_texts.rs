@@ -948,4 +948,8 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Unsaved edits compared with the saved file", "Несохранённые правки в сравнении с сохранённым файлом", "Saqlanmagan tahrirlar saqlangan fayl bilan solishtirildi"],
     ["Compare with the backup {file}", "Сравнение с резервной копией {file}", "{file} zaxira nusxasi bilan solishtirish"],
     ["(outdated, run again)", "(устарело, запустите снова)", "(eskirgan, qayta ishga tushiring)"],
+    // Side-by-side compare.
+    ["Compare side by side", "Сравнение бок о бок", "Yonma-yon solishtirish"],
+    ["Side by side", "Бок о бок", "Yonma-yon"],
+    ["Show the other file beside this one, scrolling together", "Показать другой файл рядом с этим, с общей прокруткой", "Boshqa faylni shu fayl yonida ko'rsatish, birga aylantiriladi"],
 ];

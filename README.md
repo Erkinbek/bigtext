@@ -152,6 +152,9 @@ Single self-contained binary, no runtime dependencies.
   It can ignore white space, case, timestamps and a mask regex (`bigtext diff -w -i -t --mask`).
   Unsaved edits are compared too; **Compare with the saved file** shows what you changed
   before Ctrl+S, **Compare with the backup (.bak)** what the last save changed.
+  **View → Compare side by side** shows the other file beside the document: removed lines red
+  with −, added green with +, the changed part of a changed line brighter, and the two panes
+  scroll together (the pane under the pointer leads).
 - **Log tools**: a **level bar** above logs (ERROR / WARN / INFO / DEBUG lines in the filter view,
   F8 / Shift+F8 to the next / previous error); **Search → Time histogram** (Ctrl+Shift+H), a bar
   chart of lines and errors per second, minute, hour or day, click a bar to go there;
