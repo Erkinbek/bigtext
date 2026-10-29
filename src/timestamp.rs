@@ -426,6 +426,20 @@ pub enum TimeError {
     Cancelled,
 }
 
+/// The byte range of the lines from the time `from` up to and including the second `to` (either
+/// may be open): from the first line at or after `from` to the first line after `to`.
+pub fn time_range(buf: &TextBuf, from: Option<Stamp>, to: Option<Stamp>, cancel: &CancelToken) -> Result<(u64, u64), TimeError> {
+    let start = match from {
+        Some(st) => find_time(buf, st, cancel)?,
+        None => 0,
+    };
+    let end = match to {
+        Some(st) => find_time(buf, Stamp { ms: st.ms + 1000, ..st }, cancel)?,
+        None => buf.len(),
+    };
+    Ok((start, end.max(start)))
+}
+
 /// Start of the first line whose timestamp is at or after `target` (the end of the document
 /// when every line is earlier). A target without a date uses the date of the first line (the
 /// next day if that time is earlier than the first line's).

@@ -160,6 +160,9 @@ Single self-contained binary, no runtime dependencies.
   key → value table that follows the caret (nested objects as `user.id`, escaped stack traces
   shown as lines). Each field can filter the file to its value or away from it, highlight it,
   or **count its values** over the whole file into a table (lines, share, first and last time).
+- **Time range**: the search bar's **Time** button sets "from 14:30 to 14:35" (or ±30 s / ±5 min
+  around the caret's line); Filter, Find All and the level bar then read only those lines, found
+  with two binary searches instead of a full pass.
 - **Time gaps** (Search → Find time gaps…): every place where the next timestamp is at least N
   seconds later — or earlier, when the clock went back — largest first; click one to go there.
   The status bar shows **Δ** since the previous timestamped line for the caret's line.
@@ -253,7 +256,8 @@ bigtext-cli gaps FILE [--min 30s]                              time gaps, with l
 `filter` and `count` take more patterns: `-e PAT` (each must match, or one of them with `--any`)
 and `--not PAT`. `filter` and `levels` take `-A N` / `-B N` / `-C N` (lines after / before / around each match),
 `--entries` (whole log entries) and `-n` (line numbers, `12:` a match and `13-` context), with
-`--` between groups like grep. Exit codes: 0 done, 1 nothing matched, 2 error.
+`--` between groups like grep, and `--from TIME` / `--to TIME` (only the lines between two
+times). Exit codes: 0 done, 1 nothing matched, 2 error.
 
 | Shortcut | Action |
 |---|---|

@@ -136,6 +136,7 @@ mod tests {
         "app" / "tabs.rs",
         "app" / "tasks.rs",
         "app" / "text_tools.rs",
+        "app" / "time_range.rs",
         "app" / "timeline.rs",
         "app" / "update.rs",
         "view" / "block.rs",

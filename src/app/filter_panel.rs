@@ -14,6 +14,7 @@ use bigtext::search::{Matcher, Query, SearchEnd};
 use bigtext::text::TextBuf;
 
 use super::follow_id::FollowSummary;
+use super::time_range::{After, Window};
 use super::i18n::{tr, trf};
 use super::tasks::{self, TaskOutcome};
 use super::{same_path, BigTextApp, Msg};
@@ -117,7 +118,12 @@ impl BigTextApp {
             }
         };
         let column = self.search.filter_column.and_then(|c| Some((d.table_state.dialect?, c))).filter(|_| d.table);
-        let spec = self.with_context(FilterSpec { invert: self.search.invert, column, ..Default::default() });
+        let range = match self.time_window(After::Filter) {
+            Window::Wait => return,
+            Window::Bytes(a, b) => Some((a, b)),
+            Window::All => None,
+        };
+        let spec = self.with_context(FilterSpec { invert: self.search.invert, column, range, ..Default::default() });
         self.search.remember();
         self.run_filter(self.search.query.clone(), m, spec, None);
     }
@@ -136,12 +142,20 @@ impl BigTextApp {
 
     /// Runs the active document's filter again with `terms` (or its own) as added conditions.
     fn refilter(&mut self, terms: Option<Vec<FilterTerm>>) {
+        if !self.docs.get(self.active).is_some_and(|d| d.filter.is_some()) {
+            return;
+        }
+        let range = match self.time_window(After::Refilter) {
+            Window::Wait => return,
+            Window::Bytes(a, b) => Some((a, b)),
+            Window::All => None,
+        };
         let Some(d) = self.docs.get(self.active) else { return };
         let Some(r) = d.filter.as_ref() else { return };
         let codec = d.buf.codec;
         let spec = match r.follow {
             Some(_) => FilterSpec { entries: true, ..Default::default() },
-            None => self.with_context(FilterSpec { invert: r.spec.invert, column: r.spec.column, ..Default::default() }),
+            None => self.with_context(FilterSpec { invert: r.spec.invert, column: r.spec.column, range, ..Default::default() }),
         };
         let m = match Matcher::new(&r.query, codec) {
             Ok(m) => Arc::new(m),
@@ -381,6 +395,7 @@ impl BigTextApp {
         let mut mark = None;
         let (mut narrow_text, mut narrow_exclude) = (std::mem::take(&mut self.search.narrow), self.search.narrow_exclude);
         let mut narrow = false;
+        let range_label = self.range_label();
         // Some(None): drop all added conditions; Some(Some(i)): drop the i-th.
         let mut drop_terms: Option<Option<usize>> = None;
         {
@@ -405,6 +420,9 @@ impl BigTextApp {
                 }
                 if let Some((_, c)) = r.spec.column {
                     ui.label(trf("in column {n}", &[("n", &(c + 1).to_string())]));
+                }
+                if let (Some(_), Some(l)) = (r.spec.range, &range_label) {
+                    ui.label(l);
                 }
                 if r.follow.is_some() {
                     ui.label(summary.describe());

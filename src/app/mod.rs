@@ -28,6 +28,7 @@ pub mod sessions;
 pub mod tabs;
 pub mod tasks;
 pub mod text_tools;
+pub mod time_range;
 pub mod timeline;
 pub mod update;
 
@@ -92,6 +93,7 @@ pub enum Msg {
     CursorFound(Box<multi_cursor::CursorFound>),
     BracketJump(Box<match_bracket::BracketJump>),
     Json(Box<json_panel::JsonDone>),
+    TimeRange(Box<time_range::RangeDone>),
 }
 
 pub struct Settings {
@@ -229,6 +231,7 @@ pub struct BigTextApp {
     pub ids: follow_id::IdUi,
     pub fields: fields_panel::FieldsUi,
     pub gaps: gaps_panel::GapsUi,
+    pub range: time_range::TimeRangeUi,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -355,6 +358,7 @@ impl BigTextApp {
             ids: follow_id::IdUi::default(),
             fields: fields_panel::FieldsUi::default(),
             gaps: gaps_panel::GapsUi::default(),
+            range: time_range::TimeRangeUi::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -618,6 +622,7 @@ impl BigTextApp {
                 Msg::CursorFound(f) => self.on_cursor_found(*f),
                 Msg::BracketJump(j) => self.on_bracket_jump(*j),
                 Msg::Json(j) => self.on_json(*j),
+                Msg::TimeRange(r) => self.on_time_range(*r),
             }
         }
     }
@@ -1439,6 +1444,7 @@ impl eframe::App for BigTextApp {
         self.switcher_window(&ctx);
         self.portable_window(&ctx);
         self.id_patterns_window(&ctx);
+        self.time_range_window(&ctx);
         self.palette_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);

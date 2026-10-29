@@ -39,9 +39,19 @@ pub struct FilterSpec {
     /// untimed lines under it (a stack trace), and a kept line without one brings the lines
     /// back to its entry's first line.
     pub entries: bool,
+    /// Only the lines in this byte range (from a line start to a line start, the end left out),
+    /// such as the lines between two times.
+    pub range: Option<(u64, u64)>,
 }
 
 impl FilterSpec {
+    /// The byte range the filter reads.
+    pub fn bounds(&self, len: u64) -> (u64, u64) {
+        let (a, b) = self.range.unwrap_or((0, len));
+        let b = b.min(len);
+        (a.min(b), b)
+    }
+
     /// Whether lines around the kept lines are kept too.
     pub fn has_context(&self) -> bool {
         !self.invert && (self.before > 0 || self.after > 0 || self.entries)
@@ -196,7 +206,8 @@ pub fn filter_lines_with(
         let end = hit_lines(buf, m, spec, cancel, progress, |ls, le| !check(ls, le) || on_line(ls, le, LineKind::Hit));
         return if failed { SearchEnd::Unavailable } else { end };
     }
-    let mut around = Around { buf, spec, done: 0, pending: None, stamped: false, failed: false };
+    let (start, stop) = spec.bounds(buf.len());
+    let mut around = Around { buf, spec, done: start, end: stop, pending: None, stamped: false, failed: false };
     let end = hit_lines(buf, m, spec, cancel, progress, |ls, le| !check(ls, le) || around.hit(ls, le, &mut on_line));
     if around.failed || failed {
         return SearchEnd::Unavailable;
@@ -228,7 +239,7 @@ pub fn filter_given(
     if let Some(p) = progress {
         p.set_total(starts.len() as u64);
     }
-    let mut around = Around { buf, spec, done: 0, pending: None, stamped: false, failed: false };
+    let mut around = Around { buf, spec, done: 0, end: buf.len(), pending: None, stamped: false, failed: false };
     for (i, &ls) in starts.iter().enumerate() {
         if i % 4096 == 0 {
             if cancel.is_cancelled() {
@@ -268,6 +279,8 @@ struct Around<'a> {
     spec: FilterSpec,
     /// End of the last line passed on.
     done: u64,
+    /// End of the lines the filter reads.
+    end: u64,
     /// End of the last hit, while its after-context is not passed on yet.
     pending: Option<u64>,
     /// Whether the last hit's entry starts with a timestamp (only then its untimed lines follow).
@@ -325,7 +338,7 @@ impl Around<'_> {
     /// Passes on the after-context of the last hit, up to `limit` (the next hit's start).
     fn flush(&mut self, limit: u64, on_line: &mut impl FnMut(u64, u64, LineKind) -> bool) -> bool {
         let Some(mut ls) = self.pending.take() else { return true };
-        let limit = limit.min(self.buf.len());
+        let limit = limit.min(self.end);
         if self.spec.entries && self.stamped {
             for _ in 0..ENTRY_MAX {
                 if ls >= limit || timestamp::stamp_at(self.buf, ls).is_some() {
@@ -441,16 +454,16 @@ fn hit_lines(
     progress: Option<&Progress>,
     mut on_line: impl FnMut(u64, u64) -> bool,
 ) -> SearchEnd {
-    let len = buf.len();
+    let (from, len) = spec.bounds(buf.len());
     let codec = buf.codec;
     // The line the last match fell in, and whether it was kept.
     let mut cur: Option<(u64, u64, bool, Option<Range<u64>>)> = None;
     // Inverted: start of the first line not yet classified.
-    let mut cursor = 0u64;
+    let mut cursor = from;
     let mut stopped = false;
     let mut failed = false;
     let mut fields = Vec::new();
-    let end = search::search_forward_ctx(buf, m, 0..len, cancel, progress, |s, e, hay, base| {
+    let end = search::search_forward_ctx(buf, m, from..len, cancel, progress, |s, e, hay, base| {
         let inside = matches!(cur, Some((_, le, _, _)) if s < le);
         if !inside {
             let ls = line_start_in(&codec, hay, base, s).or_else(|| line_start_at(buf, s));
@@ -883,6 +896,17 @@ mod tests {
             true
         });
         assert_eq!(inv, [43]);
+    }
+
+    #[test]
+    fn only_lines_in_a_range() {
+        let (_f, t) = buf_with(b"a X\nb\nc X\nd\ne X\n", Codec::utf8());
+        let range = Some((4, 12)); // "b\n" up to (not including) "e X\n"
+        assert_eq!(lines(&t, "X", false, FilterSpec { range, ..Default::default() }), ["c X\n"]);
+        assert_eq!(lines(&t, "X", false, FilterSpec { range, invert: true, ..Default::default() }), ["b\n", "d\n"]);
+        let around = kinds(&t, "X", FilterSpec { range, before: 5, after: 5, ..Default::default() });
+        assert_eq!(around, ["C:b", "H:c X", "C:d"]);
+        assert_eq!(lines(&t, "X", false, FilterSpec { range: Some((12, 99)), ..Default::default() }), ["e X\n"]);
     }
 
     #[test]

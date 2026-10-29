@@ -36,7 +36,9 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         Lines of these log levels.
         CONTEXT: -A N / -B N / -C N lines after / before / around each line,
         --entries the whole log entry (a stack trace under the line), -n line
-        numbers (\"12:\" a match, \"13-\" context); \"--\" between groups.
+        numbers (\"12:\" a match, \"13-\" context); \"--\" between groups;
+        --from TIME / --to TIME only the lines between those times (\"14:30\",
+        \"2024-05-01 14:30:00\"; --to includes its second).
   count [-v] [-i] [-w] [-E] PATTERN FILE
         The number of lines with a match.
   split (--size 100MB | --lines 1000000) FILE [--out-dir DIR]
@@ -258,7 +260,7 @@ fn write_kept(buf: &TextBuf, m: &Matcher, spec: FilterSpec, terms: &[filter::Ter
 
 /// Flags of the context options (-A/-B/-C take a value).
 const CONTEXT_FLAGS: [&str; 3] = ["--entries", "-n", "--line-numbers"];
-const CONTEXT_OPTS: [&str; 6] = ["-A", "--after", "-B", "--before", "-C", "--context"];
+const CONTEXT_OPTS: [&str; 8] = ["-A", "--after", "-B", "--before", "-C", "--context", "--from", "--to"];
 
 /// The filter with the context options.
 fn spec_from(a: &Args, invert: bool) -> Res<FilterSpec> {
@@ -270,7 +272,20 @@ fn spec_from(a: &Args, invert: bool) -> Res<FilterSpec> {
     let around = num(&["-C", "--context"])?;
     let before = num(&["-B", "--before"])?.or(around).unwrap_or(0);
     let after = num(&["-A", "--after"])?.or(around).unwrap_or(0);
-    Ok(FilterSpec { invert, column: None, before, after, entries: a.flag(&["--entries"]) })
+    Ok(FilterSpec { invert, column: None, before, after, entries: a.flag(&["--entries"]), range: None })
+}
+
+/// The lines between `--from TIME` and `--to TIME` (up to and including that second).
+fn time_range(a: &Args, buf: &TextBuf) -> Res<Option<(u64, u64)>> {
+    let (from, to) = (a.opt(&["--from"]), a.opt(&["--to"]));
+    if from.is_none() && to.is_none() {
+        return Ok(None);
+    }
+    let parse = |t: Option<&str>| t.map(|t| timestamp::parse(t).ok_or_else(|| Fail(format!("not a time: {t}")))).transpose();
+    match timestamp::time_range(buf, parse(from)?, parse(to)?, &CancelToken::new()) {
+        Ok(r) => Ok(Some(r)),
+        Err(_) => fail("the file has no timestamps"),
+    }
 }
 
 fn cmd_filter(args: &[String], out: &mut dyn Write, count_only: bool) -> Res<i32> {
@@ -304,10 +319,11 @@ fn cmd_filter(args: &[String], out: &mut dyn Write, count_only: bool) -> Res<i32
         owned.push((Matcher::new(&query(&a, p), buf.codec).map_err(Fail)?, true));
     }
     let terms: Vec<filter::Term> = owned.iter().map(|(m, negated)| filter::Term { m, negated: *negated }).collect();
-    let spec = spec_from(&a, a.flag(&["-v", "--invert"]))?;
+    let mut spec = spec_from(&a, a.flag(&["-v", "--invert"]))?;
+    spec.range = time_range(&a, &buf)?;
     let n = if count_only {
         let mut n = 0u64;
-        filter::filter_lines_with(&buf, &m, FilterSpec { invert: spec.invert, ..Default::default() }, &terms, &CancelToken::new(), None, |_, _, _| {
+        filter::filter_lines_with(&buf, &m, FilterSpec { invert: spec.invert, range: spec.range, ..Default::default() }, &terms, &CancelToken::new(), None, |_, _, _| {
             n += 1;
             true
         });
@@ -334,7 +350,8 @@ fn cmd_levels(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let q = loglevel::query(levels).ok_or_else(|| Fail("no levels".into()))?;
     let (buf, _) = open(Path::new(file))?;
     let m = Matcher::new(&q, buf.codec).map_err(Fail)?;
-    let n = write_kept(&buf, &m, spec_from(&a, false)?, &[], a.flag(&["-n", "--line-numbers"]), a.opt(&["-o", "--output"]), out)?;
+    let spec = FilterSpec { range: time_range(&a, &buf)?, ..spec_from(&a, false)? };
+    let n = write_kept(&buf, &m, spec, &[], a.flag(&["-n", "--line-numbers"]), a.opt(&["-o", "--output"]), out)?;
     Ok(if n > 0 { 0 } else { 1 })
 }
 
@@ -617,6 +634,16 @@ mod tests {
         run_args(&["filter", "-n", "-A", "1", "ERROR", &log, "-o", &o.to_string_lossy()]);
         assert_eq!(std::fs::read_to_string(&o).unwrap(), "2:2024-05-01 10:00:01 ERROR b\n3-\tat x.Y(Y.java:1)\n--\n6:2024-05-01 10:00:04 ERROR e\n");
         assert_eq!(run_args(&["filter", "-A", "x", "ERROR", &log]).0, 2);
+    }
+
+    #[test]
+    fn between_times() {
+        let d = tempfile::tempdir().unwrap();
+        let log = file(&d, "a.log", b"2024-05-01 10:00:00 ERROR a\n2024-05-01 10:00:30 ERROR b\n2024-05-01 10:01:00 INFO c\n2024-05-01 10:01:30 ERROR d\n");
+        assert_eq!(run_args(&["filter", "ERROR", "--from", "10:00:30", "--to", "10:01:00", &log]).1, "2024-05-01 10:00:30 ERROR b\n");
+        assert_eq!(run_args(&["levels", "error", "--from", "2024-05-01 10:00:15", &log]).1, "2024-05-01 10:00:30 ERROR b\n2024-05-01 10:01:30 ERROR d\n");
+        assert_eq!(run_args(&["count", "ERROR", "--to", "10:00:30", &log]).1, "2\n");
+        assert_eq!(run_args(&["filter", "ERROR", "--from", "noon", &log]).0, 2);
     }
 
     #[test]

@@ -56,6 +56,12 @@ All notable changes to BigText. Each release on
   the same lines (files get `--` between groups); the header counts the matches and the lines
   around them; scrollbar marks stay on the matches. `bigtext-cli filter` and `levels` take
   `-A` / `-B` / `-C N`, `--entries` and `-n` (line numbers, `12:` a match, `13-` context).
+- **Time range**: the search bar's **Time** button opens "From / To" ("14:30",
+  "2024-05-01 14:30:00"; either may be empty, To includes its second) with **±30 s** and
+  **±5 min around the caret** buttons. While a range is set, Filter, Find All and the level bar
+  read only the lines between those times — found with two binary searches, so a five-minute
+  window of a 20 GB log is filtered in a moment — and the filter header says "between 14:30 and
+  14:35". `bigtext-cli filter`, `count` and `levels` take `--from` / `--to`.
 - **Narrow a filter**: the filter view's **Narrow** row adds a condition on top of the current
   filter — lines that also have `timeout`, or (with **without**) that do not have
   `healthcheck` — instead of replacing it. Conditions show as chips (`ERROR › “timeout” ›

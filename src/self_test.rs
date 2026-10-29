@@ -1248,6 +1248,26 @@ impl SelfTest {
             app.filter_levels(Levels::default());
             check(ok, got)
         }));
+        s("time range: the level bar only between 10:00:02 and 10:00:04", Box::new(|app, c| {
+            use bigtext::loglevel::{Level, Levels};
+            let line = |n: usize| LEVELS_LOG.split_inclusive('\n').take(n).map(str::len).sum::<usize>() as u64;
+            if c.first() {
+                app.apply_range("10:00:02".into(), "10:00:04".into());
+                app.filter_levels(Levels::only(Level::Error));
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).filter.as_ref() else { return if c.waited() > Duration::from_secs(5) { Step::Fail("no filter".into()) } else { Step::Wait } };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let ok = g.lines == vec![line(3)] && r.spec.range == Some((line(2), line(5)));
+            let got = format!("lines {:?} range {:?}", g.lines, r.spec.range);
+            drop(g);
+            app.apply_range(String::new(), String::new());
+            app.filter_levels(Levels::default());
+            check(ok && app.range.active.is_none(), got)
+        }));
         s("a log without an extension is recognised by its timestamps", open_step("journal"));
         s("open requests.log", open_step("requests.log"));
         s("follow an id: chips for the caret line, Ctrl+Shift+I filters to its entries", Box::new(|app, c| {

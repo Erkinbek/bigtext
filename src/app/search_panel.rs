@@ -139,10 +139,15 @@ impl BigTextApp {
 
     /// Starts a streaming "Find All" over the document (or the selection).
     pub(crate) fn find_all(&mut self) {
-        let Some(d) = self.docs.get(self.active) else { return };
-        if !d.is_ready() {
+        if !self.docs.get(self.active).is_some_and(|d| d.is_ready()) {
             return;
         }
+        let window = match self.time_window(super::time_range::After::FindAll) {
+            super::time_range::Window::Wait => return,
+            super::time_range::Window::Bytes(a, b) => Some(a..b),
+            super::time_range::Window::All => None,
+        };
+        let Some(d) = self.docs.get(self.active) else { return };
         let m = match self.search.matcher(d.buf.codec) {
             Ok(m) => m,
             Err(e) => {
@@ -150,7 +155,9 @@ impl BigTextApp {
                 return;
             }
         };
-        let range = if self.search.in_selection && d.has_selection() {
+        let range = if let Some(w) = window {
+            w
+        } else if self.search.in_selection && d.has_selection() {
             let (s, e) = d.selection();
             s..e
         } else {
@@ -379,6 +386,13 @@ impl BigTextApp {
             ui.toggle_value(&mut q.regex, RichText::new(".*").monospace()).on_hover_text(tr("Regular expression (linear time)"));
             ui.toggle_value(&mut q.dot_all, RichText::new("\\n").monospace()).on_hover_text(tr("Multiline: dot matches newline"));
             ui.toggle_value(&mut self.search.in_selection, RichText::new("Sel").monospace()).on_hover_text(tr("Search in selection (Find All / Replace All)"));
+            let tip = self.range_label().unwrap_or_else(|| tr("Search and filter only between two times").to_string());
+            if ui.selectable_label(self.range.active.is_some(), RichText::new(tr("Time")).monospace()).on_hover_text(tip).clicked() {
+                self.range.open = true;
+                if let Some(a) = &self.range.active {
+                    (self.range.from, self.range.to) = (a.from.clone(), a.to.clone());
+                }
+            }
             if ui.button("◀").on_hover_text(tr("Find previous (Shift+F3)")).clicked() {
                 do_next = Some(false);
             }

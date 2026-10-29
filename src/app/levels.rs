@@ -58,9 +58,15 @@ impl BigTextApp {
         };
         // Conditions added to a level filter stay when the levels change.
         let terms = d.filter.as_ref().filter(|r| r.levels.is_some()).map(|r| r.terms.clone()).unwrap_or_default();
-        match Matcher::new(&query, d.buf.codec) {
+        let codec = d.buf.codec;
+        let range = match self.time_window(super::time_range::After::Levels(levels)) {
+            super::time_range::Window::Wait => return,
+            super::time_range::Window::Bytes(a, b) => Some((a, b)),
+            super::time_range::Window::All => None,
+        };
+        match Matcher::new(&query, codec) {
             Ok(m) => {
-                let spec = self.with_context(FilterSpec::default());
+                let spec = self.with_context(FilterSpec { range, ..Default::default() });
                 self.run_filter_req(super::filter_panel::FilterRequest { query, m: std::sync::Arc::new(m), spec, levels: Some(levels), follow: None, terms }, None);
             }
             Err(e) => self.error = Some(e),
