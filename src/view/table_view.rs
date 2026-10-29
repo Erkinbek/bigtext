@@ -176,6 +176,8 @@ pub enum TableAction {
     Pivot { col: usize },
     /// A new last column computed by an expression.
     AddColumn,
+    /// The distribution of a column's values, under the table.
+    Chart { col: usize },
     /// Keep columns 0..upto on the left (0: none).
     Freeze { upto: usize },
     /// Leave these columns out of the view.
@@ -623,6 +625,7 @@ fn column_menu(ui: &mut Ui, actions: &mut Vec<TableAction>, col: usize, name: &s
     act(ui, editable, tr("Sort descending (Z → A, 9 → 1)"), TableAction::Sort { col, desc: true });
     ui.separator();
     act(ui, true, tr("Statistics…"), TableAction::Stats { col });
+    act(ui, true, tr("Chart…"), TableAction::Chart { col });
     act(ui, true, tr("Filter rows by this column…"), TableAction::Filter { col, name: name.to_string() });
     act(ui, true, tr("Filter rows by conditions…"), TableAction::Conditions { col });
     act(ui, true, tr("Group rows by this column…"), TableAction::GroupBy { col });

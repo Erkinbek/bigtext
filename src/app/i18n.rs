@@ -110,6 +110,7 @@ mod tests {
     /// The scanned files (path under `src`, content).
     const SOURCES: &[(&str, &str)] = sources![
         "app" / "mod.rs",
+        "app" / "column_chart.rs",
         "app" / "columns.rs",
         "app" / "commands.rs",
         "app" / "csv_tools.rs",

@@ -149,6 +149,11 @@ All notable changes to BigText. Each release on
 
 ### CSV tables
 
+- **Chart…** (a column header's menu): a panel under the table with how many rows have each
+  value of the column — in ranges for numbers (which widen as needed, so outliers do not hide
+  the rest), in periods for times, and the 50 most frequent values for text — filling in while
+  the file is read. Click a bar to open **Filter rows by conditions…** set to its rows (or, for
+  a period, to go to its first row).
 - **Add column…** (a column header's menu): a new last column computed from each row by an
   expression — `{price} * {qty}`, `substr({ts}, 0, 10)`, `regex({url}, "id=([0-9]+)")`,
   `if({status} = "ok", 1, 0)` — previewed on the rows on screen as you type, with errors shown

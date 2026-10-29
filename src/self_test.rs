@@ -2010,6 +2010,26 @@ impl SelfTest {
             c.mark = 0;
             Step::Next
         }));
+        s("chart a column: text values counted; a bar opens the conditions for it", Box::new(|app, c| {
+            use bigtext::csv_chart::ChartKind;
+            if c.first() {
+                app.start_column_chart(0);
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).chart.as_ref() else { return Step::Fail("no chart".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let bars: Vec<(String, u64)> = g.chart.as_ref().map(|c| c.bars.iter().map(|b| (b.label.clone(), b.count)).collect()).unwrap_or_default();
+            let kind = g.chart.as_ref().map(|c| c.kind);
+            drop(g);
+            app.chart_bar_clicked(0);
+            let conds = app.csv.conds.take().map(|d| d.conds.iter().map(|c| (c.col, c.value.clone())).collect::<Vec<_>>()).unwrap_or_default();
+            app.chart.open = false;
+            let want = vec![("Tashkent".to_string(), 2), ("Bukhara".to_string(), 1)];
+            check(kind == Some(ChartKind::Text) && bars == want && conds == [(0, "Tashkent".to_string())], format!("{kind:?} {bars:?} {conds:?}"))
+        }));
         s("add a column from an expression, then undo it", Box::new(|app, c| {
             const SALES: &str = "city,qty\nTashkent,3\nBukhara,5\nTashkent,7\n";
             if c.first() {

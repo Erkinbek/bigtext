@@ -844,4 +844,14 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Add the column", "Добавить столбец", "Ustunni qo'shish"],
     ["Add column…", "Добавить столбец…", "Ustun qo'shish…"],
     ["Added the column “{name}”", "Добавлен столбец «{name}»", "“{name}” ustuni qo'shildi"],
+    // Column charts.
+    ["Values of “{name}”", "Значения «{name}»", "“{name}” qiymatlari"],
+    ["numbers", "числа", "sonlar"],
+    ["times", "время", "vaqtlar"],
+    ["text", "текст", "matn"],
+    ["{n} rows", "{n} строк", "{n} ta qator"],
+    ["({n} empty or other)", "({n} пустых или других)", "({n} ta bo'sh yoki boshqa)"],
+    ["the {n} most frequent", "{n} самых частых", "eng ko'p uchraydigan {n} tasi"],
+    ["Click: the rows of this bar", "Щелчок: строки этого столбика", "Bosish: shu ustunchaning qatorlari"],
+    ["Chart…", "Диаграмма…", "Diagramma…"],
 ];

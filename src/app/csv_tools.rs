@@ -100,6 +100,7 @@ impl BigTextApp {
             TableAction::CheckRows => self.check_rows(),
             TableAction::Pivot { col } => self.open_pivot(col),
             TableAction::AddColumn => self.open_derive(),
+            TableAction::Chart { col } => self.start_column_chart(col),
             TableAction::Freeze { upto } => {
                 if let Some(d) = self.docs.get_mut(self.active) {
                     d.table_state.frozen = upto;
