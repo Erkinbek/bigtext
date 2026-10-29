@@ -136,6 +136,13 @@ All notable changes to BigText. Each release on
 
 ### JSON
 
+- **Search → Check JSON**: the file checked strictly in the background — bad escapes, control
+  characters in strings, trailing commas, NaN and other words, numbers like `01` or `1.`,
+  brackets that do not match, invalid UTF-8, text after the value — as one document (stopping at
+  the first problem) or as JSON Lines (every bad line), chosen from the file and switchable. The
+  problems are listed under the text with their line and byte; click to go there; "Valid JSON:
+  12,345,678 values" otherwise. `bigtext-cli validate` checks JSON files too (`--json`,
+  `--lines`) and exits with 1 on a problem.
 - **File → JSON array → JSON Lines…** writes each item of a JSON array — the top-level one, or
   the first array of the top-level object (`{"events": [...]}`) — on a line of its own, streamed
   at any size; **File → JSON Lines → JSON array…** does the opposite, and **File → Open logfmt

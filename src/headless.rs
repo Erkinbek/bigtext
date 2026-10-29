@@ -74,10 +74,12 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         A pivot table as CSV: a row per value of --rows (or per hour, day or
         month of a time column), a column per value of --cols, row counts or
         the aggregated --value in the cells, and a Total column.
-  validate FILE [--no-header] [--numeric 3,5]
+  validate FILE [--no-header] [--numeric 3,5] [--json | --lines]
         Checks a CSV / TSV table: rows with another field count, stray or
         unclosed quotes, control characters, and (--numeric) text in number
-        columns (1-based). Prints line: problem; exit code 1 when any.
+        columns (1-based). JSON files (or --json) are checked strictly as
+        one value, JSON Lines (or --lines) line by line. Prints
+        line: problem; exit code 1 when any.
   values FIELD FILE [-o OUT]
         The values of a JSON Lines or logfmt (key=value) field with how many
         lines have each and their first and last time, as CSV, most frequent
@@ -776,8 +778,26 @@ fn cmd_pivot(args: &[String], out: &mut dyn Write) -> Res<i32> {
 }
 
 fn cmd_validate(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["--no-header", "--header"], &["--numeric", "--skip", "--quote"])?;
+    let a = Args::parse(args, &["--no-header", "--header", "--json", "--lines"], &["--numeric", "--skip", "--quote"])?;
     let [file] = &a.rest[..] else { return fail("needs FILE") };
+    // JSON: as one document, or as JSON Lines.
+    let (jbuf, _) = open(Path::new(file))?;
+    let kind = if a.flag(&["--lines"]) { "jsonl" } else if a.flag(&["--json"]) { "json" } else { sniff_kind(&jbuf) };
+    if kind == "json" || kind == "jsonl" {
+        let cancel = CancelToken::new();
+        let c = if kind == "jsonl" { crate::json_check::check_lines(&jbuf, &cancel, None, |_| {})? } else { crate::json_check::check_document(&jbuf, &cancel, None) }.unwrap_or_default();
+        let (mut at, mut line) = (0u64, 0u64);
+        for p in &c.problems {
+            jbuf.for_each_chunk(at..p.at, |base, ch| {
+                line += jbuf.codec.count_nl(ch, base);
+                true
+            })
+            .ok_or_else(|| Fail("could not read the file".into()))?;
+            at = p.at;
+            writeln!(out, "{}: byte {}: {}", line + 1, p.at, p.message)?;
+        }
+        return Ok(if c.problems.is_empty() { 0 } else { 1 });
+    }
     let mut numeric = Vec::new();
     for n in a.opt(&["--numeric"]).unwrap_or("").split(',').map(str::trim).filter(|n| !n.is_empty()) {
         match n.parse::<usize>() {
@@ -1034,6 +1054,17 @@ mod tests {
         assert_eq!(run_args(&["join", &o, &u, "--left-on", "user", "--right-on", "id"]).1, "order,user,name\n1,u1,Ann\n2,u3,\n");
         assert_eq!(run_args(&["join", &o, &u, "--left-on", "2", "--right-on", "1", "--inner"]).1, "order,user,name\n1,u1,Ann\n");
         assert_eq!(run_args(&["join", &o, &u, "--on", "nope"]).0, 2);
+    }
+
+    #[test]
+    fn validate_json() {
+        let d = tempfile::tempdir().unwrap();
+        let j = file(&d, "a.json", b"{\n  \"a\": [1, 2,]\n}\n");
+        assert_eq!(run_args(&["validate", &j]), (1, "2: byte 15: a comma before a closing bracket (a trailing comma)\n".into(), String::new()));
+        let l = file(&d, "a.jsonl", b"{\"a\":1}\n{\"a\":}\n{\"b\":2}\n");
+        assert_eq!(run_args(&["validate", &l]).1, "2: byte 13: a value is missing after the key\n");
+        let ok = file(&d, "ok.json", b"[1, {\"x\": null}]");
+        assert_eq!(run_args(&["validate", &ok]).0, 0);
     }
 
     #[test]

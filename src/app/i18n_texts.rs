@@ -876,4 +876,14 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Reading logfmt", "Чтение logfmt", "logfmt o'qilmoqda"],
     ["{n} lines without key=value pairs were left out.", "Пропущено строк без пар key=value: {n}.", "key=value juftliklari yo'q {n} ta satr tashlab ketildi."],
     ["No line has key=value pairs (logfmt).", "Ни в одной строке нет пар key=value (logfmt).", "Hech bir satrda key=value juftliklari (logfmt) yo'q."],
+    // Checking JSON.
+    ["Check JSON", "Проверить JSON", "JSON ni tekshirish"],
+    ["Checking JSON needs a UTF-8 file.", "Для проверки JSON нужен файл в UTF-8.", "JSON ni tekshirish uchun UTF-8 fayl kerak."],
+    ["{lines} lines", "{lines} строк", "{lines} ta satr"],
+    ["{n} values", "{n} значений", "{n} ta qiymat"],
+    ["Valid JSON: {what}", "JSON без ошибок: {what}", "JSON to'g'ri: {what}"],
+    ["{n} JSON problems", "Проблем JSON: {n}", "{n} ta JSON muammosi"],
+    ["(the check stops at the first problem of a document)", "(проверка документа останавливается на первой проблеме)", "(hujjat tekshiruvi birinchi muammoda to'xtaydi)"],
+    ["One document", "Один документ", "Bitta hujjat"],
+    ["byte {n}", "байт {n}", "{n}-bayt"],
 ];

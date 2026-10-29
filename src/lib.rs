@@ -23,6 +23,7 @@ pub mod histogram;
 pub mod index;
 pub mod jobs;
 pub mod json;
+pub mod json_check;
 pub mod jsonq;
 pub mod lines;
 pub mod loglevel;

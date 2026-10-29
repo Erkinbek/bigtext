@@ -20,6 +20,7 @@ pub mod i18n;
 mod i18n_texts;
 pub mod join_tables;
 pub mod json_panel;
+pub mod json_validate;
 pub mod keynav;
 pub mod levels;
 pub mod marks;
@@ -251,6 +252,7 @@ pub struct BigTextApp {
     pub pivot: Option<pivot::PivotDialog>,
     pub derive: Option<derive_column::DeriveDialog>,
     pub chart: column_chart::ChartUi,
+    pub json_check: json_validate::JsonCheckUi,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -386,6 +388,7 @@ impl BigTextApp {
             pivot: None,
             derive: None,
             chart: column_chart::ChartUi::default(),
+            json_check: json_validate::JsonCheckUi::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1383,6 +1386,9 @@ impl eframe::App for BigTextApp {
         if self.timeline.open && self.docs.get(self.active).is_some_and(|d| d.timeline.is_some()) {
             egui::Panel::bottom("timeline").resizable(true).default_size(170.0).show(ui, |ui| self.timeline_panel(ui));
         }
+        if self.json_check.open && self.docs.get(self.active).is_some_and(|d| d.json_check.is_some()) {
+            egui::Panel::bottom("json-check").resizable(true).default_size(160.0).show(ui, |ui| self.json_check_panel(ui));
+        }
         if self.chart.open && self.docs.get(self.active).is_some_and(|d| d.chart.is_some()) {
             egui::Panel::bottom("chart").resizable(true).default_size(200.0).show(ui, |ui| self.chart_panel(ui));
         }
@@ -1511,6 +1517,7 @@ impl eframe::App for BigTextApp {
                 || d.patterns.as_ref().is_some_and(|p| p.is_running())
                 || d.problems.as_ref().is_some_and(|p| p.is_running())
                 || d.chart.as_ref().is_some_and(|c| c.is_running())
+                || d.json_check.as_ref().is_some_and(|j| j.is_running())
         }) || !self.tasks.is_empty()
             || self.files.is_running();
         if busy {

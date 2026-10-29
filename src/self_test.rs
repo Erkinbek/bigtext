@@ -1860,6 +1860,21 @@ impl SelfTest {
                 _ => Step::Fail("the line was not parsed".into()),
             }
         }));
+        s("check JSON: events.jsonl is valid JSON Lines", Box::new(|app, c| {
+            if c.first() {
+                app.check_json(None);
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).json_check.as_ref() else { return Step::Fail("no check".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let (lines, n, values, mode) = (g.checked.lines, g.checked.problems.len(), g.checked.values, r.lines);
+            drop(g);
+            app.json_check.open = false;
+            check(mode && lines == 2 && n == 0 && values == 7, format!("lines mode {mode}, {lines} lines, {n} problems, {values} values"))
+        }));
         s("filter JSON Lines by a field query", Box::new(|app, c| {
             if c.first() {
                 app.search.query.pattern = ".user exists and .id > 1".into();
