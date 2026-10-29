@@ -7,6 +7,11 @@ All notable changes to BigText. Each release on
 
 ### Interface
 
+- **Full screen, zen mode, line numbers**: **View → Full screen** (F11) and **View → Zen mode**
+  (Ctrl+Shift+F11), which hides the menu, tab, level and status bars for the text alone; the menu
+  bar floats in while the pointer is at the top edge, and Esc (with nothing selected) or the same
+  key leaves. **View → Line numbers** hides the gutter of the text and table views (kept with the
+  settings). Zen mode and full screen are not kept across starts.
 - **Screen reader support (AccessKit)**: menus, dialogs, the search bar, result lists and the
   command palette are exposed to screen readers, and the text view is a multi-line text field
   whose rows on screen are text runs, with the caret, the selection and "Ln N, Col M"; its

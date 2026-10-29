@@ -43,6 +43,7 @@ fn shareable(p: &Persisted) -> Persisted {
         saved: p.saved.clone(),
         show_ws: p.show_ws,
         status: p.status,
+        gutter: p.gutter,
         ..Default::default()
     }
 }
@@ -80,6 +81,9 @@ impl BigTextApp {
         }
         if let Some(v) = p.status {
             s.status = v;
+        }
+        if let Some(v) = p.gutter {
+            s.show_gutter = v;
         }
         for m in p.marks {
             if !s.marks.iter().any(|x| x.query == m.query) {

@@ -244,6 +244,8 @@ pub enum TableAction {
 pub struct TableEnv<'a> {
     pub font_size: &'a mut f32,
     pub focus: bool,
+    /// Row numbers on the left.
+    pub show_gutter: bool,
     pub actions: &'a mut Vec<TableAction>,
 }
 
@@ -390,7 +392,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     let toolbar_rect = Rect::from_min_max(full.min, pos2(full.right(), full.top() + TOOLBAR_H));
     let area = Rect::from_min_max(pos2(full.left(), toolbar_rect.bottom()), full.max);
     let (line_est, _) = doc.buf.line_count();
-    let gutter_w = text_view::digits(line_est).max(3) as f32 * cw + 16.0;
+    let gutter_w = if env.show_gutter { text_view::digits(line_est).max(3) as f32 * cw + 16.0 } else { 0.0 };
     let header_rect = Rect::from_min_max(pos2(area.left() + gutter_w, area.top()), pos2(area.right() - SCROLLBAR, area.top() + rh));
     let body = Rect::from_min_max(pos2(header_rect.left(), header_rect.bottom()), pos2(header_rect.right(), area.bottom() - SCROLLBAR));
     let gutter = Rect::from_min_max(area.min, pos2(header_rect.left(), body.bottom()));

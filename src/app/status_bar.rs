@@ -295,6 +295,37 @@ impl BigTextApp {
         }
     }
 
+    /// Zen mode's menu bar, floating over the text while the pointer is at the top edge (a panel
+    /// would move the text), it is hovered or one of its menus is open.
+    pub(super) fn zen_menu(&mut self, ctx: &egui::Context) {
+        let id = egui::Id::new("zen-menu");
+        let near_top = ctx.input(|i| i.pointer.hover_pos().is_some_and(|p| p.y <= 4.0));
+        let was_shown = ctx.data(|d| d.get_temp::<bool>(id).unwrap_or(false));
+        let hovered = was_shown && ctx.input(|i| i.pointer.hover_pos()).is_some_and(|p| ctx.layer_id_at(p).is_some_and(|l| l.id == id || l.order == egui::Order::Foreground));
+        let show = near_top || hovered || egui::Popup::is_any_open(ctx);
+        ctx.data_mut(|d| d.insert_temp(id, show));
+        // How to get out, for a few seconds after going in.
+        let since = ctx.data(|d| d.get_temp::<std::time::Instant>(egui::Id::new("zen-hint")));
+        if let Some(t) = since.filter(|t| t.elapsed() < Duration::from_secs(4)) {
+            let key = self.keymap.get(Cmd::Zen).map(super::commands::key_text).unwrap_or_else(|| tr(Cmd::Zen.label()).to_string());
+            let hint = trf("Zen mode: Esc or {key} leaves it; move the pointer to the top edge for the menu.", &[("key", &key)]);
+            egui::Area::new(egui::Id::new("zen-hint-area")).order(egui::Order::Tooltip).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 12.0)).interactable(false).show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| ui.label(hint));
+            });
+            ctx.request_repaint_after(Duration::from_secs(4).saturating_sub(t.elapsed()));
+        }
+        if !show {
+            return;
+        }
+        let width = ctx.content_rect().width();
+        egui::Area::new(id).order(egui::Order::Foreground).fixed_pos(egui::pos2(0.0, 0.0)).show(ctx, |ui| {
+            egui::Frame::side_top_panel(ui.style()).show(ui, |ui| {
+                ui.set_width(width);
+                self.menu_bar(ui);
+            });
+        });
+    }
+
     /// Says `text` to screen readers.
     pub(crate) fn announce(&mut self, text: impl Into<String>) {
         self.announcement = Some(text.into());

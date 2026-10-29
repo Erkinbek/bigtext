@@ -3766,6 +3766,53 @@ impl SelfTest {
             app.test_close(id);
             check(said.contains("first: id;note") && said.contains("Ln 1, Col 1") && heard.as_deref() == Some("Opened semi.txt"), format!("exposed {said:?}, announced {heard:?}"))
         }));
+        s("line numbers off and zen mode give the text more room; Esc leaves zen", Box::new({
+            let mut before = egui::Rect::NOTHING;
+            let mut narrow = egui::Rect::NOTHING;
+            move |app, c| {
+                use crate::app::commands::Cmd;
+                let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+                if c.first() {
+                    app.open_path(c.file("ws.txt"));
+                    return Step::Wait;
+                }
+                if !wait_ready(app) {
+                    return Step::Wait;
+                }
+                let rect = doc(app).view.text_rect.unwrap_or(egui::Rect::NOTHING);
+                match c.mark {
+                    0 => {
+                        doc(app).view.anchor = doc(app).view.caret;
+                        before = rect;
+                        app.run(&ctx, Cmd::LineNumbers);
+                        c.mark = 1;
+                        Step::Wait
+                    }
+                    1 => {
+                        narrow = rect;
+                        app.run(&ctx, Cmd::Zen);
+                        c.mark = 2;
+                        Step::Wait
+                    }
+                    2 => {
+                        if rect.height() <= narrow.height() {
+                            return if c.waited() > Duration::from_secs(2) { Step::Fail(format!("zen did not grow the text: {narrow:?} → {rect:?}")) } else { Step::Wait };
+                        }
+                        c.key(Key::Escape, NONE);
+                        c.mark = 3;
+                        Step::Wait
+                    }
+                    _ => {
+                        if app.settings.zen {
+                            return if c.waited() > Duration::from_secs(2) { Step::Fail("Esc did not leave zen mode".into()) } else { Step::Wait };
+                        }
+                        app.run(&ctx, Cmd::LineNumbers);
+                        c.mark = 0;
+                        check(narrow.left() < before.left() && app.settings.show_gutter, format!("text from x {} to {} without line numbers", before.left(), narrow.left()))
+                    }
+                }
+            }
+        }));
         s("typing into an empty file", Box::new(|app, c| {
             if c.first() {
                 app.open_path(c.file("empty.txt"));

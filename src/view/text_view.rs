@@ -23,6 +23,8 @@ pub const SYNC_COPY_MAX: u64 = 4 * 1024 * 1024;
 pub enum ViewAction {
     /// Copy (or cut) a selection too large for the UI thread.
     CopyLarge { cut: bool, len: u64 },
+    /// Esc with nothing to collapse (it leaves zen mode).
+    Escape,
 }
 
 /// Ranges to paint behind the text, with their colours.
@@ -41,6 +43,8 @@ pub struct ViewEnv<'a> {
     pub pane: u8,
     /// Spaces, tabs and line breaks shown as `·`, `→` and `↓` / `↵` / `←`.
     pub show_ws: bool,
+    /// Line numbers in the gutter.
+    pub show_gutter: bool,
     /// The lines a comparison marks in this pane (side by side).
     pub diff: Option<DiffOverlay<'a>>,
 }
@@ -99,7 +103,8 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     }
 
     let (line_est, _) = doc.buf.line_count();
-    let gutter_w = digits(line_est).max(3) as f32 * m.cw + 24.0;
+    // Without line numbers a strip stays for the bookmark marks.
+    let gutter_w = if env.show_gutter { digits(line_est).max(3) as f32 * m.cw + 24.0 } else { 6.0 };
     let show_h = !doc.view.wrap;
     let text_rect = Rect::from_min_max(
         pos2(full.left() + gutter_w + 6.0, full.top()),
@@ -388,10 +393,10 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         } else {
             String::new()
         };
-        if !label.is_empty() {
+        if !label.is_empty() && env.show_gutter {
             painter.text(pos2(gutter_rect.right() - 8.0, y), Align2::RIGHT_TOP, label, font.clone(), weak);
         }
-        if in_diff && starts_line {
+        if in_diff && starts_line && env.show_gutter {
             let glyph = if env.diff.as_ref().is_some_and(|o| o.added) { "+" } else { "−" };
             painter.text(pos2(gutter_rect.left() + 2.0, y), Align2::LEFT_TOP, glyph, font.clone(), diff_color.to_opaque());
         }
@@ -997,6 +1002,7 @@ fn handle_keys(ui: &mut Ui, doc: &mut Document, wrap: Option<usize>, env: &mut V
                     paste(doc, &s);
                 }
             }
+            Event::Key { key: Key::Escape, pressed: true, .. } if !doc.has_selection() => env.actions.push(ViewAction::Escape),
             Event::Key { key, pressed: true, modifiers, .. } => handle_key(doc, key, modifiers, wrap),
             _ => {}
         }

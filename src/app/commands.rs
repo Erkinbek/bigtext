@@ -119,6 +119,9 @@ pub enum Cmd {
     CheckUpdates,
     About,
     Text(Op),
+    Fullscreen,
+    Zen,
+    LineNumbers,
     Theme(super::theme::Theme),
     ColourBlind,
     /// Interface scale, per cent.
@@ -135,7 +138,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 102] = [
+    pub const ALL: [Cmd; 105] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -223,6 +226,9 @@ impl Cmd {
         Cmd::ShowWhitespace,
         Cmd::DarkTheme,
         Cmd::ColourBlind,
+        Cmd::Fullscreen,
+        Cmd::Zen,
+        Cmd::LineNumbers,
         Cmd::Highlights,
         Cmd::LevelBar,
         Cmd::ZoomIn,
@@ -366,6 +372,9 @@ impl Cmd {
             Cmd::DarkTheme => "Dark theme",
             Cmd::Highlights => "Highlights…",
             Cmd::LevelBar => "Log level bar",
+            Cmd::Fullscreen => "Full screen",
+            Cmd::Zen => "Zen mode",
+            Cmd::LineNumbers => "Line numbers",
             Cmd::ZoomIn => "Zoom in",
             Cmd::ZoomOut => "Zoom out",
             Cmd::ZoomReset => "Reset zoom",
@@ -450,6 +459,8 @@ impl Cmd {
             Cmd::Properties => key(CTRL, Key::I),
             Cmd::PasteHistory => key(CTRL_SHIFT, Key::V),
             Cmd::NextDiff => key(Modifiers::NONE, Key::F7),
+            Cmd::Fullscreen => key(Modifiers::NONE, Key::F11),
+            Cmd::Zen => key(CTRL_SHIFT, Key::F11),
             Cmd::PrevDiff => key(Modifiers::SHIFT, Key::F7),
             Cmd::NextResult => key(Modifiers::NONE, Key::F4),
             Cmd::PrevResult => key(Modifiers::SHIFT, Key::F4),
@@ -773,6 +784,17 @@ impl BigTextApp {
                 self.apply_look(ctx);
                 self.persist_state();
             }
+            Cmd::Fullscreen => ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!self.fullscreen)),
+            Cmd::Zen => {
+                self.settings.zen = !self.settings.zen;
+                if self.settings.zen {
+                    ctx.data_mut(|d| d.insert_temp(egui::Id::new("zen-hint"), std::time::Instant::now()));
+                }
+            }
+            Cmd::LineNumbers => {
+                self.settings.show_gutter = !self.settings.show_gutter;
+                self.persist_state();
+            }
             Cmd::ColourBlind => {
                 self.settings.cvd = !self.settings.cvd;
                 self.apply_look(ctx);
@@ -823,6 +845,9 @@ impl BigTextApp {
             Cmd::DarkTheme => self.settings.theme.is_dark(),
             Cmd::Theme(t) => self.settings.theme == t,
             Cmd::ColourBlind => self.settings.cvd,
+            Cmd::Fullscreen => self.fullscreen,
+            Cmd::Zen => self.settings.zen,
+            Cmd::LineNumbers => self.settings.show_gutter,
             Cmd::Scale(s) => self.settings.scale == s,
             Cmd::PerfOverlay => self.settings.show_perf,
             Cmd::LevelBar => self.settings.level_bar,
@@ -832,7 +857,7 @@ impl BigTextApp {
     }
 
     fn is_toggle(cmd: Cmd) -> bool {
-        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::ColourBlind | Cmd::Theme(_) | Cmd::Scale(_) | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
+        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::ColourBlind | Cmd::Fullscreen | Cmd::Zen | Cmd::LineNumbers | Cmd::Theme(_) | Cmd::Scale(_) | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
     }
 
     fn enabled(&self, cmd: Cmd) -> bool {
@@ -1093,6 +1118,10 @@ impl BigTextApp {
                 });
                 self.language_menu(ui);
                 run = run.or(self.item(ui, Cmd::Font));
+                ui.separator();
+                for c in [Cmd::Fullscreen, Cmd::Zen, Cmd::LineNumbers] {
+                    run = run.or(self.item(ui, c));
+                }
                 for c in [Cmd::ZoomIn, Cmd::ZoomOut, Cmd::ZoomReset, Cmd::PerfOverlay] {
                     run = run.or(self.item(ui, c));
                 }

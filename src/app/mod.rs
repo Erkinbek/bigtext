@@ -164,6 +164,10 @@ pub struct Settings {
     pub id_keys: Option<Vec<String>>,
     /// The fields the status bar shows.
     pub status: status_bar::StatusFields,
+    /// Zen mode: no menu, tab, level or status bar (not kept across starts).
+    pub zen: bool,
+    /// Line numbers in the text and table views.
+    pub show_gutter: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -329,6 +333,8 @@ pub struct BigTextApp {
     pub announcement: Option<String>,
     /// Find All was running in the last frame.
     results_running: bool,
+    /// The window is full screen (as the system reported it this frame).
+    pub fullscreen: bool,
 }
 
 /// Turns I/O errors into messages a user can act on.
@@ -472,7 +478,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None, status: Default::default() },
+            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None, status: Default::default(), zen: false, show_gutter: true },
             goto: None,
             confirm: None,
             error: None,
@@ -545,6 +551,7 @@ impl BigTextApp {
             file_opts: Vec::new(),
             announcement: None,
             results_running: false,
+            fullscreen: false,
         };
         app.search.query.case_sensitive = true;
         if persist {
@@ -558,6 +565,7 @@ impl BigTextApp {
             app.settings.saved = std::mem::take(&mut state.saved);
             app.file_opts = std::mem::take(&mut state.file_opts);
             app.settings.status = state.status.unwrap_or_default();
+            app.settings.show_gutter = state.gutter.unwrap_or(true);
             app.settings.show_ws = state.show_ws.unwrap_or(false);
             app.recovery.enabled = state.recovery.unwrap_or(true);
             app.settings.id_keys = state.id_keys.take();
@@ -1703,15 +1711,23 @@ impl eframe::App for BigTextApp {
         self.announce_results();
         self.sync_diff_marks();
 
-        egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
-        egui::Panel::top("tabs").show(ui, |ui| self.tab_bar(ui));
+        self.fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+        let zen = self.settings.zen;
+        if zen {
+            self.zen_menu(&ctx);
+        } else {
+            egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
+            egui::Panel::top("tabs").show(ui, |ui| self.tab_bar(ui));
+        }
         if self.search.open {
             egui::Panel::top("search").show(ui, |ui| self.search_panel(ui));
         }
-        if self.level_bar_visible() {
+        if self.level_bar_visible() && !zen {
             egui::Panel::top("levels").show(ui, |ui| self.level_bar(ui));
         }
-        egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
+        if !zen {
+            egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
+        }
         if self.search.show_results && self.docs.get(self.active).is_some_and(|d| d.results.is_some()) {
             egui::Panel::bottom("results").resizable(true).default_size(220.0).show(ui, |ui| self.results_panel(ui));
         }
@@ -1762,12 +1778,13 @@ impl eframe::App for BigTextApp {
         let font_size = &mut self.settings.font_size;
         let syntax = self.settings.syntax;
         let show_ws = self.settings.show_ws;
+        let show_gutter = self.settings.show_gutter;
         egui::CentralPanel::no_frame().show(ui, |ui| {
             if let Some(d) = self.docs.get_mut(self.active) {
                 if d.hex && d.is_ready() {
                     hex_view::show(ui, d, *font_size, !modal_open);
                 } else if d.table && d.is_ready() {
-                    let mut env = table_view::TableEnv { font_size, focus: !modal_open, actions: &mut table_actions };
+                    let mut env = table_view::TableEnv { font_size, focus: !modal_open, show_gutter, actions: &mut table_actions };
                     table_view::show(ui, d, &mut env);
                 } else {
                     let lang = if syntax { d.effective_lang() } else { crate::view::highlight::Lang::Plain };
@@ -1778,11 +1795,11 @@ impl eframe::App for BigTextApp {
                     match (side, d.split.take()) {
                         (Some(r), split) => {
                             d.split = split;
-                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, diff: None };
+                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, show_gutter, diff: None };
                             extras::show_side_by_side(ui, d, r, &mut env);
                         }
                         (None, None) => {
-                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, diff: None };
+                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, show_gutter, diff: None };
                             text_view::show(ui, d, &mut env);
                         }
                         (None, Some(mut pane)) => {
@@ -1793,12 +1810,12 @@ impl eframe::App for BigTextApp {
                             let bottom = egui::Rect::from_min_max(egui::pos2(full.left(), mid + 2.0), full.max);
                             ui.painter().hline(full.x_range(), mid, ui.visuals().widgets.noninteractive.bg_stroke);
                             ui.scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
-                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, diff: None };
+                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, show_gutter, diff: None };
                                 text_view::show(ui, d, &mut env);
                             });
                             pane.swap_with(&mut d.view);
                             ui.scope_builder(egui::UiBuilder::new().max_rect(bottom), |ui| {
-                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 1, show_ws, diff: None };
+                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 1, show_ws, show_gutter, diff: None };
                                 text_view::show(ui, d, &mut env);
                             });
                             pane.swap_with(&mut d.view);
@@ -1816,6 +1833,11 @@ impl eframe::App for BigTextApp {
         }
         for a in actions {
             match a {
+                text_view::ViewAction::Escape => {
+                    if self.settings.zen {
+                        self.settings.zen = false;
+                    }
+                }
                 text_view::ViewAction::CopyLarge { cut, len } => {
                     if let Some(id) = self.docs.get(self.active).map(|d| d.id) {
                         if len > 100 * 1024 * 1024 {

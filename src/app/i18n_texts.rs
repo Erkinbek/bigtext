@@ -1214,4 +1214,8 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Theme", "Тема", "Mavzu"],
     // Screen readers.
     ["Opened {name}", "Открыт {name}", "{name} ochildi"],
+    // Full screen and zen mode.
+    ["Full screen", "Во весь экран", "To'liq ekran"],
+    ["Zen mode", "Режим дзен", "Zen rejimi"],
+    ["Zen mode: Esc or {key} leaves it; move the pointer to the top edge for the menu.", "Режим дзен: выход — Esc или {key}; меню появляется у верхнего края.", "Zen rejimi: Esc yoki {key} bilan chiqiladi; menyu uchun sichqonchani yuqori chetga olib boring."],
 ];

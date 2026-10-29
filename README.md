@@ -134,6 +134,9 @@ Single self-contained binary, no runtime dependencies.
   syntax and log levels, highlights, merged logs, scrollbar marks, search hits, the histogram and
   the status bar. **View → Interface scale** (100–200 %) enlarges menus and dialogs, leaving the
   text at its own size.
+- **Full screen and zen mode**: F11 for full screen; View → Zen mode (Ctrl+Shift+F11) hides the
+  menu, tab, level and status bars (the menu comes back at the top edge, Esc leaves); View → Line
+  numbers turns the gutter off in the text and table views.
 - **Other**: line numbers, zoom (Ctrl+wheel), word wrap (off by default), light/dark theme,
   read-only toggle (auto for read-only files), external change detection with Reload, and a
   **File → Properties…** (Ctrl+I): size, backing, encoding, origin, and from one background pass
