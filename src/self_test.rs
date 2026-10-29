@@ -3749,6 +3749,23 @@ impl SelfTest {
             c.mark = 0;
             check(back == Some(flipped) && eol == Some(LineEnding::Lf), format!("read back {back:?}, line ending on save {eol:?}"))
         }));
+        s("screen readers: the text view's rows and caret line, and an announcement", Box::new(|app, c| {
+            let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+            if c.first() {
+                ctx.enable_accesskit();
+                app.open_path(c.file("semi.txt"));
+                return Step::Wait;
+            }
+            let said = doc(app).view.a11y_last.clone().unwrap_or_default();
+            if !wait_ready(app) || !said.contains("id;note") {
+                return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("exposed {said:?}")) } else { Step::Wait };
+            }
+            let heard = app.announcement.clone();
+            ctx.disable_accesskit();
+            let id = doc(app).id;
+            app.test_close(id);
+            check(said.contains("first: id;note") && said.contains("Ln 1, Col 1") && heard.as_deref() == Some("Opened semi.txt"), format!("exposed {said:?}, announced {heard:?}"))
+        }));
         s("typing into an empty file", Box::new(|app, c| {
             if c.first() {
                 app.open_path(c.file("empty.txt"));

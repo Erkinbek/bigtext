@@ -59,6 +59,8 @@ pub enum Banner {
 
 /// Per-document view state (positions are byte offsets in the document).
 pub struct ViewState {
+    /// What the last frame gave screen readers (tests read it).
+    pub a11y_last: Option<String>,
     pub top: u64,
     pub scroll_x: f32,
     pub caret: u64,
@@ -132,6 +134,7 @@ impl Default for ViewState {
             extra: Vec::new(),
             extra_version: 0,
             alt_prev: None,
+            a11y_last: None,
         }
     }
 }

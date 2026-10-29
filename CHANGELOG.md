@@ -7,6 +7,13 @@ All notable changes to BigText. Each release on
 
 ### Interface
 
+- **Screen reader support (AccessKit)**: menus, dialogs, the search bar, result lists and the
+  command palette are exposed to screen readers, and the text view is a multi-line text field
+  whose rows on screen are text runs, with the caret, the selection and "Ln N, Col M"; its
+  scrollbar reports its position, and table headers their column names. A file opened, a save
+  or another task finished, a Find All's match count and "No matches" are announced through a
+  polite live region. Confirmation dialogs put the keyboard on Cancel. Nothing is built until an
+  assistive technology asks.
 - **High-contrast and colour-blind-safe themes**: View → Theme ▸ Dark, Light, High contrast dark
   or High contrast light (pure black or white, 1.5 px outlines, an opaque selection, a bright
   focus colour), and **Colour-blind-safe colours** (Okabe-Ito) for syntax and log levels (ERROR

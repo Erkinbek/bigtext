@@ -1212,4 +1212,6 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Light", "Светлая", "Och"],
     ["Menus and dialogs; the text has its own size (Ctrl+wheel)", "Меню и диалоги; у текста свой размер (Ctrl+колесо)", "Menyular va oynalar; matnning o'z o'lchami bor (Ctrl+g'ildirak)"],
     ["Theme", "Тема", "Mavzu"],
+    // Screen readers.
+    ["Opened {name}", "Открыт {name}", "{name} ochildi"],
 ];

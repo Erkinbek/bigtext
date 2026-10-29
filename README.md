@@ -126,6 +126,9 @@ Single self-contained binary, no runtime dependencies.
 - **Status bar**: line and column of the caret, byte offset, the number of lines (exact once
   indexing has finished, `~` before), and for a selection its lines, characters (up to 4 MB)
   and bytes, the time it spans in a log (Δt) and the width of a block selection.
+- **Screen readers**: menus, dialogs, the search bar and lists go to screen readers through
+  AccessKit; the text view is a multi-line text field with the rows on screen, the caret, the
+  selection and "Ln N, Col M", and finished work (file opened, saved, matches found) is announced.
 - **Themes**: View → Theme offers Dark, Light, High contrast dark and High contrast light, and
   **Colour-blind-safe colours** (the Okabe-Ito palette) for everything BigText paints itself:
   syntax and log levels, highlights, merged logs, scrollbar marks, search hits, the histogram and

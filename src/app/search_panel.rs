@@ -329,6 +329,9 @@ impl BigTextApp {
             }
             None => self.search.status = tr("No matches").into(),
         }
+        if !self.search.status.is_empty() {
+            self.announcement = Some(self.search.status.clone());
+        }
     }
 
     pub(super) fn search_panel(&mut self, ui: &mut egui::Ui) {

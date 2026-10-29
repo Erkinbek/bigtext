@@ -278,6 +278,9 @@ impl BigTextApp {
                 });
             });
         });
+        if let Some(t) = &self.announcement {
+            crate::view::a11y::live_region(ui.ctx(), egui::Id::new("bigtext-announcement"), t);
+        }
         bar.response.context_menu(|ui| {
             if let Some(f) = fields.menu(ui) {
                 acts.push(StatusAct::Fields(f));
@@ -289,6 +292,23 @@ impl BigTextApp {
         }
         if let Some(id) = follow {
             self.follow_id(&id);
+        }
+    }
+
+    /// Says `text` to screen readers.
+    pub(crate) fn announce(&mut self, text: impl Into<String>) {
+        self.announcement = Some(text.into());
+    }
+
+    /// Announces how many matches a Find All found once it is done.
+    pub(super) fn announce_results(&mut self) {
+        let Some(d) = self.docs.get(self.active) else { return };
+        let running = d.results.as_ref().is_some_and(|r| r.is_running());
+        if !std::mem::replace(&mut self.results_running, running) || running {
+            return;
+        }
+        if let Some(n) = d.results.as_ref().map(|r| r.data.lock().unwrap().matches.len()) {
+            self.announce(trf("{n} matches", &[("n", &n.to_string())]));
         }
     }
 

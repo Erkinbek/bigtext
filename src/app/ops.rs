@@ -327,6 +327,9 @@ impl BigTextApp {
                     ),
                     WriteKind::Transcode(enc) => super::i18n::trf("Saved as {enc} ({size}) in {secs}s.", &[("enc", enc.name()), ("size", &human_bytes(f.stats.bytes_out)), ("secs", &format!("{secs:.2}"))]),
                 }));
+                if let Some(Banner::Info(t)) = &d.banner {
+                    self.announcement = Some(t.clone());
+                }
                 if d.close_after_save {
                     close = Some(d.id);
                 }

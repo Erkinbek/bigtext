@@ -201,6 +201,9 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
 
     let (mut line, line_exact) = rows.first().map(|r| doc.buf.line_of(r.start)).unwrap_or((0, true));
     let mut max_w = doc.view.max_cells;
+    // Screen readers get the rows on screen as text runs.
+    let a11y_on = super::a11y::enabled(ui.ctx(), id);
+    let mut a11y_rows: Vec<super::a11y::Row> = Vec::new();
     for (i, row) in rows.iter().enumerate() {
         let y = text_rect.top() + i as f32 * m.rh;
         if y > text_rect.bottom() {
@@ -225,6 +228,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         // Visible text of the row plus the byte ranges of placeholder (special) glyphs.
         let mut run = String::new();
         let mut specials: Vec<(usize, usize)> = Vec::new();
+        let mut a11y_row = a11y_on.then(|| super::a11y::Row::new(row.start, row.end, Rect::from_min_max(pos2(text_rect.left(), y), pos2(text_rect.right(), y + m.rh))));
         rows::for_each_cell(&codec, &bytes, row.start, |c| {
             end_cell = c.cell + c.width;
             if c.cell + c.width <= first_cell {
@@ -235,6 +239,14 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                 return false;
             }
             vis.push((c.off, c.cell));
+            if let Some(r) = a11y_row.as_mut().filter(|_| c.kind != CellKind::Hidden) {
+                let ch = match c.kind {
+                    CellKind::Tab => '\t',
+                    CellKind::Invalid => '\u{FFFD}',
+                    _ => c.ch,
+                };
+                r.push(ch, c.off, (c.cell.max(first_cell) - first_cell) as f32 * m.cw, c.width as f32 * m.cw);
+            }
             if c.cell > cur {
                 for _ in cur..c.cell {
                     run.push(' ');
@@ -260,6 +272,12 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             true
         });
         build_job(&mut job, &run, &specials, env.lang, &font, text_color, weak, visuals.dark_mode);
+        if let Some(mut r) = a11y_row.take() {
+            if reached_end && row.is_last_in_seg() && row.seg.has_nl {
+                r.push('\n', row.end, (end_cell.max(first_cell) - first_cell) as f32 * m.cw, 0.0);
+            }
+            a11y_rows.push(r);
+        }
 
         // Row width for the horizontal scrollbar (cached; rows are bounded so this is cheap).
         if show_h {
@@ -383,6 +401,17 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         }
     }
     doc.view.max_cells = max_w;
+    if a11y_on {
+        let (line, exact) = doc.buf.line_of(caret);
+        let col = match doc.buf.line_start(line) {
+            Some((ls, true)) if caret >= ls && caret - ls <= 128 * 1024 => doc.buf.read(ls..caret).map(|b| (rows::cell_width(&doc.buf.codec, &b, ls) + 1).to_string()),
+            _ => None,
+        };
+        let position = crate::app::i18n::trf("Ln {line}, Col {col}", &[("line", &format!("{}{}", if exact { "" } else { "~" }, line + 1)), ("col", col.as_deref().unwrap_or("?"))]);
+        let w = super::a11y::TextWidget { label: &doc.title, position, read_only: !doc.editable(), rows: &a11y_rows, anchor: doc.view.anchor, caret };
+        let said = super::a11y::text_widget(ui, id, &w);
+        doc.view.a11y_last = Some(said);
+    }
 
     match &doc.state {
         crate::app::document::DocState::Loading => {
@@ -471,6 +500,14 @@ pub(crate) fn vertical_scrollbar(ui: &mut Ui, doc: &mut Document, id: egui::Id, 
     let thumb_y = bar.top() + (track_h - thumb_h) * frac as f32;
     let thumb = Rect::from_min_max(pos2(bar.left() + 2.0, thumb_y), pos2(bar.right() - 2.0, thumb_y + thumb_h));
     let r = ui.interact(bar, id.with("vbar"), Sense::click_and_drag());
+    ui.ctx().accesskit_node_builder(r.id, |b| {
+        use egui::accesskit;
+        b.set_role(accesskit::Role::ScrollBar);
+        b.set_orientation(accesskit::Orientation::Vertical);
+        b.set_min_numeric_value(0.0);
+        b.set_max_numeric_value(100.0);
+        b.set_numeric_value((frac * 100.0).round());
+    });
     let painter = ui.painter_at(bar);
     let v = ui.visuals();
     painter.rect_filled(bar, 0.0, v.faint_bg_color);

@@ -142,6 +142,7 @@ impl BigTextApp {
     }
 
     pub(crate) fn notify(&mut self, text: String, open: Option<PathBuf>) {
+        self.announcement = Some(text.clone());
         self.notice = Some(Notice { text, open, at: Instant::now() });
     }
 

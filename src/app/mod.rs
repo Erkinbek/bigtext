@@ -325,6 +325,10 @@ pub struct BigTextApp {
     pending_find: Option<u64>,
     /// What was chosen for files that are not open, most recently used first.
     pub file_opts: Vec<extras::FileOpts>,
+    /// The latest announcement for screen readers (a live region says it when it changes).
+    pub announcement: Option<String>,
+    /// Find All was running in the last frame.
+    results_running: bool,
 }
 
 /// Turns I/O errors into messages a user can act on.
@@ -539,6 +543,8 @@ impl BigTextApp {
             occurrences: None,
             pending_find: None,
             file_opts: Vec::new(),
+            announcement: None,
+            results_running: false,
         };
         app.search.query.case_sensitive = true;
         if persist {
@@ -838,7 +844,7 @@ impl BigTextApp {
                     let tx = self.tx.clone();
                     if let Some(d) = self.doc_mut(doc) {
                         d.unpacking = None;
-                        d.reloading = false;
+                        let reload = std::mem::take(&mut d.reloading);
                         match result {
                             Ok(o) => {
                                 d.open_elapsed = Some(o.elapsed);
@@ -893,10 +899,14 @@ impl BigTextApp {
                                     }
                                 }
                                 watch(d, tx, waker);
+                                let opened = (!reload).then(|| d.title.clone());
                                 // Standard input has no file to remember.
                                 if !d.temporary || d.unpacked_from.is_some() {
                                     let p = d.unpacked_from.clone().unwrap_or(o.path);
                                     self.add_recent(&p);
+                                }
+                                if let Some(name) = opened {
+                                    self.announce(i18n::trf("Opened {name}", &[("name", &name)]));
                                 }
                             }
                             Err(e) => d.state = DocState::Failed(e),
@@ -1259,7 +1269,12 @@ impl BigTextApp {
                     if matches!(&c.action, ConfirmAction::LowSpace(l) if matches!(l.resume, Resume::Open { .. })) && ui.button(i18n::tr("Choose folder…")).clicked() {
                         decision = Some(3);
                     }
-                    if ui.button(i18n::tr("Cancel")).clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
+                    let cancel = ui.button(i18n::tr("Cancel"));
+                    // Keyboard and screen reader users land in the dialog, on its safe choice.
+                    if ui.memory(|m| m.focused().is_none()) {
+                        cancel.request_focus();
+                    }
+                    if cancel.clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
                         decision = Some(0);
                     }
                 });
@@ -1685,6 +1700,7 @@ impl eframe::App for BigTextApp {
         }
         self.run_pending_find();
         self.run_pending_filters();
+        self.announce_results();
         self.sync_diff_marks();
 
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));

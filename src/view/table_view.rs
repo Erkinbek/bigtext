@@ -608,6 +608,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         let hit = clip_of(col, cell.intersect(header_rect));
         paint_text(&header_painter.with_clip_rect(hit), cell, &n, &font, color, cw, false);
         let r = ui.interact(hit, id.with(("head", col)), Sense::click());
+        r.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, on, &n));
         if r.clicked() {
             let m = ui.input(|i| i.modifiers);
             doc.table_state.click_header(col, m);
