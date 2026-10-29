@@ -219,6 +219,13 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("patch-me.txt"), &base)?;
     {
         use std::io::Write as _;
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        gz.write_all(&b"needs room\n".repeat(30_000))?;
+        std::fs::write(dir.join("space.log.gz"), gz.finish()?)?;
+        std::fs::write(dir.join("space-save.txt"), "save me\n".repeat(1000))?;
+    }
+    {
+        use std::io::Write as _;
         let zip = |name: &str, files: &[(&str, Vec<u8>)]| -> std::io::Result<()> {
             let mut z = zip::ZipWriter::new(std::fs::File::create(dir.join(name))?);
             for (n, data) in files {
@@ -1126,6 +1133,65 @@ impl SelfTest {
                 return if c.waited() > Duration::from_secs(8) { Step::Fail(format!("zip {zip:?}, xz {xz:?}")) } else { Step::Wait };
             }
             check(zip.as_deref() == Some("only\n") && xz.as_deref() == Some("from xz\n") && app.archive_picker.is_none(), format!("zip {zip:?}, xz {xz:?}"))
+        }));
+        s("low free space: unpacking asks first, Continue goes on", Box::new(|app, c| {
+            if c.first() {
+                std::env::set_var("BIGTEXT_FAKE_FREE", "1000");
+                app.open_path(c.file("space.log.gz"));
+                return Step::Wait;
+            }
+            let waited = c.waited() > Duration::from_secs(8);
+            if c.mark == 0 {
+                if !app.test_has_confirm() {
+                    return if waited { Step::Fail("no low-space question".into()) } else { Step::Wait };
+                }
+                app.test_accept_confirm();
+                c.mark = 1;
+                return Step::Wait;
+            }
+            if !wait_ready(app) {
+                return if waited { Step::Fail("the copy did not open after Continue".into()) } else { Step::Wait };
+            }
+            std::env::remove_var("BIGTEXT_FAKE_FREE");
+            let n = doc(app).buf.len();
+            check(n == 330_000 && doc(app).unpacked_from.is_some(), format!("{n} bytes"))
+        }));
+        s("low free space: saving asks first, Continue saves", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("space-save.txt"));
+                return Step::Wait;
+            }
+            let waited = c.waited() > Duration::from_secs(8);
+            match c.mark {
+                0 => {
+                    if !wait_ready(app) {
+                        return Step::Wait;
+                    }
+                    std::env::set_var("BIGTEXT_FAKE_FREE", "1000");
+                    c.key(Key::Home, CTRL);
+                    c.typed("x");
+                    c.key(Key::S, CTRL);
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    if !app.test_has_confirm() {
+                        return if waited { Step::Fail("no low-space question".into()) } else { Step::Wait };
+                    }
+                    std::env::remove_var("BIGTEXT_FAKE_FREE");
+                    app.test_accept_confirm();
+                    c.mark = 2;
+                    Step::Wait
+                }
+                _ => {
+                    let d = doc(app);
+                    if d.save_job.is_some() || d.is_modified() || !d.is_ready() {
+                        return if waited { Step::Fail("the save did not finish after Continue".into()) } else { Step::Wait };
+                    }
+                    let disk = std::fs::read_to_string(c.file("space-save.txt")).unwrap_or_default();
+                    check(disk.starts_with("xsave me\n"), format!("disk starts {:?}", &disk[..disk.len().min(12)]))
+                }
+            }
         }));
         s("compare files (streaming diff)", Box::new(|app, c| {
             if c.first() {

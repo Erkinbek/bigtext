@@ -1012,4 +1012,16 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Compressed to {size}.", "Сжато до {size}.", "{size} gacha siqildi."],
     ["Compress the parts:", "Сжимать части:", "Qismlarni siqish:"],
     ["no", "нет", "yo'q"],
+    // Free space and the unpack folder.
+    ["Unpacking {file} needs about {need} (estimated), and {dir} has {free} free. Continue anyway, or put unpacked copies in another folder?", "Для распаковки {file} нужно около {need} (оценка), а в {dir} свободно {free}. Продолжить или распаковывать копии в другую папку?", "{file} ni ochish uchun taxminan {need} kerak (taxmin), {dir} da esa {free} bo'sh. Baribir davom etilsinmi yoki ochilgan nusxalar boshqa papkaga qo'yilsinmi?"],
+    ["Writing {file} needs about {need}, and its drive has {free} free. Continue anyway?", "Для записи {file} нужно около {need}, а на диске свободно {free}. Всё равно продолжить?", "{file} ni yozish uchun taxminan {need} kerak, diskda esa {free} bo'sh. Baribir davom etilsinmi?"],
+    ["Not enough free space", "Недостаточно свободного места", "Bo'sh joy yetarli emas"],
+    ["Continue", "Продолжить", "Davom etish"],
+    ["Choose folder…", "Выбрать папку…", "Papka tanlash…"],
+    ["Folder for unpacked copies", "Папка для распакованных копий", "Ochilgan nusxalar papkasi"],
+    ["Unpacked copies folder…", "Папка распакованных копий…", "Ochilgan nusxalar papkasi…"],
+    ["Unpacked copies folder", "Папка распакованных копий", "Ochilgan nusxalar papkasi"],
+    ["Compressed files and archive members are unpacked into temporary copies here; joins, pivots and comparisons keep their temporary files here too.", "Сжатые файлы и файлы из архивов распаковываются сюда во временные копии; объединения, сводные таблицы и сравнения тоже хранят здесь временные файлы.", "Siqilgan fayllar va arxiv ichidagi fayllar shu yerga vaqtinchalik nusxa sifatida ochiladi; birlashtirish, pivot va solishtirishlar ham vaqtinchalik fayllarini shu yerda saqlaydi."],
+    ["(the system temp folder)", "(системная временная папка)", "(tizimning vaqtinchalik papkasi)"],
+    ["Use the system temp folder", "Использовать системную временную папку", "Tizimning vaqtinchalik papkasidan foydalanish"],
 ];

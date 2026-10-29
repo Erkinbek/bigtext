@@ -114,6 +114,12 @@ impl BigTextApp {
     }
 
     pub(crate) fn start_write(&mut self, id: u64, target: PathBuf, spec: WriteSpec, backup: bool) {
+        self.start_write_checked(id, target, spec, backup, true);
+    }
+
+    /// [`Self::start_write`]; with `check`, a document that would not fit on the target's drive
+    /// asks first.
+    pub(crate) fn start_write_checked(&mut self, id: u64, target: PathBuf, spec: WriteSpec, backup: bool, check: bool) {
         // A comparison holding the file (or its backup) open would hold up replacing it.
         let holds = self.diff.as_ref().is_some_and(|r| {
             let running = !r.data.lock().unwrap().done;
@@ -152,6 +158,22 @@ impl BigTextApp {
         let waker = self.waker.clone();
         jobs::spawn("save", move || {
             let t = Instant::now();
+            if check {
+                // About the document's size (twice that when it becomes UTF-16).
+                let need = match &spec {
+                    WriteSpec::Transcode { enc, .. } if enc.unit() == 2 => snap.len().saturating_mul(2),
+                    _ => snap.len(),
+                };
+                let dir = target.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
+                if let Some(free) = bigtext::sysinfo::free_space(&dir) {
+                    if need > free {
+                        let resume = super::Resume::Write { doc: id, target, spec, backup };
+                        let _ = tx.send(Msg::LowSpace(Box::new(super::LowSpace { need, free, dir, resume })));
+                        waker();
+                        return;
+                    }
+                }
+            }
             let transform = match &spec {
                 WriteSpec::Identity => Transform::Identity,
                 WriteSpec::Eol(le) => Transform::Eol(*le),

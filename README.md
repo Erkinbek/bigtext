@@ -33,6 +33,8 @@ Single self-contained binary, no runtime dependencies.
   rotators write them): unpacked once, streaming, into a temporary copy (with progress and
   cancel) that then opens like any other file. The copy is read-only; Save becomes Save As. It
   is deleted when the tab closes, and the session remembers the compressed file.
+  Before unpacking (and before a save) BigText compares the size with the free space and asks
+  first when it would not fit; **Help → Unpacked copies folder…** puts the copies on another drive.
 - **Archives** (`.zip`, `.tar`, `.tar.gz` / `.tgz`, `.tar.zst`, `.tar.xz`, `.tar.bz2`): a picker
   lists the files with their sizes and dates (filter, arrows, Enter), and the one picked opens
   as `bundle.zip › app.log`; a compressed file inside (`app.log.gz`) is unpacked too. An archive

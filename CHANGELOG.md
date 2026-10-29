@@ -74,6 +74,12 @@ All notable changes to BigText. Each release on
   the way out, with the same progress and Cancel, and the notice gives the compressed size.
   Split file… has *Compress the parts* (`app.part001.log.gz`, …). On the command line every
   `-o OUT` with such a name is compressed, and `split` takes `--gz`, `--zst`, `--xz`, `--bz2`.
+- **Free space is checked first**: before a compressed file or an archive member is unpacked
+  (its size estimated from the gzip or zstd header, the archive's listing, or 12× the packed
+  size) and before a save writes its copy, BigText compares the size with the free space on
+  that drive and asks *Continue* / *Choose folder…* / *Cancel* instead of failing halfway with
+  "disk full". **Help → Unpacked copies folder…** puts unpacked copies (and other temporary
+  files) on another drive; the setting is kept, and leftovers in both folders are cleaned up.
 
 ### Command line
 

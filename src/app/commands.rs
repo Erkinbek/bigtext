@@ -107,6 +107,7 @@ pub enum Cmd {
     ExportSettings,
     ImportSettings,
     Portable,
+    UnpackDir,
     CheckUpdates,
     About,
     Text(Op),
@@ -122,7 +123,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 92] = [
+    pub const ALL: [Cmd; 93] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -213,6 +214,7 @@ impl Cmd {
         Cmd::ExportSettings,
         Cmd::ImportSettings,
         Cmd::Portable,
+        Cmd::UnpackDir,
         Cmd::CheckUpdates,
         Cmd::About,
     ];
@@ -340,6 +342,7 @@ impl Cmd {
             Cmd::Portable => "Portable mode…",
             Cmd::CheckUpdates => "Check for updates…",
             Cmd::About => "About BigText",
+            Cmd::UnpackDir => "Unpacked copies folder…",
             Cmd::Text(op) => op.name(),
         }
     }
@@ -362,7 +365,7 @@ impl Cmd {
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
             Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::NextDiff | Cmd::PrevDiff | Cmd::OnlyIn | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::CheckJson | Cmd::MatchBracket => "Search",
-            Cmd::Palette | Cmd::Shortcuts | Cmd::ExportSettings | Cmd::ImportSettings | Cmd::Portable | Cmd::CheckUpdates | Cmd::About => "Help",
+            Cmd::Palette | Cmd::Shortcuts | Cmd::ExportSettings | Cmd::ImportSettings | Cmd::Portable | Cmd::UnpackDir | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
     }
@@ -700,6 +703,7 @@ impl BigTextApp {
             Cmd::Portable => self.portable.open = true,
             Cmd::CheckUpdates => self.check_for_updates(true),
             Cmd::About => self.show_about = true,
+            Cmd::UnpackDir => self.unpack_dir_open = true,
             Cmd::Text(op) => self.text_op(op),
         }
     }
@@ -947,7 +951,7 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                for c in [Cmd::ExportSettings, Cmd::ImportSettings, Cmd::Portable] {
+                for c in [Cmd::ExportSettings, Cmd::ImportSettings, Cmd::Portable, Cmd::UnpackDir] {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();

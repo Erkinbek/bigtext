@@ -60,6 +60,10 @@ lzma-rust2 = { version = "0.23", default-features = false, features = ["std", "x
 bzip2 = "0.6"
 skrifa = "0.44"
 
+[target.'cfg(unix)'.dependencies]
+# Free disk space (statvfs).
+libc = "0.2"
+
 [build-dependencies]
 winresource = "0.1"
 

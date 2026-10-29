@@ -102,6 +102,7 @@ pub enum Msg {
     ReplaceTooMany { doc: u64, version: u64, matcher: Arc<Matcher>, template: Template, range: std::ops::Range<u64> },
     Preview { doc: u64, items: Vec<(u64, String, String)>, lines: Vec<u64> },
     FileChanged(Box<FileChange>),
+    LowSpace(Box<LowSpace>),
     /// An archive's files, for the picker: (tab, archive, files).
     ArchiveListed(Box<(u64, PathBuf, Vec<bigtext::decompress::Member>)>),
     Update(update::Event),
@@ -127,6 +128,8 @@ pub struct Settings {
     pub marks: Vec<marks::Mark>,
     /// Font file of the text (None: the built-in font).
     pub font_path: Option<PathBuf>,
+    /// Where unpacked copies go (`None`: the system temp folder).
+    pub unpack_dir: Option<PathBuf>,
     /// The log level bar above log files.
     pub level_bar: bool,
     /// Saved searches (the ★ menu of the search bar).
@@ -177,6 +180,7 @@ enum ConfirmAction {
     ReplaceOnDisk { doc: u64 },
     DeleteColumns { doc: u64, dialect: bigtext::csv::Dialect, cols: Vec<usize>, on_disk: bool },
     CsvRewrite { doc: u64, dialect: bigtext::csv::Dialect, rewrite: bigtext::csv::Rewrite, on_disk: bool },
+    LowSpace(Box<LowSpace>),
 }
 
 #[derive(Default)]
@@ -273,6 +277,8 @@ pub struct BigTextApp {
     pub only_in_dialog: Option<only_in::OnlyInDialog>,
     pub only_in: Option<only_in::OnlyInResults>,
     pub archive_picker: Option<archive::ArchivePicker>,
+    /// Help → Unpacked copies folder… is open.
+    pub unpack_dir_open: bool,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -294,6 +300,23 @@ pub fn friendly_io(e: &std::io::Error, path: &Path) -> String {
         (std::io::ErrorKind::NotFound, _) => i18n::trf("File not found: “{p}”.", &[("p", &p)]),
         _ => format!("{p}: {e}"),
     }
+}
+
+/// An unpack or a save that would not fit on its drive, waiting for the user.
+#[derive(Clone)]
+pub struct LowSpace {
+    /// Bytes needed (estimated for unpacking) and free.
+    pub need: u64,
+    pub free: u64,
+    pub dir: PathBuf,
+    pub resume: Resume,
+}
+
+/// What to do again after a low-space warning.
+#[derive(Clone)]
+pub enum Resume {
+    Open { doc: u64, path: PathBuf, member: Option<String>, forced: Option<Encoding>, size: Option<u64> },
+    Write { doc: u64, target: PathBuf, spec: ops::WriteSpec, backup: bool },
 }
 
 /// What the watcher saw happen to a document's file.
@@ -407,7 +430,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None },
+            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None },
             goto: None,
             confirm: None,
             error: None,
@@ -462,6 +485,7 @@ impl BigTextApp {
             only_in_dialog: None,
             only_in: None,
             archive_picker: None,
+            unpack_dir_open: false,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -618,6 +642,12 @@ impl BigTextApp {
     }
 
     fn spawn_open(&mut self, id: u64, path: PathBuf, forced: Option<Encoding>) {
+        self.spawn_open_job(id, path, None, forced, None, true);
+    }
+
+    /// Opens `path` (an archive's file `member` of about `size` bytes) into the loading tab `id`;
+    /// with `check`, an unpack that would not fit asks first.
+    pub(crate) fn spawn_open_job(&mut self, id: u64, path: PathBuf, member: Option<String>, forced: Option<Encoding>, size: Option<u64>, check: bool) {
         let tx = self.tx.clone();
         let waker = self.waker.clone();
         let (progress, cancel) = (jobs::Progress::default(), CancelToken::new());
@@ -625,11 +655,14 @@ impl BigTextApp {
             d.unpacking = Some((progress.clone(), cancel.clone()));
         }
         jobs::spawn("open", move || {
+            let (mut member, mut size) = (member, size);
             // An archive lists its files first; one file opens without asking.
-            let mut member = None;
-            if let Some(a) = bigtext::decompress::detect_archive(&path) {
+            if let (None, Some(a)) = (&member, bigtext::decompress::detect_archive(&path)) {
                 match bigtext::decompress::list_members(&path, a, &cancel, &progress) {
-                    Ok(Some(m)) if m.len() == 1 => member = Some(m[0].name.clone()),
+                    Ok(Some(m)) if m.len() == 1 => {
+                        member = Some(m[0].name.clone());
+                        size = Some(m[0].size);
+                    }
                     Ok(Some(m)) if !m.is_empty() => {
                         let _ = tx.send(Msg::ArchiveListed(Box::new((id, path, m))));
                         waker();
@@ -647,6 +680,22 @@ impl BigTextApp {
                     }
                 }
             }
+            if check {
+                // The size of the copy, against the free space where it goes.
+                let need = match &member {
+                    Some(_) => size,
+                    None => bigtext::decompress::detect(&path).map(|k| bigtext::decompress::estimate_unpacked(&path, k)),
+                };
+                let dir = bigtext::decompress::temp_dir();
+                if let (Some(need), Some(free)) = (need, need.and_then(|_| bigtext::sysinfo::free_space(&dir))) {
+                    if need > free {
+                        let resume = Resume::Open { doc: id, path, member, forced, size };
+                        let _ = tx.send(Msg::LowSpace(Box::new(LowSpace { need, free, dir, resume })));
+                        waker();
+                        return;
+                    }
+                }
+            }
             let result = match &member {
                 Some(m) => open_member(&path, m, forced, &cancel, &progress),
                 None => open_or_unpack(&path, forced, &cancel, &progress),
@@ -658,18 +707,40 @@ impl BigTextApp {
 
     /// Unpacks and opens the archive's file `member` into the loading tab `id`.
     fn spawn_open_member(&mut self, id: u64, path: PathBuf, member: Option<String>) {
-        let Some(member) = member else { return self.spawn_open(id, path, None) };
-        let tx = self.tx.clone();
-        let waker = self.waker.clone();
-        let (progress, cancel) = (jobs::Progress::default(), CancelToken::new());
-        if let Some(d) = self.doc_mut(id) {
-            d.unpacking = Some((progress.clone(), cancel.clone()));
+        self.spawn_open_job(id, path, member, None, None, true);
+    }
+
+    fn on_low_space(&mut self, l: LowSpace) {
+        let (doc, file) = match &l.resume {
+            Resume::Open { doc, path, .. } => (*doc, path.clone()),
+            Resume::Write { doc, target, .. } => (*doc, target.clone()),
+        };
+        if let Some(d) = self.doc_mut(doc) {
+            d.unpacking = None;
+            d.save_job = None;
         }
-        jobs::spawn("open", move || {
-            let result = open_member(&path, &member, None, &cancel, &progress);
-            let _ = tx.send(Msg::Opened { doc: id, result });
-            waker();
-        });
+        let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let sizes = [("file", name.as_str()), ("need", &human_bytes(l.need)), ("free", &human_bytes(l.free)), ("dir", &file::display_path(&l.dir))];
+        let message = match l.resume {
+            Resume::Open { .. } => i18n::trf("Unpacking {file} needs about {need} (estimated), and {dir} has {free} free. Continue anyway, or put unpacked copies in another folder?", &sizes),
+            Resume::Write { .. } => i18n::trf("Writing {file} needs about {need}, and its drive has {free} free. Continue anyway?", &sizes),
+        };
+        self.confirm = Some(Confirm { title: i18n::tr("Not enough free space").into(), message, action: ConfirmAction::LowSpace(Box::new(l)), checkbox: None });
+    }
+
+    /// Carries on after a low-space warning (checking again with `check`).
+    fn resume(&mut self, r: Resume, check: bool) {
+        match r {
+            Resume::Open { doc, path, member, forced, size } => self.spawn_open_job(doc, path, member, forced, size, check),
+            Resume::Write { doc, target, spec, backup } => self.start_write_checked(doc, target, spec, backup, check),
+        }
+    }
+
+    /// Puts unpacked copies in `dir` from now on (`None`: the system temp folder).
+    pub(crate) fn set_unpack_folder(&mut self, dir: Option<PathBuf>) {
+        bigtext::decompress::set_unpack_dir(dir.clone());
+        self.settings.unpack_dir = dir;
+        self.persist_state();
     }
 
     pub fn active_doc(&mut self) -> Option<&mut Document> {
@@ -766,6 +837,7 @@ impl BigTextApp {
                 Msg::ReplaceBatch { doc, version, add_len, pieces, add, count } => self.on_replace_batch(doc, version, add_len, pieces, add, count),
                 Msg::ReplaceTooMany { doc, version, matcher, template, range } => self.on_replace_too_many(doc, version, matcher, template, range),
                 Msg::Preview { doc, items, lines } => self.preview = Some((doc, items, lines)),
+                Msg::LowSpace(l) => self.on_low_space(*l),
                 Msg::ArchiveListed(a) => {
                     let (doc, archive, members) = *a;
                     self.on_archive_listed(doc, archive, members);
@@ -1198,9 +1270,13 @@ impl BigTextApp {
                         ConfirmAction::CopyLarge { .. } => "Copy",
                         ConfirmAction::DeleteColumns { .. } => "Delete",
                         ConfirmAction::CsvRewrite { .. } => "Rewrite",
+                        ConfirmAction::LowSpace(_) => "Continue",
                     };
                     if ui.button(i18n::tr(primary)).clicked() {
                         decision = Some(1);
+                    }
+                    if matches!(&c.action, ConfirmAction::LowSpace(l) if matches!(l.resume, Resume::Open { .. })) && ui.button(i18n::tr("Choose folder…")).clicked() {
+                        decision = Some(3);
                     }
                     if ui.button(i18n::tr("Cancel")).clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
                         decision = Some(0);
@@ -1283,6 +1359,19 @@ impl BigTextApp {
             (1, ConfirmAction::ReplaceOnDisk { doc }) => self.replace_on_disk(doc, checked),
             (1, ConfirmAction::DeleteColumns { doc, dialect, cols, on_disk }) => self.delete_columns(doc, dialect, cols, on_disk, checked),
             (1, ConfirmAction::CsvRewrite { doc, dialect, rewrite, on_disk }) => self.rewrite_csv(doc, dialect, rewrite, on_disk, checked),
+            (1, ConfirmAction::LowSpace(l)) => self.resume(l.resume, false),
+            (3, ConfirmAction::LowSpace(l)) => match rfd::FileDialog::new().set_title(i18n::tr("Folder for unpacked copies")).pick_folder() {
+                Some(dir) => {
+                    self.set_unpack_folder(Some(dir));
+                    self.resume(l.resume, true);
+                }
+                None => self.on_low_space(*l),
+            },
+            (_, ConfirmAction::LowSpace(l)) => {
+                if let Resume::Open { doc, .. } = l.resume {
+                    self.close_tab(doc, true);
+                }
+            }
             _ => {
                 self.pending_replace = None;
                 // Exit was cancelled: "Restart now" for an update no longer applies.
@@ -1724,6 +1813,7 @@ impl eframe::App for BigTextApp {
         self.table_compare_window(&ctx);
         self.only_in_window(&ctx);
         self.archive_window(&ctx);
+        self.unpack_dir_window(&ctx);
         self.pivot_window(&ctx);
         self.derive_window(&ctx);
         self.json_fields_window(&ctx);

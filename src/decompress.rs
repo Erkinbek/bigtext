@@ -310,9 +310,64 @@ pub fn unpack_member(path: &Path, archive: Archive, member: &str, cancel: &Cance
     }
 }
 
-/// Directory for unpacked copies (in the system temp directory).
-pub fn temp_dir() -> PathBuf {
+/// A folder chosen for unpacked copies instead of the system temp folder.
+static UNPACK_DIR: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+/// Puts unpacked copies (and other temporary files) in a folder of `dir` (`None`: the system
+/// temp folder).
+pub fn set_unpack_dir(dir: Option<PathBuf>) {
+    *UNPACK_DIR.lock().unwrap() = dir;
+}
+
+fn default_temp_dir() -> PathBuf {
     std::env::temp_dir().join("BigText").join("unpacked")
+}
+
+/// Directory for unpacked copies (in the system temp directory unless one was chosen).
+pub fn temp_dir() -> PathBuf {
+    match &*UNPACK_DIR.lock().unwrap() {
+        Some(d) => d.join("BigText unpacked"),
+        None => default_temp_dir(),
+    }
+}
+
+/// About how large `path` is unpacked: gzip's size field (small files), zstd's frame header,
+/// or twelve times the packed size.
+pub fn estimate_unpacked(path: &Path, kind: Kind) -> u64 {
+    let len = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    let guess = len.saturating_mul(12);
+    let exact = (|| -> Option<u64> {
+        match kind {
+            // ISIZE is the size modulo 4 GiB, and of the last member only.
+            Kind::Gzip if len < 300 << 20 => {
+                let mut f = File::open(path).ok()?;
+                f.seek(SeekFrom::End(-4)).ok()?;
+                let mut b = [0u8; 4];
+                f.read_exact(&mut b).ok()?;
+                Some(u32::from_le_bytes(b) as u64)
+            }
+            Kind::Zstd => zstd_content_size(&head(path, 18)?),
+            _ => None,
+        }
+    })();
+    exact.map(|n| n.max(len)).unwrap_or(guess)
+}
+
+/// The content size in a zstd frame header, when it has one.
+fn zstd_content_size(h: &[u8]) -> Option<u64> {
+    let fhd = *h.get(4)?;
+    let single = fhd & 0x20 != 0;
+    let at = 5 + usize::from(!single) + [0, 1, 2, 4][(fhd & 3) as usize];
+    let n = match fhd >> 6 {
+        0 if single => 1,
+        0 => return None,
+        1 => 2,
+        2 => 4,
+        _ => 8,
+    };
+    let b = h.get(at..at + n)?;
+    let v = b.iter().rev().fold(0u64, |v, &x| v << 8 | x as u64);
+    Some(if n == 2 { v + 256 } else { v })
 }
 
 /// A fresh path in [`temp_dir`] for unpacking `path`.
@@ -330,11 +385,17 @@ pub fn temp_file(name: &str) -> PathBuf {
 /// Removes unpacked copies left behind (by a crash) more than two days ago. Files still open
 /// in another BigText window cannot be deleted on Windows and are skipped.
 pub fn cleanup_old() {
-    let Ok(dirs) = fs::read_dir(temp_dir()) else { return };
     let limit = SystemTime::now() - Duration::from_secs(2 * 24 * 3600);
-    for d in dirs.flatten() {
-        if d.metadata().and_then(|m| m.modified()).is_ok_and(|t| t < limit) {
-            let _ = fs::remove_dir_all(d.path());
+    let mut folders = vec![default_temp_dir()];
+    if temp_dir() != folders[0] {
+        folders.push(temp_dir());
+    }
+    for folder in folders {
+        let Ok(dirs) = fs::read_dir(folder) else { continue };
+        for d in dirs.flatten() {
+            if d.metadata().and_then(|m| m.modified()).is_ok_and(|t| t < limit) {
+                let _ = fs::remove_dir_all(d.path());
+            }
         }
     }
 }
@@ -644,6 +705,28 @@ mod tests {
         assert_eq!(plain.seek(SeekFrom::Start(1)).unwrap(), 1);
         let mut gz = Packer::new(std::io::Cursor::new(Vec::new()), Some(Kind::Gzip)).unwrap();
         assert!(gz.seek(SeekFrom::Start(0)).is_err());
+    }
+
+    #[test]
+    fn size_estimates() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = b"estimate me\n".repeat(50_000);
+        let g = dir.path().join("a.log.gz");
+        fs::write(&g, gz(&data)).unwrap();
+        assert_eq!(estimate_unpacked(&g, Kind::Gzip), data.len() as u64);
+        let z = dir.path().join("a.log.zst");
+        // ruzstd leaves the content size out of its frame headers (the zstd tool writes it).
+        let packed = zst(&data);
+        fs::write(&z, &packed).unwrap();
+        assert_eq!(estimate_unpacked(&z, Kind::Zstd), packed.len() as u64 * 12);
+        let x = dir.path().join("a.log.xz");
+        let packed = xz(&data);
+        fs::write(&x, &packed).unwrap();
+        assert_eq!(estimate_unpacked(&x, Kind::Xz), packed.len() as u64 * 12);
+        // Single-segment, 1-byte and 2-byte sizes.
+        assert_eq!(zstd_content_size(&[0x28, 0xB5, 0x2F, 0xFD, 0x20, 200]), Some(200));
+        assert_eq!(zstd_content_size(&[0x28, 0xB5, 0x2F, 0xFD, 0x40, 0x58, 0x00, 0x10]), Some(0x1000 + 256));
+        assert_eq!(zstd_content_size(&[0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x58]), None);
     }
 
     #[test]

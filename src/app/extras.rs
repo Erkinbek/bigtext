@@ -53,6 +53,8 @@ pub struct Persisted {
     pub lang: Option<String>,
     /// Font file of the text.
     pub font: Option<PathBuf>,
+    /// The folder for unpacked copies.
+    pub unpack_dir: Option<PathBuf>,
     pub level_bar: Option<bool>,
     /// Saved searches.
     pub saved: Vec<super::saved_searches::SavedSearch>,
@@ -182,6 +184,7 @@ pub(super) fn parse(text: &str) -> Persisted {
             "find" => p.history.push(v.to_string()),
             "lang" => p.lang = Some(v.to_string()),
             "font" => p.font = Some(PathBuf::from(v)),
+            "unpack_dir" => p.unpack_dir = Some(PathBuf::from(v)),
             "key" => p.keys.extend(v.split_once('=').map(|(a, b)| (a.to_string(), b.to_string()))),
             "tab" => p.tabs.extend(parse_tab(v)),
             _ => {}
@@ -225,6 +228,9 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(f) = &p.font {
         s.push_str(&format!("font={}\n", f.display()));
+    }
+    if let Some(d) = &p.unpack_dir {
+        s.push_str(&format!("unpack_dir={}\n", d.display()));
     }
     if let Some(l) = &p.lang {
         s.push_str(&format!("lang={l}\n"));
@@ -572,6 +578,7 @@ impl BigTextApp {
             history: self.search.history.clone(),
             lang: Some(super::i18n::lang().code().to_string()),
             font: self.settings.font_path.clone(),
+            unpack_dir: self.settings.unpack_dir.clone(),
             level_bar: Some(self.settings.level_bar),
             saved: self.settings.saved.clone(),
             show_ws: Some(self.settings.show_ws),
@@ -590,6 +597,8 @@ impl BigTextApp {
 
     /// Restores the previous session (tabs, positions, bookmarks, settings).
     pub(super) fn restore_session(&mut self, p: Persisted) {
+        self.settings.unpack_dir = p.unpack_dir.clone();
+        bigtext::decompress::set_unpack_dir(p.unpack_dir.clone());
         if let Some(f) = p.font_size {
             self.settings.font_size = f.clamp(6.0, 72.0);
         }
@@ -1162,6 +1171,7 @@ mod tests {
             keys: vec![("goto_time".into(), "ctrl+alt+T".into()), ("find_all".into(), "none".into())],
             lang: Some("uz".into()),
             font: Some(PathBuf::from(r"C:\Windows\Fonts\consola.ttf")),
+            unpack_dir: Some(PathBuf::from(r"D:\scratch")),
             level_bar: Some(false),
             show_ws: Some(true),
             filter_ctx: Some((3, true)),
@@ -1188,6 +1198,7 @@ mod tests {
         assert_eq!(parse(&serialize(&p)).id_keys, p.id_keys);
         assert_eq!(parse(&serialize(&p)).pinned, p.pinned);
         assert_eq!(parse(&serialize(&p)).font, p.font);
+        assert_eq!(parse(&serialize(&p)).unpack_dir, p.unpack_dir);
         assert_eq!(parse(&serialize(&p)).level_bar, Some(false));
         assert_eq!(parse(&serialize(&p)).lang.as_deref(), Some("uz"));
         let q = parse(&serialize(&p));

@@ -50,7 +50,41 @@ impl BigTextApp {
         let archive_name = p.archive.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         d.title = format!("{archive_name} › {}", bigtext::decompress::member_file_name(member));
         d.member = Some(member.to_string());
-        self.spawn_open_member(p.doc, p.archive, Some(member.to_string()));
+        let size = p.members.iter().find(|m| m.name == member).map(|m| m.size);
+        self.spawn_open_job(p.doc, p.archive, Some(member.to_string()), None, size, true);
+    }
+
+    /// Help → Unpacked copies folder…: where unpacked copies and other temporary files go.
+    pub(super) fn unpack_dir_window(&mut self, ctx: &egui::Context) {
+        if !self.unpack_dir_open {
+            return;
+        }
+        let mut open = true;
+        let mut set: Option<Option<PathBuf>> = None;
+        egui::Window::new(tr("Unpacked copies folder")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+            ui.label(tr("Compressed files and archive members are unpacked into temporary copies here; joins, pivots and comparisons keep their temporary files here too."));
+            let shown = bigtext::file::display_path(&bigtext::decompress::temp_dir());
+            ui.monospace(shown);
+            if self.settings.unpack_dir.is_none() {
+                ui.weak(tr("(the system temp folder)"));
+            }
+            ui.horizontal(|ui| {
+                if ui.button(tr("Choose folder…")).clicked() {
+                    if let Some(dir) = rfd::FileDialog::new().set_title(tr("Folder for unpacked copies")).pick_folder() {
+                        set = Some(Some(dir));
+                    }
+                }
+                if self.settings.unpack_dir.is_some() && ui.button(tr("Use the system temp folder")).clicked() {
+                    set = Some(None);
+                }
+            });
+        });
+        if let Some(dir) = set {
+            self.set_unpack_folder(dir);
+        }
+        if !open {
+            self.unpack_dir_open = false;
+        }
     }
 
     pub(super) fn archive_window(&mut self, ctx: &egui::Context) {
