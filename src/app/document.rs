@@ -200,6 +200,8 @@ pub struct Document {
     pub temporary: bool,
     /// Progress and cancellation of the open job (shown while a compressed file is unpacked).
     pub unpacking: Option<(bigtext::jobs::Progress, CancelToken)>,
+    /// The rest of an unpacked copy that is open already is still being unpacked.
+    pub growing: Option<(bigtext::jobs::Progress, CancelToken)>,
     /// Character count of the selection, cached.
     sel_chars: std::cell::Cell<Option<(SelKey, Option<u64>)>>,
     /// Second pane of a split view (shares caret and selection, scrolls independently).
@@ -354,6 +356,7 @@ impl Document {
             member: None,
             temporary: false,
             unpacking: None,
+            growing: None,
             sel_chars: std::cell::Cell::new(None),
             split: None,
             active_pane: 0,
@@ -495,6 +498,9 @@ impl Document {
             j.cancel.cancel();
         }
         if let Some((_, c)) = &self.unpacking {
+            c.cancel();
+        }
+        if let Some((_, c)) = &self.growing {
             c.cancel();
         }
         if let Some(j) = self.find_job.take() {

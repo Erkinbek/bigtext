@@ -121,6 +121,11 @@ All notable changes to BigText. Each release on
 
 ### Files
 
+- **Compressed files open while they unpack**: a `.gz`, `.zst`, `.xz` or `.bz2` file opens as
+  soon as the first megabyte of its temporary copy is written, instead of after the whole file;
+  the rest arrives the way a followed log grows (line index kept), with "Unpacking 37%" and
+  **Cancel** in the status bar, which stops unpacking and keeps what is there. The copy stays
+  read-only until it is whole, and a damaged file shows its error with the part that unpacked.
 - **BigText remembers each file's choices**: the encoding picked with File → Reopen with
   encoding (a remembered one opens the file in one pass; a byte order mark the file has since
   gained wins), Highlight as, table, hex, follow, read-only and word wrap, and for tables the

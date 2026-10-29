@@ -611,9 +611,67 @@ pub fn unpack(src: &Path, kind: Kind, cancel: &CancelToken, progress: &Progress)
     }
 }
 
+/// [`unpack_live`] calls back once this much is written.
+pub const LIVE_READY: u64 = 1 << 20;
+
+/// Unpacks `src` into `target` like [`unpack`], calling `ready` once the first megabyte is
+/// written out, so the copy can be opened while the rest is unpacked. `Ok(None)` when cancelled;
+/// the caller removes `target`.
+pub fn unpack_live(src: &Path, kind: Kind, target: &Path, cancel: &CancelToken, progress: &Progress, ready: impl FnOnce()) -> io::Result<Option<u64>> {
+    struct Live<W, F> {
+        inner: W,
+        written: u64,
+        ready: Option<F>,
+    }
+    impl<W: Write, F: FnOnce()> Write for Live<W, F> {
+        fn write(&mut self, b: &[u8]) -> io::Result<usize> {
+            let n = self.inner.write(b)?;
+            self.written += n as u64;
+            if self.written >= LIVE_READY && self.ready.is_some() {
+                self.inner.flush()?;
+                if let Some(f) = self.ready.take() {
+                    f();
+                }
+            }
+            Ok(n)
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            self.inner.flush()
+        }
+    }
+    if let Some(dir) = target.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    // A small buffer: what is unpacked shows up in the file soon.
+    let mut w = Live { inner: io::BufWriter::with_capacity(1 << 20, File::create(target)?), written: 0, ready: Some(ready) };
+    let n = unpack_to(src, kind, &mut w, cancel, progress)?;
+    w.flush()?;
+    Ok(n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_unpacking_says_when_the_start_is_there() {
+        let dir = tempfile::tempdir().unwrap();
+        let data: Vec<u8> = (0..300_000).flat_map(|i| format!("line {i}\n").into_bytes()).collect();
+        let src = dir.path().join("a.log.gz");
+        fs::write(&src, gz(&data)).unwrap();
+        let target = dir.path().join("out").join("a.log");
+        let mut seen = None;
+        let n = unpack_live(&src, Kind::Gzip, &target, &CancelToken::new(), &Progress::default(), || seen = Some(fs::metadata(&target).unwrap().len())).unwrap();
+        assert_eq!(n, Some(data.len() as u64));
+        assert!(seen.is_some_and(|s| s >= LIVE_READY && s < data.len() as u64), "{seen:?}");
+        assert_eq!(fs::read(&target).unwrap(), data);
+        // Smaller than a megabyte: never ready, but whole.
+        let small = dir.path().join("b.gz");
+        fs::write(&small, gz(b"x\n")).unwrap();
+        let mut called = false;
+        unpack_live(&small, Kind::Gzip, &dir.path().join("b"), &CancelToken::new(), &Progress::default(), || called = true).unwrap();
+        assert!(!called);
+    }
 
     fn gz(data: &[u8]) -> Vec<u8> {
         let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());

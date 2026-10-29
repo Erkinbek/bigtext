@@ -243,6 +243,14 @@ impl BigTextApp {
                     });
                     self.tasks_status(ui);
                     let Some(d) = self.docs.get(self.active) else { return };
+                    if let Some((p, c)) = &d.growing {
+                        if ui.small_button(tr("Cancel")).on_hover_text(tr("Stop unpacking; what is unpacked stays open")).clicked() {
+                            c.cancel();
+                        }
+                        ui.add(egui::ProgressBar::new(p.fraction()).desired_width(140.0).text(format!("{} {:.0}%", tr("Unpacking"), p.fraction() * 100.0)));
+                        ui.ctx().request_repaint_after(Duration::from_millis(250));
+                        ui.separator();
+                    }
                     if let Some(j) = &d.save_job {
                         if ui.small_button(tr("Cancel")).clicked() {
                             j.cancel.cancel();
@@ -279,7 +287,7 @@ impl BigTextApp {
                     if d.read_only {
                         let text = RichText::new(tr("READ-ONLY")).color(super::theme::warn_text(ui));
                         // A merged log has no file of its own to edit.
-                        if d.merged.is_some() {
+                        if d.merged.is_some() || d.growing.is_some() {
                             ui.label(text);
                         } else if field(ui, text, tr("Click to allow editing")).clicked() {
                             acts.push(StatusAct::ToggleReadOnly);

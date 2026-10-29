@@ -30,8 +30,9 @@ Single self-contained binary, no runtime dependencies.
   Go to line and the scrollbar work immediately (estimated positions, shown with `~`, refined
   when the index catches up).
 - **Compressed files** (`.gz`, `.zst`, `.xz`, `.bz2`, also multi-member/multi-frame as log
-  rotators write them): unpacked once, streaming, into a temporary copy (with progress and
-  cancel) that then opens like any other file. The copy is read-only; Save becomes Save As. It
+  rotators write them): unpacked once, streaming, into a temporary copy that opens as soon as
+  its first megabyte is there; the rest appears as it is unpacked (progress and Cancel in the
+  status bar, which keeps what is unpacked). The copy is read-only; Save becomes Save As. It
   is deleted when the tab closes, and the session remembers the compressed file.
   Before unpacking (and before a save) BigText compares the size with the free space and asks
   first when it would not fit; **Help → Unpacked copies folder…** puts the copies on another drive.

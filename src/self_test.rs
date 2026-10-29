@@ -162,6 +162,12 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
     gz.write_all(b"packed line 1\npacked line 2\n")?;
     std::fs::write(dir.join("packed.log.gz"), gz.finish()?)?;
+    // Over the megabyte after which a compressed file opens while it unpacks.
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    for i in 0..400_000 {
+        writeln!(gz, "2024-05-01 10:00:00 INFO live line {i}")?;
+    }
+    std::fs::write(dir.join("live.log.gz"), gz.finish()?)?;
     std::fs::write(dir.join("cli.log"), "first 10:00\nsecond 10:00 10:05\nthird\n")?;
     std::fs::write(dir.join("time.log"), "2024-05-01 10:00:00 start\n2024-05-01 10:00:05 a\n    trace\n2024-05-01 10:01:00 b\n2024-05-01 11:00:00 end\n")?;
     std::fs::write(dir.join("levels.log"), LEVELS_LOG)?;
@@ -4113,6 +4119,25 @@ impl SelfTest {
                     check(got == ["a", "b", "c"] && temporary && app.run_cmd.history.first().is_some_and(|h| h.starts_with("sort")), format!("{got:?}"))
                 }
             }
+        }));
+        s("a big .gz opens while it unpacks and ends up whole", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("live.log.gz"));
+                return Step::Wait;
+            }
+            let want = (0..400_000u64).map(|i| 36 + i.to_string().len() as u64).sum::<u64>();
+            let d = doc(app);
+            let whole = d.is_ready() && d.growing.is_none() && !d.reloading && d.buf.len() == want && d.buf.index.is_done();
+            if !whole {
+                return if c.waited() > Duration::from_secs(20) { Step::Fail(format!("{} of {want} bytes, growing {}", d.buf.len(), d.growing.is_some())) } else { Step::Wait };
+            }
+            let (lines, exact) = d.buf.line_count();
+            let last = d.buf.line_start(399_999).and_then(|(ls, _)| d.buf.read(ls..d.buf.len())).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+            let ok = d.read_only && d.temporary && lines == 400_001 && exact && last == "2024-05-01 10:00:00 INFO live line 399999\n";
+            let got = format!("{lines} lines (exact {exact}), last {last:?}, read-only {}", d.read_only);
+            let id = d.id;
+            app.test_close(id);
+            check(ok, got)
         }));
         s("typing into an empty file", Box::new(|app, c| {
             if c.first() {

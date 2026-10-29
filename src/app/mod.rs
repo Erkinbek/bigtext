@@ -104,6 +104,8 @@ pub struct Opened {
     pub member: Option<String>,
     /// The encoding of the byte order mark the file starts with.
     pub bom: Option<Encoding>,
+    /// An unpacked copy opened while the rest is still being unpacked.
+    pub growing: bool,
 }
 
 pub enum Msg {
@@ -135,6 +137,7 @@ pub enum Msg {
     Aligned(Box<time_link::Aligned>),
     JsonCrumb(Box<json_crumb::CrumbMsg>),
     Folds(Box<fold::FoldMsg>),
+    Unpacked(Box<Unpacked>),
     LevelFound(Box<levels::LevelFound>),
     CursorFound(Box<multi_cursor::CursorFound>),
     BracketJump(Box<match_bracket::BracketJump>),
@@ -421,7 +424,7 @@ fn open_worker(path: &Path, forced: Option<Encoding>, mode: OpenMode) -> Result<
         };
         (det, bom)
     };
-    Ok(Opened { source: Arc::new(src), detected: det, elapsed: t.elapsed(), path: canonical.clone(), read_only, unpacked: None, member: None, bom })
+    Ok(Opened { source: Arc::new(src), detected: det, elapsed: t.elapsed(), path: canonical.clone(), read_only, unpacked: None, member: None, bom, growing: false })
 }
 
 /// Opens `path`, unpacking it into a temporary file first when it is compressed.
@@ -455,6 +458,58 @@ fn open_member(path: &Path, member: &str, forced: Option<Encoding>, cancel: &Can
             Err(e)
         }
     }
+}
+
+/// How live unpacking ended.
+pub struct Unpacked {
+    pub doc: u64,
+    pub temp: PathBuf,
+    /// The unpacked size, `None` when cancelled.
+    pub result: Result<Option<u64>, String>,
+}
+
+/// Unpacks the compressed file `path` into a temporary copy that opens as soon as its first
+/// megabyte is there; the rest arrives as a followed log's does, and `Msg::Unpacked` tells how it
+/// ended. A file done before that opens as usual.
+#[allow(clippy::too_many_arguments)]
+fn open_unpacking(doc: u64, path: &Path, kind: bigtext::decompress::Kind, forced: Option<Encoding>, cancel: &CancelToken, progress: &jobs::Progress, tx: &Sender<Msg>, waker: &Waker) {
+    use bigtext::decompress as dc;
+    let temp = dc::temp_path_for(path);
+    let mut opened = false;
+    let result = dc::unpack_live(path, kind, &temp, cancel, progress, || {
+        let r = open_worker(&temp, forced, OpenMode::Chunked).map(|mut o| {
+            o.unpacked = Some(path.to_path_buf());
+            o.growing = true;
+            o
+        });
+        opened = r.is_ok();
+        if opened {
+            let _ = tx.send(Msg::Opened { doc, result: r });
+            waker();
+        }
+    });
+    let failed = |e: std::io::Error| match e.kind() {
+        std::io::ErrorKind::InvalidData => format!("{}: {e}", file::display_path(path)),
+        _ => i18n::trf("Could not unpack into {dir}: {e}", &[("dir", &file::display_path(&dc::temp_dir())), ("e", &e.to_string())]),
+    };
+    if opened {
+        let result = result.map_err(failed);
+        let _ = tx.send(Msg::Unpacked(Box::new(Unpacked { doc, temp, result })));
+    } else {
+        let r = match result {
+            Ok(Some(_)) => open_worker(&temp, forced, OpenMode::Auto).map(|mut o| {
+                o.unpacked = Some(path.to_path_buf());
+                o
+            }),
+            Ok(None) => Err(i18n::tr("Unpacking was cancelled.").into()),
+            Err(e) => Err(failed(e)),
+        };
+        if r.is_err() {
+            dc::remove_temp(&temp);
+        }
+        let _ = tx.send(Msg::Opened { doc, result: r });
+    }
+    waker();
 }
 
 fn open_or_unpack(path: &Path, forced: Option<Encoding>, cancel: &CancelToken, progress: &jobs::Progress) -> Result<Opened, String> {
@@ -820,7 +875,10 @@ impl BigTextApp {
             }
             let result = match &member {
                 Some(m) => open_member(&path, m, forced, &cancel, &progress),
-                None => open_or_unpack(&path, forced, &cancel, &progress),
+                None => match bigtext::decompress::detect(&path) {
+                    Some(kind) => return open_unpacking(id, &path, kind, forced, &cancel, &progress, &tx, &waker),
+                    None => open_or_unpack(&path, forced, &cancel, &progress),
+                },
             };
             let _ = tx.send(Msg::Opened { doc: id, result });
             waker();
@@ -889,7 +947,7 @@ impl BigTextApp {
                     let waker = self.waker.clone();
                     let tx = self.tx.clone();
                     if let Some(d) = self.doc_mut(doc) {
-                        d.unpacking = None;
+                        let unpacking = d.unpacking.take();
                         let reload = std::mem::take(&mut d.reloading);
                         match result {
                             Ok(o) => {
@@ -903,10 +961,15 @@ impl BigTextApp {
                                 }
                                 if let Some(orig) = o.unpacked {
                                     d.read_only = true;
-                                    d.banner = Some(Banner::Info(i18n::trf(
-                                        "Unpacked copy of {name} ({size}), read-only. To keep changes, turn off Edit → Read-only and use Save As.",
-                                        &[("name", &d.title), ("size", &human_bytes(o.source.len()))],
-                                    )));
+                                    d.banner = Some(Banner::Info(if o.growing {
+                                        d.growing = unpacking;
+                                        i18n::trf("Unpacking {name}: the start is shown and the rest appears as it is unpacked (read-only).", &[("name", &d.title)])
+                                    } else {
+                                        i18n::trf(
+                                            "Unpacked copy of {name} ({size}), read-only. To keep changes, turn off Edit → Read-only and use Save As.",
+                                            &[("name", &d.title), ("size", &human_bytes(o.source.len()))],
+                                        )
+                                    }));
                                     d.unpacked_from = Some(orig);
                                     d.temporary = true;
                                 }
@@ -999,7 +1062,7 @@ impl BigTextApp {
                             d.reload_to_end = true;
                             d.banner_after_reload = Some(Banner::Rotated(c.rotated_to.clone()));
                             reload(d, &tx, &waker, false);
-                        } else if d.follow && c.grown && !c.deleted && !d.is_modified() && d.save_job.is_none() {
+                        } else if (d.follow || d.growing.is_some()) && c.grown && !c.deleted && !d.is_modified() && d.save_job.is_none() {
                             reload(d, &tx, &waker, true);
                         } else if d.is_ready() {
                             d.banner = Some(Banner::ChangedOnDisk { deleted: c.deleted, grown: c.grown });
@@ -1029,6 +1092,7 @@ impl BigTextApp {
                 Msg::Aligned(a) => self.on_aligned(*a),
                 Msg::JsonCrumb(m) => self.on_json_crumb(*m),
                 Msg::Folds(m) => self.on_folds(*m),
+                Msg::Unpacked(u) => self.on_unpacked(*u),
                 Msg::LevelFound(f) => self.on_level_found(*f),
                 Msg::CursorFound(f) => self.on_cursor_found(*f),
                 Msg::BracketJump(j) => self.on_bracket_jump(*j),
@@ -1052,6 +1116,33 @@ impl BigTextApp {
             }
             Err(bigtext::timestamp::TimeError::NoTimestamps) => g.error = Some(i18n::tr("No timestamps found at the start of the file's lines.").into()),
             Err(bigtext::timestamp::TimeError::Cancelled) => {}
+        }
+    }
+
+    /// Live unpacking ended: the copy is whole (read the rest), cancelled or broken.
+    fn on_unpacked(&mut self, u: Unpacked) {
+        let (tx, waker) = (self.tx.clone(), self.waker.clone());
+        let Some(d) = self.doc_mut(u.doc).filter(|d| d.growing.is_some()) else {
+            // The tab was closed meanwhile.
+            jobs::spawn("remove-unpacked", move || bigtext::decompress::remove_temp(&u.temp));
+            return;
+        };
+        d.growing = None;
+        let name = d.unpacked_from.as_deref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let banner = match u.result {
+            Ok(Some(n)) => {
+                if d.buf.len() != n && !d.reloading {
+                    reload(d, &tx, &waker, true);
+                }
+                i18n::trf("Unpacked copy of {name} ({size}), read-only. To keep changes, turn off Edit → Read-only and use Save As.", &[("name", &name), ("size", &human_bytes(n))])
+            }
+            Ok(None) => i18n::trf("Unpacking was cancelled; the first {size} of {name} are shown.", &[("size", &human_bytes(d.buf.len())), ("name", &name)]),
+            Err(e) => e,
+        };
+        if d.reloading {
+            d.banner_after_reload = Some(Banner::Info(banner));
+        } else {
+            d.banner = Some(Banner::Info(banner));
         }
     }
 
@@ -1598,7 +1689,7 @@ pub(super) fn reload(d: &mut Document, tx: &Sender<Msg>, waker: &Waker, append: 
     let id = d.id;
     let tx = tx.clone();
     let waker = waker.clone();
-    let mode = if d.follow { OpenMode::Chunked } else { OpenMode::Auto };
+    let mode = if d.follow || d.growing.is_some() { OpenMode::Chunked } else { OpenMode::Auto };
     d.reloading = true;
     jobs::spawn("reload", move || {
         let result = open_worker(&path, Some(enc), mode);

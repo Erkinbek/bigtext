@@ -963,6 +963,8 @@ impl BigTextApp {
             Cmd::Properties => d.is_some_and(|d| d.is_ready()),
             Cmd::Fold => self.foldable(),
             Cmd::RunCommand => d.is_some_and(|d| d.is_ready()),
+            // A copy still being unpacked stays read-only.
+            Cmd::ReadOnly => d.is_none_or(|d| d.growing.is_none()),
             Cmd::FoldAll1 | Cmd::FoldAll2 => self.foldable() && d.is_some_and(|d| d.effective_lang() == crate::view::highlight::Lang::Json),
             Cmd::Unfold | Cmd::UnfoldAll => d.is_some_and(|d| !d.view.folds.is_empty()),
             Cmd::CheckRows => d.is_some_and(|d| d.table),

@@ -1280,4 +1280,9 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["“{cmd}” exited with {code} and wrote {size}.", "«{cmd}» завершилась с кодом {code} и вывела {size}.", "“{cmd}” {code} kodi bilan tugadi va {size} yozdi."],
     ["“{cmd}” exited with {code}; nothing was changed.", "«{cmd}» завершилась с кодом {code}; ничего не изменено.", "“{cmd}” {code} kodi bilan tugadi; hech narsa o'zgartirilmadi."],
     ["“{cmd}”: done (Ctrl+Z undoes it).", "«{cmd}»: готово (Ctrl+Z отменяет).", "“{cmd}”: tayyor (Ctrl+Z bekor qiladi)."],
+    // Compressed files opening while they unpack.
+    ["Stop unpacking; what is unpacked stays open", "Остановить распаковку; распакованное остаётся открытым", "Ochishni to'xtatish; ochilgan qismi ochiq qoladi"],
+    ["Unpacking", "Распаковка", "Ochilmoqda"],
+    ["Unpacking was cancelled; the first {size} of {name} are shown.", "Распаковка отменена; показаны первые {size} файла {name}.", "Ochish bekor qilindi; {name} ning dastlabki {size} qismi ko'rsatilmoqda."],
+    ["Unpacking {name}: the start is shown and the rest appears as it is unpacked (read-only).", "Распаковка {name}: начало уже показано, остальное появляется по мере распаковки (только чтение).", "{name} ochilmoqda: boshi ko'rsatilgan, qolgani ochilgan sari paydo bo'ladi (faqat o'qish)."],
 ];
