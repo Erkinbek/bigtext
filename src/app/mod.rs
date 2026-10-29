@@ -21,6 +21,7 @@ pub mod match_bracket;
 pub mod merge_logs;
 pub mod multi_cursor;
 pub mod ops;
+pub mod patterns_window;
 pub mod portable;
 pub mod saved_searches;
 pub mod search_panel;
@@ -232,6 +233,7 @@ pub struct BigTextApp {
     pub fields: fields_panel::FieldsUi,
     pub gaps: gaps_panel::GapsUi,
     pub range: time_range::TimeRangeUi,
+    pub patterns: patterns_window::PatternsUi,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -359,6 +361,7 @@ impl BigTextApp {
             fields: fields_panel::FieldsUi::default(),
             gaps: gaps_panel::GapsUi::default(),
             range: time_range::TimeRangeUi::default(),
+            patterns: patterns_window::PatternsUi::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1445,6 +1448,7 @@ impl eframe::App for BigTextApp {
         self.portable_window(&ctx);
         self.id_patterns_window(&ctx);
         self.time_range_window(&ctx);
+        self.patterns_window(&ctx);
         self.palette_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);
@@ -1466,6 +1470,7 @@ impl eframe::App for BigTextApp {
                 || d.filter.as_ref().is_some_and(|r| r.is_running())
                 || d.timeline.as_ref().is_some_and(|t| t.is_running())
                 || d.gaps.as_ref().is_some_and(|g| g.is_running())
+                || d.patterns.as_ref().is_some_and(|p| p.is_running())
         }) || !self.tasks.is_empty()
             || self.files.is_running();
         if busy {

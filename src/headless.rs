@@ -51,6 +51,10 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         Places where the next timestamp is at least that much later (or
         earlier: the clock went back), with line numbers. Exit code 1 when
         there are none.
+  patterns FILE [--top N] [--rare] [-o OUT]
+        The log's message templates (numbers, ids, IPs and paths replaced by
+        <n>, <hex>, <ip>, <path>) with how many lines each has, as CSV, most
+        lines first (--rare: fewest first).
   values FIELD FILE [-o OUT]
         The values of a JSON Lines or logfmt (key=value) field with how many
         lines have each and their first and last time, as CSV, most frequent
@@ -62,7 +66,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 9] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps"];
+const COMMANDS: [&str; 10] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -520,6 +524,20 @@ fn cmd_values(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(if c.lines > 0 { 0 } else { 1 })
 }
 
+fn cmd_patterns(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["--rare"], &["--top", "-o", "--output"])?;
+    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let top = a.opt(&["--top"]).map(|n| n.parse::<usize>().map_err(|_| Fail(format!("not a number: {n}")))).transpose()?;
+    let (buf, _) = open(Path::new(file))?;
+    let mut p = crate::patterns::build(&buf, None, &CancelToken::new(), None, |_| {})?.unwrap_or_default();
+    crate::patterns::sort(&mut p.templates, a.flag(&["--rare"]));
+    if let Some(n) = top {
+        p.templates.truncate(n);
+    }
+    with_output(a.opt(&["-o", "--output"]), out, |w| Ok(crate::patterns::to_csv(&p.templates, &mut &mut *w)?))?;
+    Ok(0)
+}
+
 fn cmd_gaps(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &[], &["--min"])?;
     let [file] = &a.rest[..] else { return fail("needs FILE") };
@@ -563,6 +581,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "convert" => cmd_convert(rest, out),
         "values" => cmd_values(rest, out),
         "gaps" => cmd_gaps(rest, out),
+        "patterns" => cmd_patterns(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
             return 0;
@@ -634,6 +653,16 @@ mod tests {
         run_args(&["filter", "-n", "-A", "1", "ERROR", &log, "-o", &o.to_string_lossy()]);
         assert_eq!(std::fs::read_to_string(&o).unwrap(), "2:2024-05-01 10:00:01 ERROR b\n3-\tat x.Y(Y.java:1)\n--\n6:2024-05-01 10:00:04 ERROR e\n");
         assert_eq!(run_args(&["filter", "-A", "x", "ERROR", &log]).0, 2);
+    }
+
+    #[test]
+    fn message_patterns() {
+        let d = tempfile::tempdir().unwrap();
+        let log = file(&d, "a.log", b"10:00:00 INFO req 1 ok\n10:00:01 INFO req 2 ok\n10:00:02 ERROR disk full\n");
+        let (code, out, _) = run_args(&["patterns", &log]);
+        assert_eq!(code, 0);
+        assert_eq!(out.lines().nth(1), Some("2,INFO,INFO req <n> ok,0,23"));
+        assert_eq!(run_args(&["patterns", "--rare", "--top", "1", &log]).1.lines().nth(1), Some("1,ERROR,ERROR disk full,46,46"));
     }
 
     #[test]

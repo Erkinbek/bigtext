@@ -129,6 +129,7 @@ mod tests {
         "app" / "merge_logs.rs",
         "app" / "multi_cursor.rs",
         "app" / "ops.rs",
+        "app" / "patterns_window.rs",
         "app" / "portable.rs",
         "app" / "saved_searches.rs",
         "app" / "search_panel.rs",

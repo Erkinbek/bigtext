@@ -1321,6 +1321,40 @@ impl SelfTest {
             }
             Step::Wait
         }));
+        s("message patterns: templates by count; a template filters its lines", Box::new(|app, c| {
+            let line = |n: usize| REQUESTS_LOG.split_inclusive('\n').take(n).map(str::len).sum::<usize>() as u64;
+            if c.first() {
+                app.patterns.only_filter = false;
+                app.open_patterns();
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let Some(r) = doc(app).patterns.as_ref() else { return Step::Fail("no patterns".into()) };
+                let g = r.data.lock().unwrap();
+                if !g.done {
+                    return Step::Wait;
+                }
+                let Some(p) = g.p.clone() else { return Step::Fail("no result".into()) };
+                drop(g);
+                let top = &p.templates[0];
+                if p.lines != 7 || p.templates.len() != 6 || top.text != "INFO request_id=r-<n> done" || top.count != 2 {
+                    return Step::Fail(format!("{} lines, templates {:?}", p.lines, p.templates.iter().map(|t| (&t.text, t.count)).collect::<Vec<_>>()));
+                }
+                c.mark = 1;
+                app.filter_by_template(&top.text, false);
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).filter.as_ref() else { return Step::Fail("no filter".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let lines = g.lines.clone();
+            drop(g);
+            c.mark = 0;
+            app.patterns.open = false;
+            check(lines == vec![line(2), line(6)], format!("lines {lines:?}"))
+        }));
         s("journal: log highlighting and level bar", Box::new(|app, _c| {
             let d = doc(app);
             check(d.effective_lang() == crate::view::highlight::Lang::Log && app.level_bar_visible(), format!("lang {:?}", doc(app).effective_lang()))

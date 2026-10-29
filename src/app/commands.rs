@@ -59,6 +59,7 @@ pub enum Cmd {
     GotoTime,
     Timeline,
     TimeGaps,
+    Patterns,
     MatchBracket,
     WordWrap,
     HexView,
@@ -98,7 +99,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 70] = [
+    pub const ALL: [Cmd; 71] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -143,6 +144,7 @@ impl Cmd {
         Cmd::GotoTime,
         Cmd::Timeline,
         Cmd::TimeGaps,
+        Cmd::Patterns,
         Cmd::MatchBracket,
         Cmd::WordWrap,
         Cmd::HexView,
@@ -244,6 +246,7 @@ impl Cmd {
             Cmd::GotoTime => "Go to time…",
             Cmd::Timeline => "Time histogram",
             Cmd::TimeGaps => "Find time gaps…",
+            Cmd::Patterns => "Message patterns…",
             Cmd::MatchBracket => "Go to matching bracket",
             Cmd::WordWrap => "Word wrap",
             Cmd::HexView => "Hex view",
@@ -291,7 +294,7 @@ impl Cmd {
             | Cmd::ClearBookmarks
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
-            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::TimeGaps | Cmd::MatchBracket => "Search",
+            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::MatchBracket => "Search",
             Cmd::Palette | Cmd::Shortcuts | Cmd::ExportSettings | Cmd::ImportSettings | Cmd::Portable | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
@@ -538,6 +541,7 @@ impl BigTextApp {
             Cmd::GotoTime => self.goto = GotoDialog::new(GotoMode::Time),
             Cmd::MatchBracket => self.goto_matching_bracket(),
             Cmd::TimeGaps => self.open_gaps(),
+            Cmd::Patterns => self.open_patterns(),
             Cmd::Timeline => {
                 if self.is_on(Cmd::Timeline) {
                     self.timeline.open = false;
@@ -757,7 +761,7 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                for c in [Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::MatchBracket, Cmd::Timeline, Cmd::TimeGaps] {
+                for c in [Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::MatchBracket, Cmd::Timeline, Cmd::TimeGaps, Cmd::Patterns] {
                     run = run.or(self.item(ui, c));
                 }
             });

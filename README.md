@@ -163,6 +163,10 @@ Single self-contained binary, no runtime dependencies.
 - **Time range**: the search bar's **Time** button sets "from 14:30 to 14:35" (or ±30 s / ±5 min
   around the caret's line); Filter, Find All and the level bar then read only those lines, found
   with two binary searches instead of a full pass.
+- **Message patterns** (Search → Message patterns…): the log's lines grouped by template —
+  timestamps dropped, numbers, hex ids, UUIDs, IPs and paths replaced by `<n>`, `<hex>`,
+  `<uuid>`, `<ip>`, `<path>` — with counts and levels, most lines first (the noise) or rarest
+  first (the anomalies); a click shows only that template's lines.
 - **Time gaps** (Search → Find time gaps…): every place where the next timestamp is at least N
   seconds later — or earlier, when the clock went back — largest first; click one to go there.
   The status bar shows **Δ** since the previous timestamped line for the caret's line.
@@ -251,6 +255,7 @@ bigtext-cli merge FILE FILE... [-o OUT]                        logs merged by ti
 bigtext-cli convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]  tables (and JSON Lines → CSV)
 bigtext-cli values FIELD FILE [-o OUT]                         a JSON Lines / logfmt field's values
 bigtext-cli gaps FILE [--min 30s]                              time gaps, with line numbers
+bigtext-cli patterns FILE [--top N] [--rare] [-o OUT]          message templates with counts
 ```
 
 `filter` and `count` take more patterns: `-e PAT` (each must match, or one of them with `--any`)

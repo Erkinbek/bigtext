@@ -180,6 +180,7 @@ pub struct Document {
     /// Time histogram (Search → Time histogram).
     pub timeline: Option<super::timeline::TimelineResults>,
     pub gaps: Option<super::gaps_panel::GapsResults>,
+    pub patterns: Option<super::patterns_window::PatternsResults>,
     /// Outline for View → JSON structure.
     pub json: Option<super::json_panel::JsonTree>,
     /// Pinned tabs stay first and are not closed by "Close other tabs".
@@ -282,6 +283,7 @@ impl Document {
             merged: None,
             timeline: None,
             gaps: None,
+            patterns: None,
             json: None,
             pinned: false,
             pending_filter: None,
@@ -375,6 +377,9 @@ impl Document {
         }
         if let Some(g) = &self.gaps {
             g.cancel.cancel();
+        }
+        if let Some(p) = &self.patterns {
+            p.cancel.cancel();
         }
         if let Some((_, c)) = &self.unpacking {
             c.cancel();

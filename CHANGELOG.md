@@ -85,6 +85,14 @@ All notable changes to BigText. Each release on
   or **counts the field's values** over the whole file in one streaming pass into a table
   (value, lines, percent, first and last time), most frequent first. `bigtext-cli values FIELD
   FILE` prints the same table.
+- **Search → Message patterns…**: groups a log's lines by template in one streaming pass —
+  the leading timestamp dropped and numbers, hex ids, UUIDs, IP addresses and paths replaced
+  by `<n>`, `<hex>`, `<uuid>`, `<ip>` and `<path>` — and lists the templates with their line
+  counts and levels, **most lines first** (what floods the log) or **rarest first** (the one
+  new message). Click a template to show only its lines; right-click to hide them instead, go
+  to the first one or copy it; hover for a sample line and its first and last time. **Only
+  the filtered lines** builds the list from the current filter; **Export CSV…** saves it.
+  `bigtext-cli patterns FILE [--top N] [--rare]` prints it as CSV.
 - **Search → Find time gaps…**: a list under the text of every place where the next line with a
   timestamp is at least N seconds (30 by default) later than the one before — the service was
   down or quiet — or earlier, when the clock went back; largest first or in file order, with

@@ -20,6 +20,7 @@ pub mod json;
 pub mod lines;
 pub mod loglevel;
 pub mod merge;
+pub mod patterns;
 pub mod replace;
 pub mod save;
 pub mod split;
