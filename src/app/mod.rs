@@ -39,6 +39,7 @@ pub mod portable;
 pub mod problems_panel;
 pub mod saved_searches;
 pub mod search_panel;
+pub mod table_compare;
 pub mod sessions;
 pub mod tabs;
 pub mod tasks;
@@ -252,6 +253,7 @@ pub struct BigTextApp {
     pub values: Option<match_values::ValuesDialog>,
     pub problems: problems_panel::ProblemsUi,
     pub join: Option<join_tables::JoinDialog>,
+    pub table_compare: Option<table_compare::CompareTablesDialog>,
     pub pivot: Option<pivot::PivotDialog>,
     pub derive: Option<derive_column::DeriveDialog>,
     pub chart: column_chart::ChartUi,
@@ -397,6 +399,7 @@ impl BigTextApp {
             values: None,
             problems: problems_panel::ProblemsUi::default(),
             join: None,
+            table_compare: None,
             pivot: None,
             derive: None,
             chart: column_chart::ChartUi::default(),
@@ -1539,6 +1542,7 @@ impl eframe::App for BigTextApp {
         self.patterns_window(&ctx);
         self.values_window(&ctx);
         self.join_window(&ctx);
+        self.table_compare_window(&ctx);
         self.only_in_window(&ctx);
         self.pivot_window(&ctx);
         self.derive_window(&ctx);

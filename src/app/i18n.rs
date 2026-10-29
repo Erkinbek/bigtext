@@ -146,6 +146,7 @@ mod tests {
         "app" / "problems_panel.rs",
         "app" / "saved_searches.rs",
         "app" / "search_panel.rs",
+        "app" / "table_compare.rs",
         "app" / "sessions.rs",
         "app" / "tabs.rs",
         "app" / "tasks.rs",

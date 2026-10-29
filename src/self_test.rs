@@ -217,6 +217,8 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("patch-me.txt"), &base)?;
+    std::fs::write(dir.join("cmp-a.csv"), "id,name,qty\n1,apple,5\n2,banana,7\n3,cherry,9\n")?;
+    std::fs::write(dir.join("cmp-b.csv"), "id,qty,name\n3,9,cherry\n1,6,apple\n4,1,date\n")?;
     let tasks = |h: u32, order: &mut dyn Iterator<Item = u32>| order.map(|i| format!("2024-05-0{} {h:02}:{:02}:{:02} INFO task {i} done\n", h / 10, i / 60, i % 60)).collect::<String>();
     std::fs::write(dir.join("only-a.log"), tasks(10, &mut (0..50)) + "2024-05-01 10:01:00 ERROR disk full\n")?;
     std::fs::write(dir.join("only-b.log"), tasks(23, &mut (0..50).rev()) + "2024-05-02 23:59:00 WARN slow\n")?;
@@ -1082,6 +1084,37 @@ impl SelfTest {
             app.side_by_side = false;
             app.diff = None;
             check(b_top == 1601 && spans == 2, format!("B top line {b_top}, {spans} spans in B"))
+        }));
+        s("compare two tables by key: changed, removed and added rows open as a table", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("cmp-a.csv"));
+                return Step::Wait;
+            }
+            // A table's dialect is known once it has been shown.
+            let id = |app: &BigTextApp, name: &str| app.docs.iter().find(|d| d.title == name && d.is_ready() && d.table_state.dialect.is_some()).map(|d| d.id);
+            if c.mark == 0 {
+                if id(app, "cmp-a.csv").is_none() {
+                    return if c.waited() > Duration::from_secs(5) { Step::Fail("cmp-a.csv did not open as a table".into()) } else { Step::Wait };
+                }
+                app.open_path(c.file("cmp-b.csv"));
+                c.mark = 1;
+                return Step::Wait;
+            }
+            if c.mark == 1 {
+                let (Some(a), Some(b)) = (id(app, "cmp-a.csv"), id(app, "cmp-b.csv")) else {
+                    return if c.waited() > Duration::from_secs(5) { Step::Fail("cmp-b.csv did not open as a table".into()) } else { Step::Wait };
+                };
+                app.start_table_compare(crate::app::table_compare::CompareTablesDialog { a, key_a: 0, b, key_b: 0, all: false });
+                c.mark = 2;
+                return Step::Wait;
+            }
+            let Some(i) = app.docs.iter().position(|d| d.title == "cmp-a.csv vs cmp-b.csv" && d.is_ready()) else {
+                return if c.waited() > Duration::from_secs(10) { Step::Fail("no result table".into()) } else { Step::Wait };
+            };
+            app.active = i;
+            let want = "status,id,changed,name,qty\nchanged,1,qty,apple,5 → 6\nremoved,2,,banana,7\nadded,4,,date,1\n";
+            let (got, table) = (text(app), doc(app).table);
+            check(got == want && table, format!("table {table}: {got:?}"))
         }));
         s("lines only in one log, timestamps ignored, whatever the order", Box::new(|app, c| {
             if c.first() {

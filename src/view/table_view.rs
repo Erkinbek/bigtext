@@ -174,6 +174,8 @@ pub enum TableAction {
     CheckRows,
     /// A pivot table with this column's values as rows.
     Pivot { col: usize },
+    /// Compare with another table by this column as the key.
+    CompareBy { col: usize },
     /// A new last column computed by an expression.
     AddColumn,
     /// The distribution of a column's values, under the table.
@@ -630,6 +632,7 @@ fn column_menu(ui: &mut Ui, actions: &mut Vec<TableAction>, col: usize, name: &s
     act(ui, true, tr("Filter rows by conditions…"), TableAction::Conditions { col });
     act(ui, true, tr("Group rows by this column…"), TableAction::GroupBy { col });
     act(ui, true, tr("Pivot by this column…"), TableAction::Pivot { col });
+    act(ui, true, tr("Compare table by this column…"), TableAction::CompareBy { col });
     act(ui, true, tr("Check rows…"), TableAction::CheckRows);
     ui.separator();
     act(ui, editable, tr("Rename…"), TableAction::Rename { col, name: name.to_string() });

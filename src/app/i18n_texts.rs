@@ -984,4 +984,15 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["{n} lines of {a} are not in {b}", "Строк {a}, которых нет в {b}: {n}", "{a} dagi {n} ta qator {b} da yo'q"],
     ["Lines of {a} not in {b}", "Строки {a}, которых нет в {b}", "{a} dagi, {b} da yo'q qatorlar"],
     ["({n} in both)", "({n} в обоих)", "({n} tasi ikkalasida)"],
+    // Comparing tables by key.
+    ["Compare table by this column…", "Сравнить таблицу по этому столбцу…", "Jadvalni shu ustun bo'yicha solishtirish…"],
+    ["Open the other table too (CSV / TSV in the table view), then compare.", "Откройте и другую таблицу (CSV / TSV в табличном виде), затем сравните.", "Boshqa jadvalni ham oching (jadval ko'rinishidagi CSV / TSV), keyin solishtiring."],
+    ["Compare tables", "Сравнение таблиц", "Jadvallarni solishtirish"],
+    ["Pairs each row with the other table's row with the same key, whatever the order, and lists the rows changed, removed and added.", "Сопоставляет каждую строку со строкой другой таблицы с тем же ключом, независимо от порядка, и показывает изменённые, удалённые и добавленные строки.", "Har bir qatorni tartibidan qat'i nazar boshqa jadvaldagi xuddi shu kalitli qator bilan juftlaydi va o'zgargan, o'chirilgan va qo'shilgan qatorlarni ko'rsatadi."],
+    ["Compared with", "Сравнить с", "Solishtiriladigan jadval"],
+    ["List the rows that are the same too", "Показывать и одинаковые строки", "Bir xil qatorlarni ham ko'rsatish"],
+    ["Columns pair up by header name; the columns only one table has are not compared.", "Столбцы сопоставляются по имени в заголовке; столбцы, которые есть только в одной таблице, не сравниваются.", "Ustunlar sarlavha nomi bo'yicha juftlanadi; faqat bitta jadvalda bor ustunlar solishtirilmaydi."],
+    ["Compare", "Сравнить", "Solishtirish"],
+    ["Comparing tables", "Сравнение таблиц", "Jadvallar solishtirilmoqda"],
+    ["{changed} rows changed, {removed} removed, {added} added; {same} the same.", "Строк изменено: {changed}, удалено: {removed}, добавлено: {added}; одинаковых: {same}.", "{changed} ta qator o'zgargan, {removed} ta o'chirilgan, {added} ta qo'shilgan; {same} tasi bir xil."],
 ];

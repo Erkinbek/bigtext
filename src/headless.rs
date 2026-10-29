@@ -82,6 +82,12 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         The lines of A that occur nowhere in B, whatever their order, in A's
         order (files of any size); -w, -i, -t and --mask as for diff; --count
         prints how many. Exit code 0 when there are none, 1 when there are.
+  diff-table A B --key COL [--key-b COL] [--all] [-o OUT]
+        Two tables compared by a key column whatever their row order, as CSV:
+        status (changed, removed, added; same with --all), the key, the
+        changed columns, and A's columns with \"old → new\" where a value
+        changed. Columns pair up by header name. Exit code 0 when they are the
+        same, 1 when they differ.
   derive FILE --name NAME --expr EXPR [-o OUT]
         The table with a new last column computed per row, like {price} * {qty},
         substr({ts}, 0, 10) or if({status} = \"ok\", 1, 0).
@@ -112,7 +118,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 19] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in"];
+const COMMANDS: [&str; 20] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -693,6 +699,23 @@ fn cmd_join(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(0)
 }
 
+fn cmd_diff_table(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["--all", "--no-header", "--header"], &["--key", "--key-b", "-o", "--output", "--skip", "--quote"])?;
+    let [fa, fb] = &a.rest[..] else { return fail("needs A and B") };
+    let Some(ka) = a.opt(&["--key"]) else { return fail("give --key COL (a header name or a 1-based number)") };
+    let kb = a.opt(&["--key-b"]).unwrap_or(ka);
+    let (ta, _) = open(Path::new(fa))?;
+    let (tb, _) = open(Path::new(fb))?;
+    let (ga, gb) = (table_of(&ta, fa, &a)?, table_of(&tb, fb, &a)?);
+    let spec = crate::csv_diff::KeyedSpec { key_a: column_index(&ta, &ga, ka)?, key_b: column_index(&tb, &gb, kb)?, header: ga.header && gb.header, all: a.flag(&["--all"]) };
+    let mut stats = None;
+    with_output(a.opt(&["-o", "--output"]), out, |w| {
+        stats = crate::csv_diff::keyed_diff_to((&ta, ga.dialect), (&tb, gb.dialect), spec, w, &CancelToken::new(), None)?;
+        Ok(())
+    })?;
+    Ok(stats.is_some_and(|s| s.changed + s.added + s.removed > 0) as i32)
+}
+
 fn cmd_jsonl(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &["-v", "--invert", "--count"], &["-q", "--query", "--fields", "--to", "-o", "--output"])?;
     let [file] = &a.rest[..] else { return fail("needs FILE") };
@@ -1057,6 +1080,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "jsondiff" => cmd_jsondiff(rest, out),
         "diff" => cmd_diff(rest, out),
         "only-in" => cmd_only_in(rest, out),
+        "diff-table" => cmd_diff_table(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
             return 0;
@@ -1228,6 +1252,17 @@ mod tests {
         assert_eq!(run_args(&masked), (1, "09:00:03 crash\n".into(), String::new()));
         assert_eq!(run_args(&[&masked[..], &["--count"]].concat()), (1, "1\n".into(), String::new()));
         assert_eq!(run_args(&["only-in", &b, &a, "-t", "--mask", "job=[0-9]+"]), (0, String::new(), String::new()));
+    }
+
+    #[test]
+    fn table_diff_by_key() {
+        let d = tempfile::tempdir().unwrap();
+        let a = file(&d, "a.csv", b"id,name,qty\n1,apple,5\n2,banana,7\n");
+        let b = file(&d, "b.csv", b"qty,name,id\n6,apple,1\n7,banana,2\n1,fig,9\n");
+        assert_eq!(run_args(&["diff-table", &a, &b, "--key", "id"]), (1, "status,id,changed,name,qty\nchanged,1,qty,apple,5 → 6\nadded,9,,fig,1\n".into(), String::new()));
+        assert_eq!(run_args(&["diff-table", &a, &b, "--key", "1", "--key-b", "3", "--all"]).1.lines().nth(2), Some("same,2,,banana,7"));
+        assert_eq!(run_args(&["diff-table", &a, &a, "--key", "id"]).0, 0);
+        assert_eq!(run_args(&["diff-table", &a, &b]).0, 2);
     }
 
     #[test]

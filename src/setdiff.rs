@@ -10,13 +10,13 @@
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashSet};
 use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Read, Write};
-use std::path::{Path, PathBuf};
+use std::io::{self, BufReader, BufWriter, Write};
 
 use crate::diff::{line_hash, DiffOptions};
 use crate::encoding::Encoding;
 use crate::jobs::{CancelToken, Progress};
 use crate::lines::LineReader;
+use crate::spill::{read_record, Spill};
 use crate::text::TextBuf;
 
 /// Distinct line hashes of the other text kept in memory (8 bytes each, plus the table).
@@ -62,37 +62,8 @@ fn each_line(buf: &TextBuf, opts: &DiffOptions, cancel: &CancelToken, progress: 
     Ok(Some(()))
 }
 
-/// Partition files in a folder of their own, removed with it.
-struct Spill {
-    dir: PathBuf,
-}
-
-impl Spill {
-    fn new() -> io::Result<Spill> {
-        let dir = crate::decompress::temp_file("only-in").parent().map(Path::to_path_buf).unwrap_or_else(std::env::temp_dir);
-        std::fs::create_dir_all(&dir)?;
-        Ok(Spill { dir })
-    }
-
-    fn path(&self, side: &str, i: usize) -> PathBuf {
-        self.dir.join(format!("{side}-{i:03}"))
-    }
-
-    fn writers(&self, side: &str) -> io::Result<Vec<BufWriter<File>>> {
-        (0..PARTS).map(|i| File::create(self.path(side, i)).map(|f| BufWriter::with_capacity(64 << 10, f))).collect()
-    }
-}
-
-impl Drop for Spill {
-    fn drop(&mut self) {
-        // Only the partition files written here, then the folder if that left it empty.
-        for side in ["a", "b", "o"] {
-            for i in 0..PARTS {
-                let _ = std::fs::remove_file(self.path(side, i));
-            }
-        }
-        let _ = std::fs::remove_dir(&self.dir);
-    }
+fn writers(spill: &Spill, side: &str) -> io::Result<Vec<BufWriter<File>>> {
+    (0..PARTS).map(|i| spill.create(&format!("{side}-{i:03}"))).collect()
 }
 
 fn part(hash: u64) -> usize {
@@ -100,16 +71,13 @@ fn part(hash: u64) -> usize {
 }
 
 /// Reads 8-byte little-endian numbers until the end.
-fn read_u64s(path: &Path, mut f: impl FnMut(u64) -> io::Result<()>) -> io::Result<()> {
-    let mut r = BufReader::with_capacity(256 << 10, File::open(path)?);
+fn read_u64s(spill: &Spill, name: &str, mut f: impl FnMut(u64) -> io::Result<()>) -> io::Result<()> {
+    let mut r = spill.open(name)?;
     let mut b = [0u8; 8];
-    loop {
-        match r.read_exact(&mut b) {
-            Ok(()) => f(u64::from_le_bytes(b))?,
-            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
-            Err(e) => return Err(e),
-        }
+    while read_record(&mut r, &mut b)? {
+        f(u64::from_le_bytes(b))?;
     }
+    Ok(())
 }
 
 /// Calls `on_line` with the offset of each line of `a` that is not in `b`, in order (return
@@ -128,8 +96,8 @@ pub fn only_in(a: &TextBuf, b: &TextBuf, opts: &DiffOptions, budget: usize, canc
             None => {
                 set.insert(h);
                 if set.len() > budget {
-                    let s = Spill::new()?;
-                    let mut w = s.writers("b")?;
+                    let s = Spill::new("only-in")?;
+                    let mut w = writers(&s, "b")?;
                     for &h in &set {
                         w[part(h)].write_all(&h.to_le_bytes())?;
                     }
@@ -162,7 +130,7 @@ pub fn only_in(a: &TextBuf, b: &TextBuf, opts: &DiffOptions, budget: usize, canc
     }
     drop(bw);
     // Pass 2 on disk: (hash, offset) of this text's lines by partition.
-    let mut aw = spill.writers("a")?;
+    let mut aw = writers(&spill, "a")?;
     let walked = each_line(a, opts, cancel, progress.map(|p| (p, b.len())), |off, h| {
         let w = &mut aw[part(h)];
         w.write_all(&h.to_le_bytes())?;
@@ -182,13 +150,13 @@ pub fn only_in(a: &TextBuf, b: &TextBuf, opts: &DiffOptions, budget: usize, canc
             return Ok(None);
         }
         let mut set = HashSet::new();
-        read_u64s(&spill.path("b", i), |h| {
+        read_u64s(&spill, &format!("b-{i:03}"), |h| {
             set.insert(h);
             Ok(())
         })?;
-        let mut out = BufWriter::new(File::create(spill.path("o", i))?);
+        let mut out = spill.create(&format!("o-{i:03}"))?;
         let mut hash = None;
-        read_u64s(&spill.path("a", i), |x| {
+        read_u64s(&spill, &format!("a-{i:03}"), |x| {
             match hash.take() {
                 None => hash = Some(x),
                 Some(h) if set.contains(&h) => counts.common += 1,
@@ -202,14 +170,10 @@ pub fn only_in(a: &TextBuf, b: &TextBuf, opts: &DiffOptions, budget: usize, canc
         out.flush()?;
     }
     // Merge the partitions back into the text's order.
-    let mut readers: Vec<BufReader<File>> = (0..PARTS).map(|i| File::open(spill.path("o", i)).map(|f| BufReader::with_capacity(64 << 10, f))).collect::<io::Result<_>>()?;
+    let mut readers: Vec<BufReader<File>> = (0..PARTS).map(|i| spill.open(&format!("o-{i:03}"))).collect::<io::Result<_>>()?;
     let next = |r: &mut BufReader<File>| -> io::Result<Option<u64>> {
         let mut b = [0u8; 8];
-        match r.read_exact(&mut b) {
-            Ok(()) => Ok(Some(u64::from_le_bytes(b))),
-            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => Ok(None),
-            Err(e) => Err(e),
-        }
+        Ok(read_record(r, &mut b)?.then(|| u64::from_le_bytes(b)))
     };
     let mut heap = BinaryHeap::new();
     for (i, r) in readers.iter_mut().enumerate() {

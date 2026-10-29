@@ -39,6 +39,12 @@ All notable changes to BigText. Each release on
   Save lines… / Copy lines write them out. Any size: past 25 million distinct lines the
   comparison splits both files by hash into partitions on disk. On the command line:
   `bigtext only-in A B [-w] [-i] [-t] [--mask RE] [--count] [-o OUT]`.
+- **Compare table by this column…** (a column header's menu) pairs each row with the other open
+  table's row with the same key, whatever the order (the n-th duplicate with the n-th), and
+  opens the rows changed, removed and added as a new read-only table: status, key, the changed
+  columns, and the values with `old → new` where they changed. Columns pair up by header name,
+  encodings and line endings may differ; tables of any size are split by key hash into 64
+  buckets on disk. On the command line: `bigtext diff-table A B --key COL [--key-b COL] [--all]`.
 - Fixed: a comparison where one file's last line lost its line break ("b\n" against "b")
   reported a difference in the middle of the line.
 

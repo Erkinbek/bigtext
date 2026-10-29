@@ -99,6 +99,7 @@ impl BigTextApp {
             }
             TableAction::CheckRows => self.check_rows(),
             TableAction::Pivot { col } => self.open_pivot(col),
+            TableAction::CompareBy { col } => self.open_table_compare(col),
             TableAction::AddColumn => self.open_derive(),
             TableAction::Chart { col } => self.start_column_chart(col),
             TableAction::Freeze { upto } => {
