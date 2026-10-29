@@ -149,6 +149,13 @@ All notable changes to BigText. Each release on
 
 ### CSV tables
 
+- **Tables read their own layout**: Excel's `sep=;` first line sets the delimiter, and comment
+  (`#`), blank and title lines before the table are skipped by the view, statistics, grouping,
+  filters, checks and exports — and kept as they are by sorting, moving and deleting columns.
+  **First row is header** is now decided from the data: a first row of numbers over rows of
+  numbers is data. The toolbar's **Table…** menu sets **Skip lines before the table** and the
+  **Quote** (`"` or `'`). `bigtext-cli convert` and `validate` detect the same and take
+  `--header` / `--no-header`, `--skip N` and `--quote '`.
 - **Check rows…** (in a column header's menu, and View → Check table rows…) streams over the table
   once and lists, under it, every record whose field count differs from the header's (or the
   usual one), with a stray quote or a quote that is never closed, with a control character, or

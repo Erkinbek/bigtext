@@ -47,6 +47,8 @@ pub struct TableState {
     first_line: Option<u64>,
     /// Header cells drawn in the last frame (the self-test clicks them).
     pub header_cells: Vec<(usize, Rect)>,
+    /// Lines before the table (`sep=;`, comments, a title); `dialect.start` is where it begins.
+    pub skip: usize,
 }
 
 impl Default for TableState {
@@ -61,6 +63,7 @@ impl Default for TableState {
             anchor: None,
             first_line: None,
             header_cells: Vec::new(),
+            skip: 0,
         }
     }
 }
@@ -211,8 +214,35 @@ fn detect_dialect(doc: &mut Document) {
         Lang::Csv(sep) => sep,
         _ => b',',
     };
-    let d = csv::detect(&doc.buf.codec, &sample, end == doc.buf.len(), preferred).unwrap_or(Dialect::new(preferred));
-    doc.table_state.dialect = Some(d);
+    let g = csv::detect_table(&doc.buf.codec, &sample, end == doc.buf.len(), preferred, start);
+    let st = &mut doc.table_state;
+    st.dialect = Some(g.dialect);
+    st.header = g.header;
+    st.skip = g.skip;
+}
+
+/// Starts the table after `skip` lines (from the menu), keeping the delimiter and quote.
+fn set_skip(doc: &mut Document, skip: usize) {
+    let Some(mut d) = doc.table_state.dialect else { return };
+    let start = doc.min_caret();
+    let Some(sample) = doc.buf.read(start..(start + (1 << 20)).min(doc.buf.len())) else { return };
+    let codec = doc.buf.codec;
+    let unit = codec.unit();
+    let mut at = 0;
+    for _ in 0..skip {
+        match codec.find_nl(&sample[at..], start + at as u64) {
+            Some(i) => at += i + unit,
+            None => {
+                at = sample.len();
+                break;
+            }
+        }
+    }
+    d.start = if skip == 0 { 0 } else { start + at as u64 };
+    let st = &mut doc.table_state;
+    st.dialect = Some(d);
+    st.skip = skip;
+    st.reset_columns();
 }
 
 /// Moves the first visible row by `n` rows.
@@ -251,7 +281,8 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     let n_rows = ((body.height() / rh).ceil() as usize).max(1);
 
     let mut pending = false;
-    let head = match rows::row_at(&doc.buf, doc.min_caret(), None) {
+    let table_start = dialect.first(&doc.buf).max(doc.min_caret());
+    let head = match rows::row_at(&doc.buf, table_start, None) {
         Ok(r) => Some(r),
         Err(Pending) => {
             pending = true;
@@ -261,7 +292,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     let data_start = match (doc.table_state.header, head) {
         (true, Some(h)) if h.seg.is_last(len) => len,
         (true, Some(h)) => h.seg.next,
-        _ => 0,
+        _ => table_start,
     };
     if let Some(first) = head.and_then(|h| doc.buf.read(h.start..h.end)) {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -592,6 +623,7 @@ fn toolbar(ui: &mut Ui, doc: &mut Document, rect: Rect, ncols: usize, can_delete
     let doc_id = doc.id;
     let read_only = doc.read_only;
     let mut delete = false;
+    let mut set_skip_later = None;
     ui.scope_builder(UiBuilder::new().max_rect(rect.shrink2(vec2(8.0, 3.0))).layout(Layout::left_to_right(Align::Center)), |ui| {
         let st = &mut doc.table_state;
         let cur = st.dialect.unwrap_or(Dialect::new(b','));
@@ -599,12 +631,31 @@ fn toolbar(ui: &mut Ui, doc: &mut Document, rect: Rect, ncols: usize, can_delete
         egui::ComboBox::from_id_salt(("delimiter", doc_id)).selected_text(tr(cur.name())).show_ui(ui, |ui| {
             for delim in DELIMITERS {
                 if ui.selectable_label(cur.delim == delim, tr(Dialect::new(delim).name())).clicked() && cur.delim != delim {
-                    st.dialect = Some(Dialect::new(delim));
+                    st.dialect = Some(Dialect { delim, ..cur });
                     st.reset_columns();
                 }
             }
         });
         ui.checkbox(&mut st.header, tr("First row is header"));
+        let mut skip = st.skip;
+        ui.menu_button(tr("Table…"), |ui| {
+            ui.horizontal(|ui| {
+                ui.label(tr("Skip lines before the table"));
+                ui.add(egui::DragValue::new(&mut skip).range(0..=1000));
+            });
+            ui.horizontal(|ui| {
+                ui.label(tr("Quote"));
+                for (q, name) in [(b'"', "\""), (b'\'', "'")] {
+                    if ui.selectable_label(cur.quote == q, name).clicked() && cur.quote != q {
+                        st.dialect = Some(Dialect { quote: q, ..cur });
+                        st.reset_columns();
+                    }
+                }
+            });
+        });
+        if skip != st.skip {
+            set_skip_later = Some(skip);
+        }
         ui.separator();
         if st.selected.is_empty() {
             ui.weak(tr_f("{n} columns · click a column header to select it", &[("n", &ncols.to_string())]));
@@ -633,6 +684,9 @@ fn toolbar(ui: &mut Ui, doc: &mut Document, rect: Rect, ncols: usize, can_delete
             }
         });
     });
+    if let Some(skip) = set_skip_later {
+        set_skip(doc, skip);
+    }
     delete
 }
 

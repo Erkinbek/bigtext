@@ -790,4 +790,8 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Saved {n} rows to {file}.", "Сохранено строк: {n} в {file}.", "{n} ta qator {file} ga saqlandi."],
     ["Check rows…", "Проверить строки…", "Qatorlarni tekshirish…"],
     ["Check table rows…", "Проверить строки таблицы…", "Jadval qatorlarini tekshirish…"],
+    // Table detection.
+    ["Table…", "Таблица…", "Jadval…"],
+    ["Skip lines before the table", "Пропустить строки перед таблицей", "Jadvaldan oldingi satrlarni o'tkazib yuborish"],
+    ["Quote", "Кавычка", "Qo'shtirnoq"],
 ];

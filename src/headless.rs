@@ -68,7 +68,9 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         first. Nested JSON keys: user.id.
   convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]
         A CSV / TSV table as JSON, JSON Lines, Markdown or Excel (.xlsx needs
-        -o), or JSON Lines as CSV.
+        -o), or JSON Lines as CSV. The header and lines before the table
+        (sep=;, comments) are detected; --header / --no-header, --skip N and
+        --quote ' override that (also for validate).
 
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
@@ -484,7 +486,7 @@ fn cmd_merge(args: &[String], out: &mut dyn Write) -> Res<i32> {
 }
 
 fn cmd_convert(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["--no-header"], &["--to", "-o", "--output"])?;
+    let a = Args::parse(args, &["--no-header", "--header"], &["--to", "-o", "--output", "--skip", "--quote"])?;
     let [file] = &a.rest[..] else { return fail("needs FILE") };
     let to = a.opt(&["--to"]).ok_or_else(|| Fail("give --to json, jsonl, md, xlsx or csv".into()))?.to_ascii_lowercase();
     let target = a.opt(&["-o", "--output"]);
@@ -500,10 +502,8 @@ fn cmd_convert(args: &[String], out: &mut dyn Write) -> Res<i32> {
     if format == Format::Xlsx && target.is_none() {
         return fail("an .xlsx workbook needs -o FILE");
     }
-    let sample = buf.read(0..buf.len().min(64 * 1024)).ok_or_else(|| Fail("could not read the file".into()))?;
-    let preferred = if file.to_ascii_lowercase().ends_with(".tsv") { b'\t' } else { b',' };
-    let dialect = csv::detect(&buf.codec, &sample, sample.len() as u64 == buf.len(), preferred).unwrap_or(csv::Dialect::new(preferred));
-    let spec = table_export::Spec { dialect, cols: None, header: !a.flag(&["--no-header"]), format };
+    let g = table_of(&buf, file, &a)?;
+    let spec = table_export::Spec { dialect: g.dialect, cols: None, header: g.header, format };
     with_output(target, out, |w| {
         table_export::export(&buf, spec, w, &CancelToken::new(), None)?;
         Ok(())
@@ -532,14 +532,37 @@ fn cmd_values(args: &[String], out: &mut dyn Write) -> Res<i32> {
 }
 
 /// The dialect of a table file (by its name and content).
-fn dialect_of(buf: &TextBuf, file: &str) -> Res<csv::Dialect> {
-    let sample = buf.read(0..buf.len().min(64 * 1024)).ok_or_else(|| Fail("could not read the file".into()))?;
+/// The table in `file`: its delimiter, the lines before it and whether it has a header, with
+/// `--skip N`, `--quote '` and `--header` / `--no-header` overriding what was detected.
+fn table_of(buf: &TextBuf, file: &str, a: &Args) -> Res<csv::TableGuess> {
+    let bom = buf.codec.bom_len as u64;
+    let sample = buf.read(bom..buf.len().min(bom + 64 * 1024)).ok_or_else(|| Fail("could not read the file".into()))?;
     let preferred = if file.to_ascii_lowercase().ends_with(".tsv") { b'\t' } else { b',' };
-    Ok(csv::detect(&buf.codec, &sample, sample.len() as u64 == buf.len(), preferred).unwrap_or(csv::Dialect::new(preferred)))
+    let mut g = csv::detect_table(&buf.codec, &sample, bom + sample.len() as u64 == buf.len(), preferred, bom);
+    if let Some(n) = a.opt(&["--skip"]) {
+        let n: usize = n.parse().map_err(|_| Fail(format!("not a line count: {n}")))?;
+        let mut at = bom;
+        for _ in 0..n {
+            at = crate::filter::line_end_at(buf, at).unwrap_or(buf.len());
+        }
+        g.skip = n;
+        g.dialect.start = if n == 0 { 0 } else { at };
+    }
+    match a.opt(&["--quote"]) {
+        Some(q) if q.len() == 1 => g.dialect.quote = q.as_bytes()[0],
+        Some(q) => return fail(format!("the quote is one character, not {q}")),
+        None => {}
+    }
+    if a.flag(&["--no-header"]) {
+        g.header = false;
+    } else if a.flag(&["--header"]) {
+        g.header = true;
+    }
+    Ok(g)
 }
 
 fn cmd_validate(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["--no-header"], &["--numeric"])?;
+    let a = Args::parse(args, &["--no-header", "--header"], &["--numeric", "--skip", "--quote"])?;
     let [file] = &a.rest[..] else { return fail("needs FILE") };
     let mut numeric = Vec::new();
     for n in a.opt(&["--numeric"]).unwrap_or("").split(',').map(str::trim).filter(|n| !n.is_empty()) {
@@ -549,8 +572,8 @@ fn cmd_validate(args: &[String], out: &mut dyn Write) -> Res<i32> {
         }
     }
     let (buf, _) = open(Path::new(file))?;
-    let d = dialect_of(&buf, file)?;
-    let c = crate::csv_check::check(&buf, d, !a.flag(&["--no-header"]), &numeric, &CancelToken::new(), None, |_| {})?.unwrap_or_default();
+    let g = table_of(&buf, file, &a)?;
+    let c = crate::csv_check::check(&buf, g.dialect, g.header, &numeric, &CancelToken::new(), None, |_| {})?.unwrap_or_default();
     let (mut at, mut line) = (0u64, 0u64);
     for p in &c.problems {
         buf.for_each_chunk(at..p.start, |base, ch| {
@@ -729,6 +752,18 @@ mod tests {
         run_args(&["filter", "-n", "-A", "1", "ERROR", &log, "-o", &o.to_string_lossy()]);
         assert_eq!(std::fs::read_to_string(&o).unwrap(), "2:2024-05-01 10:00:01 ERROR b\n3-\tat x.Y(Y.java:1)\n--\n6:2024-05-01 10:00:04 ERROR e\n");
         assert_eq!(run_args(&["filter", "-A", "x", "ERROR", &log]).0, 2);
+    }
+
+    #[test]
+    fn convert_detects_the_table() {
+        let d = tempfile::tempdir().unwrap();
+        let t = file(&d, "t.csv", b"sep=;\n# note\nk;v\nx;1\n");
+        assert_eq!(run_args(&["convert", &t, "--to", "jsonl"]).1, "{\"k\": \"x\", \"v\": \"1\"}\n");
+        let n = file(&d, "n.csv", b"1,2\n3,4\n5,6\n");
+        assert_eq!(run_args(&["convert", &n, "--to", "jsonl"]).1.lines().next(), Some("{\"column1\": \"1\", \"column2\": \"2\"}"));
+        assert_eq!(run_args(&["convert", &n, "--to", "jsonl", "--header"]).1.lines().next(), Some("{\"1\": \"3\", \"2\": \"4\"}"));
+        let q = file(&d, "q.csv", b"a,b\n'x,y',2\n");
+        assert_eq!(run_args(&["convert", &q, "--to", "jsonl", "--quote", "'"]).1, "{\"a\": \"x,y\", \"b\": \"2\"}\n");
     }
 
     #[test]

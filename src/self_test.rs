@@ -167,6 +167,8 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     }
     std::fs::write(dir.join("sales.csv"), "city,qty\nTashkent,3\nBukhara,5\nTashkent,7\n")?;
     std::fs::write(dir.join("broken.csv"), "id,qty\n1,2\n2\n3,x\n")?;
+    std::fs::write(dir.join("excel.csv"), "sep=;\n# exported\nname;qty\nann;1\nbob;2\n")?;
+    std::fs::write(dir.join("numbers.csv"), "1,2\n3,4\n5,6\n")?;
     std::fs::write(dir.join("outline.json"), OUTLINE_JSON)?;
     std::fs::write(dir.join("events.jsonl"), "{\"id\": 1, \"msg\": \"start\"}\n{\"id\": 2, \"msg\": \"a, b\", \"user\": \"ann\"}\n")?;
     std::fs::write(dir.join("ws.txt"), "a b\tc\r\nnext\r\n")?;
@@ -1911,6 +1913,20 @@ impl SelfTest {
             app.problems.open = false;
             app.problems.numeric.clear();
             check(kinds == [Kind::Fields { got: 1, want: 2 }, Kind::NotNumber { col: 1 }] && starts == [11, 13], format!("{kinds:?} at {starts:?}"))
+        }));
+        s("open excel.csv", open_step("excel.csv"));
+        s("a table after Excel's sep=; line and a comment, with its header", Box::new(|app, c| {
+            let st = &doc(app).table_state;
+            let Some(d) = st.dialect else { return if c.waited() > Duration::from_secs(3) { Step::Fail("no dialect".into()) } else { Step::Wait } };
+            check(d.delim == b';' && st.skip == 2 && st.header && d.start == 17, format!("delim {:?} skip {} header {} start {}", d.delim as char, st.skip, st.header, d.start))
+        }));
+        s("open numbers.csv", open_step("numbers.csv"));
+        s("a table of numbers has no header row", Box::new(|app, c| {
+            let st = &doc(app).table_state;
+            if st.dialect.is_none() {
+                return if c.waited() > Duration::from_secs(3) { Step::Fail("no dialect".into()) } else { Step::Wait };
+            }
+            check(!st.header && st.skip == 0, format!("header {} skip {}", st.header, st.skip))
         }));
         s("open sales.csv", open_step("sales.csv"));
         s("CSV: group rows by a column and sum another", Box::new(|app, c| {

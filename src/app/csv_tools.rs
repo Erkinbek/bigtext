@@ -119,7 +119,7 @@ impl BigTextApp {
     fn column_names(&self) -> Vec<String> {
         let Some(d) = self.docs.get(self.active) else { return Vec::new() };
         let Some(dialect) = d.table_state.dialect else { return Vec::new() };
-        let start = d.min_caret();
+        let start = dialect.first(&d.buf).max(d.min_caret());
         let Some(b) = d.buf.read(start..(start + 64 * 1024).min(d.buf.len())) else { return Vec::new() };
         let codec = d.buf.codec;
         let end = codec.find_nl(&b, start).unwrap_or(b.len());

@@ -21,11 +21,19 @@ pub const DELIMITERS: [u8; 4] = [b',', b';', b'\t', b'|'];
 pub struct Dialect {
     pub delim: u8,
     pub quote: u8,
+    /// Where the table starts: lines before it (Excel's `sep=;`, comments, a title) are not
+    /// records, and rewrites keep them as they are.
+    pub start: u64,
 }
 
 impl Dialect {
     pub fn new(delim: u8) -> Dialect {
-        Dialect { delim, quote: b'"' }
+        Dialect { delim, quote: b'"', start: 0 }
+    }
+
+    /// Where the records start in `buf` (after the byte order mark and the preamble).
+    pub fn first(self, buf: &TextBuf) -> u64 {
+        self.start.max(buf.codec.bom_len as u64).min(buf.len())
     }
 
     pub fn name(self) -> &'static str {
@@ -187,6 +195,98 @@ pub fn detect(codec: &Codec, sample: &[u8], whole: bool, preferred: u8) -> Optio
     best.map(|(_, delim)| Dialect::new(delim))
 }
 
+/// What the start of a table file says about it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TableGuess {
+    /// With [`Dialect::start`] after the lines before the table.
+    pub dialect: Dialect,
+    /// The first row holds the column names.
+    pub header: bool,
+    /// Lines before the table.
+    pub skip: usize,
+}
+
+/// Lines before the table that are looked for.
+const PREAMBLE_MAX: usize = 20;
+
+/// Like [`detect`], and also finds the lines before the table — Excel's `sep=;` line, blank and
+/// `#` lines, a title — and whether the first row holds column names: it does unless its cells
+/// are numbers where the rows below hold numbers too. `sample` starts at offset `base` (after
+/// the byte order mark).
+pub fn detect_table(codec: &Codec, sample: &[u8], whole: bool, preferred: u8, base: u64) -> TableGuess {
+    let unit = codec.unit();
+    // (start, content) of each line of the sample, and where the next one starts.
+    let mut lines: Vec<(usize, &[u8], usize)> = Vec::new();
+    let mut from = 0;
+    while from < sample.len() && lines.len() < 200 + PREAMBLE_MAX {
+        let (end, next) = match codec.find_nl(&sample[from..], from as u64) {
+            Some(i) => (from + i, from + i + unit),
+            None if whole => (sample.len(), sample.len()),
+            None => break,
+        };
+        let mut line = &sample[from..end];
+        if codec.nl == NlByte::Lf && line.ends_with(codec.cr_unit()) {
+            line = &line[..line.len() - unit];
+        }
+        lines.push((from, line, next));
+        from = next;
+    }
+    let text = |b: &[u8]| codec.decode_lossy(b);
+    let mut skip = 0;
+    let mut d = match lines.first().map(|l| text(l.1)) {
+        Some(t) if t.trim().len() == 5 && t.trim().to_ascii_lowercase().starts_with("sep=") && t.trim().is_char_boundary(4) && t.trim().as_bytes()[4].is_ascii() => {
+            skip = 1;
+            Dialect::new(t.trim().as_bytes()[4])
+        }
+        _ => detect(codec, sample, whole, preferred).unwrap_or(Dialect::new(preferred)),
+    };
+    let mut fields = Vec::new();
+    let mut count = |l: &[u8]| {
+        split_fields(codec, d, l, &mut fields);
+        fields.len()
+    };
+    let counts: Vec<usize> = lines.iter().map(|l| count(l.1)).collect();
+    // The usual field count, then the first line (after a sep= line) from which two rows in a
+    // row have it.
+    let mut tally: HashMap<usize, usize> = HashMap::new();
+    for &c in &counts[skip.min(counts.len())..] {
+        *tally.entry(c).or_default() += 1;
+    }
+    let modal = tally.into_iter().max_by_key(|&(c, n)| (n, c)).map(|(c, _)| c).unwrap_or(1);
+    if modal > 1 {
+        let from = skip;
+        let preamble = |i: usize| {
+            let t = text(lines[i].1);
+            t.trim().is_empty() || t.trim_start().starts_with('#') || counts[i] != modal
+        };
+        if let Some(k) = (from..lines.len().min(from + PREAMBLE_MAX)).find(|&k| counts[k] == modal && counts.get(k + 1) == Some(&modal)) {
+            if (from..k).all(preamble) {
+                skip = k;
+            }
+        }
+    }
+    if let Some(l) = lines.get(skip).filter(|_| skip > 0) {
+        d.start = base + l.0 as u64;
+    }
+    // Header: numbers in the first row where the rows below have numbers mean it is data.
+    let cells = |l: &[u8], fields: &mut Vec<Range<usize>>| -> Vec<bool> {
+        split_fields(codec, d, l, fields);
+        fields.iter().map(|f| parse_number(&field_value(codec, d, &l[f.clone()])).is_some()).collect()
+    };
+    let mut header = true;
+    if let Some(first) = lines.get(skip) {
+        let head = cells(first.1, &mut fields);
+        let rows: Vec<Vec<bool>> = lines.iter().skip(skip + 1).take(200).map(|l| cells(l.1, &mut fields)).collect();
+        if rows.len() >= 2 {
+            let numeric = |c: usize| rows.iter().filter(|r| r.get(c) == Some(&true)).count() * 10 >= rows.len() * 8;
+            let cols: Vec<usize> = (0..head.len()).filter(|&c| numeric(c)).collect();
+            let data_like = cols.iter().filter(|&&c| head[c]).count();
+            header = cols.is_empty() || data_like < cols.len();
+        }
+    }
+    TableGuess { dialect: d, header, skip }
+}
+
 /// How a scan over the document ended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScanEnd {
@@ -279,7 +379,7 @@ pub fn scan_removals(buf: &TextBuf, d: Dialect, cols: &[usize], cancel: &CancelT
     let unit = codec.unit();
     let (nl, cr, lf_mode) = (nl_value(&codec), b'\r' as u16, codec.nl == NlByte::Lf);
     let len = buf.len();
-    let start = (codec.bom_len as u64).min(len);
+    let start = d.first(buf);
     let Some(&max) = cols.last() else { return (0, ScanEnd::Done) };
     let mut rm = Removal { cols, unit: unit as u64, starts: vec![start], field: 0, decided: false, pending: None };
     let mut st = State::FieldStart;
@@ -425,7 +525,7 @@ pub fn for_each_record(buf: &TextBuf, d: Dialect, cancel: &CancelToken, progress
     let unit = codec.unit();
     let (nl, cr, lf_mode) = (nl_value(&codec), b'\r' as u16, codec.nl == NlByte::Lf);
     let len = buf.len();
-    let start = (codec.bom_len as u64).min(len);
+    let start = d.first(buf);
     let mut st = State::FieldStart;
     let mut fields: Vec<Range<u64>> = Vec::new();
     let (mut rec_start, mut field_start) = (start, start);
@@ -847,7 +947,8 @@ pub fn rewrite_to<W: Write>(buf: &TextBuf, d: Dialect, rw: &Rewrite, out: &mut W
         stats.bytes_out += b.len() as u64;
         out.write_all(b)
     };
-    emit(&buf.read(0..bom.min(buf.len())).ok_or_else(read_err)?, &mut stats)?;
+    // The byte order mark and the lines before the table, as they are.
+    emit(&buf.read(0..d.first(buf).max(bom.min(buf.len()))).ok_or_else(read_err)?, &mut stats)?;
     let delim = codec.encode(&(d.delim as char).to_string());
     let mut err: Option<io::Error> = None;
     let end = match rw {
@@ -1145,6 +1246,50 @@ mod tests {
         split_fields(&c, d, b"", &mut f);
         assert_eq!((f.len(), f[0].clone()), (1, 0..0));
         assert_eq!(field_value(&c, d, br#""ab"cd"#), "abcd");
+    }
+
+    #[test]
+    fn detects_preamble_and_header() {
+        let c = Codec::utf8();
+        let g = |s: &str| detect_table(&c, s.as_bytes(), true, b',', 3);
+        // Excel's sep= line.
+        let t = g("sep=;\nname;qty\nann;1\nbob;2\n");
+        assert_eq!((t.dialect.delim, t.skip, t.dialect.start, t.header), (b';', 1, 3 + 6, true));
+        // Comments and a title before the header.
+        let t = g("# exported 2024-05-01\nSales report\n\nid,city,qty\n1,Paris,3\n2,Rome,4\n3,Oslo,5\n");
+        assert_eq!((t.skip, t.header), (3, true));
+        assert_eq!(t.dialect.start, 3 + "# exported 2024-05-01\nSales report\n\n".len() as u64);
+        // No header: numbers where the rows below have numbers.
+        let t = g("1,2.5,x\n3,4,y\n5,6,z\n");
+        assert_eq!((t.skip, t.header, t.dialect.start), (0, false, 0));
+        // All text, or a text name over numbers: a header.
+        assert!(g("a,b\nc,d\ne,f\n").header);
+        assert!(g("id,qty\n1,2\n3,4\n").header);
+        // A ragged first data row is not taken for a preamble.
+        assert_eq!(g("a,b,c\n1,2,3\n4,5,6\n7,8,9\n").skip, 0);
+    }
+
+    #[test]
+    fn preamble_is_kept_by_rewrites() {
+        let data = b"sep=,\nk,v\nb,2\na,1\n";
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(data).unwrap();
+        f.flush().unwrap();
+        let src = std::sync::Arc::new(crate::file::Source::open(f.path(), crate::file::OpenMode::Auto).unwrap());
+        let idx = crate::index::build_blocking(&src, Codec::utf8());
+        let mut t = TextBuf::new(src, idx, Codec::utf8());
+        t.blocking = true;
+        let d = detect_table(&t.codec, data, true, b',', 0).dialect;
+        assert_eq!(d.start, 6);
+        let mut out = Vec::new();
+        rewrite_to(&t, d, &Rewrite::Sort { col: 0, desc: false, header: true }, &mut out, &CancelToken::new(), None).unwrap();
+        assert_eq!(out, b"sep=,\nk,v\na,1\nb,2\n");
+        let mut n = 0;
+        for_each_record(&t, d, &CancelToken::new(), None, |_| {
+            n += 1;
+            true
+        });
+        assert_eq!(n, 3);
     }
 
     #[test]
