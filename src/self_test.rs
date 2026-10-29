@@ -219,6 +219,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("patch-me.txt"), &base)?;
+    std::fs::write(dir.join("cols.txt"), "aaaa\nbbbb\ncccc\ndddd\n")?;
     std::fs::write(dir.join("codec.txt"), CODEC_TXT)?;
     std::fs::write(dir.join("big-case.txt"), b"abc def\n".repeat(9_000_000))?;
     std::fs::write(dir.join("drop.log"), "10:00 INFO a\n10:01 DEBUG b\n10:02 DEBUG c\n10:03 INFO d\n10:04 WARN e\n10:05 DEBUG f\n")?;
@@ -1482,6 +1483,70 @@ impl SelfTest {
             let unchanged = text(app) == CODEC_TXT;
             app.text_result = None;
             check(ok && unchanged, format!("result ok {ok}, document unchanged {unchanged}"))
+        }));
+        s("Shift+Alt+arrows make a block from the keyboard; typing fills every row", Box::new(|app, c| {
+            const SHIFT_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: true, mac_cmd: false, command: false };
+            if c.first() {
+                app.open_path(c.file("cols.txt"));
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if !wait_ready(app) {
+                    return Step::Wait;
+                }
+                doc(app).set_caret(1, false);
+                c.key(Key::ArrowDown, SHIFT_ALT);
+                c.key(Key::ArrowDown, SHIFT_ALT);
+                c.key(Key::ArrowRight, SHIFT_ALT);
+                c.typed("X");
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let t = text(app);
+            if t != "aXaa\nbXbb\ncXcc\ndddd\n" {
+                return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("{t:?}, block {:?}", doc(app).view.block)) } else { Step::Wait };
+            }
+            Step::Next
+        }));
+        s("Column editor: numbers on the block's rows, then a column down to the end on disk", Box::new(|app, c| {
+            use bigtext::column_edit::ColumnGen;
+            let waited = c.waited() > Duration::from_secs(8);
+            match c.mark {
+                0 => {
+                    if !app.apply_column_edit(ColumnGen::Numbers { start: 1, step: 1, width: 2, hex: false }, false) {
+                        return Step::Fail("no block to fill".into());
+                    }
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    let t = text(app);
+                    if t != "aX01aa\nbX02bb\ncX03cc\ndddd\n" {
+                        return if waited { Step::Fail(format!("numbered {t:?}")) } else { Step::Wait };
+                    }
+                    doc(app).view.block = None;
+                    doc(app).set_caret(7, false);
+                    app.apply_column_edit(ColumnGen::Text(">".into()), true);
+                    c.mark = 2;
+                    Step::Wait
+                }
+                2 => {
+                    if !app.test_has_confirm() {
+                        return if waited { Step::Fail("no question before rewriting".into()) } else { Step::Wait };
+                    }
+                    app.test_accept_confirm();
+                    c.mark = 3;
+                    Step::Wait
+                }
+                _ => {
+                    let disk = std::fs::read_to_string(c.file("cols.txt")).unwrap_or_default();
+                    let d = doc(app);
+                    if disk != "aX01aa\n>bX02bb\n>cX03cc\n>dddd\n" || d.save_job.is_some() || !d.is_ready() {
+                        return if waited { Step::Fail(format!("disk {disk:?}")) } else { Step::Wait };
+                    }
+                    Step::Next
+                }
+            }
         }));
         s("compare files (streaming diff)", Box::new(|app, c| {
             if c.first() {

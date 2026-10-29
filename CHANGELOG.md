@@ -112,6 +112,12 @@ All notable changes to BigText. Each release on
   selection or, with nothing selected, the word at the caret. Decoding a JWT shows its header and
   payload pretty-printed; bytes that are not text (as a hex dump) and characters the document's
   encoding lacks open in a result window with Copy and Open in a new tab instead of being put in.
+- **Column blocks from the keyboard**: Shift+Alt+arrows (Home, End, PageUp, PageDown;
+  Ctrl+Shift+Alt+Home/End to the first and last row) make and grow a column block from the
+  caret, as Alt+drag does. **Edit → Column editor…** fills the block's column with a number
+  sequence (first number, step, at least N digits, hexadecimal) or the same text on every row
+  — on the block's rows as one undo step, or on every line from there to the end of a file of
+  any size, streamed into a new file that replaces it (optional `.bak`).
 
 ### Command line
 

@@ -4,6 +4,7 @@
 pub mod brackets;
 pub mod correlate;
 pub mod codec;
+pub mod column_edit;
 pub mod csv;
 pub mod csv_chart;
 pub mod csv_check;

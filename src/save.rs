@@ -38,6 +38,8 @@ pub enum Transform<'a> {
     Lines { keep: &'a dyn Fn(&[u8]) -> bool },
     /// A text operation (case, trimming, indentation, JSON format) over `range`.
     TextOp { op: crate::textops::Op, range: std::ops::Range<u64> },
+    /// A column of cells filled from the line at `from` to the end.
+    ColumnEdit { from: u64, cells: (u32, u32), gen: &'a crate::column_edit::ColumnGen },
 }
 
 const TRANSCODE_STEP: u64 = 4 * 1024 * 1024;
@@ -289,6 +291,10 @@ pub fn write_temp(buf: &TextBuf, target: &Path, transform: Transform, cancel: &C
                 // The text's own problem (not JSON, not valid in its encoding), said as it is.
                 Err(e) if e.kind() == io::ErrorKind::InvalidData => return Err(SaveError::Io(e.to_string())),
                 Err(e) => return Err(io(e)),
+            },
+            Transform::ColumnEdit { from, cells, gen } => match crate::column_edit::column_edit_to(buf, from, cells, gen, &mut w, cancel, Some(progress)).map_err(io)? {
+                Some(n) => ReplaceStats { count: n, bytes_in: len, bytes_out: 0 },
+                None => return Err(SaveError::Cancelled),
             },
             // The byte order mark stays (write_pred_lines_to writes it).
             Transform::Lines { keep } => match crate::filter::write_pred_lines_to(buf, crate::filter::FilterSpec::default(), keep, &mut w, cancel, Some(progress)).map_err(io)? {

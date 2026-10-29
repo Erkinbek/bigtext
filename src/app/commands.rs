@@ -38,6 +38,7 @@ pub enum Cmd {
     CompareSaved,
     CompareBackup,
     ApplyPatch,
+    ColumnEditor,
     MergeLogs,
     JoinTables,
     CompareJson,
@@ -124,7 +125,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 94] = [
+    pub const ALL: [Cmd; 95] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -146,6 +147,7 @@ impl Cmd {
         Cmd::CompareSaved,
         Cmd::CompareBackup,
         Cmd::ApplyPatch,
+        Cmd::ColumnEditor,
         Cmd::MergeLogs,
         Cmd::JoinTables,
         Cmd::CompareJson,
@@ -273,6 +275,7 @@ impl Cmd {
             Cmd::CompareSaved => "Compare with the saved file",
             Cmd::CompareBackup => "Compare with the backup (.bak)",
             Cmd::ApplyPatch => "Apply patch…",
+            Cmd::ColumnEditor => "Column editor…",
             Cmd::MergeLogs => "Merge logs by time…",
             Cmd::JoinTables => "Join tables…",
             Cmd::CompareJson => "Compare JSON with…",
@@ -365,6 +368,7 @@ impl Cmd {
             | Cmd::NextBookmark
             | Cmd::PrevBookmark
             | Cmd::ClearBookmarks
+            | Cmd::ColumnEditor
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
             Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::NextDiff | Cmd::PrevDiff | Cmd::OnlyIn | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::CheckJson | Cmd::MatchBracket => "Search",
@@ -585,6 +589,7 @@ impl BigTextApp {
             Cmd::Compare => self.compare_dialog(),
             Cmd::CompareSaved => self.start_diff_with(super::extras::DiffOther::Saved),
             Cmd::ApplyPatch => self.apply_patch_dialog(),
+            Cmd::ColumnEditor => self.open_column_editor(),
             Cmd::Properties => self.open_properties(),
             Cmd::CompareBackup => {
                 if let Some(p) = self.docs.get(self.active).and_then(|d| d.path.as_deref()) {
@@ -749,6 +754,7 @@ impl BigTextApp {
             Cmd::CompareSaved => d.is_some_and(|d| d.path.is_some() && d.is_ready() && d.is_modified()),
             Cmd::CompareBackup => d.and_then(|d| d.path.as_deref()).is_some_and(|p| bigtext::save::backup_path_for(p).exists()),
             Cmd::ApplyPatch => d.is_some_and(|d| d.is_ready() && d.editable()),
+            Cmd::ColumnEditor => d.is_some_and(|d| d.is_ready() && d.editable() && !d.view.wrap),
             Cmd::Properties => d.is_some_and(|d| d.is_ready()),
             Cmd::CheckRows => d.is_some_and(|d| d.table),
             Cmd::NavForward => !self.nav.forward.is_empty(),
@@ -764,6 +770,10 @@ impl BigTextApp {
         for (cmd, k) in self.keymap.bound() {
             // Alt+arrows move by words in a text field.
             if matches!(cmd, Cmd::NavBack | Cmd::NavForward) && ctx.memory(|m| m.focused()).is_some_and(|id| egui::TextEdit::load_state(ctx, id).is_some()) {
+                continue;
+            }
+            // Shift+Alt+arrows grow a column block (egui would match them to Alt+arrows).
+            if matches!(cmd, Cmd::NavBack | Cmd::NavForward) && ctx.input(|i| i.modifiers.shift) {
                 continue;
             }
             let hit = ctx.input_mut(|i| i.consume_shortcut(&k) || (cmd == Cmd::ZoomIn && k == Cmd::ZoomIn.default_key().unwrap() && i.consume_shortcut(&KeyboardShortcut::new(CTRL, Key::Plus))));
@@ -907,6 +917,7 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 self.text_menu(ui);
+                run = run.or(self.item(ui, Cmd::ColumnEditor));
                 ui.separator();
                 for c in [Cmd::ToggleBookmark, Cmd::NextBookmark, Cmd::PrevBookmark, Cmd::ClearBookmarks] {
                     run = run.or(self.item(ui, c));

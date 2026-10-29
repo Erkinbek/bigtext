@@ -119,10 +119,12 @@ Single self-contained binary, no runtime dependencies.
   `tail -F` it survives log rotation: when the file is truncated (copytruncate) or renamed away
   and created again, it goes on in the new file, with a button to open the rotated one
   (`app.log.1`); the status bar shows FOLLOW ×n.
-- **Column (block) selection**: Alt+drag selects a rectangle. Copy copies it line by line;
-  typing, Backspace, Delete and Tab change every row at once (one undo step); pasting as many
-  lines as the block has rows puts one on each row. Works without word wrap, up to 10,000
-  rows.
+- **Column (block) selection**: Alt+drag, or Shift+Alt+arrows (Home/End, PageUp/PageDown; with
+  Ctrl too), selects a rectangle. Copy copies it line by line; typing, Backspace, Delete and Tab
+  change every row at once (one undo step); pasting as many lines as the block has rows puts one
+  on each row. **Edit → Column editor…** fills the column with a number sequence (start, step,
+  zero padding, hex) or the same text, on the block's rows or down to the end of the file as a
+  rewrite on disk. Works without word wrap, up to 10,000 rows in the editor.
 - **Text operations** (Edit → Text) on the selection, or on the whole document up to 64 MB:
   sort lines (A→Z, Z→A, by leading number), reverse, remove duplicate lines, UPPER / lower
   case, trim trailing whitespace, tabs ↔ spaces, and JSON pretty-print / minify (token by
@@ -381,7 +383,7 @@ times). Exit codes: 0 done, 1 nothing matched, 2 error.
 | Ctrl+F2 / F2 / Shift+F2 | Toggle / next / previous bookmark |
 | Ctrl+\\ | Split view |
 | Double / triple click | Select word / line |
-| Alt+drag | Column (block) selection |
+| Alt+drag, Shift+Alt+arrows | Column (block) selection |
 | F12 | Performance overlay (frame time, private memory, index size) |
 
 View → Hex view, View → Follow (tail), View → Syntax highlighting, File → Open recent,

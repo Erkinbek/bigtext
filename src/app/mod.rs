@@ -2,6 +2,7 @@
 
 pub mod column_chart;
 pub mod archive;
+pub mod column_editor;
 pub mod columns;
 pub mod commands;
 pub mod convert;
@@ -190,6 +191,7 @@ enum ConfirmAction {
     LowSpace(Box<LowSpace>),
     LinesOnDisk { doc: u64, sel: Arc<lines_edit::LineSel>, keep: bool },
     TextOpOnDisk { doc: u64, op: bigtext::textops::Op, range: std::ops::Range<u64> },
+    ColumnEditOnDisk { doc: u64, from: u64, cells: (u32, u32), gen: bigtext::column_edit::ColumnGen },
 }
 
 #[derive(Default)]
@@ -291,6 +293,7 @@ pub struct BigTextApp {
     pub properties: Option<properties::PropertiesUi>,
     pub recovery: recovery::RecoveryState,
     pub text_result: Option<text_tools::TextResult>,
+    pub column_editor: Option<column_editor::ColumnEditor>,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -501,6 +504,7 @@ impl BigTextApp {
             properties: None,
             recovery: recovery::RecoveryState::new(),
             text_result: None,
+            column_editor: None,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1293,6 +1297,7 @@ impl BigTextApp {
                         ConfirmAction::LowSpace(_) => "Continue",
                         ConfirmAction::LinesOnDisk { .. } => "Delete on disk",
                         ConfirmAction::TextOpOnDisk { .. } => "Change on disk",
+                        ConfirmAction::ColumnEditOnDisk { .. } => "Fill on disk",
                     };
                     if ui.button(i18n::tr(primary)).clicked() {
                         decision = Some(1);
@@ -1385,6 +1390,7 @@ impl BigTextApp {
             (1, ConfirmAction::CsvRewrite { doc, dialect, rewrite, on_disk }) => self.rewrite_csv(doc, dialect, rewrite, on_disk, checked),
             (1, ConfirmAction::LowSpace(l)) => self.resume(l.resume, false),
             (1, ConfirmAction::LinesOnDisk { doc, sel, keep }) => self.lines_on_disk(doc, sel, keep, checked),
+            (1, ConfirmAction::ColumnEditOnDisk { doc, from, cells, gen }) => self.column_edit_on_disk(doc, from, cells, gen, checked),
             (1, ConfirmAction::TextOpOnDisk { doc, op, range }) => {
                 if let Some(path) = self.docs.iter().find(|d| d.id == doc).and_then(|d| d.path.clone()) {
                     self.start_write(doc, path, ops::WriteSpec::TextOp { op, range }, checked);
@@ -1853,6 +1859,7 @@ impl eframe::App for BigTextApp {
         self.properties_window(&ctx);
         self.recovery_window(&ctx);
         self.text_result_window(&ctx);
+        self.column_editor_window(&ctx);
         self.pivot_window(&ctx);
         self.derive_window(&ctx);
         self.json_fields_window(&ctx);

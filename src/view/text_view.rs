@@ -887,10 +887,54 @@ fn handle_block_event(ui: &mut Ui, doc: &mut Document, ev: &Event) -> bool {
     used
 }
 
+/// Shift+Alt+arrows (Ctrl too, since Shift+Alt alone switches the keyboard layout on many
+/// systems): make or grow a column block from the keyboard.
+fn block_key(doc: &mut Document, ev: &Event, wrap: Option<usize>) -> bool {
+    use bigtext::text::rows;
+    let Event::Key { key, pressed: true, modifiers: m, .. } = ev else { return false };
+    if !(m.alt && m.shift) || wrap.is_some() || !matches!(key, Key::ArrowLeft | Key::ArrowRight | Key::ArrowUp | Key::ArrowDown | Key::Home | Key::End | Key::PageUp | Key::PageDown) {
+        return false;
+    }
+    let buf = &doc.buf;
+    let mut b = match doc.view.block {
+        Some(b) => b,
+        None => {
+            let Ok(row) = rows::row_at(buf, doc.view.caret, None) else { return true };
+            let Ok(cell) = rows::cell_of_offset(buf, &row, doc.view.caret) else { return true };
+            crate::view::block::Block::at(row.start, cell)
+        }
+    };
+    let Ok(row) = rows::row_at(buf, b.caret, None) else { return true };
+    let page = doc.view.rows_on_screen.saturating_sub(1).max(1) as i64;
+    let to_row = |n: i64| rows::step_rows(buf, row, n, None).map(|r| r.start).unwrap_or(row.start);
+    match key {
+        Key::ArrowLeft => b.caret_cell = b.caret_cell.saturating_sub(1),
+        Key::ArrowRight => b.caret_cell += 1,
+        Key::ArrowUp => b.caret = to_row(-1),
+        Key::ArrowDown => b.caret = to_row(1),
+        Key::PageUp => b.caret = to_row(-page),
+        Key::PageDown => b.caret = to_row(page),
+        Key::Home if m.command => b.caret = rows::row_at(buf, doc.min_caret(), None).map(|r| r.start).unwrap_or(0),
+        Key::End if m.command => b.caret = rows::row_at(buf, buf.len(), None).map(|r| r.start).unwrap_or(b.caret),
+        Key::Home => b.caret_cell = 0,
+        _ => b.caret_cell = rows::cell_of_offset(buf, &row, row.end).unwrap_or(b.caret_cell),
+    }
+    // The caret follows the block's moving corner.
+    if let Ok(r) = rows::row_at(buf, b.caret, None) {
+        if let Ok(off) = rows::offset_at_cell(buf, &r, b.caret_cell) {
+            doc.view.caret = off;
+            doc.view.anchor = off;
+            doc.view.scroll_to_caret = true;
+        }
+    }
+    doc.view.block = Some(b);
+    true
+}
+
 fn handle_keys(ui: &mut Ui, doc: &mut Document, wrap: Option<usize>, env: &mut ViewEnv) {
     let events = ui.input(|i| i.events.clone());
     for ev in events {
-        if handle_block_event(ui, doc, &ev) || crate::view::multi::handle_event(ui, doc, &ev, wrap) {
+        if block_key(doc, &ev, wrap) || handle_block_event(ui, doc, &ev) || crate::view::multi::handle_event(ui, doc, &ev, wrap) {
             continue;
         }
         match ev {
