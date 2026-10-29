@@ -365,6 +365,7 @@ bigtext-cli stats FILE...                                      size, lines, enco
 bigtext-cli merge FILE FILE... [-o OUT]                        logs merged by time
 bigtext-cli convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]  tables (and JSON Lines → CSV)
 bigtext-cli validate FILE [--no-header] [--numeric 3,5]        malformed CSV / TSV rows
+bigtext-cli csv FILE cut|drop COLS | sort --by COL | where COND... | stats COL | group COL
 bigtext-cli values FIELD FILE [-o OUT]                         a JSON Lines / logfmt field's values
 bigtext-cli gaps FILE [--min 30s]                              time gaps, with line numbers
 bigtext-cli patterns FILE [--top N] [--rare] [-o OUT]          message templates with counts

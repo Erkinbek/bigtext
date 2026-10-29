@@ -90,6 +90,14 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         changed columns, and A's columns with \"old → new\" where a value
         changed. Columns pair up by header name. Exit code 0 when they are the
         same, 1 when they differ.
+  csv FILE cut COLS | drop COLS | sort --by COL [--desc] | where COND... |
+           stats COL | group COL [--sum COL]  [-o OUT] [--delimiter X] [--no-header]
+        The table view's column tools, streamed: keep or delete columns, sort
+        rows (files up to 1 GB), keep the rows where every condition holds
+        (col=v, col!=v, col~v contains, col>n, col<n; or col eq|ne|has|gt|lt v,
+        col empty, col nonempty — quote > and < for cmd.exe), a column's
+        statistics, or rows per value. Columns are header names or 1-based
+        numbers; --delimiter , ; | or tab.
   replace [-i] [-w] [-E] PATTERN REPLACEMENT FILE [-o OUT | --in-place [--bak]]
         Every match replaced (-E: $1 and ${name} in REPLACEMENT), streamed,
         keeping the encoding and line breaks; --in-place swaps the file
@@ -162,7 +170,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 30] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format", "sort", "uniq", "head", "tail", "slice", "grep", "replace", "saved"];
+const COMMANDS: [&str; 31] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format", "sort", "uniq", "head", "tail", "slice", "grep", "replace", "saved", "csv"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -781,6 +789,150 @@ fn cmd_join(args: &[String], out: &mut dyn Write) -> Res<i32> {
         Ok(())
     })?;
     Ok(0)
+}
+
+/// One condition of `csv … where`: `col=v` (or `col eq v`, `col empty` in words).
+fn parse_conds(tokens: &[String], col: &dyn Fn(&str) -> Res<usize>) -> Res<Vec<csv::Cond>> {
+    use csv::CondOp;
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        let t = &tokens[i];
+        let sym = [("!=", CondOp::NotEquals), ("!~", CondOp::NotContains), ("=", CondOp::Equals), ("~", CondOp::Contains), (">", CondOp::Greater), ("<", CondOp::Less)];
+        if let Some((at, len, op)) = sym.iter().filter_map(|(s, op)| t.find(s).map(|at| (at, s.len(), *op))).min_by_key(|x| x.0) {
+            out.push(csv::Cond { col: col(&t[..at])?, op, value: t[at + len..].to_string() });
+            i += 1;
+            continue;
+        }
+        let word = tokens.get(i + 1).map(|w| w.to_ascii_lowercase()).unwrap_or_default();
+        let (op, takes) = match word.as_str() {
+            "eq" => (CondOp::Equals, true),
+            "ne" => (CondOp::NotEquals, true),
+            "has" => (CondOp::Contains, true),
+            "gt" => (CondOp::Greater, true),
+            "lt" => (CondOp::Less, true),
+            "empty" => (CondOp::Empty, false),
+            "nonempty" => (CondOp::NotEmpty, false),
+            _ => return fail(format!("not a condition: {t} (col=v, col>n, col~v, or col eq v)")),
+        };
+        let value = if takes { tokens.get(i + 2).cloned().ok_or_else(|| Fail(format!("{t} {word} needs a value")))? } else { String::new() };
+        out.push(csv::Cond { col: col(t)?, op, value });
+        i += if takes { 3 } else { 2 };
+    }
+    if out.is_empty() {
+        return fail("where needs a condition");
+    }
+    Ok(out)
+}
+
+fn cmd_csv(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["--no-header", "--header", "--desc"], &["-o", "--output", "--skip", "--quote", "--delimiter", "--by", "--sum"])?;
+    let (file, op, rest) = match &a.rest[..] {
+        [file, op, rest @ ..] => (file, op.as_str(), rest),
+        _ => return fail("needs FILE and an operation (cut, drop, sort, where, stats, group)"),
+    };
+    let (buf, _) = open(Path::new(file))?;
+    let mut g = table_of(&buf, file, &a)?;
+    if let Some(d) = a.opt(&["--delimiter"]) {
+        g.dialect.delim = match d {
+            "tab" | "\\t" | "\t" => b'\t',
+            d if d.len() == 1 => d.as_bytes()[0],
+            d => return fail(format!("the delimiter is one character or tab, not {d}")),
+        };
+    }
+    let d = g.dialect;
+    let col = |t: &str| -> Res<usize> {
+        column_index(&buf, &g, t).map_err(|Fail(e)| {
+            let mut names = Vec::new();
+            csv::for_each_record(&buf, d, &CancelToken::new(), None, |r| {
+                names = r.fields.iter().filter_map(|f| buf.read(f.clone()).map(|b| csv::field_value(&buf.codec, d, &b))).collect();
+                false
+            });
+            Fail(format!("{e}; the columns are {}", names.join(", ")))
+        })
+    };
+    let cols = |list: &str| list.split(',').map(|c| col(c.trim())).collect::<Res<Vec<usize>>>();
+    let to = a.opt(&["-o", "--output"]);
+    let cancel = CancelToken::new();
+    let one = |what: &str| rest.first().cloned().ok_or_else(|| Fail(format!("{op} needs {what}")));
+    match op {
+        "cut" | "drop" => {
+            let mut c = cols(&one("COLUMNS")?)?;
+            with_output(to, out, |w| {
+                if op == "cut" {
+                    csv::rewrite_to(&buf, d, &csv::Rewrite::Select(c.clone()), &mut &mut *w, &cancel, None)?;
+                } else {
+                    c.sort_unstable();
+                    c.dedup();
+                    csv::delete_columns_to(&buf, d, &c, &mut &mut *w, &cancel, None)?;
+                }
+                Ok(())
+            })?;
+            Ok(0)
+        }
+        "sort" => {
+            let by = match a.opt(&["--by"]) {
+                Some(b) => b.to_string(),
+                None => one("--by COLUMN")?,
+            };
+            if buf.len() > csv::SORT_MAX {
+                return fail(format!("sorting works on files up to {}; this one is {}", human_bytes(csv::SORT_MAX), human_bytes(buf.len())));
+            }
+            let rw = csv::Rewrite::Sort { col: col(&by)?, desc: a.flag(&["--desc"]), header: g.header };
+            with_output(to, out, |w| {
+                csv::rewrite_to(&buf, d, &rw, &mut &mut *w, &cancel, None)?;
+                Ok(())
+            })?;
+            Ok(0)
+        }
+        "where" => {
+            let conds = parse_conds(rest, &col)?;
+            let mut kept = 0;
+            with_output(to, out, |w| {
+                kept = csv::filter_rows_to(&buf, d, &conds, g.header, &mut &mut *w, &cancel, None)?.map(|x| x.0).unwrap_or(0);
+                Ok(())
+            })?;
+            Ok(if kept > 0 { 0 } else { 1 })
+        }
+        "stats" => {
+            let c = col(&one("a COLUMN")?)?;
+            let st = csv::column_stats(&buf, d, c, g.header, &cancel, None).map_err(|_| Fail("could not read the file".into()))?;
+            if json() {
+                let top: Vec<serde_json::Value> = st.top.iter().map(|(v, n)| serde_json::json!({"value": v, "count": n})).collect();
+                writeln!(out, "{}", serde_json::json!({"column": st.name, "rows": st.rows, "empty": st.empty, "numbers": st.numeric, "sum": st.sum, "min": st.min, "max": st.max, "mean": st.mean(), "distinct": st.distinct, "top": top}))?;
+                return Ok(0);
+            }
+            writeln!(out, "column: {}", st.name)?;
+            writeln!(out, "rows: {}", st.rows)?;
+            writeln!(out, "empty: {}", st.empty)?;
+            if st.numeric > 0 {
+                writeln!(out, "numbers: {}", st.numeric)?;
+                writeln!(out, "sum: {}", st.sum)?;
+                if let (Some(lo), Some(hi)) = (st.min, st.max) {
+                    writeln!(out, "min: {lo}\nmax: {hi}")?;
+                }
+                if let Some(m) = st.mean() {
+                    writeln!(out, "mean: {m}")?;
+                }
+            }
+            writeln!(out, "distinct: {}{}", st.distinct, if st.distinct_capped { "+" } else { "" })?;
+            for (v, n) in st.top.iter().take(10) {
+                writeln!(out, "  {n}\t{v}")?;
+            }
+            Ok(0)
+        }
+        "group" => {
+            let key = col(&one("a COLUMN")?)?;
+            let sum = a.opt(&["--sum"]).map(col).transpose()?;
+            let gr = csv::group_by(&buf, d, key, sum, g.header, &cancel, None).map_err(|_| Fail("could not read the file".into()))?;
+            with_output(to, out, |w| {
+                csv::groups_to_csv(&gr, &mut &mut *w)?;
+                Ok(())
+            })?;
+            Ok(0)
+        }
+        _ => fail(format!("unknown csv operation {op} (cut, drop, sort, where, stats, group)")),
+    }
 }
 
 /// The settings file `--settings FILE` names, or the app's.
@@ -1595,6 +1747,7 @@ fn run_command(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32
         "diff-table" => cmd_diff_table(rest, out),
         "transform" => cmd_transform(rest, out),
         "replace" => cmd_replace(rest, out),
+        "csv" => cmd_csv(rest, out),
         "saved" => cmd_saved(rest, out),
         "head" => cmd_head_tail(rest, out, true),
         "tail" => cmd_head_tail(rest, out, false),
@@ -1788,6 +1941,27 @@ mod tests {
         assert_eq!(run_args(&["diff-table", &a, &b, "--key", "1", "--key-b", "3", "--all"]).1.lines().nth(2), Some("same,2,,banana,7"));
         assert_eq!(run_args(&["diff-table", &a, &a, "--key", "id"]).0, 0);
         assert_eq!(run_args(&["diff-table", &a, &b]).0, 2);
+    }
+
+    #[test]
+    fn csv_column_tools() {
+        let d = tempfile::tempdir().unwrap();
+        let t = file(&d, "s.csv", b"id,city,amount\n1,Tashkent,120\n2,Bukhara,80\n3,Tashkent,40\n");
+        assert_eq!(run_args(&["csv", &t, "cut", "amount,id"]).1, "amount,id\n120,1\n80,2\n40,3\n");
+        assert_eq!(run_args(&["csv", &t, "drop", "2"]).1, "id,amount\n1,120\n2,80\n3,40\n");
+        assert_eq!(run_args(&["csv", &t, "sort", "--by", "amount", "--desc"]).1, "id,city,amount\n1,Tashkent,120\n2,Bukhara,80\n3,Tashkent,40\n");
+        assert_eq!(run_args(&["csv", &t, "sort", "amount"]).1.lines().nth(1), Some("3,Tashkent,40"));
+        assert_eq!(run_args(&["csv", &t, "where", "city=Tashkent", "amount>50"]).1, "id,city,amount\n1,Tashkent,120\n");
+        assert_eq!(run_args(&["csv", &t, "where", "amount", "lt", "100"]).1, "id,city,amount\n2,Bukhara,80\n3,Tashkent,40\n");
+        assert_eq!(run_args(&["csv", &t, "where", "city~zzz"]).0, 1);
+        let st = run_args(&["csv", &t, "stats", "amount"]).1;
+        assert!(st.contains("rows: 3\n") && st.contains("sum: 240\n") && st.contains("mean: 80\n"), "{st}");
+        let gr = run_args(&["csv", &t, "group", "city", "--sum", "amount"]).1;
+        assert!(gr.starts_with("city,rows,sum") || gr.contains("Tashkent"), "{gr}");
+        let (code, _, err) = run_args(&["csv", &t, "cut", "nope"]);
+        assert!(code == 2 && err.contains("the columns are id, city, amount"), "{err}");
+        let semi = file(&d, "p.txt", b"a|b\n1|2\n");
+        assert_eq!(run_args(&["csv", &semi, "cut", "b", "--delimiter", "|"]).1, "b\n2\n");
     }
 
     #[test]

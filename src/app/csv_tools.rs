@@ -17,7 +17,7 @@ use super::{BigTextApp, Confirm, ConfirmAction, Msg};
 use crate::view::table_view::TableAction;
 
 /// Sorting keeps every row's key in memory, so it is limited to files of this size.
-pub const SORT_MAX: u64 = 1024 * 1024 * 1024;
+pub const SORT_MAX: u64 = bigtext::csv::SORT_MAX;
 
 pub struct CsvRewritten {
     pub doc: u64,

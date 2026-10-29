@@ -922,6 +922,9 @@ pub fn filter_rows_to<W: Write>(buf: &TextBuf, d: Dialect, conds: &[Cond], heade
     }
 }
 
+/// Sorting holds a key per row in memory: files up to this size.
+pub const SORT_MAX: u64 = 1024 * 1024 * 1024;
+
 /// A rewrite of every record of a CSV document.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Rewrite {

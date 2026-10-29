@@ -151,6 +151,12 @@ All notable changes to BigText. Each release on
 
 ### Command line
 
+- **`bigtext-cli csv FILE …`** runs the table view's column tools in scripts: `cut COLS` and
+  `drop COLS`, `sort --by COL [--desc]` (files up to 1 GB, as in the app), `where COND...`
+  (`col=v`, `col!=v`, `col~v`, `col>n`, `col<n`, or in words `col eq|ne|has|gt|lt v`, `col empty`,
+  for cmd.exe), `stats COL` (also `--json`) and `group COL [--sum COL]`; columns by header name or
+  1-based number (a wrong name lists the columns), the dialect detected as the app does, with
+  `--delimiter`, `--no-header`, `--skip` and `--quote`.
 - **`--json`** on `filter`, `levels`, `grep`, `count`, `stats`, `replace` and `saved` prints one
   JSON record per line — `{file, line, offset, text, context}` with exact line numbers for kept
   lines — and errors as `{"error": …}` with exit code 2.
