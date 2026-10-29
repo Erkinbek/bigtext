@@ -47,7 +47,7 @@ pub struct ColumnChart {
 }
 
 fn nice(x: f64) -> f64 {
-    if !(x > 0.0) || !x.is_finite() {
+    if x.is_nan() || x <= 0.0 || !x.is_finite() {
         return 1.0;
     }
     let p = 10f64.powf(x.log10().floor());
