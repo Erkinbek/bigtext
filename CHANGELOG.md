@@ -151,6 +151,13 @@ All notable changes to BigText. Each release on
 
 ### Command line
 
+- **Many files at once**: `filter`, `count` and `levels` take several files, `*.log` patterns
+  (expanded by BigText, since Windows shells do not) and `-r DIR --names '*.log;*.gz'`, put the
+  file name before each output line (count: each file's count and a total), or write one
+  `name.filtered.ext` per input with `--out-dir DIR`; the exit code is 2 if a file failed, else 0
+  if any matched. **`bigtext-cli grep PATTERN FILES... | -r DIR`** is Find in files without a
+  window (`file:line:text`). Every command now reads `.gz`, `.zst`, `.xz` and `.bz2` inputs,
+  unpacking them on the way.
 - `bigtext-cli head -n N` and `tail -n N` read only that end of the file (tail scans backwards),
   and `bigtext-cli slice FILE --lines A-B | --bytes A-B | --from TIME --to TIME` cuts out a part
   — bytes widened to whole lines, times found by binary search in a time-ordered log, a `--to`

@@ -90,6 +90,14 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         changed columns, and A's columns with \"old → new\" where a value
         changed. Columns pair up by header name. Exit code 0 when they are the
         same, 1 when they differ.
+  grep [-i] [-w] [-E] PATTERN FILES... | -r DIR [--names '*.log;*.gz']
+        Find in files without a window: file:line:text for every line with a
+        match, over files, *.log patterns or a folder (compressed files are
+        unpacked on the way).
+  filter, count and levels take several FILES, patterns and -r DIR [--names]
+  too (file: before each output line; count gives each file's count and a
+  total), and --out-dir DIR for one name.filtered.ext per input.
+
   head [-n N] FILE [-o OUT]
   tail [-n N] FILE [-o OUT]
         The first or last N lines (10), read from that end only.
@@ -144,7 +152,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 27] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format", "sort", "uniq", "head", "tail", "slice"];
+const COMMANDS: [&str; 28] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format", "sort", "uniq", "head", "tail", "slice", "grep"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -205,7 +213,25 @@ impl Args {
     }
 }
 
+thread_local! {
+    /// Unpacked copies of compressed inputs, removed when the command is done.
+    static TEMPS: std::cell::RefCell<Vec<PathBuf>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 fn open(path: &Path) -> Res<(TextBuf, Detected)> {
+    // A .gz / .zst / .xz / .bz2 input is unpacked first.
+    let unpacked;
+    let path = match crate::decompress::detect(path) {
+        Some(kind) => {
+            let t = crate::decompress::unpack(path, kind, &CancelToken::new(), &Progress::default())
+                .map_err(|e| Fail(format!("{}: {e}", display_path(path))))?
+                .ok_or_else(|| Fail("cancelled".into()))?;
+            TEMPS.with(|v| v.borrow_mut().push(t.clone()));
+            unpacked = t;
+            unpacked.as_path()
+        }
+        None => path,
+    };
     let src = Source::open(path, OpenMode::Auto).map_err(|e| Fail(format!("{}: {e}", display_path(path))))?;
     let n = src.len().min(1 << 20);
     let det = encoding::detect(&src.read(0..n)?, n == src.len());
@@ -1227,13 +1253,155 @@ fn cmd_gaps(args: &[String], out: &mut dyn Write) -> Res<i32> {
 
 /// Runs a command; returns the exit code. `args` start with the command name.
 pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
+    let code = run_command(args, out, err);
+    // The inputs are closed by now: their unpacked copies can go.
+    for t in TEMPS.with(|v| std::mem::take(&mut *v.borrow_mut())) {
+        crate::decompress::remove_temp(&t);
+    }
+    code
+}
+
+/// The files of `positionals` (with `*` and `?` in names expanded, as Windows shells do not)
+/// and of `-r DIR` limited to `--names`.
+fn expand_inputs(positionals: &[String], dir: Option<&str>, names: Option<&str>) -> Res<Vec<String>> {
+    let cancel = CancelToken::new();
+    let mut out = Vec::new();
+    for p in positionals {
+        let path = Path::new(p);
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if name.contains(['*', '?']) && !path.exists() {
+            let parent = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
+            let mut found = crate::find_files::list_files(parent, std::slice::from_ref(&name), false, &cancel).map_err(|e| Fail(format!("{p}: {e}")))?;
+            if found.is_empty() {
+                return fail(format!("no files match {p}"));
+            }
+            found.sort();
+            out.extend(found.into_iter().map(|f| f.to_string_lossy().into_owned()));
+        } else {
+            out.push(p.clone());
+        }
+    }
+    if let Some(d) = dir {
+        let pats = names.map(crate::find_files::patterns).unwrap_or_default();
+        let mut found = crate::find_files::list_files(Path::new(d), &pats, true, &cancel).map_err(|e| Fail(format!("{d}: {e}")))?;
+        found.sort();
+        out.extend(found.into_iter().map(|f| f.to_string_lossy().into_owned()));
+    }
+    Ok(out)
+}
+
+/// `filter`, `count`, `levels` and `grep` over several files (or a folder): each file's
+/// output with its name in front (`file:12:line` for grep, `file: N` and a total for count),
+/// or one output per file in `--out-dir`. The exit code is 2 if a file failed, else 0 if any
+/// matched, else 1. `None` when it is a plain single-file run.
+fn run_batch(cmd: &str, rest: &[String], out: &mut dyn Write, err: &mut dyn Write) -> Option<i32> {
+    let filter_flags = [&["-v", "--invert", "-i", "--ignore-case", "-w", "--word", "-E", "--regex", "--any"][..], &CONTEXT_FLAGS].concat();
+    let (flags, opts): (Vec<&str>, Vec<&str>) = match cmd {
+        "filter" | "count" | "grep" => (filter_flags, [&["-o", "--output", "-e", "--pattern", "--not"][..], &CONTEXT_OPTS].concat()),
+        "levels" => (CONTEXT_FLAGS.to_vec(), [&["-o", "--output"][..], &CONTEXT_OPTS].concat()),
+        _ => return None,
+    };
+    const BATCH: [&str; 4] = ["-r", "--recursive", "--names", "--out-dir"];
+    // Split the arguments into the command's own and the positionals.
+    let (mut own, mut positionals) = (Vec::new(), Vec::new());
+    let (mut dir, mut names, mut out_dir) = (None, None, None);
+    let mut it = rest.iter();
+    while let Some(x) = it.next() {
+        if BATCH.contains(&x.as_str()) {
+            let v = it.next().cloned();
+            match x.as_str() {
+                "--names" => names = v,
+                "--out-dir" => out_dir = v,
+                _ => dir = v,
+            }
+        } else if flags.contains(&x.as_str()) {
+            own.push(x.clone());
+        } else if opts.contains(&x.as_str()) {
+            own.push(x.clone());
+            own.extend(it.next().cloned());
+        } else {
+            positionals.push(x.clone());
+        }
+    }
+    // A pattern (or levels) first, unless the patterns come with -e and the first is a file.
+    let with_e = own.iter().any(|o| o == "-e" || o == "--pattern");
+    let lead = if cmd != "levels" && with_e && positionals.first().is_some_and(|p| Path::new(p).exists()) { 0 } else { 1 };
+    if positionals.len() < lead {
+        return None;
+    }
+    let files = match expand_inputs(&positionals[lead..], dir.as_deref(), names.as_deref()) {
+        Ok(f) => f,
+        Err(Fail(e)) => {
+            let _ = writeln!(err, "bigtext-cli {cmd}: {e}");
+            return Some(2);
+        }
+    };
+    if cmd != "grep" && files.len() <= 1 && dir.is_none() && out_dir.is_none() && files.len() + lead == positionals.len() {
+        return None;
+    }
+    let single = if cmd == "grep" { "filter" } else { cmd };
+    let (mut matched, mut failed, mut total) = (false, false, 0u64);
+    for f in &files {
+        let mut a: Vec<String> = vec![single.to_string()];
+        a.extend(own.iter().cloned());
+        if cmd == "grep" && !own.iter().any(|o| o == "-n" || o == "--line-numbers") {
+            a.push("-n".into());
+        }
+        a.extend(positionals[..lead].iter().cloned());
+        a.push(f.clone());
+        if let Some(d) = &out_dir {
+            let p = Path::new(f);
+            let inner = match crate::decompress::detect(p) {
+                Some(_) => crate::decompress::inner_name(p),
+                None => p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            };
+            let q = Path::new(&inner);
+            let stem = q.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            let name = match q.extension() {
+                Some(e) => format!("{stem}.filtered.{}", e.to_string_lossy()),
+                None => format!("{stem}.filtered"),
+            };
+            a.push("-o".into());
+            a.push(Path::new(d).join(name).to_string_lossy().into_owned());
+        }
+        let mut buf = Vec::new();
+        let mut ebuf = Vec::new();
+        let code = run_command(&a, &mut buf, &mut ebuf);
+        let _ = err.write_all(&ebuf);
+        match code {
+            0 => matched = true,
+            1 => {}
+            _ => failed = true,
+        }
+        let name = display_path(Path::new(f));
+        if cmd == "count" {
+            let n: u64 = String::from_utf8_lossy(&buf).trim().parse().unwrap_or(0);
+            total += n;
+            let _ = writeln!(out, "{name}: {n}");
+        } else {
+            for line in buf.split_inclusive(|&b| b == b'\n') {
+                let _ = out.write_all(format!("{name}:").as_bytes());
+                let _ = out.write_all(line);
+            }
+        }
+    }
+    if cmd == "count" {
+        let _ = writeln!(out, "total: {total}");
+    }
+    Some(if failed { 2 } else if matched { 0 } else { 1 })
+}
+
+fn run_command(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
     let Some(cmd) = args.first().map(|c| c.trim_start_matches('-').to_string()) else {
         let _ = write!(err, "{USAGE}");
         return 2;
     };
     let rest = &args[1..];
+    if let Some(code) = run_batch(&cmd, rest, out, err) {
+        return code;
+    }
     let r = match cmd.as_str() {
-        "filter" => cmd_filter(rest, out, false),
+        "filter" | "grep" => cmd_filter(rest, out, false),
         "count" => cmd_filter(rest, out, true),
         "levels" => cmd_levels(rest, out),
         "split" => cmd_split(rest, out),
@@ -1442,6 +1610,37 @@ mod tests {
         assert_eq!(run_args(&["diff-table", &a, &b, "--key", "1", "--key-b", "3", "--all"]).1.lines().nth(2), Some("same,2,,banana,7"));
         assert_eq!(run_args(&["diff-table", &a, &a, "--key", "id"]).0, 0);
         assert_eq!(run_args(&["diff-table", &a, &b]).0, 2);
+    }
+
+    #[test]
+    fn many_files_folders_and_compressed_inputs() {
+        use std::io::Write as _;
+        let d = tempfile::tempdir().unwrap();
+        let sub = d.path().join("old");
+        std::fs::create_dir(&sub).unwrap();
+        let a = file(&d, "a.log", b"ok\nERROR one\n");
+        let _b = file(&d, "b.log", b"fine\n");
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        gz.write_all(b"ERROR packed\nok\n").unwrap();
+        std::fs::write(sub.join("c.log.gz"), gz.finish().unwrap()).unwrap();
+        let star = d.path().join("*.log").to_string_lossy().into_owned();
+        let (code, out, _) = run_args(&["count", "ERROR", &star]);
+        assert_eq!(code, 0);
+        assert!(out.contains("a.log: 1\n") && out.contains("b.log: 0\n") && out.ends_with("total: 1\n"), "{out}");
+        let dir = d.path().to_string_lossy().into_owned();
+        let (code, out, _) = run_args(&["grep", "ERROR", "-r", &dir, "--names", "*.log;*.gz"]);
+        assert_eq!(code, 0);
+        assert!(out.contains("a.log:2:ERROR one\n") && out.contains("c.log.gz:1:ERROR packed\n"), "{out}");
+        assert_eq!(run_args(&["grep", "nothing", &a]).0, 1);
+        // One output per input.
+        let outdir = d.path().join("out");
+        std::fs::create_dir(&outdir).unwrap();
+        let (code, _, _) = run_args(&["filter", "ERROR", &star, "--out-dir", &outdir.to_string_lossy()]);
+        assert_eq!(code, 0);
+        assert_eq!(std::fs::read_to_string(outdir.join("a.filtered.log")).unwrap(), "ERROR one\n");
+        // A compressed input on its own.
+        assert_eq!(run_args(&["filter", "packed", &sub.join("c.log.gz").to_string_lossy()]).1, "ERROR packed\n");
+        assert_eq!(run_args(&["count", "ERROR", &d.path().join("*.txt").to_string_lossy()]).0, 2);
     }
 
     #[test]
