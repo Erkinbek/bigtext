@@ -58,6 +58,15 @@ All notable changes to BigText. Each release on
 - A followed file is read in chunks instead of mapped, so the writer can truncate it on Windows
   and a shrinking file cannot crash BigText with SIGBUS on Linux and macOS.
 
+### Windows
+
+- **Files open in the running window**: a second `bigtext app.log:120` (Explorer's Open with, a
+  grep result, a script) hands its files, lines, search and follow flag to the BigText already
+  running, which opens them as tabs and comes to the front, so sessions, Copy file:line and
+  the settings stay in one place. The running window listens on a loopback port named, with a
+  random token, in a lock file next to the settings; `--new-window` opts out, and standard
+  input always opens its own window.
+
 ### Files
 
 - **Archives open**: a `.zip`, `.tar`, `.tar.gz` / `.tgz`, `.tar.zst`, `.tar.xz` or `.tar.bz2`

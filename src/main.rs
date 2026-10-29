@@ -4,6 +4,7 @@
 mod app;
 mod bench_ui;
 mod cli;
+mod instance;
 mod self_test;
 mod view;
 
@@ -121,6 +122,15 @@ fn main() -> eframe::Result {
         std::process::exit(2);
     }
 
+    // Files go to the BigText already running, unless asked otherwise.
+    let tools = bench.is_some() || self_test.is_some() || tour.is_some();
+    if !tools && !user.new_window && !user.stdin && !user.files.is_empty() {
+        let start = app::StartOptions { files: user.files.clone(), find: user.find.clone(), follow: user.follow, stdin: None };
+        if instance::lock_path().is_some_and(|lock| instance::try_send(&lock, &start)) {
+            return Ok(());
+        }
+    }
+
     // The screenshot tour opens its big file itself, after the demo files are created.
     let tour_file = tour.as_ref().map(|_| user.files.pop().map(|f| f.0).unwrap_or_else(|| PathBuf::from("testdata/random-lines-10g.txt")));
     let stdin = match user.stdin.then(stdin_to_temp) {
@@ -150,6 +160,11 @@ fn main() -> eframe::Result {
         Box::new(move |cc| {
             let persist = bench.is_none() && self_test.is_none() && tour.is_none();
             let mut app = app::BigTextApp::new(cc, start, process_start, persist);
+            if persist {
+                if let Some(lock) = instance::lock_path() {
+                    app.start_instance_server(lock);
+                }
+            }
             if let Some((file, report)) = bench {
                 let mut b = bench_ui::BenchUi::new(file, report);
                 b.screenshot = screenshot.clone();

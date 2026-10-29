@@ -219,6 +219,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("patch-me.txt"), &base)?;
+    std::fs::write(dir.join("inst.txt"), "handed over\nby a second launch\n")?;
     std::fs::write(dir.join("dups.txt"), "apple\npear\napple\nfig\napple\npear\n")?;
     let block: String = (0..10_000).map(|i| format!("k{:04}\n", (i * 7919) % 10_000)).collect();
     std::fs::write(dir.join("sort-big.txt"), block.repeat(1150))?;
@@ -1605,6 +1606,37 @@ impl SelfTest {
                     app.test_close(id);
                     check(disk == want, format!("{} bytes on disk", disk.len()))
                 }
+            }
+        }));
+        s("a second launch opens its file here, at its line", Box::new({
+            let mut child: Option<std::process::Child> = None;
+            move |app, c| {
+                let dir = c.dir.join("instance");
+                if c.first() {
+                    app.start_instance_server(dir.join("instance.lock"));
+                    let arg = format!("{}:2", c.file("inst.txt").display());
+                    match std::process::Command::new(std::env::current_exe().unwrap_or_default()).arg(arg).env("BIGTEXT_INSTANCE_DIR", &dir).env("BIGTEXT_NO_STATE", "1").spawn() {
+                        Ok(ch) => child = Some(ch),
+                        Err(e) => return Step::Fail(format!("could not start a second BigText: {e}")),
+                    }
+                    return Step::Wait;
+                }
+                let exited = child.as_mut().and_then(|ch| ch.try_wait().ok().flatten());
+                let opened = app.docs.iter().position(|d| d.title == "inst.txt" && d.is_ready());
+                if exited.is_none() || opened.is_none() {
+                    if c.waited() > Duration::from_secs(15) {
+                        if let Some(ch) = child.as_mut() {
+                            let _ = ch.kill();
+                        }
+                        return Step::Fail(format!("second launch exited {exited:?}, tab opened {}", opened.is_some()));
+                    }
+                    return Step::Wait;
+                }
+                let i = opened.unwrap_or(0);
+                app.active = i;
+                let d = doc(app);
+                let line = d.buf.line_of(d.view.caret).0;
+                check(exited.is_some_and(|s| s.success()) && line == 1, format!("exit {exited:?}, caret line {line}"))
             }
         }));
         s("compare files (streaming diff)", Box::new(|app, c| {

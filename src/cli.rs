@@ -16,6 +16,8 @@ Usage: bigtext [OPTIONS] [FILE[:LINE] ...]
   --find TEXT      search for TEXT (from the start, or from --line)
   --regex RE       search for a regular expression
   -f, --follow     follow the files as they grow and are rotated, like tail -F
+  --new-window     open a window of its own (files otherwise open in the
+                   BigText already running)
   -h, --help       show this help
 
 Script commands, without a window (bigtext-cli runs the same; on Windows use it in
@@ -31,6 +33,8 @@ pub struct UserArgs {
     pub follow: bool,
     pub stdin: bool,
     pub help: bool,
+    /// Start a window of its own rather than opening the files in the one already running.
+    pub new_window: bool,
 }
 
 /// `path:LINE` or `path:LINE:COLUMN` when `path` exists and the whole argument does not.
@@ -58,6 +62,7 @@ pub fn take(args: &mut UserArgs, arg: &str, next: &mut dyn FnMut() -> Option<Str
         "-h" | "--help" | "/?" => args.help = true,
         "-" => args.stdin = true,
         "-f" | "--follow" => args.follow = true,
+        "--new-window" => args.new_window = true,
         "-n" | "--line" | "--goto" => {
             let v = next().ok_or_else(|| format!("{arg} needs a line number"))?;
             let n = v.trim().parse::<u64>().map_err(|_| format!("{arg}: “{v}” is not a line number"))?;

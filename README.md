@@ -97,6 +97,10 @@ Single self-contained binary, no runtime dependencies.
 - **Editing**: piece table over the mmap + add buffer; insert/delete, cut/copy/paste (copies
   above 100 MB ask first and run on a worker), undo/redo, multi-line selection, duplicate line
   (zero-copy), delete line, auto-indent, large-file-safe Select All.
+- **One window**: opening a file while BigText runs (`bigtext app.log:120`, Explorer's Open with, a
+  grep result) opens it as a tab of the running window, at its line, and brings that window to
+  the front; `--new-window` starts another one. (On macOS only terminal launches are handed
+  over.)
 - **Recovery journal**: a couple of seconds after a pause in editing, the edits of a modified
   document (its piece list and the bytes typed — a few KB for a thousand edits to a 50 GB file)
   are written next to the settings; after a crash or a power cut the next start offers
@@ -323,6 +327,8 @@ bigtext [OPTIONS] [FILE[:LINE] ...]
   --find TEXT      search for TEXT (from the start, or from --line)
   --regex RE       search for a regular expression
   -f, --follow     follow the files as they grow and are rotated, like tail -F
+  --new-window     open a window of its own (files otherwise open in the
+                   BigText already running)
   -h, --help       show this help
 ```
 

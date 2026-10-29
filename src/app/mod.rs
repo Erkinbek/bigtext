@@ -110,6 +110,8 @@ pub enum Msg {
     /// A document's recovery journal was written (or failed to be).
     Journaled { doc: u64, version: u64, add_len: u64, ok: bool },
     LinesRemoved(Box<lines_edit::LinesRemoved>),
+    /// Files another launch handed over.
+    OpenRequest(Box<StartOptions>),
     LinesTooMany { doc: u64, version: u64, sel: Arc<lines_edit::LineSel>, keep: bool },
     /// An archive's files, for the picker: (tab, archive, files).
     ArchiveListed(Box<(u64, PathBuf, Vec<bigtext::decompress::Member>)>),
@@ -295,6 +297,8 @@ pub struct BigTextApp {
     pub recovery: recovery::RecoveryState,
     pub text_result: Option<text_tools::TextResult>,
     pub column_editor: Option<column_editor::ColumnEditor>,
+    /// Listening for other launches (dropped on exit, removing the lock).
+    instance: Option<crate::instance::Server>,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -506,6 +510,7 @@ impl BigTextApp {
             recovery: recovery::RecoveryState::new(),
             text_result: None,
             column_editor: None,
+            instance: None,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -862,6 +867,15 @@ impl BigTextApp {
                 Msg::LowSpace(l) => self.on_low_space(*l),
                 Msg::Journaled { doc, version, add_len, ok } => self.on_journaled(doc, version, add_len, ok),
                 Msg::LinesRemoved(l) => self.on_lines_removed(*l),
+                Msg::OpenRequest(s) => {
+                    self.apply_start(*s);
+                    // To the front, as far as the system lets it.
+                    if let Some(ctx) = self.ctx_clone() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                        ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
+                    }
+                }
                 Msg::LinesTooMany { doc, version, sel, keep } => self.on_lines_too_many(doc, version, sel, keep),
                 Msg::ArchiveListed(a) => {
                     let (doc, archive, members) = *a;
@@ -1647,6 +1661,11 @@ impl BigTextApp {
     pub(crate) fn test_close(&mut self, id: u64) {
         self.close_tab(id, true);
     }
+    /// Takes the files of later launches (see `instance`).
+    pub(crate) fn start_instance_server(&mut self, lock: PathBuf) {
+        self.instance = crate::instance::serve_app(lock, self.tx.clone(), self.waker.clone());
+    }
+
     pub(crate) fn test_properties_sha(&mut self) {
         self.start_sha();
     }
