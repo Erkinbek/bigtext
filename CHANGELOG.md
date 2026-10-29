@@ -28,6 +28,10 @@ All notable changes to BigText. Each release on
 
 ### Tabs
 
+- **Keyboard-only moving around**: **Ctrl+1 … Ctrl+8** go to that tab and **Ctrl+9** to the last,
+  **Ctrl+PageDown / Ctrl+PageUp** step through the tabs in bar order, and **F4 / Shift+F4** go to
+  the next / previous entry of the list under the text — Find All (with "Match 3 of 41"), the
+  filter's matches or Find in files — around the ends. All can be rebound.
 - **Ctrl+Tab** shows the tabs in most-recently-used order: hold Ctrl, press Tab (Shift+Tab back)
   to step, release Ctrl to switch, so a quick Ctrl+Tab goes back to the previous tab.
 - **Pinned tabs** (right-click a tab → Pin tab, or File → Pin / unpin tab) stay first, have no

@@ -757,4 +757,18 @@ pub static TEXTS: &[[&str; 3]] = &[
         "Показаны только первые {max} разных значений; у {n} совпадений другие.",
         "Faqat dastlabki {max} ta turli qiymat ko'rsatildi; {n} ta moslikda boshqalari bor.",
     ],
+    // Keyboard navigation.
+    ["Next entry of the list", "Следующий элемент списка", "Ro'yxatning keyingi elementi"],
+    ["Previous entry of the list", "Предыдущий элемент списка", "Ro'yxatning oldingi elementi"],
+    ["Next tab in the bar", "Следующая вкладка на панели", "Paneldagi keyingi varaq"],
+    ["Previous tab in the bar", "Предыдущая вкладка на панели", "Paneldagi oldingi varaq"],
+    ["Tab 1", "Вкладка 1", "1-varaq"],
+    ["Tab 2", "Вкладка 2", "2-varaq"],
+    ["Tab 3", "Вкладка 3", "3-varaq"],
+    ["Tab 4", "Вкладка 4", "4-varaq"],
+    ["Tab 5", "Вкладка 5", "5-varaq"],
+    ["Tab 6", "Вкладка 6", "6-varaq"],
+    ["Tab 7", "Вкладка 7", "7-varaq"],
+    ["Tab 8", "Вкладка 8", "8-varaq"],
+    ["Last tab", "Последняя вкладка", "Oxirgi varaq"],
 ];

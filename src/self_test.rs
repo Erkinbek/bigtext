@@ -1445,6 +1445,50 @@ impl SelfTest {
                 }
             }
         }));
+        s("F4 / Shift+F4 step through Find All; Ctrl+1, Ctrl+9, Ctrl+PageUp pick tabs", Box::new(|app, c| {
+            if c.first() {
+                c.copied = vec![app.active.to_string()];
+                doc(app).set_caret(0, false);
+                c.key(Key::F4, NONE);
+                return Step::Wait;
+            }
+            let home: usize = c.copied[0].parse().unwrap_or(0);
+            let last = app.docs.len() - 1;
+            let matches = app.docs[home].results.as_ref().map(|r| r.data.lock().unwrap().matches.clone()).unwrap_or_default();
+            let sel = app.docs[home].selection();
+            let ok = match c.mark {
+                0 => matches.len() > 1 && sel == matches[0],
+                1 => sel == matches[1],
+                2 => sel == matches[0],
+                3 => app.active == 0,
+                4 => app.active == last,
+                _ => app.active == last - 1,
+            };
+            if !ok {
+                return Step::Fail(format!("stage {}: selection {sel:?}, matches {matches:?}, active {} of {}", c.mark, app.active, last + 1));
+            }
+            let next = match c.mark {
+                0 => Some((Key::F4, NONE)),
+                1 => Some((Key::F4, SHIFT)),
+                2 => Some((Key::Num1, CTRL)),
+                3 => Some((Key::Num9, CTRL)),
+                4 => Some((Key::PageUp, CTRL)),
+                _ => None,
+            };
+            c.mark += 1;
+            match next {
+                Some((k, m)) => {
+                    c.key(k, m);
+                    Step::Wait
+                }
+                None => {
+                    app.active = home;
+                    c.mark = 0;
+                    c.copied.clear();
+                    Step::Next
+                }
+            }
+        }));
         s("journal: log highlighting and level bar", Box::new(|app, _c| {
             let d = doc(app);
             check(d.effective_lang() == crate::view::highlight::Lang::Log && app.level_bar_visible(), format!("lang {:?}", doc(app).effective_lang()))

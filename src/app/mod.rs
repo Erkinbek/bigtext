@@ -16,6 +16,7 @@ pub mod goto;
 pub mod i18n;
 mod i18n_texts;
 pub mod json_panel;
+pub mod keynav;
 pub mod levels;
 pub mod marks;
 pub mod match_bracket;

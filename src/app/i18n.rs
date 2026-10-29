@@ -123,6 +123,7 @@ mod tests {
         "app" / "gaps_panel.rs",
         "app" / "fonts.rs",
         "app" / "json_panel.rs",
+        "app" / "keynav.rs",
         "app" / "levels.rs",
         "app" / "marks.rs",
         "app" / "match_bracket.rs",
@@ -163,6 +164,15 @@ mod tests {
 
     /// Texts translated through a variable rather than a literal at the call.
     const DYNAMIC: &[&str] = &[
+        "Tab 1",
+        "Tab 2",
+        "Tab 3",
+        "Tab 4",
+        "Tab 5",
+        "Tab 6",
+        "Tab 7",
+        "Tab 8",
+        "Last tab",
         "Comma",
         "Semicolon",
         "Tab",

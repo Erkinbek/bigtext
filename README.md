@@ -272,6 +272,9 @@ times). Exit codes: 0 done, 1 nothing matched, 2 error.
 | Ctrl+O / Ctrl+N | Open / new |
 | Ctrl+S / Ctrl+Shift+S | Save / save as |
 | Ctrl+W | Close tab |
+| Ctrl+1 … Ctrl+8, Ctrl+9 | Tab 1 … 8, the last tab |
+| Ctrl+PageDown / Ctrl+PageUp | Next / previous tab in the bar |
+| F4 / Shift+F4 | Next / previous entry of the list under the text (Find All, filter, Find in files) |
 | Ctrl+Tab / Ctrl+Shift+Tab | Tabs in most-recently-used order (hold Ctrl, release to switch) |
 | Ctrl+F / Ctrl+H | Find / replace (Enter = next, Shift+Enter = previous, Esc = close) |
 | F3 / Shift+F3 | Find next / previous |

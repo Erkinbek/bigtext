@@ -54,12 +54,14 @@ pub struct FilesUi {
     pub names: String,
     pub recursive: bool,
     pub results: Option<FilesResults>,
+    /// The hit opened last (F4 goes on from it).
+    pub current: Option<usize>,
     focus: bool,
 }
 
 impl Default for FilesUi {
     fn default() -> Self {
-        FilesUi { open: false, dir: String::new(), names: "*.log *.txt".into(), recursive: true, results: None, focus: false }
+        FilesUi { open: false, dir: String::new(), names: "*.log *.txt".into(), recursive: true, results: None, current: None, focus: false }
     }
 }
 
@@ -232,6 +234,7 @@ impl BigTextApp {
 
     /// Opens the file of match `i` there.
     pub(crate) fn open_files_hit(&mut self, i: usize) {
+        self.files.current = Some(i);
         let Some(r) = &self.files.results else { return };
         let (path, start, end) = {
             let g = r.data.lock().unwrap();

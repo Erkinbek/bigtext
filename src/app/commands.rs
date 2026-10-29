@@ -24,6 +24,10 @@ pub enum Cmd {
     PinTab,
     NextTab,
     PrevTab,
+    NextTabBar,
+    PrevTabBar,
+    /// Ctrl+1 … Ctrl+9.
+    GotoTab(u8),
     Exit,
     ExportLines,
     SaveSelection,
@@ -52,6 +56,8 @@ pub enum Cmd {
     FindInFiles,
     NextLevel,
     PrevLevel,
+    NextResult,
+    PrevResult,
     NavBack,
     NavForward,
     FollowId,
@@ -101,7 +107,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 73] = [
+    pub const ALL: [Cmd; 77] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -111,6 +117,8 @@ impl Cmd {
         Cmd::PinTab,
         Cmd::NextTab,
         Cmd::PrevTab,
+        Cmd::NextTabBar,
+        Cmd::PrevTabBar,
         Cmd::Exit,
         Cmd::ExportLines,
         Cmd::SaveSelection,
@@ -139,6 +147,8 @@ impl Cmd {
         Cmd::FindInFiles,
         Cmd::NextLevel,
         Cmd::PrevLevel,
+        Cmd::NextResult,
+        Cmd::PrevResult,
         Cmd::NavBack,
         Cmd::NavForward,
         Cmd::FollowId,
@@ -179,13 +189,14 @@ impl Cmd {
 
     /// Every command, the text operations included.
     pub fn all() -> impl Iterator<Item = Cmd> {
-        Cmd::ALL.into_iter().chain(Op::ALL.into_iter().map(Cmd::Text))
+        Cmd::ALL.into_iter().chain(Op::ALL.into_iter().map(Cmd::Text)).chain((1..=9).map(Cmd::GotoTab))
     }
 
     /// Stable name for the saved key bindings.
     pub fn id(self) -> String {
         let s = match self {
             Cmd::Text(op) => return format!("text.{op:?}").to_lowercase(),
+            Cmd::GotoTab(n) => return format!("goto_tab.{n}"),
             other => format!("{other:?}"),
         };
         // CamelCase → snake_case.
@@ -215,6 +226,9 @@ impl Cmd {
             Cmd::PinTab => "Pin / unpin tab",
             Cmd::NextTab => "Next tab",
             Cmd::PrevTab => "Previous tab",
+            Cmd::NextTabBar => "Next tab in the bar",
+            Cmd::PrevTabBar => "Previous tab in the bar",
+            Cmd::GotoTab(n) => ["Tab 1", "Tab 2", "Tab 3", "Tab 4", "Tab 5", "Tab 6", "Tab 7", "Tab 8", "Last tab"][(n.clamp(1, 9) - 1) as usize],
             Cmd::Exit => "Exit",
             Cmd::ExportLines => "Export lines…",
             Cmd::SaveSelection => "Save selection as…",
@@ -243,6 +257,8 @@ impl Cmd {
             Cmd::FindInFiles => "Find in files…",
             Cmd::NextLevel => "Next error line",
             Cmd::PrevLevel => "Previous error line",
+            Cmd::NextResult => "Next entry of the list",
+            Cmd::PrevResult => "Previous entry of the list",
             Cmd::NavBack => "Back",
             Cmd::NavForward => "Forward",
             Cmd::FollowId => "Follow id at caret",
@@ -300,7 +316,7 @@ impl Cmd {
             | Cmd::ClearBookmarks
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
-            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::MatchBracket => "Search",
+            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::MatchBracket => "Search",
             Cmd::Palette | Cmd::Shortcuts | Cmd::ExportSettings | Cmd::ImportSettings | Cmd::Portable | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
@@ -334,6 +350,11 @@ impl Cmd {
             Cmd::NextLevel => key(Modifiers::NONE, Key::F8),
             Cmd::PrevLevel => key(Modifiers::SHIFT, Key::F8),
             Cmd::FollowId => key(CTRL_SHIFT, Key::I),
+            Cmd::NextResult => key(Modifiers::NONE, Key::F4),
+            Cmd::PrevResult => key(Modifiers::SHIFT, Key::F4),
+            Cmd::NextTabBar => key(CTRL, Key::PageDown),
+            Cmd::PrevTabBar => key(CTRL, Key::PageUp),
+            Cmd::GotoTab(n) => key(CTRL, [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9][(n.clamp(1, 9) - 1) as usize]),
             Cmd::NavBack => key(Modifiers::ALT, Key::ArrowLeft),
             Cmd::NavForward => key(Modifiers::ALT, Key::ArrowRight),
             Cmd::GotoLine => key(CTRL, Key::G),
@@ -542,6 +563,11 @@ impl BigTextApp {
             Cmd::FindInFiles => self.open_find_in_files(),
             Cmd::NextLevel => self.next_level(true),
             Cmd::PrevLevel => self.next_level(false),
+            Cmd::NextResult => self.step_result(true),
+            Cmd::PrevResult => self.step_result(false),
+            Cmd::NextTabBar => self.step_tab_bar(true),
+            Cmd::PrevTabBar => self.step_tab_bar(false),
+            Cmd::GotoTab(n) => self.goto_tab(n),
             Cmd::NavBack => self.nav_back(),
             Cmd::NavForward => self.nav_forward(),
             Cmd::FollowId => self.follow_id_at_caret(),
@@ -773,7 +799,7 @@ impl BigTextApp {
                 run = run.or(self.item(ui, Cmd::ReadOnly));
             });
             ui.menu_button(tr("Search"), |ui| {
-                for c in [Cmd::Find, Cmd::Replace, Cmd::FindNext, Cmd::FindPrev, Cmd::FindAll, Cmd::Filter, Cmd::FilterWithin, Cmd::FindInFiles, Cmd::NextLevel, Cmd::PrevLevel, Cmd::FollowId, Cmd::IdPatterns] {
+                for c in [Cmd::Find, Cmd::Replace, Cmd::FindNext, Cmd::FindPrev, Cmd::FindAll, Cmd::Filter, Cmd::FilterWithin, Cmd::NextResult, Cmd::PrevResult, Cmd::FindInFiles, Cmd::NextLevel, Cmd::PrevLevel, Cmd::FollowId, Cmd::IdPatterns] {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
