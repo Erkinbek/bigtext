@@ -1272,6 +1272,35 @@ impl SelfTest {
             drop(g);
             check(ok && span.contains("10:00:01") && span.contains("10:00:05"), got)
         }));
+        s("narrow a filter: + “failed”, remove it, then without “done”", Box::new(|app, c| {
+            let line = |n: usize| REQUESTS_LOG.split_inclusive('\n').take(n).map(str::len).sum::<usize>() as u64;
+            let wants = [vec![line(3), line(4), line(5)], vec![line(1), line(3), line(4), line(5), line(6)], vec![line(1), line(3), line(4), line(5)]];
+            if c.first() {
+                app.narrow_filter("failed", false);
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).filter.as_ref() else { return Step::Fail("no filter".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let (lines, terms) = (g.lines.clone(), r.terms.len());
+            drop(g);
+            let k = c.mark as usize;
+            if lines != wants[k] || terms != [1, 0, 1][k] {
+                return Step::Fail(format!("stage {k}: lines {lines:?} terms {terms}"));
+            }
+            c.mark += 1;
+            match k {
+                0 => app.remove_filter_term(0),
+                1 => app.narrow_filter("done", true),
+                _ => {
+                    c.mark = 0;
+                    return Step::Next;
+                }
+            }
+            Step::Wait
+        }));
         s("journal: log highlighting and level bar", Box::new(|app, _c| {
             let d = doc(app);
             check(d.effective_lang() == crate::view::highlight::Lang::Log && app.level_bar_visible(), format!("lang {:?}", doc(app).effective_lang()))

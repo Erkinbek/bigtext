@@ -23,6 +23,8 @@ pub struct SavedFilter {
     pub query: Query,
     pub invert: bool,
     pub levels: Option<Levels>,
+    /// Conditions added with the Narrow row: (query, lines must lack it).
+    pub terms: Vec<(Query, bool)>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -75,6 +77,9 @@ pub fn serialize(s: &Session) -> String {
         if let Some(f) = filter.as_ref().filter(|f| !f.query.pattern.contains(['\n', '\r'])) {
             let levels = f.levels.map(|l| l.bits().to_string()).unwrap_or_default();
             out.push_str(&format!("filter={i}|{levels}|{}|{}|{}\n", u8::from(f.invert), extras::query_flags(&f.query), f.query.pattern));
+            for (q, negated) in f.terms.iter().filter(|t| !t.0.pattern.contains(['\n', '\r'])) {
+                out.push_str(&format!("filterterm={i}|{}|{}|{}\n", u8::from(*negated), extras::query_flags(q), q.pattern));
+            }
         }
     }
     for m in &s.marks {
@@ -98,9 +103,16 @@ pub fn parse(text: &str) -> Session {
             "filter" => {
                 let mut it = v.splitn(5, '|');
                 let (Some(i), Some(levels), Some(invert), Some(flags), Some(pattern)) = (it.next(), it.next(), it.next(), it.next(), it.next()) else { continue };
-                let f = SavedFilter { query: extras::query_from(pattern.to_string(), flags), invert: invert == "1", levels: levels.parse().ok().map(Levels::from_bits) };
+                let f = SavedFilter { query: extras::query_from(pattern.to_string(), flags), invert: invert == "1", levels: levels.parse().ok().map(Levels::from_bits), terms: Vec::new() };
                 if let Some(t) = i.parse::<usize>().ok().and_then(|i| s.tabs.get_mut(i)) {
                     t.2 = Some(f);
+                }
+            }
+            "filterterm" => {
+                let mut it = v.splitn(4, '|');
+                let (Some(i), Some(negated), Some(flags), Some(pattern)) = (it.next(), it.next(), it.next(), it.next()) else { continue };
+                if let Some(f) = i.parse::<usize>().ok().and_then(|i| s.tabs.get_mut(i)).and_then(|t| t.2.as_mut()) {
+                    f.terms.push((extras::query_from(pattern.to_string(), flags), negated == "1"));
                 }
             }
             "mark" => s.marks.extend(extras::parse_mark(v)),
@@ -124,7 +136,7 @@ impl BigTextApp {
                 s.active = s.tabs.len();
             }
             let tab = TabState { path: PathBuf::from(file::display_path(path)), caret: d.view.caret, top: d.view.top, wrap: d.view.wrap, bookmarks: d.bookmarks.clone() };
-            let filter = d.filter.as_ref().map(|f| SavedFilter { query: f.query.clone(), invert: f.spec.invert, levels: f.levels });
+            let filter = d.filter.as_ref().map(|f| SavedFilter { query: f.query.clone(), invert: f.spec.invert, levels: f.levels, terms: f.terms.iter().map(|t| (t.query.clone(), t.negated)).collect() });
             s.tabs.push((tab, d.pinned, filter));
         }
         s
@@ -194,13 +206,20 @@ impl BigTextApp {
         let Some(f) = self.docs[i].pending_filter.take() else { return };
         let active = self.active;
         self.active = i;
-        match f.levels {
-            Some(lv) => self.filter_levels(lv),
-            None => {
-                if let Ok(m) = bigtext::search::Matcher::new(&f.query, self.docs[i].buf.codec) {
-                    let spec = self.with_context(bigtext::filter::FilterSpec { invert: f.invert, ..Default::default() });
-                    self.run_filter(f.query, std::sync::Arc::new(m), spec, None);
-                }
+        let codec = self.docs[i].buf.codec;
+        let terms: Vec<_> = f
+            .terms
+            .iter()
+            .filter_map(|(q, negated)| bigtext::search::Matcher::new(q, codec).ok().map(|m| super::filter_panel::FilterTerm { query: q.clone(), negated: *negated, matcher: std::sync::Arc::new(m) }))
+            .collect();
+        let query = match f.levels {
+            Some(lv) => bigtext::loglevel::query(lv),
+            None => Some(f.query),
+        };
+        if let Some(query) = query {
+            if let Ok(m) = bigtext::search::Matcher::new(&query, codec) {
+                let spec = self.with_context(bigtext::filter::FilterSpec { invert: f.invert && f.levels.is_none(), ..Default::default() });
+                self.run_filter_req(super::filter_panel::FilterRequest { query, m: std::sync::Arc::new(m), spec, levels: f.levels, follow: None, terms }, None);
             }
         }
         self.active = active;
@@ -279,8 +298,8 @@ mod tests {
     fn round_trip() {
         let s = Session {
             tabs: vec![
-                (TabState { path: PathBuf::from(r"C:\logs\a|b.log"), caret: 10, top: 5, wrap: true, bookmarks: vec![1, 2] }, true, Some(SavedFilter { query: Query { pattern: "ERROR|WARN".into(), regex: true, case_sensitive: true, whole_word: false, dot_all: false }, invert: true, levels: None })),
-                (TabState { path: PathBuf::from("/var/log/x.log"), caret: 0, top: 0, wrap: false, bookmarks: vec![] }, false, Some(SavedFilter { query: Query::default(), invert: false, levels: Some(Levels::only(Level::Error).toggled(Level::Warn)) })),
+                (TabState { path: PathBuf::from(r"C:\logs\a|b.log"), caret: 10, top: 5, wrap: true, bookmarks: vec![1, 2] }, true, Some(SavedFilter { query: Query { pattern: "ERROR|WARN".into(), regex: true, case_sensitive: true, whole_word: false, dot_all: false }, invert: true, levels: None, terms: vec![(Query { pattern: "db|x".into(), regex: false, case_sensitive: true, whole_word: true, dot_all: false }, true), (Query { pattern: "user=1".into(), ..Query::default() }, false)] })),
+                (TabState { path: PathBuf::from("/var/log/x.log"), caret: 0, top: 0, wrap: false, bookmarks: vec![] }, false, Some(SavedFilter { query: Query::default(), invert: false, levels: Some(Levels::only(Level::Error).toggled(Level::Warn)), terms: Vec::new() })),
             ],
             active: 1,
             marks: vec![Mark { query: Query { pattern: "id=\\d+".into(), regex: true, ..Default::default() }, color: 2, enabled: true }],

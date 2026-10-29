@@ -56,7 +56,9 @@ Single self-contained binary, no runtime dependencies.
   — or, with **!**, the lines without one — in a virtualized list under the text, like `grep`
   over the whole file. **±N** in its header adds N dimmed lines before and after each match
   (`grep -C`), and **Whole entry** keeps a log entry together: the stack trace under an ERROR
-  line, or the entry's first line above a match inside a trace. Click a line to jump to it.
+  line, or the entry's first line above a match inside a trace. The **Narrow** row adds
+  conditions on top (`timeout`, then without `healthcheck`), shown as chips that can be removed;
+  narrowing a finished filter reads only its lines. Click a line to jump to it.
   **Save lines…** streams every kept line to a
   new file (no limit); **Copy lines** puts them on the clipboard (up to 100 MB). Find All
   results offer the same two buttons.
@@ -248,7 +250,8 @@ bigtext-cli values FIELD FILE [-o OUT]                         a JSON Lines / lo
 bigtext-cli gaps FILE [--min 30s]                              time gaps, with line numbers
 ```
 
-`filter` and `levels` take `-A N` / `-B N` / `-C N` (lines after / before / around each match),
+`filter` and `count` take more patterns: `-e PAT` (each must match, or one of them with `--any`)
+and `--not PAT`. `filter` and `levels` take `-A N` / `-B N` / `-C N` (lines after / before / around each match),
 `--entries` (whole log entries) and `-n` (line numbers, `12:` a match and `13-` context), with
 `--` between groups like grep. Exit codes: 0 done, 1 nothing matched, 2 error.
 

@@ -53,6 +53,19 @@ impl FilterData {
     }
 }
 
+/// A condition added on top of a filter (the Narrow row): lines with (or, `negated`, without) a
+/// match of `query`.
+#[derive(Clone)]
+pub struct FilterTerm {
+    pub query: Query,
+    pub negated: bool,
+    pub matcher: Arc<Matcher>,
+}
+
+fn term_refs(terms: &[FilterTerm]) -> Vec<filter::Term<'_>> {
+    terms.iter().map(|t| filter::Term { m: &t.matcher, negated: t.negated }).collect()
+}
+
 pub struct FilterResults {
     pub query: Query,
     /// Set when the lines were picked by log level (the level bar), not by the search query.
@@ -61,6 +74,8 @@ pub struct FilterResults {
     pub follow: Option<String>,
     pub spec: FilterSpec,
     pub matcher: Arc<Matcher>,
+    /// Conditions added with the Narrow row, all of which a kept line meets.
+    pub terms: Vec<FilterTerm>,
     pub version: u64,
     pub data: Arc<Mutex<FilterData>>,
     pub cancel: CancelToken,
@@ -71,6 +86,16 @@ impl FilterResults {
     pub fn is_running(&self) -> bool {
         !self.data.lock().unwrap().done
     }
+}
+
+/// What to filter by.
+pub(crate) struct FilterRequest {
+    pub query: Query,
+    pub m: Arc<Matcher>,
+    pub spec: FilterSpec,
+    pub levels: Option<Levels>,
+    pub follow: Option<String>,
+    pub terms: Vec<FilterTerm>,
 }
 
 impl BigTextApp {
@@ -103,33 +128,107 @@ impl BigTextApp {
         FilterSpec { before: n, after: n, entries: self.settings.filter_entries, ..spec }
     }
 
-    /// Runs the active document's filter again (after an edit or a change of its options).
+    /// Runs the active document's filter again (after an edit or a change of its options), with
+    /// its added conditions.
     pub(crate) fn rerun_filter(&mut self) {
-        let Some(r) = self.docs.get(self.active).and_then(|d| d.filter.as_ref()) else { return };
-        let (query, invert, levels) = (r.query.clone(), r.spec.invert, r.levels);
-        if let Some(id) = r.follow.clone() {
-            self.follow_id(&id);
-        } else if let Some(lv) = levels {
-            self.filter_levels(lv);
-        } else {
-            self.search.query = query;
-            self.search.invert = invert;
-            self.start_filter();
+        self.refilter(None);
+    }
+
+    /// Runs the active document's filter again with `terms` (or its own) as added conditions.
+    fn refilter(&mut self, terms: Option<Vec<FilterTerm>>) {
+        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(r) = d.filter.as_ref() else { return };
+        let codec = d.buf.codec;
+        let spec = match r.follow {
+            Some(_) => FilterSpec { entries: true, ..Default::default() },
+            None => self.with_context(FilterSpec { invert: r.spec.invert, column: r.spec.column, ..Default::default() }),
+        };
+        let m = match Matcher::new(&r.query, codec) {
+            Ok(m) => Arc::new(m),
+            Err(e) => {
+                self.error = Some(e);
+                return;
+            }
+        };
+        let terms = terms.unwrap_or_else(|| r.terms.clone());
+        let terms = terms.into_iter().filter_map(|t| Matcher::new(&t.query, codec).ok().map(|m| FilterTerm { matcher: Arc::new(m), ..t })).collect();
+        let req = FilterRequest { query: r.query.clone(), m, spec, levels: r.levels, follow: r.follow.clone(), terms };
+        self.run_filter_req(req, None);
+    }
+
+    /// Adds a condition to the active document's filter: lines with `pattern` (with the search
+    /// bar's options), or without it. When the filter is complete, only its lines are read.
+    pub(crate) fn narrow_filter(&mut self, pattern: &str, negated: bool) {
+        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(r) = d.filter.as_ref() else { return };
+        if pattern.is_empty() {
+            return;
         }
+        let query = Query { pattern: pattern.to_string(), dot_all: false, ..self.search.query.clone() };
+        let matcher = match Matcher::new(&query, d.buf.codec) {
+            Ok(m) => Arc::new(m),
+            Err(e) => {
+                self.notify(e, None);
+                return;
+            }
+        };
+        let mut terms = r.terms.clone();
+        terms.push(FilterTerm { query, negated, matcher });
+        // The lines of a complete, current filter (its matches, not their context).
+        let within = {
+            let g = r.data.lock().unwrap();
+            (g.done && !g.capped && g.end == Some(SearchEnd::Completed) && r.version == d.version)
+                .then(|| g.lines.iter().enumerate().filter(|&(i, _)| !g.is_context(i)).map(|(_, &s)| s).collect::<Vec<u64>>())
+        };
+        let req = FilterRequest { query: r.query.clone(), m: r.matcher.clone(), spec: r.spec, levels: r.levels, follow: r.follow.clone(), terms };
+        self.run_filter_req(req, within);
+    }
+
+    /// Drops the added conditions from the `from`-th on and runs the filter again.
+    pub(crate) fn unnarrow_filter(&mut self, from: usize) {
+        let Some(r) = self.docs.get(self.active).and_then(|d| d.filter.as_ref()) else { return };
+        let terms = r.terms[..from.min(r.terms.len())].to_vec();
+        self.refilter(Some(terms));
+    }
+
+    /// Drops the `i`-th added condition and runs the filter again.
+    pub(crate) fn remove_filter_term(&mut self, i: usize) {
+        let Some(r) = self.docs.get(self.active).and_then(|d| d.filter.as_ref()) else { return };
+        let mut terms = r.terms.clone();
+        if i < terms.len() {
+            terms.remove(i);
+        }
+        self.refilter(Some(terms));
+    }
+
+    /// Search → Narrow the filter: adds the search box's pattern (with the ! switch) to the active
+    /// filter, or starts a filter when there is none.
+    pub(crate) fn filter_within(&mut self) {
+        let has = self.docs.get(self.active).is_some_and(|d| d.filter.is_some());
+        if !has || self.search.query.pattern.is_empty() {
+            self.open_search(false);
+            self.start_filter();
+            return;
+        }
+        let (p, invert) = (self.search.query.pattern.clone(), self.search.invert);
+        self.search.remember();
+        self.narrow_filter(&p, invert);
     }
 
     /// Filters the active document with `m` in the background, replacing its previous filter.
     pub(crate) fn run_filter(&mut self, query: Query, m: Arc<Matcher>, spec: FilterSpec, levels: Option<Levels>) {
-        self.run_filter_for(query, m, spec, levels, None);
+        self.run_filter_req(FilterRequest { query, m, spec, levels, follow: None, terms: Vec::new() }, None);
     }
 
-    /// [`Self::run_filter`]; with `follow`, the lines are an id's, and the job also notes their
-    /// first and last time and how many are errors.
-    pub(crate) fn run_filter_for(&mut self, query: Query, m: Arc<Matcher>, spec: FilterSpec, levels: Option<Levels>, follow: Option<String>) {
+    /// Filters the active document in the background, replacing its previous filter. With
+    /// `follow`, the lines are an id's, and the job also notes their first and last time and how
+    /// many are errors. With `within`, only those lines (an earlier result) are read.
+    pub(crate) fn run_filter_req(&mut self, req: FilterRequest, within: Option<Vec<u64>>) {
         let Some(d) = self.docs.get_mut(self.active) else { return };
         if let Some(r) = d.filter.take() {
             r.cancel.cancel();
         }
+        let FilterRequest { query, m, spec, levels, follow, terms } = req;
         let data = Arc::new(Mutex::new(FilterData::default()));
         let cancel = CancelToken::new();
         let progress = Progress::new(d.buf.len());
@@ -140,6 +239,7 @@ impl BigTextApp {
             follow,
             spec,
             matcher: m.clone(),
+            terms: terms.clone(),
             version: d.version,
             data: data.clone(),
             cancel: cancel.clone(),
@@ -158,7 +258,8 @@ impl BigTextApp {
             let mut summary = FollowSummary::default();
             let mut capped = false;
             let mut throttle = Throttle::new(Duration::from_millis(50));
-            let end = filter::filter_lines(&snap, &m, spec, &cancel, Some(&progress), |ls, le, kind| {
+            let refs = term_refs(&terms);
+            let on_line = |ls: u64, le: u64, kind: LineKind| {
                 if count >= FILTER_CAP {
                     capped = true;
                     return false;
@@ -190,7 +291,11 @@ impl BigTextApp {
                     waker();
                 }
                 true
-            });
+            };
+            let end = match &within {
+                Some(starts) => filter::filter_given(&snap, starts, spec, &refs, &cancel, Some(&progress), on_line),
+                None => filter::filter_lines_with(&snap, &m, spec, &refs, &cancel, Some(&progress), on_line),
+            };
             let mut g = data.lock().unwrap();
             g.lines.append(&mut batch);
             g.kinds.append(&mut kinds);
@@ -213,14 +318,14 @@ impl BigTextApp {
             self.error = Some(tr("The document changed since the filter ran. Run the filter again first.").into());
             return;
         }
-        let (snap, m, spec, name) = (d.buf.snapshot(), r.matcher.clone(), r.spec, d.title.clone());
-        self.save_lines_dialog(snap, m, spec, &name);
+        let (snap, m, spec, terms, name) = (d.buf.snapshot(), r.matcher.clone(), r.spec, r.terms.clone(), d.title.clone());
+        self.save_lines_dialog(snap, m, spec, terms, &name);
     }
 
     /// Asks for a file and writes the lines that `m` and `spec` keep to it.
-    pub(crate) fn save_lines_dialog(&mut self, snap: TextBuf, m: Arc<Matcher>, spec: FilterSpec, doc_title: &str) {
+    pub(crate) fn save_lines_dialog(&mut self, snap: TextBuf, m: Arc<Matcher>, spec: FilterSpec, terms: Vec<FilterTerm>, doc_title: &str) {
         let Some(target) = self.pick_output_file(tr("Save lines"), &format!("{doc_title}.lines.txt")) else { return };
-        self.spawn_task(tr("Saving lines").into(), move |progress, cancel| export_lines(&snap, &m, spec, &target, progress, cancel));
+        self.spawn_task(tr("Saving lines").into(), move |progress, cancel| export_lines(&snap, &m, spec, &terms, &target, progress, cancel));
     }
 
     /// Save dialog for a new output file next to the active document; refuses files open in
@@ -242,17 +347,17 @@ impl BigTextApp {
     pub(crate) fn copy_filter(&mut self) {
         let Some(d) = self.docs.get(self.active) else { return };
         let Some(r) = &d.filter else { return };
-        let (snap, m, spec, id) = (d.buf.snapshot(), r.matcher.clone(), r.spec, d.id);
-        self.copy_lines(snap, m, spec, id);
+        let (snap, m, spec, terms, id) = (d.buf.snapshot(), r.matcher.clone(), r.spec, r.terms.clone(), d.id);
+        self.copy_lines(snap, m, spec, terms, id);
     }
 
     /// Copies the lines that `m` and `spec` keep to the clipboard (up to [`COPY_MAX`]).
-    pub(crate) fn copy_lines(&mut self, snap: TextBuf, m: Arc<Matcher>, spec: FilterSpec, id: u64) {
+    pub(crate) fn copy_lines(&mut self, snap: TextBuf, m: Arc<Matcher>, spec: FilterSpec, terms: Vec<FilterTerm>, id: u64) {
         let tx = self.tx.clone();
         let waker = self.waker.clone();
         jobs::spawn("copy-lines", move || {
             let mut out = Vec::new();
-            let r = filter::write_lines_to(&snap, &m, spec, &mut CappedVec(&mut out, COPY_MAX), &CancelToken::new(), None);
+            let r = filter::write_lines_to(&snap, &m, spec, &term_refs(&terms), &mut CappedVec(&mut out, COPY_MAX), &CancelToken::new(), None);
             let result = match r {
                 Ok(_) => Ok(snap.codec.decode_lossy(&out)),
                 Err(e) if e.kind() == std::io::ErrorKind::OutOfMemory => {
@@ -274,6 +379,10 @@ impl BigTextApp {
         let mut jump = None;
         let (mut context, mut entries) = (self.settings.filter_context, self.settings.filter_entries);
         let mut mark = None;
+        let (mut narrow_text, mut narrow_exclude) = (std::mem::take(&mut self.search.narrow), self.search.narrow_exclude);
+        let mut narrow = false;
+        // Some(None): drop all added conditions; Some(Some(i)): drop the i-th.
+        let mut drop_terms: Option<Option<usize>> = None;
         {
             let Some(d) = self.docs.get_mut(self.active) else { return };
             let Some(r) = &d.filter else { return };
@@ -340,6 +449,34 @@ impl BigTextApp {
                     }
                 });
             });
+            // The added conditions as chips, and the Narrow row.
+            ui.horizontal(|ui| {
+                if !r.terms.is_empty() {
+                    let base = match (&r.follow, r.levels) {
+                        (Some(id), _) => format!("id {id}"),
+                        (None, Some(lv)) => lv.names(),
+                        (None, None) => format!("{}“{}”", if r.spec.invert { "¬ " } else { "" }, r.query.pattern),
+                    };
+                    if ui.small_button(base).on_hover_text(tr("Back to this filter alone")).clicked() {
+                        drop_terms = Some(None);
+                    }
+                    for (i, t) in r.terms.iter().enumerate() {
+                        ui.label("›");
+                        let text = format!("{}“{}” ×", if t.negated { "¬ " } else { "" }, t.query.pattern);
+                        if ui.small_button(text).on_hover_text(tr("Remove this condition")).clicked() {
+                            drop_terms = Some(Some(i));
+                        }
+                    }
+                    ui.separator();
+                }
+                ui.label(tr("Narrow:"));
+                let resp = ui.add(egui::TextEdit::singleline(&mut narrow_text).desired_width(180.0).hint_text(tr("and also…")));
+                ui.checkbox(&mut narrow_exclude, tr("without")).on_hover_text(tr("Keep the lines that do not have it"));
+                let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if (ui.add_enabled(!narrow_text.is_empty(), egui::Button::new(tr("Add")).small()).clicked() || enter) && !narrow_text.is_empty() {
+                    narrow = true;
+                }
+            });
             let row_h = ui.ctx().fonts_mut(|f| f.row_height(&font)) + 2.0;
             let data = r.data.clone();
             let m = r.matcher.clone();
@@ -389,6 +526,17 @@ impl BigTextApp {
         if let Some(q) = mark {
             self.add_mark(q);
         }
+        self.search.narrow_exclude = narrow_exclude;
+        if narrow {
+            self.narrow_filter(&narrow_text, narrow_exclude);
+        } else {
+            self.search.narrow = narrow_text;
+        }
+        match drop_terms {
+            Some(None) => self.unnarrow_filter(0),
+            Some(Some(i)) => self.remove_filter_term(i),
+            None => {}
+        }
         if export {
             self.export_filter();
         }
@@ -398,10 +546,10 @@ impl BigTextApp {
     }
 }
 
-pub(super) fn export_lines(snap: &TextBuf, m: &Matcher, spec: FilterSpec, target: &std::path::Path, progress: &Progress, cancel: &CancelToken) -> TaskOutcome {
+pub(super) fn export_lines(snap: &TextBuf, m: &Matcher, spec: FilterSpec, terms: &[FilterTerm], target: &std::path::Path, progress: &Progress, cancel: &CancelToken) -> TaskOutcome {
     progress.set_total(snap.len());
     tasks::write_via_temp(target, |w| {
-        Ok(filter::write_lines_to(snap, m, spec, w, cancel, Some(progress))?
+        Ok(filter::write_lines_to(snap, m, spec, &term_refs(terms), w, cancel, Some(progress))?
             .map(|n| trf("Saved {lines} lines ({size}) to {file}.", &[("lines", &fmt_count(n.lines)), ("size", &human_bytes(n.bytes)), ("file", &file_name(target))])))
     })
 }

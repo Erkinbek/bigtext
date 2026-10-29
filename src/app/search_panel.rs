@@ -63,6 +63,9 @@ pub struct SearchUi {
     pub show_filter: bool,
     /// Filter a table by this column only (0-based).
     pub filter_column: Option<usize>,
+    /// The Narrow row of the filter view: a condition to add, and whether lines must lack it.
+    pub narrow: String,
+    pub narrow_exclude: bool,
     /// Recent patterns, newest first.
     pub history: Vec<String>,
     /// Position while stepping through the history with the arrow keys.
@@ -547,9 +550,9 @@ impl BigTextApp {
                 Ok(m) => {
                     let (snap, id, name) = (d.buf.snapshot(), d.id, d.title.clone());
                     if save {
-                        self.save_lines_dialog(snap, Arc::new(m), Default::default(), &name);
+                        self.save_lines_dialog(snap, Arc::new(m), Default::default(), Vec::new(), &name);
                     } else {
-                        self.copy_lines(snap, Arc::new(m), Default::default(), id);
+                        self.copy_lines(snap, Arc::new(m), Default::default(), Vec::new(), id);
                     }
                 }
                 Err(e) => self.error = Some(e),

@@ -107,7 +107,8 @@ impl BigTextApp {
         self.search.invert = false;
         self.search.remember();
         let spec = FilterSpec { entries: true, ..Default::default() };
-        self.run_filter_for(q, m, spec, None, Some(id.to_string()));
+        let req = super::filter_panel::FilterRequest { query: q, m, spec, levels: None, follow: Some(id.to_string()), terms: Vec::new() };
+        self.run_filter_req(req, None);
     }
 
     /// Follows the selected text, or else the first id on the caret's line.

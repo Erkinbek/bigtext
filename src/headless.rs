@@ -30,6 +30,8 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         Lines with a match (-v: without one; -i: ignore case; -w: whole words;
         -E: regular expression). To OUT in the file's encoding, or to the
         console. Exit code 1 when no line matched.
+        More patterns: -e PAT (each must match; with --any, one of them does),
+        --not PAT (must not match); all can be repeated.
   levels ERROR,WARN,INFO,DEBUG [CONTEXT] FILE [-o OUT]
         Lines of these log levels.
         CONTEXT: -A N / -B N / -C N lines after / before / around each line,
@@ -112,6 +114,11 @@ impl Args {
     fn opt(&self, names: &[&str]) -> Option<&str> {
         self.opts.iter().rev().find(|(k, _)| names.contains(&k.as_str())).map(|(_, v)| v.as_str())
     }
+
+    /// Every value of a repeated option, in order.
+    fn all(&self, names: &[&str]) -> Vec<&str> {
+        self.opts.iter().filter(|(k, _)| names.contains(&k.as_str())).map(|(_, v)| v.as_str()).collect()
+    }
 }
 
 fn open(path: &Path) -> Res<(TextBuf, Detected)> {
@@ -184,13 +191,13 @@ fn query(a: &Args, pattern: &str) -> Query {
 
 /// Writes the kept lines: in the file's encoding to a file, as UTF-8 to the console. With
 /// `numbers`, each line starts with its line number ("12:" a match, "13-" context, like grep).
-fn write_kept(buf: &TextBuf, m: &Matcher, spec: FilterSpec, numbers: bool, target: Option<&str>, out: &mut dyn Write) -> Res<u64> {
+fn write_kept(buf: &TextBuf, m: &Matcher, spec: FilterSpec, terms: &[filter::Term], numbers: bool, target: Option<&str>, out: &mut dyn Write) -> Res<u64> {
     let cancel = CancelToken::new();
     let mut kept = 0;
     with_output(target, out, |w| {
         let to_file = target.is_some();
         if to_file && !numbers {
-            kept = filter::write_lines_to(buf, m, spec, &mut &mut *w, &cancel, None)?.map(|n| n.lines).unwrap_or(0);
+            kept = filter::write_lines_to(buf, m, spec, terms, &mut &mut *w, &cancel, None)?.map(|n| n.lines).unwrap_or(0);
             return Ok(());
         }
         let codec = buf.codec;
@@ -202,7 +209,7 @@ fn write_kept(buf: &TextBuf, m: &Matcher, spec: FilterSpec, numbers: bool, targe
         let mut prev: Option<u64> = None;
         // Line breaks counted up to an offset: (offset, breaks before it).
         let mut counted = (0u64, 0u64);
-        let end = filter::filter_lines(buf, m, spec, &cancel, None, |ls, le, kind| {
+        let end = filter::filter_lines_with(buf, m, spec, terms, &cancel, None, |ls, le, kind| {
             let r = (|| -> io::Result<()> {
                 if let Some(pe) = prev.filter(|&pe| spec.has_context() && ls > pe) {
                     if to_file {
@@ -267,22 +274,47 @@ fn spec_from(a: &Args, invert: bool) -> Res<FilterSpec> {
 }
 
 fn cmd_filter(args: &[String], out: &mut dyn Write, count_only: bool) -> Res<i32> {
-    let flags = [&["-v", "--invert", "-i", "--ignore-case", "-w", "--word", "-E", "--regex"][..], &CONTEXT_FLAGS].concat();
-    let a = Args::parse(args, &flags, &[&["-o", "--output"][..], &CONTEXT_OPTS].concat())?;
-    let [pattern, file] = &a.rest[..] else { return fail("needs PATTERN and FILE") };
+    let flags = [&["-v", "--invert", "-i", "--ignore-case", "-w", "--word", "-E", "--regex", "--any"][..], &CONTEXT_FLAGS].concat();
+    let a = Args::parse(args, &flags, &[&["-o", "--output", "-e", "--pattern", "--not"][..], &CONTEXT_OPTS].concat())?;
+    let mut pats: Vec<String> = a.all(&["-e", "--pattern"]).into_iter().map(String::from).collect();
+    let file = match &a.rest[..] {
+        [pattern, file] => {
+            pats.insert(0, pattern.clone());
+            file
+        }
+        [file] if !pats.is_empty() => file,
+        _ => return fail("needs PATTERN (or -e PATTERN) and FILE"),
+    };
     let (buf, _) = open(Path::new(file))?;
-    let m = Matcher::new(&query(&a, pattern), buf.codec).map_err(Fail)?;
+    // --any: one alternation of the patterns; otherwise every pattern must match.
+    let any = a.flag(&["--any"]) && pats.len() > 1;
+    let driver = if any {
+        let regex = a.flag(&["-E", "--regex"]);
+        let alt: Vec<String> = pats.iter().map(|p| format!("(?:{})", if regex { p.clone() } else { regex_syntax::escape(p) })).collect();
+        Query { pattern: alt.join("|"), regex: true, ..query(&a, "") }
+    } else {
+        query(&a, &pats[0])
+    };
+    let m = Matcher::new(&driver, buf.codec).map_err(Fail)?;
+    let mut owned: Vec<(Matcher, bool)> = Vec::new();
+    for p in if any { &[][..] } else { &pats[1..] } {
+        owned.push((Matcher::new(&query(&a, p), buf.codec).map_err(Fail)?, false));
+    }
+    for p in a.all(&["--not"]) {
+        owned.push((Matcher::new(&query(&a, p), buf.codec).map_err(Fail)?, true));
+    }
+    let terms: Vec<filter::Term> = owned.iter().map(|(m, negated)| filter::Term { m, negated: *negated }).collect();
     let spec = spec_from(&a, a.flag(&["-v", "--invert"]))?;
     let n = if count_only {
         let mut n = 0u64;
-        filter::filter_lines(&buf, &m, FilterSpec { invert: spec.invert, ..Default::default() }, &CancelToken::new(), None, |_, _, _| {
+        filter::filter_lines_with(&buf, &m, FilterSpec { invert: spec.invert, ..Default::default() }, &terms, &CancelToken::new(), None, |_, _, _| {
             n += 1;
             true
         });
         writeln!(out, "{n}")?;
         n
     } else {
-        write_kept(&buf, &m, spec, a.flag(&["-n", "--line-numbers"]), a.opt(&["-o", "--output"]), out)?
+        write_kept(&buf, &m, spec, &terms, a.flag(&["-n", "--line-numbers"]), a.opt(&["-o", "--output"]), out)?
     };
     Ok(if n > 0 { 0 } else { 1 })
 }
@@ -302,7 +334,7 @@ fn cmd_levels(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let q = loglevel::query(levels).ok_or_else(|| Fail("no levels".into()))?;
     let (buf, _) = open(Path::new(file))?;
     let m = Matcher::new(&q, buf.codec).map_err(Fail)?;
-    let n = write_kept(&buf, &m, spec_from(&a, false)?, a.flag(&["-n", "--line-numbers"]), a.opt(&["-o", "--output"]), out)?;
+    let n = write_kept(&buf, &m, spec_from(&a, false)?, &[], a.flag(&["-n", "--line-numbers"]), a.opt(&["-o", "--output"]), out)?;
     Ok(if n > 0 { 0 } else { 1 })
 }
 
@@ -585,6 +617,17 @@ mod tests {
         run_args(&["filter", "-n", "-A", "1", "ERROR", &log, "-o", &o.to_string_lossy()]);
         assert_eq!(std::fs::read_to_string(&o).unwrap(), "2:2024-05-01 10:00:01 ERROR b\n3-\tat x.Y(Y.java:1)\n--\n6:2024-05-01 10:00:04 ERROR e\n");
         assert_eq!(run_args(&["filter", "-A", "x", "ERROR", &log]).0, 2);
+    }
+
+    #[test]
+    fn combined_patterns() {
+        let d = tempfile::tempdir().unwrap();
+        let log = file(&d, "a.log", b"ERROR timeout user=1\nERROR timeout healthcheck\nWARN timeout user=1\nERROR disk\n");
+        assert_eq!(run_args(&["filter", "ERROR", "-e", "timeout", "--not", "healthcheck", &log]).1, "ERROR timeout user=1\n");
+        assert_eq!(run_args(&["count", "-e", "disk", "-e", "WARN", "--any", &log]).1, "2\n");
+        assert_eq!(run_args(&["count", "-e", "ERROR", "-e", "user=1", &log]).1, "1\n");
+        assert_eq!(run_args(&["filter", "-E", "--any", "-e", "^WARN", "-e", "disk$", &log]).1, "WARN timeout user=1\nERROR disk\n");
+        assert_eq!(run_args(&["filter", &log]).0, 2);
     }
 
     #[test]

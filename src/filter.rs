@@ -128,12 +128,55 @@ fn field_range(buf: &TextBuf, d: Dialect, col: usize, ls: u64, le: u64, fields: 
     fields.get(col).map(|r| ls + r.start as u64..ls + r.end as u64)
 }
 
+/// One more condition on the lines a filter keeps: a match of `m` (or, `negated`, none).
+#[derive(Clone, Copy)]
+pub struct Term<'a> {
+    pub m: &'a Matcher,
+    pub negated: bool,
+}
+
+/// A line longer than this is tested against the terms by its start only.
+const TERM_LINE_MAX: u64 = 16 << 20;
+
+/// Whether the line `ls..le` meets every term (`None` on a read error).
+fn terms_hold(buf: &TextBuf, terms: &[Term], ls: u64, le: u64) -> Option<bool> {
+    if terms.is_empty() {
+        return Some(true);
+    }
+    let c = &buf.codec;
+    let ls = ls.max(c.bom_len as u64);
+    let b = buf.read(ls..le.min(ls + TERM_LINE_MAX).max(ls))?;
+    let mut line: &[u8] = &b;
+    for cut in [c.nl_unit(), c.cr_unit()] {
+        if line.ends_with(cut) {
+            line = &line[..line.len() - cut.len()];
+        }
+    }
+    for t in terms {
+        let mut found = false;
+        t.m.find_in(line, ls, 0, line.len(), line.len(), &mut None, &mut |_, _| {
+            found = true;
+            false
+        });
+        if found == t.negated {
+            return Some(false);
+        }
+    }
+    Some(true)
+}
+
 /// Streams over the document and calls `on_line(start, end, kind)` for each kept line, in order
 /// and each line once (`end` includes the line break). Stops when `on_line` returns false.
-pub fn filter_lines(
+pub fn filter_lines(buf: &TextBuf, m: &Matcher, spec: FilterSpec, cancel: &CancelToken, progress: Option<&Progress>, on_line: impl FnMut(u64, u64, LineKind) -> bool) -> SearchEnd {
+    filter_lines_with(buf, m, spec, &[], cancel, progress, on_line)
+}
+
+/// [`filter_lines`] keeping only the lines that also meet every term.
+pub fn filter_lines_with(
     buf: &TextBuf,
     m: &Matcher,
     spec: FilterSpec,
+    terms: &[Term],
     cancel: &CancelToken,
     progress: Option<&Progress>,
     mut on_line: impl FnMut(u64, u64, LineKind) -> bool,
@@ -141,12 +184,21 @@ pub fn filter_lines(
     let mut spec = spec;
     // A document without timestamps has no entries to keep together.
     spec.entries = spec.entries && !spec.invert && looks_timed(buf);
+    let mut failed = false;
+    let mut check = |ls: u64, le: u64| match terms_hold(buf, terms, ls, le) {
+        Some(ok) => ok,
+        None => {
+            failed = true;
+            false
+        }
+    };
     if !spec.has_context() {
-        return hit_lines(buf, m, spec, cancel, progress, |ls, le| on_line(ls, le, LineKind::Hit));
+        let end = hit_lines(buf, m, spec, cancel, progress, |ls, le| !check(ls, le) || on_line(ls, le, LineKind::Hit));
+        return if failed { SearchEnd::Unavailable } else { end };
     }
     let mut around = Around { buf, spec, done: 0, pending: None, stamped: false, failed: false };
-    let end = hit_lines(buf, m, spec, cancel, progress, |ls, le| around.hit(ls, le, &mut on_line));
-    if around.failed {
+    let end = hit_lines(buf, m, spec, cancel, progress, |ls, le| !check(ls, le) || around.hit(ls, le, &mut on_line));
+    if around.failed || failed {
         return SearchEnd::Unavailable;
     }
     if end != SearchEnd::Completed {
@@ -154,6 +206,57 @@ pub fn filter_lines(
     }
     if !around.flush(buf.len(), &mut on_line) {
         return if around.failed { SearchEnd::Unavailable } else { SearchEnd::Stopped };
+    }
+    SearchEnd::Completed
+}
+
+/// Like [`filter_lines_with`], over the lines starting at `starts` (in order; a filter's earlier
+/// result) instead of the whole document: each is kept when it meets every term. Narrowing a
+/// filter this way reads only those lines. `progress` counts lines.
+pub fn filter_given(
+    buf: &TextBuf,
+    starts: &[u64],
+    spec: FilterSpec,
+    terms: &[Term],
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut on_line: impl FnMut(u64, u64, LineKind) -> bool,
+) -> SearchEnd {
+    let mut spec = spec;
+    spec.invert = false;
+    spec.entries = spec.entries && looks_timed(buf);
+    if let Some(p) = progress {
+        p.set_total(starts.len() as u64);
+    }
+    let mut around = Around { buf, spec, done: 0, pending: None, stamped: false, failed: false };
+    for (i, &ls) in starts.iter().enumerate() {
+        if i % 4096 == 0 {
+            if cancel.is_cancelled() {
+                return SearchEnd::Cancelled;
+            }
+            if let Some(p) = progress {
+                p.set_done(i as u64);
+            }
+        }
+        if ls >= buf.len() {
+            break;
+        }
+        let Some(le) = line_end_near(buf, ls) else { return SearchEnd::Unavailable };
+        match terms_hold(buf, terms, ls, le) {
+            Some(true) => {}
+            Some(false) => continue,
+            None => return SearchEnd::Unavailable,
+        }
+        let go = if spec.has_context() { around.hit(ls, le, &mut on_line) } else { on_line(ls, le, LineKind::Hit) };
+        if !go {
+            return if around.failed { SearchEnd::Unavailable } else { SearchEnd::Stopped };
+        }
+    }
+    if spec.has_context() && !around.flush(buf.len(), &mut on_line) {
+        return if around.failed { SearchEnd::Unavailable } else { SearchEnd::Stopped };
+    }
+    if let Some(p) = progress {
+        p.set_done(starts.len() as u64);
     }
     SearchEnd::Completed
 }
@@ -453,7 +556,7 @@ pub struct Written {
 /// Writes the kept lines to `out` (with the document's byte order mark, if it has one). With
 /// context, a "--" line separates groups of lines that are not next to each other, like grep.
 /// Returns `None` when cancelled.
-pub fn write_lines_to<W: Write>(buf: &TextBuf, m: &Matcher, spec: FilterSpec, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<Written>> {
+pub fn write_lines_to<W: Write>(buf: &TextBuf, m: &Matcher, spec: FilterSpec, terms: &[Term], out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<Written>> {
     let bom = buf.codec.bom_len as u64;
     let mut w = Written::default();
     if bom > 0 {
@@ -463,7 +566,7 @@ pub fn write_lines_to<W: Write>(buf: &TextBuf, m: &Matcher, spec: FilterSpec, ou
     }
     let mut err: Option<io::Error> = None;
     let mut prev: Option<u64> = None;
-    let end = filter_lines(buf, m, spec, cancel, progress, |ls, le, _| {
+    let end = filter_lines_with(buf, m, spec, terms, cancel, progress, |ls, le, _| {
         if let Some(pe) = prev.filter(|&pe| spec.has_context() && ls > pe) {
             let mut sep = buf.codec.encode("--");
             sep.extend(line_break_before(buf, pe));
@@ -617,7 +720,7 @@ mod tests {
         let q = Query { pattern: "keep".into(), case_sensitive: true, ..Default::default() };
         let m = Matcher::new(&q, codec).unwrap();
         let mut out = Vec::new();
-        let w = write_lines_to(&t, &m, FilterSpec::default(), &mut out, &CancelToken::new(), None).unwrap().unwrap();
+        let w = write_lines_to(&t, &m, FilterSpec::default(), &[], &mut out, &CancelToken::new(), None).unwrap().unwrap();
         assert_eq!(w.lines, 2);
         let mut want = vec![0xFF, 0xFE];
         want.extend(codec.encode("keep 1\nkeep 2\n"));
@@ -682,14 +785,14 @@ mod tests {
         let q = Query { pattern: "[ad]".into(), regex: true, case_sensitive: true, ..Default::default() };
         let m = Matcher::new(&q, t.codec).unwrap();
         let mut out = Vec::new();
-        write_lines_to(&t, &m, ctx(0, 0), &mut out, &CancelToken::new(), None).unwrap();
+        write_lines_to(&t, &m, ctx(0, 0), &[], &mut out, &CancelToken::new(), None).unwrap();
         assert_eq!(out, b"a\r\nd");
         out.clear();
-        let w = write_lines_to(&t, &m, FilterSpec { entries: true, ..Default::default() }, &mut out, &CancelToken::new(), None).unwrap().unwrap();
+        let w = write_lines_to(&t, &m, FilterSpec { entries: true, ..Default::default() }, &[], &mut out, &CancelToken::new(), None).unwrap().unwrap();
         assert_eq!(out, b"a\r\n--\r\nd");
         assert_eq!(w.lines, 2);
         out.clear();
-        write_lines_to(&t, &m, ctx(1, 0), &mut out, &CancelToken::new(), None).unwrap();
+        write_lines_to(&t, &m, ctx(1, 0), &[], &mut out, &CancelToken::new(), None).unwrap();
         assert_eq!(out, b"a\r\n--\r\nc\r\nd");
     }
 
@@ -729,10 +832,57 @@ mod tests {
         let q = Query { pattern: "one|four".into(), regex: true, case_sensitive: true, ..Default::default() };
         let m = Matcher::new(&q, codec).unwrap();
         let mut out = Vec::new();
-        write_lines_to(&t, &m, FilterSpec { entries: true, ..Default::default() }, &mut out, &CancelToken::new(), None).unwrap();
+        write_lines_to(&t, &m, FilterSpec { entries: true, ..Default::default() }, &[], &mut out, &CancelToken::new(), None).unwrap();
         let mut want = vec![0xFF, 0xFE];
         want.extend(codec.encode("one\n--\nfour X\n"));
         assert_eq!(out, want);
+    }
+
+    fn matcher(pat: &str, codec: Codec) -> Matcher {
+        Matcher::new(&Query { pattern: pat.into(), regex: true, case_sensitive: true, ..Default::default() }, codec).unwrap()
+    }
+
+    #[test]
+    fn terms_narrow_the_lines() {
+        let (_f, t) = buf_with(b"ERROR db timeout user=1\nERROR db ok user=2\nINFO db timeout user=1\nERROR net timeout user=1 healthcheck\n", Codec::utf8());
+        let (m, timeout, health) = (matcher("ERROR", t.codec), matcher("timeout", t.codec), matcher("healthcheck$", t.codec));
+        let terms = [Term { m: &timeout, negated: false }, Term { m: &health, negated: true }];
+        let mut got = Vec::new();
+        let end = filter_lines_with(&t, &m, FilterSpec::default(), &terms, &CancelToken::new(), None, |s, e, _| {
+            got.push(t.codec.decode_lossy(&t.read(s..e).unwrap()));
+            true
+        });
+        assert_eq!(end, SearchEnd::Completed);
+        // "healthcheck$" matches before the line break.
+        assert_eq!(got, ["ERROR db timeout user=1\n"]);
+        // The same over the lines an earlier filter kept.
+        let mut first = Vec::new();
+        filter_lines(&t, &m, FilterSpec::default(), &CancelToken::new(), None, |s, _, _| {
+            first.push(s);
+            true
+        });
+        assert_eq!(first.len(), 3);
+        let mut within = Vec::new();
+        let end = filter_given(&t, &first, FilterSpec::default(), &terms, &CancelToken::new(), None, |s, e, k| {
+            within.push((t.codec.decode_lossy(&t.read(s..e).unwrap()), k));
+            true
+        });
+        assert_eq!(end, SearchEnd::Completed);
+        assert_eq!(within, [("ERROR db timeout user=1\n".to_string(), LineKind::Hit)]);
+        // With context, the lines around come from the whole document.
+        let mut ctx = Vec::new();
+        filter_given(&t, &first, FilterSpec { after: 1, ..Default::default() }, &terms, &CancelToken::new(), None, |s, _, k| {
+            ctx.push((s, k));
+            true
+        });
+        assert_eq!(ctx, [(0, LineKind::Hit), (24, LineKind::Context)]);
+        // An inverted base with a term: lines without ERROR that have "timeout".
+        let mut inv = Vec::new();
+        filter_lines_with(&t, &m, FilterSpec { invert: true, ..Default::default() }, &terms[..1], &CancelToken::new(), None, |s, _, _| {
+            inv.push(s);
+            true
+        });
+        assert_eq!(inv, [43]);
     }
 
     #[test]

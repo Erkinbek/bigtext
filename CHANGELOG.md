@@ -56,6 +56,15 @@ All notable changes to BigText. Each release on
   the same lines (files get `--` between groups); the header counts the matches and the lines
   around them; scrollbar marks stay on the matches. `bigtext-cli filter` and `levels` take
   `-A` / `-B` / `-C N`, `--entries` and `-n` (line numbers, `12:` a match, `13-` context).
+- **Narrow a filter**: the filter view's **Narrow** row adds a condition on top of the current
+  filter — lines that also have `timeout`, or (with **without**) that do not have
+  `healthcheck` — instead of replacing it. Conditions show as chips (`ERROR › “timeout” ›
+  ¬ “healthcheck”`); × removes one, the first chip goes back to the filter alone. Narrowing a
+  finished filter reads only the lines it kept, so it is quick on millions of lines. Works on
+  level-bar filters (changing the levels keeps the conditions) and followed ids; sessions keep
+  the conditions. **Search → Narrow the filter by the search text** adds the search box's
+  pattern. `bigtext-cli filter` / `count` take `-e PAT` (each must match; `--any`: one of them)
+  and `--not PAT`, both repeatable.
 - **Follow an id**: the request, trace, span or session ids on the caret's line
   (`request_id=r-42`, `"traceId": "4bf9…"`, `[req_id: 7]`, or a bare UUID) appear as chips in
   the status bar. Click one, or press **Ctrl+Shift+I** (which takes the selected text when there

@@ -686,4 +686,12 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["line {n}", "строка {n}", "{n}-satr"],
     ["(clock went back)", "(часы пошли назад)", "(soat orqaga ketgan)"],
     ["Time since the previous line with a timestamp", "Время от предыдущей строки с отметкой времени", "Vaqt belgisi bor oldingi satrdan beri o'tgan vaqt"],
+    // Narrowing a filter.
+    ["Narrow the filter by the search text", "Сузить фильтр по тексту поиска", "Filtrni qidiruv matni bilan toraytirish"],
+    ["Back to this filter alone", "Вернуться к одному этому фильтру", "Faqat shu filtrga qaytish"],
+    ["Remove this condition", "Убрать это условие", "Bu shartni olib tashlash"],
+    ["Narrow:", "Сузить:", "Toraytirish:"],
+    ["and also…", "и ещё…", "yana…"],
+    ["without", "без", "siz"],
+    ["Keep the lines that do not have it", "Оставить строки, где этого нет", "Unda bo'lmagan satrlarni qoldirish"],
 ];
