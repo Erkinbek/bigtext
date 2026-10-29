@@ -142,7 +142,7 @@ impl BigTextApp {
 
     /// Runs the active document's filter again with `terms` (or its own) as added conditions.
     fn refilter(&mut self, terms: Option<Vec<FilterTerm>>) {
-        if !self.docs.get(self.active).is_some_and(|d| d.filter.is_some()) {
+        if self.docs.get(self.active).is_none_or(|d| d.filter.is_none()) {
             return;
         }
         let range = match self.time_window(After::Refilter) {
