@@ -112,6 +112,7 @@ mod tests {
         "app" / "mod.rs",
         "app" / "archive.rs",
         "app" / "column_chart.rs",
+        "app" / "clipboard.rs",
         "app" / "column_editor.rs",
         "app" / "columns.rs",
         "app" / "commands.rs",

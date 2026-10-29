@@ -39,6 +39,7 @@ pub enum Cmd {
     CompareBackup,
     ApplyPatch,
     ColumnEditor,
+    PasteHistory,
     RevealFile,
     OpenTerminal,
     OpenWithDefault,
@@ -128,7 +129,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 98] = [
+    pub const ALL: [Cmd; 99] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -151,6 +152,7 @@ impl Cmd {
         Cmd::CompareBackup,
         Cmd::ApplyPatch,
         Cmd::ColumnEditor,
+        Cmd::PasteHistory,
         Cmd::RevealFile,
         Cmd::OpenTerminal,
         Cmd::OpenWithDefault,
@@ -282,6 +284,7 @@ impl Cmd {
             Cmd::CompareBackup => "Compare with the backup (.bak)",
             Cmd::ApplyPatch => "Apply patch…",
             Cmd::ColumnEditor => "Column editor…",
+            Cmd::PasteHistory => "Paste from history…",
             Cmd::RevealFile => "Show in folder",
             Cmd::OpenTerminal => "Open terminal here",
             Cmd::OpenWithDefault => "Open with the default app",
@@ -378,6 +381,7 @@ impl Cmd {
             | Cmd::PrevBookmark
             | Cmd::ClearBookmarks
             | Cmd::ColumnEditor
+            | Cmd::PasteHistory
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
             Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::NextDiff | Cmd::PrevDiff | Cmd::OnlyIn | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::CheckJson | Cmd::MatchBracket => "Search",
@@ -415,6 +419,7 @@ impl Cmd {
             Cmd::PrevLevel => key(Modifiers::SHIFT, Key::F8),
             Cmd::FollowId => key(CTRL_SHIFT, Key::I),
             Cmd::Properties => key(CTRL, Key::I),
+            Cmd::PasteHistory => key(CTRL_SHIFT, Key::V),
             Cmd::NextDiff => key(Modifiers::NONE, Key::F7),
             Cmd::PrevDiff => key(Modifiers::SHIFT, Key::F7),
             Cmd::NextResult => key(Modifiers::NONE, Key::F4),
@@ -599,6 +604,7 @@ impl BigTextApp {
             Cmd::CompareSaved => self.start_diff_with(super::extras::DiffOther::Saved),
             Cmd::ApplyPatch => self.apply_patch_dialog(),
             Cmd::ColumnEditor => self.open_column_editor(),
+            Cmd::PasteHistory => self.open_paste_history(),
             Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault => {
                 let action = match cmd {
                     Cmd::RevealFile => super::shell::ShellAction::Reveal,
@@ -775,6 +781,7 @@ impl BigTextApp {
             Cmd::ApplyPatch => d.is_some_and(|d| d.is_ready() && d.editable()),
             Cmd::ColumnEditor => d.is_some_and(|d| d.is_ready() && d.editable() && !d.view.wrap),
             Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault => d.is_some_and(|d| d.path.is_some()),
+            Cmd::PasteHistory => !self.clips.items.is_empty(),
             Cmd::Properties => d.is_some_and(|d| d.is_ready()),
             Cmd::CheckRows => d.is_some_and(|d| d.table),
             Cmd::NavForward => !self.nav.forward.is_empty(),
@@ -942,6 +949,7 @@ impl BigTextApp {
                 }
                 self.text_menu(ui);
                 run = run.or(self.item(ui, Cmd::ColumnEditor));
+                run = run.or(self.item(ui, Cmd::PasteHistory));
                 ui.separator();
                 for c in [Cmd::ToggleBookmark, Cmd::NextBookmark, Cmd::PrevBookmark, Cmd::ClearBookmarks] {
                     run = run.or(self.item(ui, c));

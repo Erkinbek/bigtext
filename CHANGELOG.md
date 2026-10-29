@@ -72,6 +72,10 @@ All notable changes to BigText. Each release on
   for an unpacked copy, the compressed file or archive it came from. The notice after Save
   lines, an export or a split gets a Show in folder link, and Open on an exported `.xlsx` opens
   the spreadsheet app instead of BigText.
+- **Edit → Paste from history…** (Ctrl+Shift+V) lists the last 30 texts copied in BigText —
+  their first line and how many lines — to copy and paste again with ↑ ↓ and Enter (copied
+  only, in a read-only document). Texts over 1 MB are not kept, and they stay out of the
+  settings file unless *Keep across restarts* is ticked.
 
 ### Files
 

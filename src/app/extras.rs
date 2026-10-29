@@ -57,6 +57,8 @@ pub struct Persisted {
     pub unpack_dir: Option<PathBuf>,
     /// Keep a recovery journal of unsaved edits.
     pub recovery: Option<bool>,
+    /// The copy history, when it is kept across restarts.
+    pub clips: Vec<String>,
     pub level_bar: Option<bool>,
     /// Saved searches.
     pub saved: Vec<super::saved_searches::SavedSearch>,
@@ -188,6 +190,7 @@ pub(super) fn parse(text: &str) -> Persisted {
             "font" => p.font = Some(PathBuf::from(v)),
             "unpack_dir" => p.unpack_dir = Some(PathBuf::from(v)),
             "recovery" => p.recovery = Some(v == "1"),
+            "clip" => p.clips.push(super::clipboard::unescape(v)),
             "key" => p.keys.extend(v.split_once('=').map(|(a, b)| (a.to_string(), b.to_string()))),
             "tab" => p.tabs.extend(parse_tab(v)),
             _ => {}
@@ -231,6 +234,9 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(f) = &p.font {
         s.push_str(&format!("font={}\n", f.display()));
+    }
+    for c in &p.clips {
+        s.push_str(&format!("clip={}\n", super::clipboard::escape(c)));
     }
     if let Some(r) = p.recovery {
         s.push_str(&format!("recovery={}\n", if r { "1" } else { "0" }));
@@ -586,6 +592,7 @@ impl BigTextApp {
             font: self.settings.font_path.clone(),
             unpack_dir: self.settings.unpack_dir.clone(),
             recovery: Some(self.recovery.enabled),
+            clips: if self.clips.keep { self.clips.items.iter().cloned().collect() } else { Vec::new() },
             level_bar: Some(self.settings.level_bar),
             saved: self.settings.saved.clone(),
             show_ws: Some(self.settings.show_ws),
@@ -604,6 +611,9 @@ impl BigTextApp {
 
     /// Restores the previous session (tabs, positions, bookmarks, settings).
     pub(super) fn restore_session(&mut self, p: Persisted) {
+        // Kept clips mean keeping was on.
+        self.clips.keep = !p.clips.is_empty();
+        self.clips.items = p.clips.iter().cloned().collect();
         self.settings.unpack_dir = p.unpack_dir.clone();
         bigtext::decompress::set_unpack_dir(p.unpack_dir.clone());
         if let Some(f) = p.font_size {
@@ -1180,6 +1190,7 @@ mod tests {
             font: Some(PathBuf::from(r"C:\Windows\Fonts\consola.ttf")),
             unpack_dir: Some(PathBuf::from(r"D:\scratch")),
             recovery: Some(false),
+            clips: vec!["two\nlines".into(), "a=b\\c".into()],
             level_bar: Some(false),
             show_ws: Some(true),
             filter_ctx: Some((3, true)),
@@ -1208,6 +1219,7 @@ mod tests {
         assert_eq!(parse(&serialize(&p)).font, p.font);
         assert_eq!(parse(&serialize(&p)).unpack_dir, p.unpack_dir);
         assert_eq!(parse(&serialize(&p)).recovery, Some(false));
+        assert_eq!(parse(&serialize(&p)).clips, p.clips);
         assert_eq!(parse(&serialize(&p)).level_bar, Some(false));
         assert_eq!(parse(&serialize(&p)).lang.as_deref(), Some("uz"));
         let q = parse(&serialize(&p));

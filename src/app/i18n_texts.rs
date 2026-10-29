@@ -1155,4 +1155,13 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Could not show the file in its folder", "Не удалось показать файл в папке", "Faylni papkada ko'rsatib bo'lmadi"],
     ["Could not open a terminal (set the TERMINAL variable to yours)", "Не удалось открыть терминал (укажите свой в переменной TERMINAL)", "Terminalni ochib bo'lmadi (TERMINAL o'zgaruvchisiga o'zingiznikini yozing)"],
     ["Could not open the file with its default app", "Не удалось открыть файл в программе по умолчанию", "Faylni standart dasturda ochib bo'lmadi"],
+    // Clipboard history.
+    ["Paste from history…", "Вставить из истории…", "Tarixdan qo'yish…"],
+    ["Paste from history", "Вставить из истории", "Tarixdan qo'yish"],
+    ["{text}  ({n} lines)", "{text}  (строк: {n})", "{text}  ({n} qator)"],
+    ["Nothing copied yet.", "Ещё ничего не скопировано.", "Hali hech narsa nusxalanmagan."],
+    ["The document is read-only: the text was copied to the clipboard.", "Документ только для чтения: текст скопирован в буфер обмена.", "Hujjat faqat o'qish uchun: matn almashish buferiga nusxalandi."],
+    ["↑ ↓ to choose, Enter to paste, Esc to close", "↑ ↓ — выбор, Enter — вставить, Esc — закрыть", "↑ ↓ — tanlash, Enter — qo'yish, Esc — yopish"],
+    ["Keep across restarts", "Сохранять между запусками", "Qayta ishga tushirishlarda saqlash"],
+    ["Writes the copied texts into the settings file; off, they are forgotten when BigText closes", "Записывает скопированные тексты в файл настроек; если выключено, они забываются при закрытии BigText", "Nusxalangan matnlarni sozlamalar fayliga yozadi; o'chiq bo'lsa, BigText yopilganda unutiladi"],
 ];

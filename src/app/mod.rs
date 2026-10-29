@@ -2,6 +2,7 @@
 
 pub mod column_chart;
 pub mod archive;
+pub mod clipboard;
 pub mod column_editor;
 pub mod columns;
 pub mod commands;
@@ -300,6 +301,7 @@ pub struct BigTextApp {
     pub column_editor: Option<column_editor::ColumnEditor>,
     /// Listening for other launches (dropped on exit, removing the lock).
     instance: Option<crate::instance::Server>,
+    pub clips: clipboard::ClipHistory,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -512,6 +514,7 @@ impl BigTextApp {
             text_result: None,
             column_editor: None,
             instance: None,
+            clips: clipboard::ClipHistory::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1667,6 +1670,10 @@ impl BigTextApp {
         self.instance = crate::instance::serve_app(lock, self.tx.clone(), self.waker.clone());
     }
 
+    pub(crate) fn test_ctx(&self) -> Option<egui::Context> {
+        self.ctx_clone()
+    }
+
     pub(crate) fn test_properties_sha(&mut self) {
         self.start_sha();
     }
@@ -1709,7 +1716,7 @@ impl eframe::App for BigTextApp {
         }
 
         self.update_tick();
-        let modal_open = self.goto.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
+        let modal_open = self.goto.is_some() || self.clips.open.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
         if !modal_open {
             self.shortcuts(&ctx);
             // The mouse's back and forward buttons.
@@ -1722,6 +1729,7 @@ impl eframe::App for BigTextApp {
             }
         }
         self.switcher_keys(&ctx);
+        self.paste_history_keys(&ctx);
         self.track_mru();
 
         for d in &mut self.docs {
@@ -1887,6 +1895,7 @@ impl eframe::App for BigTextApp {
         self.recovery_window(&ctx);
         self.text_result_window(&ctx);
         self.column_editor_window(&ctx);
+        self.paste_history_window(&ctx);
         self.pivot_window(&ctx);
         self.derive_window(&ctx);
         self.json_fields_window(&ctx);
@@ -1894,6 +1903,7 @@ impl eframe::App for BigTextApp {
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);
         self.perf_overlay(&ctx);
+        self.record_copies(&ctx);
 
         let title = match self.docs.get(self.active) {
             Some(d) => format!("{}{} — BigText", d.title, if d.is_modified() { " ●" } else { "" }),

@@ -1655,6 +1655,45 @@ impl SelfTest {
             let ok = p.as_deref().is_some_and(|p| p.ends_with("packed.log.gz")) && (!cfg!(windows) || args.first().is_some_and(|a| a.starts_with("/select,") && a.contains("packed.log.gz")));
             check(ok, format!("{p:?} {args:?}"))
         }));
+        s("Ctrl+Shift+V lists what was copied; Down, Enter pastes the one before", Box::new(|app, c| {
+            if c.first() {
+                app.clips.items.clear();
+                app.open_path(c.file("cols.txt"));
+                return Step::Wait;
+            }
+            match c.mark {
+                0 => {
+                    if !wait_ready(app) {
+                        return Step::Wait;
+                    }
+                    if let Some(ctx) = app.test_ctx() {
+                        ctx.copy_text("first clip".into());
+                        ctx.copy_text("second clip".into());
+                    }
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    if app.clips.items.len() < 2 {
+                        return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("history {:?}", app.clips.items)) } else { Step::Wait };
+                    }
+                    doc(app).set_caret(0, false);
+                    c.key(Key::V, CTRL_SHIFT);
+                    c.key(Key::ArrowDown, NONE);
+                    c.key(Key::Enter, NONE);
+                    c.mark = 2;
+                    Step::Wait
+                }
+                _ => {
+                    let t = text(app);
+                    if !t.starts_with("first clip") {
+                        return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("{:?}, window {:?}", &t[..t.len().min(20)], app.clips.open)) } else { Step::Wait };
+                    }
+                    c.key(Key::Z, CTRL);
+                    check(app.clips.open.is_none() && app.clips.items[0] == "first clip", format!("{:?}", app.clips.items))
+                }
+            }
+        }));
         s("compare files (streaming diff)", Box::new(|app, c| {
             if c.first() {
                 app.open_path(c.file("diff-a.txt"));

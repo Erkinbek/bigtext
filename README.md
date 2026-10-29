@@ -97,6 +97,8 @@ Single self-contained binary, no runtime dependencies.
 - **Editing**: piece table over the mmap + add buffer; insert/delete, cut/copy/paste (copies
   above 100 MB ask first and run on a worker), undo/redo, multi-line selection, duplicate line
   (zero-copy), delete line, auto-indent, large-file-safe Select All.
+- **Paste from history** (Edit, Ctrl+Shift+V): the last 30 texts copied in BigText (up to 1 MB
+  each), to paste again with ↑ ↓ and Enter; kept across restarts only when you tick it.
 - **Show in folder**, **Open terminal here** and **Open with the default app** (File menu and a
   tab's right-click menu; for an unpacked copy, the compressed file it came from); the notice
   after a save or an export has a Show in folder link, and an exported `.xlsx` opens in the
@@ -376,6 +378,8 @@ times). Exit codes: 0 done, 1 nothing matched, 2 error.
 | F8 / Shift+F8 | Next / previous error line (or line of the levels shown) |
 | Ctrl+Shift+H | Time histogram |
 | Ctrl+Shift+I | Follow the id at the caret (or the selected text) |
+| Ctrl+Shift+V | Paste from the history of copied texts |
+| Ctrl+I | File properties (lines, line breaks, longest line, SHA-256) |
 | Ctrl+Shift+L | Log fields of the caret's line |
 | Ctrl+] | Go to the matching bracket or tag |
 | Ctrl+Shift+J | JSON structure |
