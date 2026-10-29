@@ -62,6 +62,9 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         Each row of the LEFT table with the other columns of the RIGHT table's
         rows with the same key (COL: a header name or a 1-based number), as
         CSV; rows without a match get empty fields, or are left out (--inner).
+  derive FILE --name NAME --expr EXPR [-o OUT]
+        The table with a new last column computed per row, like {price} * {qty},
+        substr({ts}, 0, 10) or if({status} = \"ok\", 1, 0).
   pivot FILE --rows COL --cols COL [--value COL --agg sum|mean|min|max]
         [--by hour|day|month] [-o OUT]
         A pivot table as CSV: a row per value of --rows (or per hour, day or
@@ -84,7 +87,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 14] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot"];
+const COMMANDS: [&str; 15] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -602,6 +605,31 @@ fn cmd_join(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(0)
 }
 
+fn cmd_derive(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["--no-header", "--header"], &["--name", "--expr", "-o", "--output", "--skip", "--quote"])?;
+    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let (name, expr) = match (a.opt(&["--name"]), a.opt(&["--expr"])) {
+        (Some(n), Some(e)) => (n.to_string(), e.to_string()),
+        _ => return fail("give --name NAME and --expr EXPR"),
+    };
+    let (buf, _) = open(Path::new(file))?;
+    let g = table_of(&buf, file, &a)?;
+    let mut names = Vec::new();
+    if g.header {
+        csv::for_each_record(&buf, g.dialect, &CancelToken::new(), None, |r| {
+            names = r.fields.iter().filter_map(|f| buf.read(f.clone()).map(|b| csv::field_value(&buf.codec, g.dialect, &b))).collect();
+            false
+        });
+    }
+    crate::csv_expr::Expr::compile(&expr, &names).map_err(Fail)?;
+    let rw = csv::Rewrite::Derive { name, expr, names, header: g.header };
+    with_output(a.opt(&["-o", "--output"]), out, |w| {
+        csv::rewrite_to(&buf, g.dialect, &rw, &mut &mut *w, &CancelToken::new(), None)?;
+        Ok(())
+    })?;
+    Ok(0)
+}
+
 fn cmd_pivot(args: &[String], out: &mut dyn Write) -> Res<i32> {
     use crate::csv_pivot::{Agg, Bucket, PivotSpec};
     let a = Args::parse(args, &["--no-header", "--header"], &["--rows", "--cols", "--value", "--agg", "--by", "-o", "--output", "--skip", "--quote"])?;
@@ -756,6 +784,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "validate" => cmd_validate(rest, out),
         "join" => cmd_join(rest, out),
         "pivot" => cmd_pivot(rest, out),
+        "derive" => cmd_derive(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
             return 0;
@@ -839,6 +868,14 @@ mod tests {
         assert_eq!(run_args(&["convert", &n, "--to", "jsonl", "--header"]).1.lines().next(), Some("{\"1\": \"3\", \"2\": \"4\"}"));
         let q = file(&d, "q.csv", b"a,b\n'x,y',2\n");
         assert_eq!(run_args(&["convert", &q, "--to", "jsonl", "--quote", "'"]).1, "{\"a\": \"x,y\", \"b\": \"2\"}\n");
+    }
+
+    #[test]
+    fn derived_column() {
+        let d = tempfile::tempdir().unwrap();
+        let t = file(&d, "s.csv", b"price,qty\r\n2.5,4\r\n1,\"x\"\r\n");
+        assert_eq!(run_args(&["derive", &t, "--name", "total", "--expr", "{price} * {qty}"]).1, "price,qty,total\r\n2.5,4,10\r\n1,\"x\",\r\n");
+        assert_eq!(run_args(&["derive", &t, "--name", "x", "--expr", "{nope}"]).0, 2);
     }
 
     #[test]

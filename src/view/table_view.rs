@@ -174,6 +174,8 @@ pub enum TableAction {
     CheckRows,
     /// A pivot table with this column's values as rows.
     Pivot { col: usize },
+    /// A new last column computed by an expression.
+    AddColumn,
     /// Keep columns 0..upto on the left (0: none).
     Freeze { upto: usize },
     /// Leave these columns out of the view.
@@ -628,6 +630,7 @@ fn column_menu(ui: &mut Ui, actions: &mut Vec<TableAction>, col: usize, name: &s
     act(ui, true, tr("Check rows…"), TableAction::CheckRows);
     ui.separator();
     act(ui, editable, tr("Rename…"), TableAction::Rename { col, name: name.to_string() });
+    act(ui, editable, tr("Add column…"), TableAction::AddColumn);
     act(ui, editable && col > 0, tr("Move left"), TableAction::Move { col, right: false });
     act(ui, editable && col + 1 < ncols, tr("Move right"), TableAction::Move { col, right: true });
     ui.separator();

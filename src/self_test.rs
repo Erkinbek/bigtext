@@ -2010,6 +2010,27 @@ impl SelfTest {
             c.mark = 0;
             Step::Next
         }));
+        s("add a column from an expression, then undo it", Box::new(|app, c| {
+            const SALES: &str = "city,qty\nTashkent,3\nBukhara,5\nTashkent,7\n";
+            if c.first() {
+                app.ask_rewrite(bigtext::csv::Rewrite::Derive { name: "double".into(), expr: "{qty} * 2".into(), names: vec!["city".into(), "qty".into()], header: true });
+                return Step::Wait;
+            }
+            if doc(app).save_job.is_some() {
+                return Step::Wait;
+            }
+            let t = text(app);
+            if c.mark == 0 {
+                if t != "city,qty,double\nTashkent,3,6\nBukhara,5,10\nTashkent,7,14\n" {
+                    return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("text {t:?}")) } else { Step::Wait };
+                }
+                c.key(Key::Z, CTRL);
+                c.mark = 1;
+                return Step::Wait;
+            }
+            c.mark = 0;
+            check(t == SALES, format!("after undo {t:?}"))
+        }));
         s("open cities.csv", open_step("cities.csv"));
         s("join two tables by a key into a new table", Box::new(|app, c| {
             let id_of = |app: &BigTextApp, name: &str| app.docs.iter().find(|d| d.title == name).map(|d| d.id);

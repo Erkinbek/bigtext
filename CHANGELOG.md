@@ -149,6 +149,13 @@ All notable changes to BigText. Each release on
 
 ### CSV tables
 
+- **Add column…** (a column header's menu): a new last column computed from each row by an
+  expression — `{price} * {qty}`, `substr({ts}, 0, 10)`, `regex({url}, "id=([0-9]+)")`,
+  `if({status} = "ok", 1, 0)` — previewed on the rows on screen as you type, with errors shown
+  where they are. Arithmetic on numbers (an operand that is not a number gives an empty cell),
+  `&` to join text, comparisons, `and` / `or` / `not`, and upper, lower, trim, len, substr,
+  replace, regex, if, num, abs and round. Up to 64 MB it is one undo step; larger tables are
+  rewritten on disk with the usual confirmation. `bigtext-cli derive FILE --name N --expr E`.
 - **Pivot by this column…** (a column header's menu): a new read-only table with a row per value
   of that column — or per hour, day or month when it holds times — a column per value of another
   column, and in each cell the number of rows or the sum, mean, minimum or maximum of a third

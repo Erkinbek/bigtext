@@ -933,6 +933,20 @@ pub enum Rewrite {
     Swap(usize, usize),
     /// Keep only these columns, in this order.
     Select(Vec<usize>),
+    /// Add a last column `name` computed by an expression ([`crate::csv_expr`]) over each row;
+    /// `names` are the header's column names the expression may use.
+    Derive { name: String, expr: String, names: Vec<String>, header: bool },
+}
+
+/// A field value written so it reads back as `v`: quoted when it holds the delimiter, a
+/// quote, a line break or edge spaces.
+pub fn quote_field(v: &str, d: Dialect) -> String {
+    let q = d.quote as char;
+    if v.contains([d.delim as char, q, '\n', '\r']) || v.trim() != v {
+        format!("{q}{}{q}", v.replace(q, &format!("{q}{q}")))
+    } else {
+        v.to_string()
+    }
 }
 
 /// Streams the document rewritten by `rw` to `out` (with its byte order mark). `count` in the
@@ -958,7 +972,7 @@ pub fn rewrite_to<W: Write>(buf: &TextBuf, d: Dialect, rw: &Rewrite, out: &mut W
                     Rewrite::Swap(a, b) if r.fields.len() > *a.max(b) => (0..r.fields.len()).map(|i| if i == *a { *b } else if i == *b { *a } else { i }).collect(),
                     Rewrite::Swap(..) => (0..r.fields.len()).collect(),
                     Rewrite::Select(cols) => cols.clone(),
-                    Rewrite::Sort { .. } => unreachable!(),
+                    Rewrite::Sort { .. } | Rewrite::Derive { .. } => unreachable!(),
                 };
                 // Keep blank lines blank.
                 if !(r.content.is_empty() && r.fields.len() == 1) {
@@ -983,6 +997,37 @@ pub fn rewrite_to<W: Write>(buf: &TextBuf, d: Dialect, rw: &Rewrite, out: &mut W
                 }
             }
         }),
+        Rewrite::Derive { name, expr, names, header } => {
+            let e = crate::csv_expr::Expr::compile(expr, names).map_err(io::Error::other)?;
+            let mut first = *header;
+            for_each_record(buf, d, cancel, progress, |r| {
+                let res = (|| -> io::Result<()> {
+                    emit(&buf.read(r.content.clone()).ok_or_else(read_err)?, &mut stats)?;
+                    // Blank lines stay blank.
+                    if !(r.content.is_empty() && r.fields.len() == 1) {
+                        let value = if first {
+                            name.clone()
+                        } else {
+                            let fields: Vec<String> = r.fields.iter().map(|f| buf.read(f.clone()).map(|b| field_value(&codec, d, &b))).collect::<Option<_>>().ok_or_else(read_err)?;
+                            e.eval(&fields)
+                        };
+                        first = false;
+                        emit(&delim, &mut stats)?;
+                        emit(&codec.encode(&quote_field(&value, d)), &mut stats)?;
+                    }
+                    emit(&buf.read(r.content.end..r.next).ok_or_else(read_err)?, &mut stats)?;
+                    Ok(())
+                })();
+                stats.count += 1;
+                match res {
+                    Ok(()) => true,
+                    Err(x) => {
+                        err = Some(x);
+                        false
+                    }
+                }
+            })
+        }
         Rewrite::Sort { col, desc, header } => {
             // (number, text key, start, content end, next) of every data row.
             let mut rows: Vec<(Option<f64>, String, u64, u64, u64)> = Vec::new();

@@ -193,6 +193,8 @@ Single self-contained binary, no runtime dependencies.
   by a key column, as a new table (`bigtext-cli join`).
 - **Pivot tables** (a column's menu → Pivot by this column…): rows by one column (or by hour, day
   or month), columns by another, counts or sums in the cells (`bigtext-cli pivot`).
+- **Add column…** from an expression over the row (`{price} * {qty}`, `substr({ts}, 0, 10)`,
+  `if(…)`, `regex(…)`), previewed as you type (`bigtext-cli derive`).
 - **Check rows…** (a column's menu, or View → Check table rows…): every record with another field
   count, a stray or unclosed quote, a control character or text in a number column, listed under
   the table with its line; **Save rows…** writes them to a file.

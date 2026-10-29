@@ -113,6 +113,7 @@ mod tests {
         "app" / "columns.rs",
         "app" / "commands.rs",
         "app" / "csv_tools.rs",
+        "app" / "derive_column.rs",
         "app" / "document.rs",
         "app" / "export.rs",
         "app" / "extras.rs",

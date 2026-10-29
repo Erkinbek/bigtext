@@ -247,6 +247,9 @@ impl BigTextApp {
                     }
                     WriteKind::Save => trf("Saved {size} in {secs}s.", &[("size", &human_bytes(d.buf.len())), ("secs", &format!("{secs:.2}"))]),
                     WriteKind::Csv(rw) => {
+                        if matches!(rw, bigtext::csv::Rewrite::Derive { .. }) {
+                            d.table_state.keep_layout();
+                        }
                         if let bigtext::csv::Rewrite::Swap(a, b) = rw {
                             d.table_state.columns_swapped(*a, *b);
                         }

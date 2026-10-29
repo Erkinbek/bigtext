@@ -831,4 +831,17 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["{rows} rows × {cols} columns from {records} records.", "{rows} строк × {cols} столбцов из {records} записей.", "{records} ta yozuvdan {rows} qator × {cols} ustun."],
     ["{n} records were left out (more than {cols} columns or {rows} rows).", "Пропущено записей: {n} (больше {cols} столбцов или {rows} строк).", "{n} ta yozuv tashlab ketildi ({cols} tadan ko'p ustun yoki {rows} tadan ko'p qator)."],
     ["Pivot by this column…", "Сводная таблица по этому столбцу…", "Shu ustun bo'yicha pivot…"],
+    // Derived columns.
+    ["new column", "новый столбец", "yangi ustun"],
+    ["Add a column", "Добавить столбец", "Ustun qo'shish"],
+    ["Expression", "Выражение", "Ifoda"],
+    [
+        "{name} or {3} is a column; + - * / on numbers, & joins text, = <> < > compare, and / or / not; upper, lower, trim, len, substr(t, start, n), replace(t, a, b), regex(t, \"id=([0-9]+)\"), if(c, a, b), num, abs, round(x, digits).",
+        "{name} или {3} — столбец; + - * / над числами, & соединяет текст, = <> < > сравнивают, and / or / not; upper, lower, trim, len, substr(t, start, n), replace(t, a, b), regex(t, \"id=([0-9]+)\"), if(c, a, b), num, abs, round(x, digits).",
+        "{name} yoki {3} — ustun; + - * / sonlar ustida, & matnni ulaydi, = <> < > solishtiradi, and / or / not; upper, lower, trim, len, substr(t, start, n), replace(t, a, b), regex(t, \"id=([0-9]+)\"), if(c, a, b), num, abs, round(x, digits).",
+    ],
+    ["Preview (rows on screen):", "Предпросмотр (строки на экране):", "Ko'rib chiqish (ekrandagi qatorlar):"],
+    ["Add the column", "Добавить столбец", "Ustunni qo'shish"],
+    ["Add column…", "Добавить столбец…", "Ustun qo'shish…"],
+    ["Added the column “{name}”", "Добавлен столбец «{name}»", "“{name}” ustuni qo'shildi"],
 ];

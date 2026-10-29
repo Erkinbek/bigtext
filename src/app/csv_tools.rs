@@ -61,22 +61,12 @@ pub struct CondDialog {
 /// Groups shown in the results window.
 const GROUPS_SHOWN: usize = 500;
 
-/// A field value written so it reads back as `v`: quoted when it holds the delimiter, a
-/// quote, a line break or edge spaces.
-fn quote_field(v: &str, d: Dialect) -> String {
-    let q = d.quote as char;
-    if v.contains([d.delim as char, q, '\n', '\r']) || v.trim() != v {
-        format!("{q}{}{q}", v.replace(q, &format!("{q}{q}")))
-    } else {
-        v.to_string()
-    }
-}
-
 fn describe(rw: &Rewrite) -> String {
     match rw {
         Rewrite::Sort { col, desc, .. } => trf(if *desc { "Sorted by column {n} (descending)" } else { "Sorted by column {n}" }, &[("n", &(col + 1).to_string())]),
         Rewrite::Swap(a, b) => trf("Moved column {a} to {b}", &[("a", &(a + 1).to_string()), ("b", &(b + 1).to_string())]),
         Rewrite::Select(_) => tr("Columns exported").into(),
+        Rewrite::Derive { name, .. } => trf("Added the column “{name}”", &[("name", name)]),
     }
 }
 
@@ -109,6 +99,7 @@ impl BigTextApp {
             }
             TableAction::CheckRows => self.check_rows(),
             TableAction::Pivot { col } => self.open_pivot(col),
+            TableAction::AddColumn => self.open_derive(),
             TableAction::Freeze { upto } => {
                 if let Some(d) = self.docs.get_mut(self.active) {
                     d.table_state.frozen = upto;
@@ -248,7 +239,7 @@ impl BigTextApp {
     }
 
     /// Runs a rewrite in memory, or asks first when it has to go to disk (no undo).
-    fn ask_rewrite(&mut self, rw: Rewrite) {
+    pub(crate) fn ask_rewrite(&mut self, rw: Rewrite) {
         let Some(d) = self.docs.get(self.active) else { return };
         let Some(dialect) = d.table_state.dialect else { return };
         if !d.editable() {
@@ -324,6 +315,9 @@ impl BigTextApp {
         d.record(swap, (caret, caret));
         d.view.top = top;
         d.view.scroll_to_caret = false;
+        if matches!(c.rewrite, Rewrite::Derive { .. }) {
+            d.table_state.keep_layout();
+        }
         if let Rewrite::Swap(a, b) = c.rewrite {
             d.table_state.columns_swapped(a, b);
         }
@@ -368,7 +362,7 @@ impl BigTextApp {
             false
         });
         let Some(field) = field else { return };
-        let bytes = d.buf.codec.encode(&quote_field(name, dialect));
+        let bytes = d.buf.codec.encode(&csv::quote_field(name, dialect));
         d.edit(field, &bytes, EditKind::Other);
         d.table_state.keep_layout();
     }
@@ -573,9 +567,9 @@ mod tests {
     #[test]
     fn quoting() {
         let d = Dialect::new(b',');
-        assert_eq!(quote_field("name", d), "name");
-        assert_eq!(quote_field("a,b", d), "\"a,b\"");
-        assert_eq!(quote_field("say \"hi\"", d), "\"say \"\"hi\"\"\"");
-        assert_eq!(quote_field(" x", d), "\" x\"");
+        assert_eq!(csv::quote_field("name", d), "name");
+        assert_eq!(csv::quote_field("a,b", d), "\"a,b\"");
+        assert_eq!(csv::quote_field("say \"hi\"", d), "\"say \"\"hi\"\"\"");
+        assert_eq!(csv::quote_field(" x", d), "\" x\"");
     }
 }

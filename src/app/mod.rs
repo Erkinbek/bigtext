@@ -3,6 +3,7 @@
 pub mod columns;
 pub mod commands;
 pub mod csv_tools;
+pub mod derive_column;
 pub mod document;
 pub mod export;
 pub mod extras;
@@ -246,6 +247,7 @@ pub struct BigTextApp {
     pub problems: problems_panel::ProblemsUi,
     pub join: Option<join_tables::JoinDialog>,
     pub pivot: Option<pivot::PivotDialog>,
+    pub derive: Option<derive_column::DeriveDialog>,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -379,6 +381,7 @@ impl BigTextApp {
             problems: problems_panel::ProblemsUi::default(),
             join: None,
             pivot: None,
+            derive: None,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1476,6 +1479,7 @@ impl eframe::App for BigTextApp {
         self.values_window(&ctx);
         self.join_window(&ctx);
         self.pivot_window(&ctx);
+        self.derive_window(&ctx);
         self.palette_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);
