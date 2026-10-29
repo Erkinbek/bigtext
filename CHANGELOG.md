@@ -151,6 +151,12 @@ All notable changes to BigText. Each release on
 
 ### Command line
 
+- `bigtext-cli head -n N` and `tail -n N` read only that end of the file (tail scans backwards),
+  and `bigtext-cli slice FILE --lines A-B | --bytes A-B | --from TIME --to TIME` cuts out a part
+  — bytes widened to whole lines, times found by binary search in a time-ordered log, a `--to`
+  without a date taken on `--from`'s day — with `--header` to put line 1 first (CSV samples).
+  On the console the text is decoded to UTF-8; `-o` writes it as it is, with its byte order
+  mark. **File → Export lines…** has a *Between times* mode.
 - **Script commands without a window**, in the new console program **`bigtext-cli`** (also
   `bigtext --filter …`): `filter` (grep-like, `-v -i -w -E`, to a file in the original
   encoding with `-o` or to the console), `levels ERROR,WARN`, `count`, `split --size 100MB` /

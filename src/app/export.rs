@@ -15,6 +15,10 @@ pub struct LinesDialog {
     from: String,
     to: String,
     error: Option<String>,
+    /// Between two times rather than two line numbers.
+    times: bool,
+    from_time: String,
+    to_time: String,
 }
 
 pub struct SplitDialog {
@@ -71,7 +75,7 @@ impl BigTextApp {
         let (s, e) = d.selection();
         let e = if e > s { e - d.buf.codec.unit() as u64 } else { e };
         let (a, b) = (d.buf.line_of(s).0 + 1, d.buf.line_of(e).0 + 1);
-        self.export.lines = Some(LinesDialog { from: a.to_string(), to: b.to_string(), error: None });
+        self.export.lines = Some(LinesDialog { from: a.to_string(), to: b.to_string(), error: None, times: false, from_time: String::new(), to_time: String::new() });
     }
 
     pub(crate) fn save_selection_as(&mut self) {
@@ -91,6 +95,25 @@ impl BigTextApp {
         if self.docs.get(self.active).is_some_and(|d| d.is_ready()) {
             self.export.split = Some(SplitDialog { by_lines: false, pack: None, size_mb: "100".into(), lines: "1000000".into(), error: None });
         }
+    }
+
+    /// Writes the lines from one time to another (inclusive to its second; `to` without a date
+    /// is on `from`'s day) to a file the user picks.
+    pub(crate) fn export_times(&mut self, from: Option<bigtext::timestamp::Stamp>, to: Option<bigtext::timestamp::Stamp>, target: Option<std::path::PathBuf>) {
+        let Some(d) = self.docs.get(self.active) else { return };
+        let snap = d.buf.snapshot();
+        let name = format!("{}.between.txt", self.output_base_name());
+        let Some(target) = target.or_else(|| self.pick_output_file(tr("Export lines"), &name)) else { return };
+        let to = match (from, to) {
+            (Some(f), Some(t)) => Some(bigtext::timestamp::rebase(t, f)),
+            (_, t) => t,
+        };
+        self.spawn_task(tr("Exporting lines between times").into(), move |progress, cancel| match bigtext::timestamp::time_range(&snap, from, to, cancel) {
+            Ok((s, e)) if e > s => write_range(&snap, s..e, &target, progress, cancel),
+            Ok(_) => TaskOutcome::Failed(tr("No lines between these times.").into()),
+            Err(bigtext::timestamp::TimeError::Cancelled) => TaskOutcome::Cancelled,
+            Err(_) => TaskOutcome::Failed(tr("The document has no timestamps to go by.").into()),
+        });
     }
 
     fn export_lines(&mut self, from: u64, to: u64) {
@@ -134,23 +157,48 @@ impl BigTextApp {
         if let Some(g) = &mut self.export.lines {
             let mut open = true;
             let mut go = None;
+            let mut go_times = None;
             egui::Window::new(tr("Export lines")).collapsible(false).resizable(false).open(&mut open).show(ctx, |ui| {
-                egui::Grid::new("export-lines").num_columns(2).show(ui, |ui| {
-                    ui.label(tr("From line"));
-                    ui.text_edit_singleline(&mut g.from);
-                    ui.end_row();
-                    ui.label(tr("To line (inclusive)"));
-                    ui.text_edit_singleline(&mut g.to);
-                    ui.end_row();
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut g.times, false, tr("Line numbers"));
+                    ui.radio_value(&mut g.times, true, tr("Between times"));
                 });
+                egui::Grid::new("export-lines").num_columns(2).show(ui, |ui| {
+                    if g.times {
+                        ui.label(tr("From"));
+                        ui.add(egui::TextEdit::singleline(&mut g.from_time).hint_text("2024-05-01 14:00"));
+                        ui.end_row();
+                        ui.label(tr("To (inclusive)"));
+                        ui.add(egui::TextEdit::singleline(&mut g.to_time).hint_text("14:30"));
+                        ui.end_row();
+                    } else {
+                        ui.label(tr("From line"));
+                        ui.text_edit_singleline(&mut g.from);
+                        ui.end_row();
+                        ui.label(tr("To line (inclusive)"));
+                        ui.text_edit_singleline(&mut g.to);
+                        ui.end_row();
+                    }
+                });
+                if g.times {
+                    ui.weak(tr("The log's lines in time order are found by binary search; an empty field means its start or end."));
+                }
                 ui.weak(tr("The lines are copied to a new file; the document does not change."));
                 if let Some(e) = &g.error {
                     ui.colored_label(ui.visuals().error_fg_color, e);
                 }
                 if ui.button(tr("Save as…")).clicked() {
-                    match (parse(&g.from), parse(&g.to)) {
-                        (Some(a), Some(b)) if a <= b => go = Some((a, b)),
-                        _ => g.error = Some(tr("Enter two line numbers, the first not larger than the second.").into()),
+                    if g.times {
+                        let t = |s: &str| if s.trim().is_empty() { Ok(None) } else { bigtext::timestamp::parse(s).map(Some).ok_or(()) };
+                        match (t(&g.from_time), t(&g.to_time)) {
+                            (Ok(a), Ok(b)) if a.is_some() || b.is_some() => go_times = Some((a, b)),
+                            _ => g.error = Some(tr("Enter a time like 2024-05-01 14:00:00 or 14:30.").into()),
+                        }
+                    } else {
+                        match (parse(&g.from), parse(&g.to)) {
+                            (Some(a), Some(b)) if a <= b => go = Some((a, b)),
+                            _ => g.error = Some(tr("Enter two line numbers, the first not larger than the second.").into()),
+                        }
                     }
                 }
             });
@@ -160,6 +208,10 @@ impl BigTextApp {
             if let Some((a, b)) = go {
                 self.export.lines = None;
                 self.export_lines(a, b);
+            }
+            if let Some((a, b)) = go_times {
+                self.export.lines = None;
+                self.export_times(a, b, None);
             }
         }
         if let Some(g) = &mut self.export.split {

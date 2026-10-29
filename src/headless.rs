@@ -90,6 +90,15 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         changed columns, and A's columns with \"old → new\" where a value
         changed. Columns pair up by header name. Exit code 0 when they are the
         same, 1 when they differ.
+  head [-n N] FILE [-o OUT]
+  tail [-n N] FILE [-o OUT]
+        The first or last N lines (10), read from that end only.
+  slice FILE (--lines A-B | --bytes A-B | --from TIME [--to TIME]) [--header] [-o OUT]
+        Lines A to B (1-based, inclusive), the lines around bytes A to B, or
+        the lines from one time to another (inclusive to the second; a --to
+        without a date is on --from's day), found by binary search in a time-
+        ordered log; --header puts line 1 first. Exit code 1 when nothing is
+        in the range.
   sort [-r] [-n] [-i] [-u] FILE [-o OUT]
         The lines sorted (-r reversed, -n by the number at their start, -i
         ignoring case, -u each once), of a file of any size (temporary runs
@@ -135,7 +144,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 24] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format", "sort", "uniq"];
+const COMMANDS: [&str; 27] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format", "sort", "uniq", "head", "tail", "slice"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -702,6 +711,107 @@ fn cmd_join(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(0)
 }
 
+/// Writes `range` of `buf` (with line 1 first when `header` and the range starts later): as it
+/// is to a file, decoded to UTF-8 on the console.
+fn write_slice(buf: &TextBuf, range: std::ops::Range<u64>, header: bool, to: Option<&str>, out: &mut dyn Write) -> Res<i32> {
+    let codec = buf.codec;
+    let bom = codec.bom_len as u64;
+    let header = if header && range.start > bom { crate::filter::line_end_at(buf, bom).map(|e| bom..e) } else { None };
+    let raw = to.is_some() || codec.enc == crate::encoding::Encoding::Utf8;
+    with_output(to, out, |w| {
+        if to.is_some() && bom > 0 {
+            w.write_all(&buf.read(0..bom).ok_or_else(|| Fail("could not read the file".into()))?)?;
+        }
+        let mut copy = |r: std::ops::Range<u64>| -> Res<()> {
+            let r = r.start.max(bom)..r.end;
+            let mut err = None;
+            buf.for_each_chunk(r, |_, b| {
+                let res = if raw { w.write_all(b) } else { w.write_all(codec.decode_lossy(b).as_bytes()) };
+                match res {
+                    Ok(()) => true,
+                    Err(e) => {
+                        err = Some(e);
+                        false
+                    }
+                }
+            })
+            .ok_or_else(|| Fail("could not read the file".into()))?;
+            match err {
+                Some(e) => Err(e.into()),
+                None => Ok(()),
+            }
+        };
+        if let Some(h) = header {
+            copy(h)?;
+        }
+        copy(range.clone())
+    })?;
+    Ok((range.start >= range.end) as i32)
+}
+
+fn cmd_head_tail(args: &[String], out: &mut dyn Write, head: bool) -> Res<i32> {
+    let a = Args::parse(args, &[], &["-n", "--lines", "-o", "--output"])?;
+    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let n: u64 = match a.opt(&["-n", "--lines"]) {
+        Some(v) => v.parse().map_err(|_| Fail(format!("-n needs a number of lines, not {v}")))?,
+        None => 10,
+    };
+    let (buf, _) = open(Path::new(file))?;
+    let buf = buf.snapshot();
+    let range = if head {
+        match split::line_range(&buf, 1, n.max(1), &CancelToken::new(), None) {
+            Some(r) if n > 0 => r,
+            _ => 0..0,
+        }
+    } else {
+        crate::lines::last_lines_start(&buf, n).ok_or_else(|| Fail("could not read the file".into()))?..buf.len()
+    };
+    write_slice(&buf, range, false, a.opt(&["-o", "--output"]), out)
+}
+
+fn cmd_slice(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["--header"], &["--lines", "--bytes", "--from", "--to", "-o", "--output"])?;
+    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let (buf, _) = open(Path::new(file))?;
+    let buf = buf.snapshot();
+    let pair = |v: &str, what: &str| -> Res<(u64, u64)> {
+        let (x, y) = v.split_once('-').ok_or_else(|| Fail(format!("{what} needs A-B")))?;
+        let num = |s: &str| s.trim().replace('_', "").parse::<u64>().map_err(|_| Fail(format!("{what}: “{s}” is not a number")));
+        let (x, y) = (num(x)?, num(y)?);
+        if x > y {
+            return fail(format!("{what}: {x} is after {y}"));
+        }
+        Ok((x, y))
+    };
+    let cancel = CancelToken::new();
+    let range = match (a.opt(&["--lines"]), a.opt(&["--bytes"]), a.opt(&["--from"]), a.opt(&["--to"])) {
+        (Some(v), None, None, None) => {
+            let (x, y) = pair(v, "--lines")?;
+            split::line_range(&buf, x.max(1), y.max(1), &cancel, None).unwrap_or(0..0)
+        }
+        (None, Some(v), None, None) => {
+            // Out to whole lines.
+            let (x, y) = pair(v, "--bytes")?;
+            let (x, y) = (x.min(buf.len()), y.min(buf.len()));
+            let s = crate::filter::line_start_at(&buf, x).unwrap_or(x);
+            let e = crate::filter::line_end_at(&buf, y.saturating_sub(1).max(x)).unwrap_or(y);
+            s..e.max(s)
+        }
+        (None, None, from, to) if from.is_some() || to.is_some() => {
+            let parse = |t: &str| timestamp::parse(t).ok_or_else(|| Fail(format!("not a time: {t}")));
+            let from = from.map(parse).transpose()?;
+            let to = to.map(parse).transpose()?.map(|t| from.map(|f| timestamp::rebase(t, f)).unwrap_or(t));
+            match timestamp::time_range(&buf, from, to, &cancel) {
+                Ok((s, e)) => s..e,
+                Err(timestamp::TimeError::NoTimestamps) => return fail("the file has no timestamps"),
+                Err(e) => return fail(format!("{e:?}")),
+            }
+        }
+        _ => return fail("give one of --lines A-B, --bytes A-B, or --from (and --to)"),
+    };
+    write_slice(&buf, range, a.flag(&["--header"]), a.opt(&["-o", "--output"]), out)
+}
+
 fn cmd_sort(args: &[String], out: &mut dyn Write, uniq: bool) -> Res<i32> {
     use crate::extsort::{SortMode, SortSpec};
     let a = Args::parse(args, &["-r", "-n", "-i", "-u", "-c"], &["-o", "--output"])?;
@@ -1144,6 +1254,9 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "only-in" => cmd_only_in(rest, out),
         "diff-table" => cmd_diff_table(rest, out),
         "transform" => cmd_transform(rest, out),
+        "head" => cmd_head_tail(rest, out, true),
+        "tail" => cmd_head_tail(rest, out, false),
+        "slice" => cmd_slice(rest, out),
         "sort" => cmd_sort(rest, out, false),
         "uniq" => cmd_sort(rest, out, true),
         "format" => cmd_format(rest, out),
@@ -1329,6 +1442,26 @@ mod tests {
         assert_eq!(run_args(&["diff-table", &a, &b, "--key", "1", "--key-b", "3", "--all"]).1.lines().nth(2), Some("same,2,,banana,7"));
         assert_eq!(run_args(&["diff-table", &a, &a, "--key", "id"]).0, 0);
         assert_eq!(run_args(&["diff-table", &a, &b]).0, 2);
+    }
+
+    #[test]
+    fn head_tail_slice() {
+        let d = tempfile::tempdir().unwrap();
+        let log: String = (0..100).map(|i| format!("2024-05-01 10:{:02}:{:02} line {i}\n", i / 60, i % 60)).collect();
+        let f = file(&d, "t.log", log.as_bytes());
+        let lines = |s: &str| s.lines().map(String::from).collect::<Vec<_>>();
+        assert_eq!(lines(&run_args(&["head", "-n", "2", &f]).1), ["2024-05-01 10:00:00 line 0", "2024-05-01 10:00:01 line 1"]);
+        assert_eq!(lines(&run_args(&["tail", "-n", "1", &f]).1), ["2024-05-01 10:01:39 line 99"]);
+        assert_eq!(run_args(&["tail", &f]).1.lines().count(), 10);
+        assert_eq!(lines(&run_args(&["slice", &f, "--lines", "3-4"]).1), ["2024-05-01 10:00:02 line 2", "2024-05-01 10:00:03 line 3"]);
+        // Bytes widen to whole lines.
+        assert_eq!(run_args(&["slice", &f, "--bytes", "5-40"]).1.lines().count(), 2);
+        let (code, out, _) = run_args(&["slice", &f, "--from", "2024-05-01 10:01:00", "--to", "10:01:02"]);
+        assert_eq!((code, lines(&out)), (0, vec!["2024-05-01 10:01:00 line 60".to_string(), "2024-05-01 10:01:01 line 61".into(), "2024-05-01 10:01:02 line 62".into()]));
+        assert_eq!(run_args(&["slice", &f, "--from", "2024-05-02 00:00:00"]).0, 1);
+        let csv = file(&d, "t.csv", b"id,v\n1,a\n2,b\n3,c\n");
+        assert_eq!(run_args(&["slice", &csv, "--lines", "3-3", "--header"]).1, "id,v\n2,b\n");
+        assert_eq!(run_args(&["slice", &f]).0, 2);
     }
 
     #[test]

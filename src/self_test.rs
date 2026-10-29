@@ -1718,6 +1718,27 @@ impl SelfTest {
             };
             check(got == "md.log:1\n```log\n2024-05-01 10:00:00 INFO start\n2024-05-01 10:00:01 ERROR <boom>\n```\n", format!("{got:?}"))
         }));
+        s("Export lines between two times", Box::new(|app, c| {
+            if c.first() {
+                let _ = std::fs::remove_file(c.file("levels-between.log"));
+                app.open_path(c.file("levels.log"));
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if !wait_ready(app) {
+                    return Step::Wait;
+                }
+                let t = |s: &str| bigtext::timestamp::parse(s);
+                app.export_times(t("2024-05-01 10:00:01"), t("10:00:03"), Some(c.file("levels-between.log")));
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let out = std::fs::read_to_string(c.file("levels-between.log")).unwrap_or_default();
+            if out.is_empty() || !app.tasks.is_empty() {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail("nothing written".into()) } else { Step::Wait };
+            }
+            check(out.starts_with("2024-05-01 10:00:01 DEBUG") && out.lines().count() == 3, format!("{out:?}"))
+        }));
         s("compare files (streaming diff)", Box::new(|app, c| {
             if c.first() {
                 app.open_path(c.file("diff-a.txt"));

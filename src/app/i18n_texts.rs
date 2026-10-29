@@ -1173,4 +1173,13 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Copy as HTML works on up to 2 MB. Select a smaller part.", "Копирование как HTML работает максимум на 2 МБ. Выделите часть поменьше.", "HTML sifatida nusxalash 2 MB gacha ishlaydi. Kichikroq qismni tanlang."],
     ["HTML could not be put on the clipboard; copied as plain text", "Не удалось поместить HTML в буфер обмена; скопировано как обычный текст", "HTML ni almashish buferiga qo'yib bo'lmadi; oddiy matn sifatida nusxalandi"],
     ["Copied.", "Скопировано.", "Nusxalandi."],
+    // Export lines between times.
+    ["Exporting lines between times", "Экспорт строк между временами", "Vaqtlar orasidagi qatorlar eksport qilinmoqda"],
+    ["No lines between these times.", "Между этими временами нет строк.", "Bu vaqtlar orasida qator yo'q."],
+    ["The document has no timestamps to go by.", "В документе нет отметок времени.", "Hujjatda vaqt belgilari yo'q."],
+    ["Line numbers", "Номера строк", "Qator raqamlari"],
+    ["Between times", "Между временами", "Vaqtlar orasida"],
+    ["To (inclusive)", "По (включительно)", "Gacha (shu bilan)"],
+    ["The log's lines in time order are found by binary search; an empty field means its start or end.", "Строки лога, упорядоченные по времени, находятся двоичным поиском; пустое поле — начало или конец.", "Vaqt bo'yicha tartiblangan log qatorlari ikkilik qidiruv bilan topiladi; bo'sh maydon — boshi yoki oxiri."],
+    ["Enter a time like 2024-05-01 14:00:00 or 14:30.", "Введите время, например 2024-05-01 14:00:00 или 14:30.", "Vaqtni kiriting, masalan 2024-05-01 14:00:00 yoki 14:30."],
 ];

@@ -350,6 +350,14 @@ bigtext-cli levels ERROR,WARN FILE [-o OUT]                    lines of these lo
 bigtext-cli count [-v] [-i] [-w] [-E] PATTERN FILE             number of matching lines
 bigtext-cli extract [-E] [-g N] [--count] PATTERN FILE          only the matched texts (or counts)
 bigtext-cli split (--size 100MB | --lines N) FILE [--out-dir DIR]
+bigtext-cli head [-n N] FILE / tail [-n N] FILE                the first / last N lines
+bigtext-cli slice FILE --lines A-B | --bytes A-B | --from T --to T   a part, by binary search
+bigtext-cli diff A B [-w] [-i] [-t] [--mask RE] [-U N] [-q]    a unified diff
+bigtext-cli only-in A B [-t] [--mask RE]                       lines of A nowhere in B
+bigtext-cli diff-table A B --key COL                           tables compared by key
+bigtext-cli sort [-r] [-n] [-i] [-u] FILE / uniq [-c] FILE     any size, through temp runs
+bigtext-cli transform --op upper|lower|trim|tabs FILE          text operations, streamed
+bigtext-cli format FILE --json pretty|minify                   JSON formatting, streamed
 bigtext-cli stats FILE...                                      size, lines, encoding, first/last time
 bigtext-cli merge FILE FILE... [-o OUT]                        logs merged by time
 bigtext-cli convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]  tables (and JSON Lines → CSV)

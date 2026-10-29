@@ -11,6 +11,42 @@ pub const CHUNK: usize = 1 << 20;
 /// Longer lines are cut into pieces of this size.
 pub const MAX_LINE: usize = 16 << 20;
 
+/// Where the last `n` lines of `buf` start (a final line break does not make an empty last
+/// line), reading backwards from the end. `None` if the text could not be read.
+pub fn last_lines_start(buf: &TextBuf, n: u64) -> Option<u64> {
+    let codec = buf.codec;
+    let unit = codec.unit() as u64;
+    let start = (codec.bom_len as u64).min(buf.len());
+    if n == 0 {
+        return Some(buf.len());
+    }
+    let mut end = buf.len();
+    // A line break at the very end ends the last line rather than starting another.
+    if end >= start + unit {
+        let tail = buf.read(end - unit..end)?;
+        if codec.find_nl(&tail, end - unit).is_some() {
+            end -= unit;
+        }
+    }
+    let mut left = n;
+    let mut hi = end;
+    while hi > start {
+        let lo = hi.saturating_sub(1 << 20).max(start);
+        let lo = lo - (lo - start) % unit;
+        let chunk = buf.read(lo..hi)?;
+        let mut upto = chunk.len();
+        while let Some(i) = codec.rfind_nl(&chunk[..upto], lo) {
+            left -= 1;
+            if left == 0 {
+                return Some(lo + (i as u64) + unit);
+            }
+            upto = i;
+        }
+        hi = lo;
+    }
+    Some(start)
+}
+
 /// The lines of a text, in order, without their line breaks (and without a byte order mark).
 pub struct LineReader<'a> {
     buf: &'a TextBuf,

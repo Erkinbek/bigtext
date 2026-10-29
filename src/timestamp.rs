@@ -426,6 +426,19 @@ pub enum TimeError {
     Cancelled,
 }
 
+/// `to` on the day of `from` when it has no date of its own (the next day when it is earlier),
+/// so `--from '2024-05-01 23:50' --to 00:10` means ten past midnight on the 2nd.
+pub fn rebase(to: Stamp, from: Stamp) -> Stamp {
+    if to.has_date || !from.has_date {
+        return to;
+    }
+    let mut ms = from.ms - from.time_of_day() + to.time_of_day();
+    if ms < from.ms {
+        ms += DAY;
+    }
+    Stamp { ms, has_date: true, ..to }
+}
+
 /// The byte range of the lines from the time `from` up to and including the second `to` (either
 /// may be open): from the first line at or after `from` to the first line after `to`.
 pub fn time_range(buf: &TextBuf, from: Option<Stamp>, to: Option<Stamp>, cancel: &CancelToken) -> Result<(u64, u64), TimeError> {
