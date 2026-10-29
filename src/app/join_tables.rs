@@ -99,7 +99,7 @@ impl BigTextApp {
                     std::fs::create_dir_all(dir)?;
                 }
                 let mut w = std::io::BufWriter::with_capacity(8 << 20, std::fs::File::options().write(true).create_new(true).open(&target)?);
-                let st = csv_join::join_to(&lsnap, ld, &rsnap, rd, spec, &mut w, cancel, Some(progress))?;
+                let st = csv_join::join_to((&lsnap, ld), (&rsnap, rd), spec, &mut w, cancel, Some(progress))?;
                 std::io::Write::flush(&mut w)?;
                 Ok::<_, std::io::Error>(st)
             })();

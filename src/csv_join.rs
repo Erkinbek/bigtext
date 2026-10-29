@@ -49,7 +49,7 @@ fn values(buf: &TextBuf, d: Dialect, r: &csv::Record) -> Option<Vec<String>> {
 
 /// Writes the joined table to `out`. Returns `None` when cancelled; an error when the right
 /// table does not fit in memory.
-pub fn join_to<W: Write>(left: &TextBuf, ld: Dialect, right: &TextBuf, rd: Dialect, spec: JoinSpec, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<JoinStats>> {
+pub fn join_to<W: Write>((left, ld): (&TextBuf, Dialect), (right, rd): (&TextBuf, Dialect), spec: JoinSpec, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<JoinStats>> {
     let read_err = || io::Error::other("Could not read the document");
     let mut stats = JoinStats::default();
     // Pass 1: the right table's other columns, rendered once, by key.
@@ -163,7 +163,7 @@ mod tests {
 
     fn join(l: &TextBuf, r: &TextBuf, ld: Dialect, rd: Dialect, spec: JoinSpec) -> (String, JoinStats) {
         let mut out = Vec::new();
-        let st = join_to(l, ld, r, rd, spec, &mut out, &CancelToken::new(), None).unwrap().unwrap();
+        let st = join_to((l, ld), (r, rd), spec, &mut out, &CancelToken::new(), None).unwrap().unwrap();
         (String::from_utf8(out).unwrap(), st)
     }
 

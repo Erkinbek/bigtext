@@ -591,7 +591,7 @@ fn cmd_join(args: &[String], out: &mut dyn Write) -> Res<i32> {
     };
     let spec = crate::csv_join::JoinSpec { left_key: column_index(&left, &lg, lc)?, right_key: column_index(&right, &rg, rc)?, inner: a.flag(&["--inner"]), header: lg.header && rg.header };
     with_output(a.opt(&["-o", "--output"]), out, |w| {
-        crate::csv_join::join_to(&left, lg.dialect, &right, rg.dialect, spec, &mut &mut *w, &CancelToken::new(), None)?;
+        crate::csv_join::join_to((&left, lg.dialect), (&right, rg.dialect), spec, &mut &mut *w, &CancelToken::new(), None)?;
         Ok(())
     })?;
     Ok(0)
