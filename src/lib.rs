@@ -4,6 +4,7 @@
 pub mod brackets;
 pub mod correlate;
 pub mod csv;
+pub mod csv_check;
 pub mod decompress;
 pub mod diff;
 pub mod encoding;

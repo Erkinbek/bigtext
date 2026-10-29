@@ -183,6 +183,9 @@ Single self-contained binary, no runtime dependencies.
 - **JSON**: **View → JSON structure** (Ctrl+Shift+J), an outline opened node by node (fine for a
   root array of millions of items), jumping to a path like `$.items[1234].id` and copying the
   path at the caret; **View → Open JSON Lines as table**.
+- **Check rows…** (a column's menu, or View → Check table rows…): every record with another field
+  count, a stray or unclosed quote, a control character or text in a number column, listed under
+  the table with its line; **Save rows…** writes them to a file.
 - **More table tools**: **Group rows by this column…** (counts, with sums of another column),
   **Filter rows by conditions…** (several conditions at once), and export as JSON, JSON Lines,
   Markdown or Excel (.xlsx).
@@ -256,6 +259,7 @@ bigtext-cli split (--size 100MB | --lines N) FILE [--out-dir DIR]
 bigtext-cli stats FILE...                                      size, lines, encoding, first/last time
 bigtext-cli merge FILE FILE... [-o OUT]                        logs merged by time
 bigtext-cli convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]  tables (and JSON Lines → CSV)
+bigtext-cli validate FILE [--no-header] [--numeric 3,5]        malformed CSV / TSV rows
 bigtext-cli values FIELD FILE [-o OUT]                         a JSON Lines / logfmt field's values
 bigtext-cli gaps FILE [--min 30s]                              time gaps, with line numbers
 bigtext-cli patterns FILE [--top N] [--rare] [-o OUT]          message templates with counts

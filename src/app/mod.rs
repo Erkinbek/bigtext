@@ -27,6 +27,7 @@ pub mod nav;
 pub mod ops;
 pub mod patterns_window;
 pub mod portable;
+pub mod problems_panel;
 pub mod saved_searches;
 pub mod search_panel;
 pub mod sessions;
@@ -240,6 +241,7 @@ pub struct BigTextApp {
     pub patterns: patterns_window::PatternsUi,
     pub nav: nav::NavHistory,
     pub values: Option<match_values::ValuesDialog>,
+    pub problems: problems_panel::ProblemsUi,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -370,6 +372,7 @@ impl BigTextApp {
             patterns: patterns_window::PatternsUi::default(),
             nav: nav::NavHistory::default(),
             values: None,
+            problems: problems_panel::ProblemsUi::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1367,6 +1370,9 @@ impl eframe::App for BigTextApp {
         if self.timeline.open && self.docs.get(self.active).is_some_and(|d| d.timeline.is_some()) {
             egui::Panel::bottom("timeline").resizable(true).default_size(170.0).show(ui, |ui| self.timeline_panel(ui));
         }
+        if self.problems.open && self.docs.get(self.active).is_some_and(|d| d.problems.is_some()) {
+            egui::Panel::bottom("problems").resizable(true).default_size(180.0).show(ui, |ui| self.problems_panel(ui));
+        }
         if self.gaps.open && self.docs.get(self.active).is_some_and(|d| d.gaps.is_some()) {
             egui::Panel::bottom("gaps").resizable(true).default_size(160.0).show(ui, |ui| self.gaps_panel(ui));
         }
@@ -1484,6 +1490,7 @@ impl eframe::App for BigTextApp {
                 || d.timeline.as_ref().is_some_and(|t| t.is_running())
                 || d.gaps.as_ref().is_some_and(|g| g.is_running())
                 || d.patterns.as_ref().is_some_and(|p| p.is_running())
+                || d.problems.as_ref().is_some_and(|p| p.is_running())
         }) || !self.tasks.is_empty()
             || self.files.is_running();
         if busy {

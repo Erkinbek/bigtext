@@ -58,6 +58,10 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         The log's message templates (numbers, ids, IPs and paths replaced by
         <n>, <hex>, <ip>, <path>) with how many lines each has, as CSV, most
         lines first (--rare: fewest first).
+  validate FILE [--no-header] [--numeric 3,5]
+        Checks a CSV / TSV table: rows with another field count, stray or
+        unclosed quotes, control characters, and (--numeric) text in number
+        columns (1-based). Prints line: problem; exit code 1 when any.
   values FIELD FILE [-o OUT]
         The values of a JSON Lines or logfmt (key=value) field with how many
         lines have each and their first and last time, as CSV, most frequent
@@ -69,7 +73,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 11] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract"];
+const COMMANDS: [&str; 12] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -527,6 +531,47 @@ fn cmd_values(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(if c.lines > 0 { 0 } else { 1 })
 }
 
+/// The dialect of a table file (by its name and content).
+fn dialect_of(buf: &TextBuf, file: &str) -> Res<csv::Dialect> {
+    let sample = buf.read(0..buf.len().min(64 * 1024)).ok_or_else(|| Fail("could not read the file".into()))?;
+    let preferred = if file.to_ascii_lowercase().ends_with(".tsv") { b'\t' } else { b',' };
+    Ok(csv::detect(&buf.codec, &sample, sample.len() as u64 == buf.len(), preferred).unwrap_or(csv::Dialect::new(preferred)))
+}
+
+fn cmd_validate(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["--no-header"], &["--numeric"])?;
+    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let mut numeric = Vec::new();
+    for n in a.opt(&["--numeric"]).unwrap_or("").split(',').map(str::trim).filter(|n| !n.is_empty()) {
+        match n.parse::<usize>() {
+            Ok(n) if n > 0 => numeric.push(n - 1),
+            _ => return fail(format!("not a column number: {n}")),
+        }
+    }
+    let (buf, _) = open(Path::new(file))?;
+    let d = dialect_of(&buf, file)?;
+    let c = crate::csv_check::check(&buf, d, !a.flag(&["--no-header"]), &numeric, &CancelToken::new(), None, |_| {})?.unwrap_or_default();
+    let (mut at, mut line) = (0u64, 0u64);
+    for p in &c.problems {
+        buf.for_each_chunk(at..p.start, |base, ch| {
+            line += buf.codec.count_nl(ch, base);
+            true
+        })
+        .ok_or_else(|| Fail("could not read the file".into()))?;
+        at = p.start;
+        let what = match p.kind {
+            crate::csv_check::Kind::Fields { got, want } => format!("{got} fields instead of {want}"),
+            crate::csv_check::Kind::StrayQuote { col } => format!("column {}: a stray quote", col + 1),
+            crate::csv_check::Kind::Unclosed { col } => format!("column {}: a quote that is never closed", col + 1),
+            crate::csv_check::Kind::Control { col } => format!("column {}: a control character", col + 1),
+            crate::csv_check::Kind::NotNumber { col } => format!("column {}: not a number", col + 1),
+            crate::csv_check::Kind::Huge => "longer than 64 KB, not checked".to_string(),
+        };
+        writeln!(out, "{}: {what}", line + 1)?;
+    }
+    Ok(if c.problems.is_empty() { 0 } else { 1 })
+}
+
 fn cmd_extract(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &["-i", "--ignore-case", "-w", "--word", "-E", "--regex", "--count"], &["-g", "--group", "-o", "--output"])?;
     let [pattern, file] = &a.rest[..] else { return fail("needs PATTERN and FILE") };
@@ -612,6 +657,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "gaps" => cmd_gaps(rest, out),
         "patterns" => cmd_patterns(rest, out),
         "extract" => cmd_extract(rest, out),
+        "validate" => cmd_validate(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
             return 0;
@@ -683,6 +729,15 @@ mod tests {
         run_args(&["filter", "-n", "-A", "1", "ERROR", &log, "-o", &o.to_string_lossy()]);
         assert_eq!(std::fs::read_to_string(&o).unwrap(), "2:2024-05-01 10:00:01 ERROR b\n3-\tat x.Y(Y.java:1)\n--\n6:2024-05-01 10:00:04 ERROR e\n");
         assert_eq!(run_args(&["filter", "-A", "x", "ERROR", &log]).0, 2);
+    }
+
+    #[test]
+    fn validate_a_table() {
+        let d = tempfile::tempdir().unwrap();
+        let t = file(&d, "t.csv", b"id,qty\n1,2\n2\n3,x\n");
+        assert_eq!(run_args(&["validate", "--numeric", "2", &t]), (1, "3: 1 fields instead of 2\n4: column 2: not a number\n".into(), String::new()));
+        let ok = file(&d, "ok.csv", b"a,b\n1,2\n");
+        assert_eq!(run_args(&["validate", &ok]).0, 0);
     }
 
     #[test]

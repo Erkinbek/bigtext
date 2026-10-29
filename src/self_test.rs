@@ -166,6 +166,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
         std::fs::write(dir.join(format!("tab{n}.txt")), format!("tab {n}\n"))?;
     }
     std::fs::write(dir.join("sales.csv"), "city,qty\nTashkent,3\nBukhara,5\nTashkent,7\n")?;
+    std::fs::write(dir.join("broken.csv"), "id,qty\n1,2\n2\n3,x\n")?;
     std::fs::write(dir.join("outline.json"), OUTLINE_JSON)?;
     std::fs::write(dir.join("events.jsonl"), "{\"id\": 1, \"msg\": \"start\"}\n{\"id\": 2, \"msg\": \"a, b\", \"user\": \"ann\"}\n")?;
     std::fs::write(dir.join("ws.txt"), "a b\tc\r\nnext\r\n")?;
@@ -1882,6 +1883,34 @@ impl SelfTest {
             c.key(Key::W, CTRL);
             app.fields.open = false;
             Step::Wait
+        }));
+        s("open broken.csv", open_step("broken.csv"));
+        s("check table rows: a short row and text in a number column", Box::new(|app, c| {
+            use bigtext::csv_check::Kind;
+            if c.first() {
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if doc(app).table_state.dialect.is_none() {
+                    return if c.waited() > Duration::from_secs(3) { Step::Fail("no dialect".into()) } else { Step::Wait };
+                }
+                app.problems.numeric = "2".into();
+                app.check_rows();
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).problems.as_ref() else { return Step::Fail("no check".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let kinds: Vec<Kind> = g.checked.problems.iter().map(|p| p.kind).collect();
+            let starts: Vec<u64> = g.checked.problems.iter().map(|p| p.start).collect();
+            drop(g);
+            c.mark = 0;
+            app.problems.open = false;
+            app.problems.numeric.clear();
+            check(kinds == [Kind::Fields { got: 1, want: 2 }, Kind::NotNumber { col: 1 }] && starts == [11, 13], format!("{kinds:?} at {starts:?}"))
         }));
         s("open sales.csv", open_step("sales.csv"));
         s("CSV: group rows by a column and sum another", Box::new(|app, c| {

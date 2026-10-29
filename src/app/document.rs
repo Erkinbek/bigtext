@@ -192,6 +192,7 @@ pub struct Document {
     pub timeline: Option<super::timeline::TimelineResults>,
     pub gaps: Option<super::gaps_panel::GapsResults>,
     pub patterns: Option<super::patterns_window::PatternsResults>,
+    pub problems: Option<super::problems_panel::ProblemsResults>,
     /// Outline for View → JSON structure.
     pub json: Option<super::json_panel::JsonTree>,
     /// Pinned tabs stay first and are not closed by "Close other tabs".
@@ -295,6 +296,7 @@ impl Document {
             timeline: None,
             gaps: None,
             patterns: None,
+            problems: None,
             json: None,
             pinned: false,
             pending_filter: None,
@@ -390,6 +392,9 @@ impl Document {
             g.cancel.cancel();
         }
         if let Some(p) = &self.patterns {
+            p.cancel.cancel();
+        }
+        if let Some(p) = &self.problems {
             p.cancel.cancel();
         }
         if let Some((_, c)) = &self.unpacking {

@@ -149,6 +149,8 @@ pub enum TableAction {
     GroupBy { col: usize },
     /// Rows that meet several conditions, starting with one on this column.
     Conditions { col: usize },
+    /// Check every row (field counts, quotes, numbers).
+    CheckRows,
 }
 
 pub struct TableEnv<'a> {
@@ -542,6 +544,7 @@ fn column_menu(ui: &mut Ui, actions: &mut Vec<TableAction>, col: usize, name: &s
     act(ui, true, tr("Filter rows by this column…"), TableAction::Filter { col, name: name.to_string() });
     act(ui, true, tr("Filter rows by conditions…"), TableAction::Conditions { col });
     act(ui, true, tr("Group rows by this column…"), TableAction::GroupBy { col });
+    act(ui, true, tr("Check rows…"), TableAction::CheckRows);
     ui.separator();
     act(ui, editable, tr("Rename…"), TableAction::Rename { col, name: name.to_string() });
     act(ui, editable && col > 0, tr("Move left"), TableAction::Move { col, right: false });
