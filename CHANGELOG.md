@@ -149,6 +149,11 @@ All notable changes to BigText. Each release on
 
 ### CSV tables
 
+- **Pivot by this column…** (a column header's menu): a new read-only table with a row per value
+  of that column — or per hour, day or month when it holds times — a column per value of another
+  column, and in each cell the number of rows or the sum, mean, minimum or maximum of a third
+  column, with a Total column; rows by time, or largest total first. `bigtext-cli pivot FILE
+  --rows COL --cols COL [--value COL --agg sum] [--by day]` does the same.
 - **File → Join tables…**: picks two open tables and a key column of each, and opens a new
   read-only table with each row of the first followed by the other columns of the lookup table's
   rows with the same key (all of them when there are several; empty fields, or with **Only the

@@ -172,6 +172,8 @@ pub enum TableAction {
     Conditions { col: usize },
     /// Check every row (field counts, quotes, numbers).
     CheckRows,
+    /// A pivot table with this column's values as rows.
+    Pivot { col: usize },
     /// Keep columns 0..upto on the left (0: none).
     Freeze { upto: usize },
     /// Leave these columns out of the view.
@@ -622,6 +624,7 @@ fn column_menu(ui: &mut Ui, actions: &mut Vec<TableAction>, col: usize, name: &s
     act(ui, true, tr("Filter rows by this column…"), TableAction::Filter { col, name: name.to_string() });
     act(ui, true, tr("Filter rows by conditions…"), TableAction::Conditions { col });
     act(ui, true, tr("Group rows by this column…"), TableAction::GroupBy { col });
+    act(ui, true, tr("Pivot by this column…"), TableAction::Pivot { col });
     act(ui, true, tr("Check rows…"), TableAction::CheckRows);
     ui.separator();
     act(ui, editable, tr("Rename…"), TableAction::Rename { col, name: name.to_string() });

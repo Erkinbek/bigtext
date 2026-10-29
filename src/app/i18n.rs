@@ -134,6 +134,7 @@ mod tests {
         "app" / "nav.rs",
         "app" / "ops.rs",
         "app" / "patterns_window.rs",
+        "app" / "pivot.rs",
         "app" / "portable.rs",
         "app" / "problems_panel.rs",
         "app" / "saved_searches.rs",
@@ -166,6 +167,15 @@ mod tests {
 
     /// Texts translated through a variable rather than a literal at the call.
     const DYNAMIC: &[&str] = &[
+        "Count rows",
+        "Sum",
+        "Mean",
+        "Minimum",
+        "Maximum",
+        "Each value",
+        "By hour",
+        "By day",
+        "By month",
         "Tab 1",
         "Tab 2",
         "Tab 3",

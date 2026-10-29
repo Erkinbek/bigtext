@@ -27,6 +27,7 @@ pub mod multi_cursor;
 pub mod nav;
 pub mod ops;
 pub mod patterns_window;
+pub mod pivot;
 pub mod portable;
 pub mod problems_panel;
 pub mod saved_searches;
@@ -244,6 +245,7 @@ pub struct BigTextApp {
     pub values: Option<match_values::ValuesDialog>,
     pub problems: problems_panel::ProblemsUi,
     pub join: Option<join_tables::JoinDialog>,
+    pub pivot: Option<pivot::PivotDialog>,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -376,6 +378,7 @@ impl BigTextApp {
             values: None,
             problems: problems_panel::ProblemsUi::default(),
             join: None,
+            pivot: None,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1472,6 +1475,7 @@ impl eframe::App for BigTextApp {
         self.patterns_window(&ctx);
         self.values_window(&ctx);
         self.join_window(&ctx);
+        self.pivot_window(&ctx);
         self.palette_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);

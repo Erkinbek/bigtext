@@ -108,6 +108,7 @@ impl BigTextApp {
                 self.csv.group = Some(GroupDialog { col, value: None, names });
             }
             TableAction::CheckRows => self.check_rows(),
+            TableAction::Pivot { col } => self.open_pivot(col),
             TableAction::Freeze { upto } => {
                 if let Some(d) = self.docs.get_mut(self.active) {
                     d.table_state.frozen = upto;

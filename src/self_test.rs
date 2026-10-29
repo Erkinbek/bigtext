@@ -1982,6 +1982,34 @@ impl SelfTest {
             app.csv.groups = None;
             check(ok, format!("groups {got:?}"))
         }));
+        s("pivot a table: cities as rows, quantities as columns", Box::new(|app, c| {
+            use bigtext::csv_pivot::{Agg, Bucket, PivotSpec};
+            if c.first() {
+                app.start_pivot(PivotSpec { rows: 0, cols: 1, value: None, agg: Agg::Count, bucket: Bucket::AsIs, header: true });
+                return Step::Wait;
+            }
+            let d = doc(app);
+            if c.mark == 0 {
+                if !d.title.starts_with("Pivot of") || !d.is_ready() {
+                    return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("active tab {:?}", d.title)) } else { Step::Wait };
+                }
+                let t = text(app);
+                if t != "city,3,5,7,Total\nTashkent,1,0,1,2\nBukhara,0,1,0,1\n" {
+                    return Step::Fail(format!("text {t:?}"));
+                }
+                c.key(Key::W, CTRL);
+                c.mark = 1;
+                return Step::Wait;
+            }
+            if app.docs.iter().any(|d| d.title.starts_with("Pivot of")) {
+                return Step::Wait;
+            }
+            if let Some(i) = app.docs.iter().position(|d| d.title == "sales.csv") {
+                app.active = i;
+            }
+            c.mark = 0;
+            Step::Next
+        }));
         s("open cities.csv", open_step("cities.csv"));
         s("join two tables by a key into a new table", Box::new(|app, c| {
             let id_of = |app: &BigTextApp, name: &str| app.docs.iter().find(|d| d.title == name).map(|d| d.id);

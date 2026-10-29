@@ -62,6 +62,11 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         Each row of the LEFT table with the other columns of the RIGHT table's
         rows with the same key (COL: a header name or a 1-based number), as
         CSV; rows without a match get empty fields, or are left out (--inner).
+  pivot FILE --rows COL --cols COL [--value COL --agg sum|mean|min|max]
+        [--by hour|day|month] [-o OUT]
+        A pivot table as CSV: a row per value of --rows (or per hour, day or
+        month of a time column), a column per value of --cols, row counts or
+        the aggregated --value in the cells, and a Total column.
   validate FILE [--no-header] [--numeric 3,5]
         Checks a CSV / TSV table: rows with another field count, stray or
         unclosed quotes, control characters, and (--numeric) text in number
@@ -79,7 +84,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 13] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join"];
+const COMMANDS: [&str; 14] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -597,6 +602,38 @@ fn cmd_join(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(0)
 }
 
+fn cmd_pivot(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    use crate::csv_pivot::{Agg, Bucket, PivotSpec};
+    let a = Args::parse(args, &["--no-header", "--header"], &["--rows", "--cols", "--value", "--agg", "--by", "-o", "--output", "--skip", "--quote"])?;
+    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let (buf, _) = open(Path::new(file))?;
+    let g = table_of(&buf, file, &a)?;
+    let col = |name: &str| -> Res<usize> {
+        let c = a.opt(&[name]).ok_or_else(|| Fail(format!("give {name} COL")))?;
+        column_index(&buf, &g, c)
+    };
+    let value = a.opt(&["--value"]).map(|c| column_index(&buf, &g, c)).transpose()?;
+    let agg = match a.opt(&["--agg"]) {
+        None if value.is_some() => Agg::Sum,
+        None => Agg::Count,
+        Some(n) => Agg::ALL.into_iter().find(|x| x.name() == n.to_ascii_lowercase()).ok_or_else(|| Fail(format!("unknown --agg {n} (count, sum, mean, min, max)")))?,
+    };
+    if agg != Agg::Count && value.is_none() {
+        return fail("--agg needs --value COL");
+    }
+    let bucket = match a.opt(&["--by"]).map(str::to_ascii_lowercase).as_deref() {
+        None => Bucket::AsIs,
+        Some("hour") => Bucket::Hour,
+        Some("day") => Bucket::Day,
+        Some("month") => Bucket::Month,
+        Some(b) => return fail(format!("unknown --by {b} (hour, day, month)")),
+    };
+    let spec = PivotSpec { rows: col("--rows")?, cols: col("--cols")?, value, agg, bucket, header: g.header };
+    let p = crate::csv_pivot::pivot(&buf, g.dialect, spec, &CancelToken::new(), None).map_err(|_| Fail("could not read the file".into()))?;
+    with_output(a.opt(&["-o", "--output"]), out, |w| Ok(crate::csv_pivot::pivot_to_csv(&p, agg, &mut &mut *w)?))?;
+    Ok(0)
+}
+
 fn cmd_validate(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &["--no-header", "--header"], &["--numeric", "--skip", "--quote"])?;
     let [file] = &a.rest[..] else { return fail("needs FILE") };
@@ -718,6 +755,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "extract" => cmd_extract(rest, out),
         "validate" => cmd_validate(rest, out),
         "join" => cmd_join(rest, out),
+        "pivot" => cmd_pivot(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
             return 0;
@@ -801,6 +839,15 @@ mod tests {
         assert_eq!(run_args(&["convert", &n, "--to", "jsonl", "--header"]).1.lines().next(), Some("{\"1\": \"3\", \"2\": \"4\"}"));
         let q = file(&d, "q.csv", b"a,b\n'x,y',2\n");
         assert_eq!(run_args(&["convert", &q, "--to", "jsonl", "--quote", "'"]).1, "{\"a\": \"x,y\", \"b\": \"2\"}\n");
+    }
+
+    #[test]
+    fn pivot_tables() {
+        let d = tempfile::tempdir().unwrap();
+        let t = file(&d, "s.csv", b"city,product,qty\nT,tea,3\nB,tea,5\nT,rice,7\n");
+        assert_eq!(run_args(&["pivot", &t, "--rows", "city", "--cols", "product"]).1, "city,rice,tea,Total\nT,1,1,2\nB,0,1,1\n");
+        assert_eq!(run_args(&["pivot", &t, "--rows", "1", "--cols", "2", "--value", "qty"]).1, "city,rice,tea,Total\nT,7,3,10\nB,,5,5\n");
+        assert_eq!(run_args(&["pivot", &t, "--rows", "city", "--cols", "product", "--agg", "mean"]).0, 2);
     }
 
     #[test]
