@@ -1,6 +1,7 @@
 //! Background tasks that are not tied to a document's save slot (exports, splitting, column
 //! statistics): each shows a progress bar with Cancel in the status bar, and a notice when done.
 
+use bigtext::decompress::Packer;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -52,17 +53,21 @@ pub struct Notice {
 
 pub const NOTICE_TIME: Duration = Duration::from_secs(12);
 
-/// Streams into a temp file next to `target` and moves it into place when `write` succeeds.
-/// `write` returns the notice text, or `None` when it was cancelled.
-pub fn write_via_temp(target: &Path, write: impl FnOnce(&mut BufWriter<&File>) -> io::Result<Option<String>>) -> TaskOutcome {
+/// Streams into a temp file next to `target` and moves it into place when `write` succeeds;
+/// a `.gz`, `.zst`, `.xz` or `.bz2` target is compressed on the way. `write` returns the notice
+/// text, or `None` when it was cancelled.
+pub fn write_via_temp(target: &Path, write: impl FnOnce(&mut Packer<BufWriter<&File>>) -> io::Result<Option<String>>) -> TaskOutcome {
     let temp = save::temp_path_for(target);
     let file = match File::options().write(true).create_new(true).open(&temp) {
         Ok(f) => f,
         Err(e) => return TaskOutcome::Failed(save::describe(&e, target)),
     };
+    let kind = bigtext::decompress::target_kind(target);
     let r = (|| {
-        let mut w = BufWriter::with_capacity(8 << 20, &file);
+        let mut w = Packer::new(BufWriter::with_capacity(8 << 20, &file), kind)?;
         let r = write(&mut w)?;
+        // The end of the compressed stream must be written before the data is synced.
+        let mut w = w.finish()?;
         w.flush()?;
         drop(w);
         file.sync_all()?;
@@ -70,8 +75,14 @@ pub fn write_via_temp(target: &Path, write: impl FnOnce(&mut BufWriter<&File>) -
     })();
     drop(file);
     match r {
-        Ok(Some(message)) => match save::finalize(&temp, target, false) {
-            Ok(()) => TaskOutcome::Done { message, open: Some(target.to_path_buf()) },
+        Ok(Some(mut message)) => match save::finalize(&temp, target, false) {
+            Ok(()) => {
+                if let (Some(_), Ok(m)) = (kind, std::fs::metadata(target)) {
+                    message.push(' ');
+                    message.push_str(&super::i18n::trf("Compressed to {size}.", &[("size", &bigtext::jobs::human_bytes(m.len()))]));
+                }
+                TaskOutcome::Done { message, open: Some(target.to_path_buf()) }
+            }
             Err(e) => TaskOutcome::Failed(e),
         },
         Ok(None) => {

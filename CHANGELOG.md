@@ -69,6 +69,11 @@ All notable changes to BigText. Each release on
 - **`.xz` and `.bz2`** files open directly (pure-Rust decoders; several streams back to back,
   as `xz` and `bzip2` write them, are read as one). Zip members compressed with Deflate64,
   bzip2, LZMA or xz can be read too.
+- **Saving compressed**: when the name of a Save lines…, Export lines…, Save selection as…,
+  table, diff or value export ends in `.gz`, `.zst`, `.xz` or `.bz2`, the file is compressed on
+  the way out, with the same progress and Cancel, and the notice gives the compressed size.
+  Split file… has *Compress the parts* (`app.part001.log.gz`, …). On the command line every
+  `-o OUT` with such a name is compressed, and `split` takes `--gz`, `--zst`, `--xz`, `--bz2`.
 
 ### Command line
 

@@ -1312,6 +1312,44 @@ impl SelfTest {
                 }
             }
         }));
+        s("a .gz name saves compressed: the .diff.gz opens as an unpacked copy", Box::new(|app, c| {
+            if c.first() {
+                let _ = std::fs::remove_file(c.file("a-b.diff.gz"));
+                app.open_path(c.file("diff-a.txt"));
+                app.start_diff(c.file("diff-b.txt"));
+                return Step::Wait;
+            }
+            let waited = c.waited() > Duration::from_secs(10);
+            match c.mark {
+                0 => {
+                    if !app.diff.as_ref().is_some_and(|r| r.data.lock().unwrap().done) {
+                        return if waited { Step::Fail("the comparison did not finish".into()) } else { Step::Wait };
+                    }
+                    app.export_diff(c.file("a-b.diff.gz"));
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    if !c.file("a-b.diff.gz").exists() || !app.tasks.is_empty() {
+                        return if waited { Step::Fail("no .diff.gz written".into()) } else { Step::Wait };
+                    }
+                    app.diff = None;
+                    app.open_path(c.file("a-b.diff.gz"));
+                    c.mark = 2;
+                    Step::Wait
+                }
+                _ => {
+                    if !wait_ready(app) {
+                        return if waited { Step::Fail("the .gz did not open".into()) } else { Step::Wait };
+                    }
+                    let from = doc(app).unpacked_from.clone();
+                    let t = text(app);
+                    let packed = std::fs::metadata(c.file("a-b.diff.gz")).map(|m| m.len()).unwrap_or(0);
+                    let ok = from.as_deref().is_some_and(|p| p.ends_with("a-b.diff.gz")) && t.contains("+row one hundred\n") && t.contains("\n+extra line\n") && (packed as usize) < t.len();
+                    check(ok, format!("from {from:?}, {} bytes from {packed}", t.len()))
+                }
+            }
+        }));
         s("compare with the saved file shows unsaved edits; after a save, with the .bak", Box::new({
             let mut backup_was = false;
             move |app, c| {

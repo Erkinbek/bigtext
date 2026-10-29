@@ -4,7 +4,7 @@
 //! `.tar.gz` and the like) list their files, and the one picked is unpacked the same way.
 
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -27,6 +27,18 @@ impl Kind {
             Kind::Bzip2 => "bzip2",
         }
     }
+
+    /// The usual file extension.
+    pub fn extension(self) -> &'static str {
+        match self {
+            Kind::Gzip => "gz",
+            Kind::Zstd => "zst",
+            Kind::Xz => "xz",
+            Kind::Bzip2 => "bz2",
+        }
+    }
+
+    pub const ALL: [Kind; 4] = [Kind::Gzip, Kind::Zstd, Kind::Xz, Kind::Bzip2];
 
     fn magic_ok(self, m: &[u8]) -> bool {
         match self {
@@ -340,6 +352,128 @@ pub fn remove_temp(path: &Path) {
     }
 }
 
+/// The compression an output file gets from its name: `lines.txt.gz` → gzip. `None` for other
+/// names (and for archives such as `.tgz`).
+pub fn target_kind(path: &Path) -> Option<Kind> {
+    let name = path.file_name()?.to_string_lossy().to_ascii_lowercase();
+    if TARS.iter().any(|(s, _)| name.ends_with(s)) {
+        return None;
+    }
+    let ext = path.extension()?.to_string_lossy().to_ascii_lowercase();
+    EXTENSIONS.iter().find(|(e, _)| *e == ext).map(|e| e.1)
+}
+
+/// zstd output in frames of [`ZSTD_FRAME`] bytes (ruzstd compresses a buffer at a time).
+pub struct ZstdPacker<W: Write> {
+    inner: W,
+    buf: Vec<u8>,
+    frames: u64,
+}
+
+/// Bytes compressed into one zstd frame.
+pub const ZSTD_FRAME: usize = 8 << 20;
+
+impl<W: Write> ZstdPacker<W> {
+    fn frame(&mut self) -> io::Result<()> {
+        let packed = ruzstd::encoding::compress_to_vec(&self.buf[..], ruzstd::encoding::CompressionLevel::Fastest);
+        self.inner.write_all(&packed)?;
+        self.buf.clear();
+        self.frames += 1;
+        Ok(())
+    }
+}
+
+impl<W: Write> Write for ZstdPacker<W> {
+    fn write(&mut self, b: &[u8]) -> io::Result<usize> {
+        let n = b.len().min(ZSTD_FRAME - self.buf.len());
+        self.buf.extend_from_slice(&b[..n]);
+        if self.buf.len() >= ZSTD_FRAME {
+            self.frame()?;
+        }
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+/// A writer that compresses what it is given for a `.gz`, `.zst`, `.xz` or `.bz2` file (or
+/// passes it through). [`Packer::finish`] must end it.
+pub enum Packer<W: Write> {
+    Plain(W),
+    Gzip(flate2::write::GzEncoder<W>),
+    Zstd(ZstdPacker<W>),
+    Xz(Box<lzma_rust2::XzWriter<W>>),
+    Bzip2(bzip2::write::BzEncoder<W>),
+}
+
+impl<W: Write> Packer<W> {
+    pub fn new(inner: W, kind: Option<Kind>) -> io::Result<Packer<W>> {
+        Ok(match kind {
+            None => Packer::Plain(inner),
+            Some(Kind::Gzip) => Packer::Gzip(flate2::write::GzEncoder::new(inner, flate2::Compression::default())),
+            Some(Kind::Zstd) => Packer::Zstd(ZstdPacker { inner, buf: Vec::new(), frames: 0 }),
+            Some(Kind::Xz) => Packer::Xz(Box::new(lzma_rust2::XzWriter::new(inner, lzma_rust2::XzOptions::with_preset(3))?)),
+            Some(Kind::Bzip2) => Packer::Bzip2(bzip2::write::BzEncoder::new(inner, bzip2::Compression::default())),
+        })
+    }
+
+    /// Whether the output is compressed.
+    pub fn packs(&self) -> bool {
+        !matches!(self, Packer::Plain(_))
+    }
+
+    /// Ends the compressed stream and gives the writer back.
+    pub fn finish(self) -> io::Result<W> {
+        match self {
+            Packer::Plain(w) => Ok(w),
+            Packer::Gzip(e) => e.finish(),
+            Packer::Zstd(mut z) => {
+                // An empty input still gets one (empty) frame.
+                if !z.buf.is_empty() || z.frames == 0 {
+                    z.frame()?;
+                }
+                Ok(z.inner)
+            }
+            Packer::Xz(x) => x.finish(),
+            Packer::Bzip2(b) => b.finish(),
+        }
+    }
+}
+
+impl<W: Write> Write for Packer<W> {
+    fn write(&mut self, b: &[u8]) -> io::Result<usize> {
+        match self {
+            Packer::Plain(w) => w.write(b),
+            Packer::Gzip(e) => e.write(b),
+            Packer::Zstd(z) => z.write(b),
+            Packer::Xz(x) => x.write(b),
+            Packer::Bzip2(e) => e.write(b),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self {
+            Packer::Plain(w) => w.flush(),
+            Packer::Gzip(e) => e.flush(),
+            Packer::Zstd(z) => z.flush(),
+            Packer::Xz(x) => x.flush(),
+            Packer::Bzip2(e) => e.flush(),
+        }
+    }
+}
+
+/// Only a plain output can be written out of order (an Excel file, for one).
+impl<W: Write + Seek> Seek for Packer<W> {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        match self {
+            Packer::Plain(w) => w.seek(pos),
+            _ => Err(io::Error::new(io::ErrorKind::Unsupported, "this kind of file cannot be written compressed")),
+        }
+    }
+}
+
 /// Counts the compressed bytes read, for the progress bar, and stops reading when cancelled.
 struct Counting<'a, R> {
     inner: R,
@@ -478,6 +612,38 @@ mod tests {
         let mut e = bzip2::write::BzEncoder::new(Vec::new(), bzip2::Compression::fast());
         e.write_all(data).unwrap();
         e.finish().unwrap()
+    }
+
+    #[test]
+    fn packing_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let data: Vec<u8> = (0..300_000).flat_map(|i: u32| format!("line {i} of the log\n").into_bytes()).collect();
+        for name in ["out.txt.gz", "out.txt.zst", "out.txt.xz", "out.txt.bz2", "empty.zst"] {
+            let p = dir.path().join(name);
+            let kind = target_kind(&p);
+            assert!(kind.is_some(), "{name}");
+            let mut w = Packer::new(Vec::new(), kind).unwrap();
+            let body: &[u8] = if name.starts_with("empty") { b"" } else { &data };
+            // Small writes and one large one.
+            w.write_all(&body[..body.len().min(10)]).unwrap();
+            w.write_all(&body[body.len().min(10)..]).unwrap();
+            assert!(w.packs());
+            let packed = w.finish().unwrap();
+            assert!(packed.len() < body.len().max(100), "{name}");
+            fs::write(&p, &packed).unwrap();
+            assert_eq!(detect(&p), kind, "{name}");
+            let mut out = Vec::new();
+            unpack_to(&p, kind.unwrap(), &mut out, &CancelToken::new(), &Progress::default()).unwrap().unwrap();
+            assert!(out == body, "{name}");
+        }
+        assert_eq!(target_kind(Path::new("lines.txt")), None);
+        assert_eq!(target_kind(Path::new("backup.tgz")), None);
+        assert_eq!(target_kind(Path::new("logs.tar.gz")), None);
+        let mut plain = Packer::new(std::io::Cursor::new(Vec::new()), None).unwrap();
+        plain.write_all(b"abc").unwrap();
+        assert_eq!(plain.seek(SeekFrom::Start(1)).unwrap(), 1);
+        let mut gz = Packer::new(std::io::Cursor::new(Vec::new()), Some(Kind::Gzip)).unwrap();
+        assert!(gz.seek(SeekFrom::Start(0)).is_err());
     }
 
     #[test]

@@ -37,6 +37,10 @@ Single self-contained binary, no runtime dependencies.
   lists the files with their sizes and dates (filter, arrows, Enter), and the one picked opens
   as `bundle.zip › app.log`; a compressed file inside (`app.log.gz`) is unpacked too. An archive
   with one file opens straight away, and the session remembers which file was open.
+- **Compressed output**: Save lines…, Export lines…, Save selection as…, the table and diff
+  exports write `.gz`, `.zst`, `.xz` or `.bz2` when the name ends so (streaming, with progress
+  and Cancel); Split file… can compress its parts; on the command line `-o out.gz` and
+  `split --gz`.
 - **Encodings**: BOM, UTF-8, UTF-16 LE/BE (with or without BOM), heuristic Windows-1251 /
   Windows-1252 / ISO-8859-1; File → Reopen with encoding. Invalid bytes show as U+FFFD, control
   characters and NUL as dim placeholders. **File → Save with encoding** writes a copy in

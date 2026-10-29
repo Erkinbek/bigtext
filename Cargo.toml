@@ -55,8 +55,8 @@ zip = { version = "9", default-features = false, features = ["deflate-flate2-zli
 flate2 = "1"
 tar = { version = "0.4", default-features = false }
 ruzstd = "0.9"
-# .xz and .bz2 logs (pure Rust).
-lzma-rust2 = { version = "0.23", default-features = false, features = ["std", "xz", "optimization"] }
+# .xz and .bz2 logs, read and written (pure Rust).
+lzma-rust2 = { version = "0.23", default-features = false, features = ["std", "xz", "optimization", "encoder"] }
 bzip2 = "0.6"
 skrifa = "0.44"
 

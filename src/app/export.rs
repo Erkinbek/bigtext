@@ -19,6 +19,7 @@ pub struct LinesDialog {
 
 pub struct SplitDialog {
     by_lines: bool,
+    pack: Option<bigtext::decompress::Kind>,
     size_mb: String,
     lines: String,
     error: Option<String>,
@@ -88,7 +89,7 @@ impl BigTextApp {
 
     pub(crate) fn open_split(&mut self) {
         if self.docs.get(self.active).is_some_and(|d| d.is_ready()) {
-            self.export.split = Some(SplitDialog { by_lines: false, size_mb: "100".into(), lines: "1000000".into(), error: None });
+            self.export.split = Some(SplitDialog { by_lines: false, pack: None, size_mb: "100".into(), lines: "1000000".into(), error: None });
         }
     }
 
@@ -106,7 +107,7 @@ impl BigTextApp {
         });
     }
 
-    fn split_file(&mut self, by: SplitBy) {
+    fn split_file(&mut self, by: SplitBy, pack: Option<bigtext::decompress::Kind>) {
         let Some(d) = self.docs.get(self.active) else { return };
         let snap = d.buf.snapshot();
         let mut dlg = rfd::FileDialog::new().set_title(tr("Folder for the parts"));
@@ -115,14 +116,14 @@ impl BigTextApp {
         }
         let Some(dir) = dlg.pick_folder() else { return };
         let name = self.output_base_name();
-        self.spawn_task(tr("Splitting").into(), move |progress, cancel| match split::split_to_files(&snap, by, &dir, &name, cancel, progress) {
+        self.spawn_task(tr("Splitting").into(), move |progress, cancel| match split::split_to_files(&snap, by, &dir, &name, pack, cancel, progress) {
             Ok(Some(files)) => TaskOutcome::Done {
                 message: trf("Wrote {n} parts to {dir}.", &[("n", &fmt_count(files.len() as u64)), ("dir", &bigtext::file::display_path(&dir))]),
                 open: files.first().cloned(),
             },
             Ok(None) => TaskOutcome::Cancelled,
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                TaskOutcome::Failed(trf("{file} already exists in that folder; nothing was written.", &[("file", &file_name(&split::part_path(&dir, &name, 1)))]))
+                TaskOutcome::Failed(trf("{file} already exists in that folder; nothing was written.", &[("file", &file_name(&split::packed_part_path(&dir, &name, 1, pack)))]))
             }
             Err(e) => TaskOutcome::Failed(bigtext::save::describe(&e, &dir)),
         });
@@ -175,6 +176,16 @@ impl BigTextApp {
                     ui.add(egui::TextEdit::singleline(&mut g.lines).desired_width(90.0));
                     ui.label(tr("lines"));
                 });
+                ui.horizontal(|ui| {
+                    ui.label(tr("Compress the parts:"));
+                    let shown = g.pack.map(|k| format!(".{}", k.extension())).unwrap_or_else(|| tr("no").into());
+                    egui::ComboBox::from_id_salt("split-pack").selected_text(shown).show_ui(ui, |ui| {
+                        ui.selectable_value(&mut g.pack, None, tr("no"));
+                        for k in bigtext::decompress::Kind::ALL {
+                            ui.selectable_value(&mut g.pack, Some(k), format!(".{}", k.extension()));
+                        }
+                    });
+                });
                 ui.weak(tr("Parts end at line breaks and are named name.part001.ext, name.part002.ext, … in the folder you choose."));
                 if let Some(e) = &g.error {
                     ui.colored_label(ui.visuals().error_fg_color, e);
@@ -191,8 +202,8 @@ impl BigTextApp {
                 self.export.split = None;
             }
             if let Some(by) = go {
-                self.export.split = None;
-                self.split_file(by);
+                let pack = self.export.split.take().and_then(|g| g.pack);
+                self.split_file(by, pack);
             }
         }
     }

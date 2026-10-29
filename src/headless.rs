@@ -44,8 +44,9 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         --count, each different one with how often it matched, most first.
   count [-v] [-i] [-w] [-E] PATTERN FILE
         The number of lines with a match.
-  split (--size 100MB | --lines 1000000) FILE [--out-dir DIR]
-        Parts name.part001.ext, … cut at line breaks; prints their paths.
+  split (--size 100MB | --lines 1000000) FILE [--out-dir DIR] [--gz|--zst|--xz|--bz2]
+        Parts name.part001.ext, … cut at line breaks (compressed: .ext.gz, …);
+        prints their paths.
   stats [--fields] FILE...
         Size, lines, encoding, line endings and the first and last times;
         with --fields, the key paths of JSON records (JSON Lines or an array's
@@ -114,6 +115,8 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         kind is not what it looks like. The header and lines before the table
         (sep=;, comments) are detected; --header / --no-header, --skip N and
         --quote ' override that (also for validate).
+
+-o OUT ending in .gz, .zst, .xz or .bz2 is written compressed.
 
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
@@ -215,8 +218,10 @@ fn with_output(target: Option<&str>, out: &mut dyn Write, f: impl FnOnce(&mut dy
             let temp = crate::save::temp_path_for(&path);
             let file = std::fs::File::options().write(true).create_new(true).open(&temp).map_err(|e| Fail(format!("{}: {e}", display_path(&temp))))?;
             let r = (|| {
-                let mut w = io::BufWriter::with_capacity(8 << 20, &file);
+                // -o out.gz (.zst, .xz, .bz2) is compressed on the way.
+                let mut w = crate::decompress::Packer::new(io::BufWriter::with_capacity(8 << 20, &file), crate::decompress::target_kind(&path))?;
                 f(&mut w)?;
+                let mut w = w.finish()?;
                 w.flush()?;
                 drop(w);
                 file.sync_all()?;
@@ -427,7 +432,7 @@ fn parse_size(s: &str) -> Option<u64> {
 }
 
 fn cmd_split(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &[], &["--size", "--lines", "--out-dir"])?;
+    let a = Args::parse(args, &["--gz", "--zst", "--xz", "--bz2"], &["--size", "--lines", "--out-dir"])?;
     let [file] = &a.rest[..] else { return fail("needs FILE") };
     let by = match (a.opt(&["--size"]), a.opt(&["--lines"])) {
         (Some(s), None) => SplitBy::Bytes(parse_size(s).ok_or_else(|| Fail(format!("not a size: {s}")))?),
@@ -438,7 +443,8 @@ fn cmd_split(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let dir = a.opt(&["--out-dir"]).map(PathBuf::from).or_else(|| path.parent().map(Path::to_path_buf)).unwrap_or_default();
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "part".into());
     let (buf, _) = open(path)?;
-    let parts = split::split_to_files(&buf, by, &dir, &name, &CancelToken::new(), &Progress::default())?.unwrap_or_default();
+    let pack = crate::decompress::Kind::ALL.into_iter().find(|k| a.flag(&[&format!("--{}", k.extension())]));
+    let parts = split::split_to_files(&buf, by, &dir, &name, pack, &CancelToken::new(), &Progress::default())?.unwrap_or_default();
     for p in parts {
         writeln!(out, "{}", display_path(&p))?;
     }
@@ -1363,6 +1369,16 @@ mod tests {
         assert_eq!(code, 0);
         assert_eq!(out.lines().count(), 2);
         assert_eq!(std::fs::read_to_string(d.path().join("a.part002.log")).unwrap(), "2024-05-01 11:00:00 three\n");
+        let packed = d.path().join("packed");
+        std::fs::create_dir(&packed).unwrap();
+        let (_, out, _) = run_args(&["split", "--lines", "2", "--gz", "--out-dir", &packed.to_string_lossy(), &log]);
+        assert!(out.lines().all(|l| l.ends_with(".log.gz")), "{out}");
+        // -o with a compressed name compresses.
+        let gz = d.path().join("two.log.gz").to_string_lossy().into_owned();
+        assert_eq!(run_args(&["filter", "two", &log, "-o", &gz]).0, 0);
+        let mut text = Vec::new();
+        crate::decompress::unpack_to(Path::new(&gz), crate::decompress::Kind::Gzip, &mut text, &CancelToken::new(), &Progress::default()).unwrap();
+        assert_eq!(text, b"2024-05-01 10:00:02 two\n");
         let (_, s, _) = run_args(&["stats", &log]);
         assert!(s.contains("lines: 3\n") && s.contains("encoding: UTF-8") && s.contains("first time: 2024-05-01 10:00:00") && s.contains("last time: 2024-05-01 11:00:00") && s.contains("span: 1 h 00 m 00 s"), "{s}");
         let b = file(&d, "b.log", b"2024-05-01 10:00:01 b1\n");

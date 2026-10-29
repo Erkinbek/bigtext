@@ -2,6 +2,7 @@
 //! document into part files of a given size or line count, always at line boundaries. Both
 //! stream, so any file size works.
 
+use crate::decompress::{Kind, Packer};
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::ops::Range;
@@ -78,11 +79,26 @@ pub fn part_path(dir: &Path, name: &str, n: usize) -> PathBuf {
     }
 }
 
+/// [`part_path`] with the compression's extension added (`app.part001.log.gz`).
+pub fn packed_part_path(dir: &Path, name: &str, n: usize, pack: Option<Kind>) -> PathBuf {
+    let p = part_path(dir, name, n);
+    match pack {
+        Some(k) => {
+            let mut s = p.into_os_string();
+            s.push(".");
+            s.push(k.extension());
+            PathBuf::from(s)
+        }
+        None => p,
+    }
+}
+
 struct Parts<'a> {
     dir: &'a Path,
     name: &'a str,
+    pack: Option<Kind>,
     bom: Vec<u8>,
-    cur: Option<BufWriter<File>>,
+    cur: Option<Packer<BufWriter<File>>>,
     made: Vec<PathBuf>,
     bytes: u64,
     lines: u64,
@@ -94,10 +110,10 @@ impl Parts<'_> {
             return Ok(());
         }
         if self.cur.is_none() {
-            let p = part_path(self.dir, self.name, self.made.len() + 1);
+            let p = packed_part_path(self.dir, self.name, self.made.len() + 1, self.pack);
             let f = File::options().write(true).create_new(true).open(&p)?;
             self.made.push(p);
-            let mut w = BufWriter::with_capacity(8 << 20, f);
+            let mut w = Packer::new(BufWriter::with_capacity(8 << 20, f), self.pack)?;
             w.write_all(&self.bom)?;
             self.cur = Some(w);
         }
@@ -108,7 +124,8 @@ impl Parts<'_> {
     fn close(&mut self) -> io::Result<()> {
         self.bytes = 0;
         self.lines = 0;
-        if let Some(mut w) = self.cur.take() {
+        if let Some(w) = self.cur.take() {
+            let mut w = w.finish()?;
             w.flush()?;
             w.get_ref().sync_all()?;
         }
@@ -116,17 +133,18 @@ impl Parts<'_> {
     }
 }
 
-/// Splits the document into part files in `dir` named after `name` (see [`part_path`]). A part
-/// never ends inside a line; documents with a byte order mark get it at the start of every
-/// part. Returns the files written, or `None` when cancelled (the parts are then removed, as
-/// they are on an error).
-pub fn split_to_files(buf: &TextBuf, by: SplitBy, dir: &Path, name: &str, cancel: &CancelToken, progress: &Progress) -> io::Result<Option<Vec<PathBuf>>> {
+/// Splits the document into part files in `dir` named after `name` (see [`part_path`]),
+/// compressed with `pack` when given. A part never ends inside a line; documents with a byte
+/// order mark get it at the start of every part. Returns the files written, or `None` when
+/// cancelled (the parts are then removed, as they are on an error).
+#[allow(clippy::too_many_arguments)]
+pub fn split_to_files(buf: &TextBuf, by: SplitBy, dir: &Path, name: &str, pack: Option<Kind>, cancel: &CancelToken, progress: &Progress) -> io::Result<Option<Vec<PathBuf>>> {
     let codec = buf.codec;
     let unit = codec.unit() as u64;
     let bom = codec.bom_len as u64;
     let len = buf.len();
     progress.set_total(len);
-    let mut parts = Parts { dir, name, bom: buf.read(0..bom).map(|b| b.into_owned()).unwrap_or_default(), cur: None, made: Vec::new(), bytes: 0, lines: 0 };
+    let mut parts = Parts { dir, name, pack, bom: buf.read(0..bom).map(|b| b.into_owned()).unwrap_or_default(), cur: None, made: Vec::new(), bytes: 0, lines: 0 };
     let r = (|| -> io::Result<bool> {
         let mut pos = bom;
         while pos < len {
@@ -221,7 +239,7 @@ mod tests {
     fn split(data: &[u8], codec: Codec, by: SplitBy) -> Vec<Vec<u8>> {
         let (_f, t) = buf_with(data, codec);
         let dir = tempfile::tempdir().unwrap();
-        let files = split_to_files(&t, by, dir.path(), "app.log", &CancelToken::new(), &Progress::default()).unwrap().unwrap();
+        let files = split_to_files(&t, by, dir.path(), "app.log", None, &CancelToken::new(), &Progress::default()).unwrap().unwrap();
         files.iter().map(|p| fs::read(p).unwrap()).collect()
     }
 
@@ -234,6 +252,20 @@ mod tests {
         assert_eq!(split(data, Codec::utf8(), SplitBy::Bytes(4)), vec![b"a\nbb\n".to_vec(), b"ccc\n".to_vec(), b"dddd\n".to_vec(), b"e".to_vec()]);
         assert_eq!(split(b"a\nb\n", Codec::utf8(), SplitBy::Lines(1)), vec![b"a\n".to_vec(), b"b\n".to_vec()]);
         assert_eq!(part_path(Path::new("d"), "app.log", 7), Path::new("d").join("app.part007.log"));
+    }
+
+    #[test]
+    fn compressed_parts() {
+        let data: Vec<u8> = (0..20_000).flat_map(|i: u32| format!("line {i}\n").into_bytes()).collect();
+        let (_f, t) = buf_with(&data, Codec::utf8());
+        let dir = tempfile::tempdir().unwrap();
+        let files = split_to_files(&t, SplitBy::Lines(7000), dir.path(), "app.log", Some(Kind::Zstd), &CancelToken::new(), &Progress::default()).unwrap().unwrap();
+        assert_eq!(files.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect::<Vec<_>>(), ["app.part001.log.zst", "app.part002.log.zst", "app.part003.log.zst"]);
+        let mut all = Vec::new();
+        for p in &files {
+            crate::decompress::unpack_to(p, Kind::Zstd, &mut all, &CancelToken::new(), &Progress::default()).unwrap().unwrap();
+        }
+        assert!(all == data);
     }
 
     #[test]
@@ -254,7 +286,7 @@ mod tests {
         let (_f, t) = buf_with(b"a\nb\nc\n", Codec::utf8());
         let dir = tempfile::tempdir().unwrap();
         fs::write(part_path(dir.path(), "x.txt", 2), b"keep").unwrap();
-        let r = split_to_files(&t, SplitBy::Lines(1), dir.path(), "x.txt", &CancelToken::new(), &Progress::default());
+        let r = split_to_files(&t, SplitBy::Lines(1), dir.path(), "x.txt", None, &CancelToken::new(), &Progress::default());
         assert!(r.is_err());
         assert!(!part_path(dir.path(), "x.txt", 1).exists(), "partial output removed");
         assert_eq!(fs::read(part_path(dir.path(), "x.txt", 2)).unwrap(), b"keep");

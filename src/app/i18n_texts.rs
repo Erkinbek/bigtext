@@ -1008,4 +1008,8 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["A compressed file inside (.gz, .zst, .xz, .bz2) is unpacked too.", "Сжатый файл внутри (.gz, .zst, .xz, .bz2) тоже распаковывается.", "Ichidagi siqilgan fayl (.gz, .zst, .xz, .bz2) ham ochiladi."],
     ["The archive has no files.", "В архиве нет файлов.", "Arxivda fayl yo'q."],
     ["{file} is not an archive any more.", "{file} больше не архив.", "{file} endi arxiv emas."],
+    // Compressed output.
+    ["Compressed to {size}.", "Сжато до {size}.", "{size} gacha siqildi."],
+    ["Compress the parts:", "Сжимать части:", "Qismlarni siqish:"],
+    ["no", "нет", "yo'q"],
 ];
