@@ -31,7 +31,28 @@ impl BigTextApp {
         let (s, e) = d.selection();
         let range = if s == e { d.min_caret()..d.buf.len() } else { s..e };
         if range.end - range.start > TEXT_OP_MAX {
-            self.error = Some(trf("Text operations work on up to {size}. Select a smaller part.", &[("size", &human_bytes(TEXT_OP_MAX))]));
+            if !op.streams() {
+                self.error = Some(trf("Sorting and removing duplicates work on up to {size}. Select a smaller part.", &[("size", &human_bytes(TEXT_OP_MAX))]));
+            } else if d.path.is_none() {
+                self.error = Some(trf("Text over {size} is changed on disk: save the document to a file first.", &[("size", &human_bytes(TEXT_OP_MAX))]));
+            } else {
+                // Too large to change in memory: written to a new file that replaces this one.
+                let message = format!(
+                    "{}{}",
+                    trf(
+                        "{op} on {size}: the result is written to a new file that atomically replaces “{file}”; undo will not be available.",
+                        &[("op", tr(op.name())), ("size", &human_bytes(range.end - range.start)), ("file", &d.title)]
+                    ),
+                    if d.is_modified() { tr(" Your unsaved edits are included.") } else { "" }
+                );
+                let doc = d.id;
+                self.confirm = Some(super::Confirm {
+                    title: tr(op.name()).into(),
+                    message,
+                    action: super::ConfirmAction::TextOpOnDisk { doc, op, range },
+                    checkbox: Some((tr("Keep a backup (.bak)").into(), true)),
+                });
+            }
             return;
         }
         let (snap, doc, version) = (d.buf.snapshot(), d.id, d.version);
@@ -73,7 +94,7 @@ impl BigTextApp {
         let editable = self.docs.get(self.active).is_some_and(|d| d.editable());
         ui.add_enabled_ui(editable, |ui| {
             ui.menu_button(tr("Text"), |ui| {
-                ui.weak(tr("On the selection, or the whole document up to 64 MB"));
+                ui.weak(tr("On the selection, or the whole document; above 64 MB rewritten on disk"));
                 let mut last_line_op = true;
                 for op in Op::ALL {
                     if op.is_line_op() != last_line_op || op == Op::JsonPretty {

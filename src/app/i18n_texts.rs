@@ -1087,4 +1087,12 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Deleting lines", "Удаление строк", "Qatorlar o'chirilmoqda"],
     ["Deleting lines on disk…", "Удаление строк на диске…", "Qatorlar diskda o'chirilmoqda…"],
     ["Kept {n} lines; wrote {size} in {secs}s.", "Оставлено строк: {n}; записано {size} за {secs} с.", "{n} ta qator qoldi; {size} {secs} soniyada yozildi."],
+    // Text operations on disk.
+    ["Sorting and removing duplicates work on up to {size}. Select a smaller part.", "Сортировка и удаление повторов работают максимум на {size}. Выделите часть поменьше.", "Saralash va takrorlarni olib tashlash {size} gacha ishlaydi. Kichikroq qismni tanlang."],
+    ["Text over {size} is changed on disk: save the document to a file first.", "Текст больше {size} изменяется на диске: сначала сохраните документ в файл.", "{size} dan katta matn diskda o'zgartiriladi: avval hujjatni faylga saqlang."],
+    ["{op} on {size}: the result is written to a new file that atomically replaces “{file}”; undo will not be available.", "{op} для {size}: результат записывается в новый файл, который атомарно заменит «{file}»; отмена будет недоступна.", "{size} uchun {op}: natija «{file}» ni atomar almashtiradigan yangi faylga yoziladi; bekor qilib bo'lmaydi."],
+    ["On the selection, or the whole document; above 64 MB rewritten on disk", "К выделению или ко всему документу; больше 64 МБ — перезапись на диске", "Tanlangan qismga yoki butun hujjatga; 64 MB dan katta bo'lsa diskda qayta yoziladi"],
+    ["Change on disk", "Изменить на диске", "Diskda o'zgartirish"],
+    ["{op} on disk…", "{op} на диске…", "{op} diskda…"],
+    ["{op}: wrote {size} in {secs}s.", "{op}: записано {size} за {secs} с.", "{op}: {size} {secs} soniyada yozildi."],
 ];

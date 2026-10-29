@@ -217,6 +217,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("patch-me.txt"), &base)?;
+    std::fs::write(dir.join("big-case.txt"), b"abc def\n".repeat(9_000_000))?;
     std::fs::write(dir.join("drop.log"), "10:00 INFO a\n10:01 DEBUG b\n10:02 DEBUG c\n10:03 INFO d\n10:04 WARN e\n10:05 DEBUG f\n")?;
     std::fs::write(dir.join("journal.txt"), "first line\nsecond line\n")?;
     std::fs::write(dir.join("props.txt"), "one\r\ntwo\nthe longest line\nend")?;
@@ -1374,6 +1375,44 @@ impl SelfTest {
                     app.search.show_filter = false;
                     app.search.query = bigtext::search::Query::default();
                     Step::Next
+                }
+            }
+        }));
+        s("UPPERCASE on 72 MB: asks, then rewrites the file on disk", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("big-case.txt"));
+                return Step::Wait;
+            }
+            let waited = c.waited() > Duration::from_secs(30);
+            match c.mark {
+                0 => {
+                    if !wait_ready(app) {
+                        return Step::Wait;
+                    }
+                    app.text_op(bigtext::textops::Op::Upper);
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    if !app.test_has_confirm() {
+                        return if waited { Step::Fail("no question before changing on disk".into()) } else { Step::Wait };
+                    }
+                    app.test_accept_confirm();
+                    c.mark = 2;
+                    Step::Wait
+                }
+                _ => {
+                    let d = doc(app);
+                    let busy = d.save_job.is_some() || !d.is_ready();
+                    let head = d.buf.read(0..16).map(|b| b.to_vec()).unwrap_or_default();
+                    if busy || head != b"ABC DEF\nABC DEF\n" {
+                        return if waited { Step::Fail(format!("head {:?}", String::from_utf8_lossy(&head))) } else { Step::Wait };
+                    }
+                    let len = d.buf.len();
+                    let disk = std::fs::metadata(c.file("big-case.txt")).map(|m| m.len()).unwrap_or(0);
+                    let id = d.id;
+                    app.test_close(id);
+                    check(len == 72_000_000 && disk == len, format!("{len} bytes, {disk} on disk"))
                 }
             }
         }));

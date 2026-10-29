@@ -127,7 +127,9 @@ Single self-contained binary, no runtime dependencies.
   sort lines (A→Z, Z→A, by leading number), reverse, remove duplicate lines, UPPER / lower
   case, trim trailing whitespace, tabs ↔ spaces, and JSON pretty-print / minify (token by
   token: key order, numbers and escapes stay as written; JSON Lines stay one value per line).
-  Runs on a worker and is one undo step.
+  Runs on a worker and is one undo step. Above 64 MB, case, trimming, tabs and JSON formatting
+  stream through the whole file instead and replace it on disk (optional `.bak`); the same code
+  runs as `bigtext-cli transform --op upper|lower|trim|tabs|untabs` and `format --json`.
 - **Font** (View → Font…): the monospaced fonts installed on the system (Consolas, Cascadia,
   JetBrains Mono, DejaVu Sans Mono, Menlo, …) or any `.ttf`/`.otf`/`.ttc` file, with a preview
   and a warning for fonts that are not monospaced; the built-in font stays as the fallback

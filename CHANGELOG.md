@@ -99,6 +99,13 @@ All notable changes to BigText. Each release on
   included. Up to 50,000 runs of lines are one undoable edit; beyond that the document is
   rewritten on disk (temp file, atomic swap, optional `.bak`) like Replace All. They are off
   while the filter shows lines around matches, a column or a time range.
+- **Text operations on files of any size**: UPPERCASE, lowercase, trimming trailing white
+  space, tabs ↔ spaces and Format / Minify JSON no longer stop at 64 MB. A larger document or
+  selection streams through them — whole lines at a time, each piece checked to survive its
+  encoding — into a new file that replaces the document on disk, after asking, with progress,
+  Cancel and an optional `.bak`. The JSON formatter now works a piece at a time, and the
+  command line runs the same code: `bigtext-cli transform --op upper|lower|trim|tabs|untabs`
+  and `bigtext-cli format FILE --json pretty|minify`.
 
 ### Command line
 

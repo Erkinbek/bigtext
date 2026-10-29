@@ -90,6 +90,13 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         changed columns, and A's columns with \"old → new\" where a value
         changed. Columns pair up by header name. Exit code 0 when they are the
         same, 1 when they differ.
+  transform --op upper|lower|trim|tabs|untabs FILE [-o OUT]
+        The file in UPPERCASE or lowercase, with trailing white space trimmed,
+        tabs as spaces or leading spaces as tabs (width 4), streamed.
+  format FILE --json pretty|minify [-o OUT]
+        JSON (or JSON Lines, a value per line) indented by two spaces or with
+        all insignificant white space removed; key order, numbers and escapes
+        stay as written.
   derive FILE --name NAME --expr EXPR [-o OUT]
         The table with a new last column computed per row, like {price} * {qty},
         substr({ts}, 0, 10) or if({status} = \"ok\", 1, 0).
@@ -122,7 +129,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 20] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table"];
+const COMMANDS: [&str; 22] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -689,6 +696,45 @@ fn cmd_join(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(0)
 }
 
+/// Streams the whole file through a text operation.
+fn text_op(file: &str, op: crate::textops::Op, to: Option<&str>, out: &mut dyn Write) -> Res<i32> {
+    let (buf, _) = open(Path::new(file))?;
+    let snap = buf.snapshot();
+    with_output(to, out, |w| {
+        crate::textops::text_op_to(&snap, 0..snap.len(), op, crate::text::rows::TAB_WIDTH, w, &CancelToken::new(), None).map_err(|e| Fail(e.to_string()))?;
+        Ok(())
+    })?;
+    Ok(0)
+}
+
+fn cmd_transform(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    use crate::textops::Op;
+    let a = Args::parse(args, &[], &["--op", "-o", "--output"])?;
+    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let op = match a.opt(&["--op"]) {
+        Some("upper") => Op::Upper,
+        Some("lower") => Op::Lower,
+        Some("trim") => Op::TrimTrailing,
+        Some("tabs") => Op::TabsToSpaces,
+        Some("untabs") => Op::SpacesToTabs,
+        Some(o) => return fail(format!("unknown --op {o} (upper, lower, trim, tabs, untabs)")),
+        None => return fail("give --op upper|lower|trim|tabs|untabs"),
+    };
+    text_op(file, op, a.opt(&["-o", "--output"]), out)
+}
+
+fn cmd_format(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    use crate::textops::Op;
+    let a = Args::parse(args, &[], &["--json", "-o", "--output"])?;
+    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let op = match a.opt(&["--json"]) {
+        Some("pretty") | None => Op::JsonPretty,
+        Some("minify") => Op::JsonMinify,
+        Some(o) => return fail(format!("unknown --json {o} (pretty, minify)")),
+    };
+    text_op(file, op, a.opt(&["-o", "--output"]), out)
+}
+
 fn cmd_diff_table(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &["--all", "--no-header", "--header"], &["--key", "--key-b", "-o", "--output", "--skip", "--quote"])?;
     let [fa, fb] = &a.rest[..] else { return fail("needs A and B") };
@@ -1071,6 +1117,8 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "diff" => cmd_diff(rest, out),
         "only-in" => cmd_only_in(rest, out),
         "diff-table" => cmd_diff_table(rest, out),
+        "transform" => cmd_transform(rest, out),
+        "format" => cmd_format(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
             return 0;
@@ -1253,6 +1301,21 @@ mod tests {
         assert_eq!(run_args(&["diff-table", &a, &b, "--key", "1", "--key-b", "3", "--all"]).1.lines().nth(2), Some("same,2,,banana,7"));
         assert_eq!(run_args(&["diff-table", &a, &a, "--key", "id"]).0, 0);
         assert_eq!(run_args(&["diff-table", &a, &b]).0, 2);
+    }
+
+    #[test]
+    fn transform_and_format() {
+        let d = tempfile::tempdir().unwrap();
+        let t = file(&d, "t.log", b"Hello\tworld  \nSecond\n");
+        assert_eq!(run_args(&["transform", "--op", "upper", &t]).1, "HELLO\tWORLD  \nSECOND\n");
+        assert_eq!(run_args(&["transform", "--op", "trim", &t]).1, "Hello\tworld\nSecond\n");
+        assert_eq!(run_args(&["transform", "--op", "tabs", &t]).1, "Hello   world  \nSecond\n");
+        assert_eq!(run_args(&["transform", "--op", "sort", &t]).0, 2);
+        let j = file(&d, "j.json", b"{\"a\": [1, {\"b\": null}]}\n");
+        assert_eq!(run_args(&["format", &j, "--json", "minify"]).1, "{\"a\":[1,{\"b\":null}]}\n");
+        assert_eq!(run_args(&["format", &j]).1, "{\n  \"a\": [\n    1,\n    {\n      \"b\": null\n    }\n  ]\n}\n");
+        let bad = file(&d, "bad.json", b"[1, 2");
+        assert_eq!(run_args(&["format", &bad]).0, 2);
     }
 
     #[test]

@@ -36,6 +36,8 @@ pub enum Transform<'a> {
     Csv { dialect: Dialect, rewrite: &'a csv::Rewrite },
     /// Only the lines `keep` is true for (given a line's bytes without its line break).
     Lines { keep: &'a dyn Fn(&[u8]) -> bool },
+    /// A text operation (case, trimming, indentation, JSON format) over `range`.
+    TextOp { op: crate::textops::Op, range: std::ops::Range<u64> },
 }
 
 const TRANSCODE_STEP: u64 = 4 * 1024 * 1024;
@@ -280,6 +282,13 @@ pub fn write_temp(buf: &TextBuf, target: &Path, transform: Transform, cancel: &C
             Transform::Csv { dialect, rewrite } => match csv::rewrite_to(buf, dialect, rewrite, &mut w, cancel, Some(progress)).map_err(io)? {
                 Some(s) => s,
                 None => return Err(SaveError::Cancelled),
+            },
+            Transform::TextOp { op, range } => match crate::textops::text_op_to(buf, range, op, crate::text::rows::TAB_WIDTH, &mut w, cancel, Some(progress)) {
+                Ok(Some(n)) => ReplaceStats { count: 0, bytes_in: len, bytes_out: n },
+                Ok(None) => return Err(SaveError::Cancelled),
+                // The text's own problem (not JSON, not valid in its encoding), said as it is.
+                Err(e) if e.kind() == io::ErrorKind::InvalidData => return Err(SaveError::Io(e.to_string())),
+                Err(e) => return Err(io(e)),
             },
             // The byte order mark stays (write_pred_lines_to writes it).
             Transform::Lines { keep } => match crate::filter::write_pred_lines_to(buf, crate::filter::FilterSpec::default(), keep, &mut w, cancel, Some(progress)).map_err(io)? {

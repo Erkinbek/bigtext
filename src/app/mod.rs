@@ -189,6 +189,7 @@ enum ConfirmAction {
     CsvRewrite { doc: u64, dialect: bigtext::csv::Dialect, rewrite: bigtext::csv::Rewrite, on_disk: bool },
     LowSpace(Box<LowSpace>),
     LinesOnDisk { doc: u64, sel: Arc<lines_edit::LineSel>, keep: bool },
+    TextOpOnDisk { doc: u64, op: bigtext::textops::Op, range: std::ops::Range<u64> },
 }
 
 #[derive(Default)]
@@ -1289,6 +1290,7 @@ impl BigTextApp {
                         ConfirmAction::CsvRewrite { .. } => "Rewrite",
                         ConfirmAction::LowSpace(_) => "Continue",
                         ConfirmAction::LinesOnDisk { .. } => "Delete on disk",
+                        ConfirmAction::TextOpOnDisk { .. } => "Change on disk",
                     };
                     if ui.button(i18n::tr(primary)).clicked() {
                         decision = Some(1);
@@ -1381,6 +1383,11 @@ impl BigTextApp {
             (1, ConfirmAction::CsvRewrite { doc, dialect, rewrite, on_disk }) => self.rewrite_csv(doc, dialect, rewrite, on_disk, checked),
             (1, ConfirmAction::LowSpace(l)) => self.resume(l.resume, false),
             (1, ConfirmAction::LinesOnDisk { doc, sel, keep }) => self.lines_on_disk(doc, sel, keep, checked),
+            (1, ConfirmAction::TextOpOnDisk { doc, op, range }) => {
+                if let Some(path) = self.docs.iter().find(|d| d.id == doc).and_then(|d| d.path.clone()) {
+                    self.start_write(doc, path, ops::WriteSpec::TextOp { op, range }, checked);
+                }
+            }
             (3, ConfirmAction::LowSpace(l)) => match rfd::FileDialog::new().set_title(i18n::tr("Folder for unpacked copies")).pick_folder() {
                 Some(dir) => {
                     self.set_unpack_folder(Some(dir));

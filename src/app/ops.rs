@@ -42,6 +42,8 @@ pub enum WriteSpec {
     Csv { dialect: Dialect, rewrite: bigtext::csv::Rewrite },
     /// Delete the lines a filter shows (or, with `keep`, all the others).
     Lines { sel: Arc<super::lines_edit::LineSel>, keep: bool },
+    /// A text operation over a range too large to change in memory.
+    TextOp { op: bigtext::textops::Op, range: std::ops::Range<u64> },
 }
 
 /// What a write to disk does, for its progress label and the message when it is done.
@@ -57,6 +59,7 @@ pub enum WriteKind {
     Csv(bigtext::csv::Rewrite),
     /// Lines were deleted.
     Lines,
+    TextOp(bigtext::textops::Op),
 }
 
 pub struct TempWritten {
@@ -147,6 +150,7 @@ impl BigTextApp {
             WriteSpec::Transcode { enc, .. } => WriteKind::Transcode(*enc),
             WriteSpec::Csv { rewrite, .. } => WriteKind::Csv(rewrite.clone()),
             WriteSpec::Lines { .. } => WriteKind::Lines,
+            WriteSpec::TextOp { op, .. } => WriteKind::TextOp(*op),
             WriteSpec::Identity | WriteSpec::Eol(_) => WriteKind::Save,
         };
         let cancel = CancelToken::new();
@@ -157,6 +161,7 @@ impl BigTextApp {
             WriteKind::DeleteColumns(_) => "Deleting columns",
             WriteKind::Csv(_) => "Rewriting",
             WriteKind::Lines => "Deleting lines",
+            WriteKind::TextOp(op) => op.name(),
         };
         d.save_job = Some(SaveJob { cancel: cancel.clone(), progress: progress.clone(), label: super::i18n::tr(label).into() });
         let snap = d.buf.snapshot();
@@ -188,6 +193,7 @@ impl BigTextApp {
                 WriteSpec::Transcode { enc, bom, eol } => Transform::Transcode { enc: *enc, bom: *bom, eol: *eol },
                 WriteSpec::Csv { dialect, rewrite } => Transform::Csv { dialect: *dialect, rewrite },
                 WriteSpec::Lines { sel, keep } => Transform::Lines { keep: &|l: &[u8]| sel.shows(l) == *keep },
+                WriteSpec::TextOp { op, range } => Transform::TextOp { op: *op, range: range.clone() },
             };
             let r = save::write_temp(&snap, &target, transform, &cancel, &progress);
             drop(snap);
@@ -219,6 +225,7 @@ impl BigTextApp {
             WriteKind::DeleteColumns(_) => tr("Deleting columns on disk…").into(),
             WriteKind::Csv(_) => tr("Rewriting on disk…").into(),
             WriteKind::Lines => tr("Deleting lines on disk…").into(),
+            WriteKind::TextOp(op) => trf("{op} on disk…", &[("op", tr(op.name()))]),
         });
         let original = d.path.clone();
         jobs::spawn("finalize", move || {
@@ -286,6 +293,7 @@ impl BigTextApp {
                         d.table_state.columns_deleted(cols);
                         trf("Deleted {cols} from all {n} lines; wrote {size} in {secs}s.", &[("cols", &super::columns::count_label(cols.len())), ("n", &f.stats.count.to_string()), ("size", &human_bytes(f.stats.bytes_out)), ("secs", &format!("{secs:.2}"))])
                     }
+                    WriteKind::TextOp(op) => trf("{op}: wrote {size} in {secs}s.", &[("op", tr(op.name())), ("size", &human_bytes(f.stats.bytes_out)), ("secs", &format!("{secs:.2}"))]),
                     WriteKind::Lines => trf("Kept {n} lines; wrote {size} in {secs}s.", &[("n", &f.stats.count.to_string()), ("size", &human_bytes(f.stats.bytes_out)), ("secs", &format!("{secs:.2}"))]),
                     WriteKind::Save => trf("Saved {size} in {secs}s.", &[("size", &human_bytes(d.buf.len())), ("secs", &format!("{secs:.2}"))]),
                     WriteKind::Csv(rw) => {

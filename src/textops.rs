@@ -1,8 +1,14 @@
 //! Text operations on a selection: sorting and de-duplicating lines, changing case, trimming,
 //! converting indentation, and re-formatting JSON. They work on decoded text and keep the
-//! text's own line breaks; the caller applies the result as one undoable edit.
+//! text's own line breaks; the caller applies the result as one undoable edit, or, for a
+//! document of any size, [`text_op_to`] streams it to a file.
 
 use std::collections::HashSet;
+use std::io::{self, Write};
+use std::ops::Range;
+
+use crate::jobs::{CancelToken, Progress};
+use crate::text::TextBuf;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Op {
@@ -169,109 +175,281 @@ pub fn apply(op: Op, text: &str, tab_width: usize) -> Result<String, String> {
 /// output is indented, otherwise all insignificant whitespace is removed.
 pub fn json_format(text: &str, indent: Option<&str>, eol: &str) -> Result<String, String> {
     let mut out = String::with_capacity(text.len() + text.len() / 2);
-    let mut stack: Vec<char> = Vec::new();
-    let mut in_str = false;
-    let mut escaped = false;
-    // A line break (and indentation) is due before the next token.
-    let mut pending = false;
-    // The last token was an opening bracket (so a closing one makes `{}` / `[]`).
-    let mut after_open = false;
-    // A line break between top-level values.
-    let mut top_break = false;
-    let mut started = false;
-    let newline = |out: &mut String, depth: usize| {
-        if let Some(ind) = indent {
-            out.push_str(eol);
+    let mut f = JsonFormatter::new(indent, eol);
+    f.feed(text, &mut out)?;
+    f.finish(&mut out)?;
+    Ok(out)
+}
+
+/// [`json_format`] a piece at a time: what it has seen is carried from one piece to the next.
+pub struct JsonFormatter<'a> {
+    indent: Option<&'a str>,
+    eol: &'a str,
+    stack: Vec<char>,
+    in_str: bool,
+    escaped: bool,
+    /// A line break (and indentation) is due before the next token.
+    pending: bool,
+    /// The last token was an opening bracket (so a closing one makes `{}` / `[]`).
+    after_open: bool,
+    /// A line break between top-level values.
+    top_break: bool,
+    started: bool,
+    line: usize,
+    /// The last two characters seen (does the text end with a line break?).
+    tail: String,
+}
+
+impl<'a> JsonFormatter<'a> {
+    pub fn new(indent: Option<&'a str>, eol: &'a str) -> Self {
+        JsonFormatter { indent, eol, stack: Vec::new(), in_str: false, escaped: false, pending: false, after_open: false, top_break: false, started: false, line: 1, tail: String::new() }
+    }
+
+    fn newline(&self, out: &mut String, depth: usize) {
+        if let Some(ind) = self.indent {
+            out.push_str(self.eol);
             for _ in 0..depth {
                 out.push_str(ind);
             }
         }
-    };
-    let mut line = 1usize;
-    for c in text.chars() {
-        if in_str {
-            out.push(c);
-            if escaped {
-                escaped = false;
-            } else if c == '\\' {
-                escaped = true;
-            } else if c == '"' {
-                in_str = false;
-            } else if c == '\n' {
-                return Err(format!("Line break inside a JSON string (line {line})."));
-            }
-            continue;
+    }
+
+    pub fn feed(&mut self, text: &str, out: &mut String) -> Result<(), String> {
+        let last: Vec<char> = text.chars().rev().take(2).collect();
+        if last.len() == 2 {
+            self.tail = last.iter().rev().collect();
+        } else {
+            self.tail.extend(last.iter().rev());
+            let skip = self.tail.chars().count().saturating_sub(2);
+            self.tail = self.tail.chars().skip(skip).collect();
         }
-        if c.is_whitespace() {
-            if c == '\n' {
-                line += 1;
-                if stack.is_empty() && started {
-                    top_break = true;
+        for c in text.chars() {
+            if self.in_str {
+                out.push(c);
+                if self.escaped {
+                    self.escaped = false;
+                } else if c == '\\' {
+                    self.escaped = true;
+                } else if c == '"' {
+                    self.in_str = false;
+                } else if c == '\n' {
+                    return Err(format!("Line break inside a JSON string (line {}).", self.line));
                 }
+                continue;
             }
-            continue;
-        }
-        let closing = matches!(c, '}' | ']');
-        if closing {
-            let open = stack.pop().ok_or_else(|| format!("Unexpected “{c}” (line {line})."))?;
-            if (open == '{') != (c == '}') {
-                return Err(format!("“{c}” does not close “{open}” (line {line})."));
+            if c.is_whitespace() {
+                if c == '\n' {
+                    self.line += 1;
+                    if self.stack.is_empty() && self.started {
+                        self.top_break = true;
+                    }
+                }
+                continue;
             }
-            if !after_open {
-                newline(&mut out, stack.len());
-            }
-            out.push(c);
-            pending = false;
-            after_open = false;
-            continue;
-        }
-        if stack.is_empty() && started && top_break {
-            out.push_str(eol);
-        }
-        top_break = false;
-        if pending {
-            newline(&mut out, stack.len());
-            pending = false;
-        }
-        after_open = false;
-        started = true;
-        match c {
-            '"' => {
-                in_str = true;
-                out.push(c);
-            }
-            '{' | '[' => {
-                out.push(c);
-                stack.push(c);
-                pending = true;
-                after_open = true;
-            }
-            ',' => {
-                if stack.is_empty() {
-                    return Err(format!("Unexpected “,” outside an object or array (line {line})."));
+            let line = self.line;
+            if matches!(c, '}' | ']') {
+                let open = self.stack.pop().ok_or_else(|| format!("Unexpected “{c}” (line {line})."))?;
+                if (open == '{') != (c == '}') {
+                    return Err(format!("“{c}” does not close “{open}” (line {line})."));
+                }
+                if !self.after_open {
+                    self.newline(out, self.stack.len());
                 }
                 out.push(c);
-                pending = true;
+                self.pending = false;
+                self.after_open = false;
+                continue;
             }
-            ':' => {
-                out.push(':');
-                if indent.is_some() {
-                    out.push(' ');
+            if self.stack.is_empty() && self.started && self.top_break {
+                out.push_str(self.eol);
+            }
+            self.top_break = false;
+            if self.pending {
+                self.newline(out, self.stack.len());
+                self.pending = false;
+            }
+            self.after_open = false;
+            self.started = true;
+            match c {
+                '"' => {
+                    self.in_str = true;
+                    out.push(c);
                 }
+                '{' | '[' => {
+                    out.push(c);
+                    self.stack.push(c);
+                    self.pending = true;
+                    self.after_open = true;
+                }
+                ',' => {
+                    if self.stack.is_empty() {
+                        return Err(format!("Unexpected “,” outside an object or array (line {line})."));
+                    }
+                    out.push(c);
+                    self.pending = true;
+                }
+                ':' => {
+                    out.push(':');
+                    if self.indent.is_some() {
+                        out.push(' ');
+                    }
+                }
+                _ => out.push(c),
             }
-            _ => out.push(c),
+        }
+        Ok(())
+    }
+
+    pub fn finish(self, out: &mut String) -> Result<(), String> {
+        if self.in_str {
+            return Err("A JSON string is not closed.".into());
+        }
+        if let Some(open) = self.stack.last() {
+            return Err(format!("“{open}” is not closed."));
+        }
+        if self.tail.ends_with(self.eol) {
+            out.push_str(self.eol);
+        }
+        Ok(())
+    }
+}
+
+impl Op {
+    /// Whether it can work through a document a piece at a time (sorting cannot).
+    pub fn streams(self) -> bool {
+        matches!(self, Op::Upper | Op::Lower | Op::TrimTrailing | Op::TabsToSpaces | Op::SpacesToTabs | Op::JsonPretty | Op::JsonMinify)
+    }
+}
+
+/// Bytes decoded, changed and written at a time (whole lines).
+pub const WINDOW: u64 = 4 << 20;
+/// The longest line trimming and indentation changes work on.
+const LINE_MAX: u64 = 64 << 20;
+
+fn copy_range(buf: &TextBuf, r: Range<u64>, out: &mut dyn Write) -> io::Result<u64> {
+    let mut err = None;
+    buf.for_each_chunk(r.clone(), |_, b| match out.write_all(b) {
+        Ok(()) => true,
+        Err(e) => {
+            err = Some(e);
+            false
+        }
+    })
+    .ok_or_else(|| io::Error::other("Could not read the document"))?;
+    match err {
+        Some(e) => Err(e),
+        None => Ok(r.end - r.start),
+    }
+}
+
+/// Writes `buf` with `op` applied to `range` (the rest as it is) to `out`, whole lines at a
+/// time, for documents of any size. Returns the bytes written, or `None` when cancelled.
+pub fn text_op_to(buf: &TextBuf, range: Range<u64>, op: Op, tab_width: usize, out: &mut dyn Write, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<u64>> {
+    text_op_window(buf, range, op, tab_width, out, cancel, progress, WINDOW)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn text_op_window(buf: &TextBuf, range: Range<u64>, op: Op, tab_width: usize, out: &mut dyn Write, cancel: &CancelToken, progress: Option<&Progress>, window: u64) -> io::Result<Option<u64>> {
+    if !op.streams() {
+        return Err(io::Error::new(io::ErrorKind::Unsupported, "this operation needs all the lines at once"));
+    }
+    let bad = |e: String| io::Error::new(io::ErrorKind::InvalidData, e);
+    let codec = buf.codec;
+    let unit = codec.unit();
+    let range = range.start.min(buf.len())..range.end.min(buf.len());
+    if let Some(p) = progress {
+        p.set_total(buf.len());
+    }
+    let mut written = copy_range(buf, 0..range.start, out)?;
+    let mut json: Option<JsonFormatter> = None;
+    let whole_lines = matches!(op, Op::TrimTrailing | Op::TabsToSpaces | Op::SpacesToTabs);
+    let mut text_out = String::new();
+    let mut pos = range.start;
+    let mut first = true;
+    while pos < range.end {
+        if cancel.is_cancelled() {
+            return Ok(None);
+        }
+        // Whole lines (or whole characters, in a line longer than the window).
+        let mut w = window;
+        let (bytes, cut) = loop {
+            let end = (pos + w).min(range.end);
+            let bytes = buf.read(pos..end).ok_or_else(|| io::Error::other("Could not read the document"))?;
+            if end == range.end {
+                let n = bytes.len();
+                break (bytes, n);
+            }
+            let cut = match codec.rfind_nl(&bytes, pos) {
+                Some(i) => i + unit,
+                // Trimming and indentation look at a whole line.
+                None if whole_lines => {
+                    if w >= LINE_MAX {
+                        return Err(bad(format!("A line is longer than {} MB.", LINE_MAX >> 20)));
+                    }
+                    0
+                }
+                None => {
+                    let mut c = bytes.len() - bytes.len() % unit;
+                    if codec.enc == crate::encoding::Encoding::Utf8 {
+                        // Leave out the last character: it may go on past the window.
+                        while c > 0 && bytes[c - 1] & 0xC0 == 0x80 {
+                            c -= 1;
+                        }
+                        if c > 0 && bytes[c - 1] >= 0xC0 {
+                            c -= 1;
+                        }
+                    } else if unit == 2 && c >= 2 {
+                        let u = if codec.enc == crate::encoding::Encoding::Utf16Be { u16::from_be_bytes([bytes[c - 2], bytes[c - 1]]) } else { u16::from_le_bytes([bytes[c - 2], bytes[c - 1]]) };
+                        if (0xD800..0xDC00).contains(&u) {
+                            c -= 2;
+                        }
+                    }
+                    c
+                }
+            };
+            if cut > 0 {
+                break (bytes, cut);
+            }
+            w *= 2;
+        };
+        let chunk = &bytes[..cut];
+        let text = codec.decode_lossy(chunk);
+        if codec.encode(&text) != chunk {
+            return Err(bad(format!("The text contains bytes that are not valid {}; the operation would change them.", codec.enc.name())));
+        }
+        if first {
+            first = false;
+            let eol = if text.contains("\r\n") { "\r\n" } else if text.contains('\n') || !text.contains('\r') { "\n" } else { "\r" };
+            json = match op {
+                Op::JsonPretty => Some(JsonFormatter::new(Some("  "), eol)),
+                Op::JsonMinify => Some(JsonFormatter::new(None, eol)),
+                _ => None,
+            };
+        }
+        let changed = match &mut json {
+            Some(f) => {
+                text_out.clear();
+                f.feed(&text, &mut text_out).map_err(bad)?;
+                codec.encode(&text_out)
+            }
+            None => codec.encode(&apply(op, &text, tab_width).map_err(bad)?),
+        };
+        out.write_all(&changed)?;
+        written += changed.len() as u64;
+        pos += cut as u64;
+        if let Some(p) = progress {
+            p.set_done(pos);
         }
     }
-    if in_str {
-        return Err("A JSON string is not closed.".into());
+    if let Some(f) = json {
+        text_out.clear();
+        f.finish(&mut text_out).map_err(bad)?;
+        let b = codec.encode(&text_out);
+        out.write_all(&b)?;
+        written += b.len() as u64;
     }
-    if let Some(open) = stack.last() {
-        return Err(format!("“{open}” is not closed."));
-    }
-    if text.ends_with(eol) {
-        out.push_str(eol);
-    }
-    Ok(out)
+    written += copy_range(buf, range.end..buf.len(), out)?;
+    Ok(Some(written))
 }
 
 #[cfg(test)]
@@ -294,6 +472,54 @@ mod tests {
         assert_eq!(apply(Op::Lower, "ÄB", 4).unwrap(), "äb");
         assert_eq!(apply(Op::TabsToSpaces, "\tx\n ab\tc", 4).unwrap(), "    x\n ab c");
         assert_eq!(apply(Op::SpacesToTabs, "      x  y\n  z", 4).unwrap(), "\t  x  y\n  z");
+    }
+
+    fn buf(data: &[u8]) -> (tempfile::NamedTempFile, TextBuf) {
+        use std::io::Write as _;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(data).unwrap();
+        f.flush().unwrap();
+        let s = std::sync::Arc::new(crate::file::Source::open(f.path(), crate::file::OpenMode::Auto).unwrap());
+        let det = crate::encoding::detect(data, true);
+        (f, TextBuf::new(s.clone(), crate::index::LineIndex::new(s.len()), det.codec))
+    }
+
+    #[test]
+    fn streaming_matches_in_memory_at_any_window() {
+        for text in ["Straße\tone  \n  two\tTWO \nпривет мир\t\n\n    four\nlast", "a\t \r\n    b  \r\nc"] {
+            let (_f, b) = buf(text.as_bytes());
+            for op in [Op::Upper, Op::Lower, Op::TrimTrailing, Op::TabsToSpaces, Op::SpacesToTabs] {
+                let want = apply(op, text, 4).unwrap();
+                for window in [1, 3, 7, 16, 1000] {
+                    let mut out = Vec::new();
+                    text_op_window(&b, 0..b.len(), op, 4, &mut out, &CancelToken::new(), None, window).unwrap().unwrap();
+                    assert_eq!(String::from_utf8(out).unwrap(), want, "{op:?} at {window}");
+                }
+            }
+        }
+        let text = "Straße\tone  \n  two\tTWO \nпривет мир\t\n\n    four\nlast";
+        let (_f, b) = buf(text.as_bytes());
+        // Only the range changes.
+        let mut out = Vec::new();
+        text_op_window(&b, 8..13, Op::Upper, 4, &mut out, &CancelToken::new(), None, 2).unwrap().unwrap();
+        assert!(String::from_utf8(out).unwrap().starts_with("Straße\tONE  \n"));
+        assert!(text_op_to(&b, 0..b.len(), Op::SortAsc, 4, &mut Vec::new(), &CancelToken::new(), None).is_err());
+    }
+
+    #[test]
+    fn json_streams_too() {
+        let src = "{\"b\":1,\"a\":[1, 2.50,{}],\"s\":\"x, \\\"y\\\": [z]\",\"e\":[]}\n{\"n\": null}\n";
+        let (_f, b) = buf(src.as_bytes());
+        for (op, indent) in [(Op::JsonPretty, Some("  ")), (Op::JsonMinify, None)] {
+            let want = json_format(src, indent, "\n").unwrap();
+            for window in [1, 5, 13, 4096] {
+                let mut out = Vec::new();
+                text_op_window(&b, 0..b.len(), op, 4, &mut out, &CancelToken::new(), None, window).unwrap().unwrap();
+                assert_eq!(String::from_utf8(out).unwrap(), want, "{op:?} at {window}");
+            }
+        }
+        let (_g, broken) = buf(b"{\"a\": [1}");
+        assert!(text_op_to(&broken, 0..broken.len(), Op::JsonMinify, 4, &mut Vec::new(), &CancelToken::new(), None).is_err());
     }
 
     #[test]
