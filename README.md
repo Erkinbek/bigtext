@@ -282,6 +282,7 @@ times). Exit codes: 0 done, 1 nothing matched, 2 error.
 | Ctrl+Shift+J | JSON structure |
 | Ctrl+Shift+C | Copy file:line |
 | Ctrl+Shift+P | Command palette |
+| Alt+Left / Alt+Right | Back to where the caret jumped from / forward again (also the mouse's side buttons) |
 | Ctrl+G / Ctrl+Shift+G | Go to line / go to byte offset (decimal or `0x` hex; also `50%`, `+100` / `-100` from the caret, `$-100` from the end) |
 | Ctrl+Shift+T | Go to time (first log line at or after a timestamp) |
 | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) | Undo / redo |

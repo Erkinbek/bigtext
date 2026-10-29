@@ -136,7 +136,7 @@ impl BigTextApp {
         match f.found {
             Some((s, e)) => {
                 d.select(s, e);
-                d.view.center_caret = true;
+                d.view.center();
                 if f.wrapped {
                     self.notify(tr("Wrapped around").into(), None);
                 }

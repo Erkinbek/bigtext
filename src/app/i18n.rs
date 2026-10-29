@@ -128,6 +128,7 @@ mod tests {
         "app" / "match_bracket.rs",
         "app" / "merge_logs.rs",
         "app" / "multi_cursor.rs",
+        "app" / "nav.rs",
         "app" / "ops.rs",
         "app" / "patterns_window.rs",
         "app" / "portable.rs",

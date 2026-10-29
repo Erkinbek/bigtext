@@ -158,6 +158,11 @@ All notable changes to BigText. Each release on
 
 ### Search
 
+- **Back and forward** (Search → Back / Forward, **Alt+Left** / **Alt+Right**, or the mouse's
+  side buttons): back to where the caret was before a jump — Go to, F3, F8, a bookmark, a
+  bracket jump, a click in the filter, Find All, histogram, gaps, JSON or Find-in-files lists —
+  or to the tab left, across tabs; the last 100 places are kept. In a text field Alt+arrows still
+  move by words.
 - **Go to** (Ctrl+G / Ctrl+Shift+G) also takes `50%` (a share of the file), `+1000` / `-250`
   (lines from the caret), `$` and `$-100` (from the last line); in byte-offset mode the same
   with bytes (`+0x100`, `$-4096`). Dragging the scrollbar shows `~Ln 45,357,933 · 48 %` next to

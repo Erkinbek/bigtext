@@ -244,14 +244,14 @@ impl BigTextApp {
                 let d = &mut self.docs[k];
                 let len = d.buf.len();
                 d.select(start.min(len), end.min(len));
-                d.view.center_caret = true;
+                d.view.center();
             }
             _ => {
                 self.open_path(path);
                 if let Some(d) = self.docs.get_mut(self.active) {
                     if d.is_ready() {
                         d.select(start, end);
-                        d.view.center_caret = true;
+                        d.view.center();
                     } else {
                         d.restore = Some(Restore { select: Some((start, end)), ..Default::default() });
                     }

@@ -499,7 +499,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
             doc.view.desired_cell = None;
             if double {
                 doc.table = false;
-                doc.view.center_caret = true;
+                doc.view.center();
             } else {
                 doc.view.scroll_to_caret = false;
             }

@@ -1267,6 +1267,32 @@ impl SelfTest {
             app.filter_levels(Levels::default());
             check(ok, got)
         }));
+        s("back and forward: Alt+Left returns from an F8 jump, Alt+Right goes again", Box::new(|app, c| {
+            if c.first() {
+                doc(app).set_caret(0, false);
+                return Step::Wait;
+            }
+            let caret = doc(app).view.caret;
+            let line = doc(app).buf.line_of(caret).0;
+            let (want, next_key) = match c.mark {
+                0 => (None, Some((Key::F8, NONE))),
+                1 => (Some(line == 3), Some((Key::ArrowLeft, ALT))),
+                2 => (Some(caret == 0), Some((Key::ArrowRight, ALT))),
+                _ => (Some(line == 3), None),
+            };
+            match want {
+                Some(false) => return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("stage {}: caret {caret} line {line}", c.mark)) } else { Step::Wait },
+                Some(true) if next_key.is_none() => {
+                    c.mark = 0;
+                    return Step::Next;
+                }
+                _ => {}
+            }
+            let (k, m) = next_key.expect("a key");
+            c.key(k, m);
+            c.mark += 1;
+            Step::Wait
+        }));
         s("time range: the level bar only between 10:00:02 and 10:00:04", Box::new(|app, c| {
             use bigtext::loglevel::{Level, Levels};
             let line = |n: usize| LEVELS_LOG.split_inclusive('\n').take(n).map(str::len).sum::<usize>() as u64;

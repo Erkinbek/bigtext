@@ -189,7 +189,7 @@ impl BigTextApp {
                 match r {
                     Ok((s, e)) => {
                         d.select(s.min(len), e.min(len));
-                        d.view.center_caret = true;
+                        d.view.center();
                     }
                     Err(e) => t.status = e,
                 }

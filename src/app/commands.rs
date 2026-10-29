@@ -52,6 +52,8 @@ pub enum Cmd {
     FindInFiles,
     NextLevel,
     PrevLevel,
+    NavBack,
+    NavForward,
     FollowId,
     IdPatterns,
     GotoLine,
@@ -99,7 +101,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 71] = [
+    pub const ALL: [Cmd; 73] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -137,6 +139,8 @@ impl Cmd {
         Cmd::FindInFiles,
         Cmd::NextLevel,
         Cmd::PrevLevel,
+        Cmd::NavBack,
+        Cmd::NavForward,
         Cmd::FollowId,
         Cmd::IdPatterns,
         Cmd::GotoLine,
@@ -239,6 +243,8 @@ impl Cmd {
             Cmd::FindInFiles => "Find in files…",
             Cmd::NextLevel => "Next error line",
             Cmd::PrevLevel => "Previous error line",
+            Cmd::NavBack => "Back",
+            Cmd::NavForward => "Forward",
             Cmd::FollowId => "Follow id at caret",
             Cmd::IdPatterns => "Id patterns…",
             Cmd::GotoLine => "Go to line…",
@@ -294,7 +300,7 @@ impl Cmd {
             | Cmd::ClearBookmarks
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
-            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::MatchBracket => "Search",
+            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::MatchBracket => "Search",
             Cmd::Palette | Cmd::Shortcuts | Cmd::ExportSettings | Cmd::ImportSettings | Cmd::Portable | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
@@ -328,6 +334,8 @@ impl Cmd {
             Cmd::NextLevel => key(Modifiers::NONE, Key::F8),
             Cmd::PrevLevel => key(Modifiers::SHIFT, Key::F8),
             Cmd::FollowId => key(CTRL_SHIFT, Key::I),
+            Cmd::NavBack => key(Modifiers::ALT, Key::ArrowLeft),
+            Cmd::NavForward => key(Modifiers::ALT, Key::ArrowRight),
             Cmd::GotoLine => key(CTRL, Key::G),
             Cmd::GotoOffset => key(CTRL_SHIFT, Key::G),
             Cmd::GotoTime => key(CTRL_SHIFT, Key::T),
@@ -534,6 +542,8 @@ impl BigTextApp {
             Cmd::FindInFiles => self.open_find_in_files(),
             Cmd::NextLevel => self.next_level(true),
             Cmd::PrevLevel => self.next_level(false),
+            Cmd::NavBack => self.nav_back(),
+            Cmd::NavForward => self.nav_forward(),
             Cmd::FollowId => self.follow_id_at_caret(),
             Cmd::IdPatterns => self.open_id_patterns(),
             Cmd::GotoLine => self.goto = GotoDialog::new(GotoMode::Line),
@@ -626,6 +636,8 @@ impl BigTextApp {
         let d = self.docs.get(self.active);
         match cmd {
             Cmd::Undo => d.is_some_and(|d| !d.undo.is_empty()),
+            Cmd::NavBack => !self.nav.back.is_empty(),
+            Cmd::NavForward => !self.nav.forward.is_empty(),
             Cmd::Redo => d.is_some_and(|d| !d.redo.is_empty()),
             Cmd::ClearBookmarks => d.is_some_and(|d| !d.bookmarks.is_empty()),
             Cmd::Text(_) => d.is_some_and(|d| d.editable()),
@@ -636,6 +648,10 @@ impl BigTextApp {
     /// Keyboard shortcuts of all commands (when no dialog is open).
     pub(super) fn shortcuts(&mut self, ctx: &egui::Context) {
         for (cmd, k) in self.keymap.bound() {
+            // Alt+arrows move by words in a text field.
+            if matches!(cmd, Cmd::NavBack | Cmd::NavForward) && ctx.memory(|m| m.focused()).is_some_and(|id| egui::TextEdit::load_state(ctx, id).is_some()) {
+                continue;
+            }
             let hit = ctx.input_mut(|i| i.consume_shortcut(&k) || (cmd == Cmd::ZoomIn && k == Cmd::ZoomIn.default_key().unwrap() && i.consume_shortcut(&KeyboardShortcut::new(CTRL, Key::Plus))));
             if hit {
                 self.run(ctx, cmd);
@@ -761,7 +777,7 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                for c in [Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::MatchBracket, Cmd::Timeline, Cmd::TimeGaps, Cmd::Patterns] {
+                for c in [Cmd::NavBack, Cmd::NavForward, Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::MatchBracket, Cmd::Timeline, Cmd::TimeGaps, Cmd::Patterns] {
                     run = run.or(self.item(ui, c));
                 }
             });

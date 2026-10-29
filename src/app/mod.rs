@@ -21,6 +21,7 @@ pub mod marks;
 pub mod match_bracket;
 pub mod merge_logs;
 pub mod multi_cursor;
+pub mod nav;
 pub mod ops;
 pub mod patterns_window;
 pub mod portable;
@@ -235,6 +236,7 @@ pub struct BigTextApp {
     pub gaps: gaps_panel::GapsUi,
     pub range: time_range::TimeRangeUi,
     pub patterns: patterns_window::PatternsUi,
+    pub nav: nav::NavHistory,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -363,6 +365,7 @@ impl BigTextApp {
             gaps: gaps_panel::GapsUi::default(),
             range: time_range::TimeRangeUi::default(),
             patterns: patterns_window::PatternsUi::default(),
+            nav: nav::NavHistory::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -557,7 +560,7 @@ impl BigTextApp {
                                         _ if r.select.is_some() => {
                                             let (s, e) = r.select.unwrap_or_default();
                                             d.select(s.min(len), e.min(len));
-                                            d.view.center_caret = true;
+                                            d.view.center();
                                         }
                                         None if r.end => d.set_caret(len, false),
                                         Some(line) => d.goto_line(line),
@@ -1296,6 +1299,7 @@ impl eframe::App for BigTextApp {
         let t0 = Instant::now();
         let ctx = ui.ctx().clone();
         CTX.with(|c| *c.borrow_mut() = Some(ctx.clone()));
+        self.track_jumps();
         self.poll_messages();
         self.handle_close_request(&ctx);
 
@@ -1318,6 +1322,14 @@ impl eframe::App for BigTextApp {
         let modal_open = self.goto.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
         if !modal_open {
             self.shortcuts(&ctx);
+            // The mouse's back and forward buttons.
+            let (back, forward) = ctx.input(|i| (i.pointer.button_pressed(egui::PointerButton::Extra1), i.pointer.button_pressed(egui::PointerButton::Extra2)));
+            if back {
+                self.nav_back();
+            }
+            if forward {
+                self.nav_forward();
+            }
         }
         self.switcher_keys(&ctx);
         self.track_mru();

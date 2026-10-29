@@ -521,7 +521,7 @@ impl BigTextApp {
             });
             if let (Some(ls), false) = (jump, stale) {
                 d.set_caret(ls.max(d.min_caret()), false);
-                d.view.center_caret = true;
+                d.view.center();
             }
             if close {
                 if let Some(r) = d.filter.take() {

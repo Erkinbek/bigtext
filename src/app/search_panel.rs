@@ -261,7 +261,7 @@ impl BigTextApp {
                 drop(g);
                 let d = &mut self.docs[self.active];
                 d.select(ms, me);
-                d.view.center_caret = true;
+                d.view.center();
                 let total = self.docs[self.active].results.as_ref().map(|r| r.data.lock().unwrap().matches.len()).unwrap_or(0);
                 self.search.status = trf("Match {i} of {n}", &[("i", &(idx + 1).to_string()), ("n", &total.to_string())]);
                 return;
@@ -322,7 +322,7 @@ impl BigTextApp {
         match found {
             Some((s, e)) => {
                 d.select(s, e);
-                d.view.center_caret = true;
+                d.view.center();
                 self.search.status = if wrapped { tr("Wrapped around").into() } else { String::new() };
             }
             None => self.search.status = tr("No matches").into(),
@@ -548,7 +548,7 @@ impl BigTextApp {
         if let Some((s, e)) = jump {
             if !stale {
                 d.select(s, e);
-                d.view.center_caret = true;
+                d.view.center();
             }
         }
         if close {

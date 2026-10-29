@@ -68,6 +68,8 @@ pub struct ViewState {
     pub max_cells: u32,
     pub scroll_to_caret: bool,
     pub center_caret: bool,
+    /// Jumps so far (Go to, F3, a click in a list…), for Back / Forward.
+    pub jumps: u64,
     pub pending_goto_line: Option<(u64, u64)>,
     pub wheel_rem: f32,
     pub hex_top: u64,
@@ -90,9 +92,18 @@ pub struct ViewState {
     pub alt_prev: Option<(u64, u64)>,
 }
 
+impl ViewState {
+    /// Centres the caret after a jump and counts the jump.
+    pub fn center(&mut self) {
+        self.center_caret = true;
+        self.jumps += 1;
+    }
+}
+
 impl Default for ViewState {
     fn default() -> Self {
         ViewState {
+            jumps: 0,
             top: 0,
             scroll_x: 0.0,
             caret: 0,
@@ -614,7 +625,7 @@ impl Document {
             self.bookmarks.iter().rev().copied().find(|&b| b < line_start).unwrap_or(*self.bookmarks.last().unwrap())
         };
         self.set_caret(target, false);
-        self.view.center_caret = true;
+        self.view.center();
     }
 
     pub fn undo(&mut self) {
@@ -851,7 +862,7 @@ impl Document {
         let off = if exact { off } else { rows::seg_start(&self.buf, off).unwrap_or(off) };
         let off = off.max(self.min_caret());
         self.set_caret(off, false);
-        self.view.center_caret = true;
+        self.view.center();
         self.view.pending_goto_line = if exact { None } else { Some((target, off)) };
     }
 
@@ -874,6 +885,6 @@ impl Document {
     pub fn goto_offset(&mut self, off: u64) {
         let off = self.buf.snap_char(off.min(self.buf.len()));
         self.set_caret(off, false);
-        self.view.center_caret = true;
+        self.view.center();
     }
 }
