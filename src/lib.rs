@@ -7,6 +7,7 @@ pub mod csv;
 pub mod decompress;
 pub mod diff;
 pub mod encoding;
+pub mod fields;
 pub mod file;
 pub mod filter;
 pub mod find_files;

@@ -116,6 +116,7 @@ mod tests {
         "app" / "document.rs",
         "app" / "export.rs",
         "app" / "extras.rs",
+        "app" / "fields_panel.rs",
         "app" / "filter_panel.rs",
         "app" / "find_in_files.rs",
         "app" / "follow_id.rs",

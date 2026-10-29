@@ -650,4 +650,30 @@ pub static TEXTS: &[[&str; 3]] = &[
         "Следовать за {id}: показать только его строки и записи лога (Ctrl+Shift+I)",
         "{id} ni kuzatish: faqat uning satrlari va log yozuvlarini ko'rsatish (Ctrl+Shift+I)",
     ],
+    // Log fields.
+    ["Log fields", "Поля лога", "Log maydonlari"],
+    ["The line is longer than {size}.", "Строка длиннее {size}.", "Satr {size} dan uzun."],
+    [
+        "The caret's line is not a JSON object or logfmt key=value pairs.",
+        "Строка под курсором — не объект JSON и не пары key=value (logfmt).",
+        "Kursordagi satr JSON obyekt ham, logfmt key=value juftliklari ham emas.",
+    ],
+    ["Filter: lines with this value", "Фильтр: строки с этим значением", "Filtr: shu qiymatli satrlar"],
+    ["Filter: lines without it", "Фильтр: строки без него", "Filtr: usiz satrlar"],
+    ["Highlight this value", "Подсветить это значение", "Bu qiymatni ajratish"],
+    ["Count the values of this field…", "Подсчитать значения этого поля…", "Bu maydon qiymatlarini sanash…"],
+    ["Copy value", "Копировать значение", "Qiymatni nusxalash"],
+    ["{key} values ({name})", "Значения {key} ({name})", "{key} qiymatlari ({name})"],
+    ["Counting values", "Подсчёт значений", "Qiymatlar sanalmoqda"],
+    ["No line has the field “{key}”.", "Ни в одной строке нет поля «{key}».", "Hech bir satrda “{key}” maydoni yo'q."],
+    [
+        "{n} values in {lines} lines; {without} lines without “{key}”.",
+        "{n} значений в {lines} строках; строк без «{key}»: {without}.",
+        "{lines} ta satrda {n} ta qiymat; “{key}”siz satrlar: {without}.",
+    ],
+    [
+        "Only the first {max} different values are listed; {n} lines have others.",
+        "Показаны только первые {max} разных значений; у {n} строк другие.",
+        "Faqat dastlabki {max} ta turli qiymat ko'rsatildi; {n} ta satrda boshqa qiymatlar bor.",
+    ],
 ];

@@ -6,6 +6,7 @@ pub mod csv_tools;
 pub mod document;
 pub mod export;
 pub mod extras;
+pub mod fields_panel;
 pub mod filter_panel;
 pub mod find_in_files;
 pub mod follow_id;
@@ -225,6 +226,7 @@ pub struct BigTextApp {
     pub sessions: sessions::SessionsUi,
     pub portable: portable::PortableUi,
     pub ids: follow_id::IdUi,
+    pub fields: fields_panel::FieldsUi,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -349,6 +351,7 @@ impl BigTextApp {
             sessions: sessions::SessionsUi::default(),
             portable: portable::PortableUi::default(),
             ids: follow_id::IdUi::default(),
+            fields: fields_panel::FieldsUi::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1345,6 +1348,9 @@ impl eframe::App for BigTextApp {
 
         if self.json_open && self.docs.get(self.active).is_some_and(|d| d.is_ready() && !d.hex) {
             egui::Panel::left("json").resizable(true).default_size(320.0).show(ui, |ui| self.json_panel(ui));
+        }
+        if self.fields.open && self.docs.get(self.active).is_some_and(|d| d.is_ready() && !d.hex) {
+            egui::Panel::left("fields").resizable(true).default_size(300.0).show(ui, |ui| self.fields_panel(ui));
         }
 
         let mut actions = Vec::new();

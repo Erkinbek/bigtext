@@ -1597,6 +1597,52 @@ impl SelfTest {
             c.copied.clear();
             Step::Next
         }));
+        s("log fields: the caret's JSON line as key → value rows", Box::new(|app, c| {
+            if c.first() {
+                doc(app).set_caret(27, false);
+                c.key(Key::L, CTRL_SHIFT);
+                return Step::Wait;
+            }
+            if !app.fields.open {
+                return Step::Fail("Ctrl+Shift+L did not open the panel".into());
+            }
+            match app.caret_fields() {
+                Some(crate::app::fields_panel::Parsed::Fields(_, f)) => {
+                    let got: Vec<(String, String)> = f.into_iter().map(|f| (f.key, f.value)).collect();
+                    let want = [("id", "2"), ("msg", "a, b"), ("user", "ann")].map(|(k, v)| (k.to_string(), v.to_string()));
+                    check(got == want, format!("fields {got:?}"))
+                }
+                _ => Step::Fail("the line was not parsed".into()),
+            }
+        }));
+        s("log fields: count a field's values into a table", Box::new(|app, c| {
+            if c.first() {
+                app.count_field_values("user".into(), bigtext::fields::Syntax::Json);
+                return Step::Wait;
+            }
+            if c.mark == 1 {
+                let temp = PathBuf::from(&c.copied[0]);
+                if temp.exists() {
+                    return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("{temp:?} still exists")) } else { Step::Wait };
+                }
+                c.copied.clear();
+                c.mark = 0;
+                return Step::Next;
+            }
+            let d = doc(app);
+            if !d.title.starts_with("user") || !d.is_ready() {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("active tab {:?}", d.title)) } else { Step::Wait };
+            }
+            let t = text(app);
+            if t != "user,lines,percent,first,last\nann,1,100.00,,\n" {
+                return Step::Fail(format!("text {t:?}"));
+            }
+            c.mark = 1;
+            c.copied = vec![doc(app).path.clone().unwrap_or_default().to_string_lossy().into_owned()];
+            c.key(Key::W, CTRL);
+            app.fields.open = false;
+            Step::Wait
+        }));
         s("open sales.csv", open_step("sales.csv"));
         s("CSV: group rows by a column and sum another", Box::new(|app, c| {
             if c.first() {

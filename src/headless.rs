@@ -43,6 +43,10 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         Size, lines, encoding, line endings and the first and last times.
   merge FILE FILE... [-o OUT]
         Log lines of all files in time order, each labelled with its file.
+  values FIELD FILE [-o OUT]
+        The values of a JSON Lines or logfmt (key=value) field with how many
+        lines have each and their first and last time, as CSV, most frequent
+        first. Nested JSON keys: user.id.
   convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]
         A CSV / TSV table as JSON, JSON Lines, Markdown or Excel (.xlsx needs
         -o), or JSON Lines as CSV.
@@ -50,7 +54,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 7] = ["filter", "levels", "count", "split", "stats", "merge", "convert"];
+const COMMANDS: [&str; 8] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -443,6 +447,26 @@ fn cmd_convert(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(0)
 }
 
+fn cmd_values(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &[], &["-o", "--output"])?;
+    let [key, file] = &a.rest[..] else { return fail("needs FIELD and FILE") };
+    let (buf, _) = open(Path::new(file))?;
+    // JSON Lines when the first non-empty line is an object, otherwise logfmt.
+    let mut r = LineReader::new(&buf);
+    let mut syntax = crate::fields::Syntax::Logfmt;
+    while let Some((_, l)) = r.next()? {
+        match l.trim_ascii().first() {
+            None => continue,
+            Some(b'{') => syntax = crate::fields::Syntax::Json,
+            Some(_) => {}
+        }
+        break;
+    }
+    let c = crate::fields::value_counts(&buf, key, syntax, &CancelToken::new(), None)?.unwrap_or_default();
+    with_output(a.opt(&["-o", "--output"]), out, |w| Ok(crate::fields::counts_to_csv(&c, key, &mut &mut *w)?))?;
+    Ok(if c.lines > 0 { 0 } else { 1 })
+}
+
 /// Runs a command; returns the exit code. `args` start with the command name.
 pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
     let Some(cmd) = args.first().map(|c| c.trim_start_matches('-').to_string()) else {
@@ -458,6 +482,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "stats" => cmd_stats(rest, out),
         "merge" => cmd_merge(rest, out),
         "convert" => cmd_convert(rest, out),
+        "values" => cmd_values(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
             return 0;
@@ -529,6 +554,16 @@ mod tests {
         run_args(&["filter", "-n", "-A", "1", "ERROR", &log, "-o", &o.to_string_lossy()]);
         assert_eq!(std::fs::read_to_string(&o).unwrap(), "2:2024-05-01 10:00:01 ERROR b\n3-\tat x.Y(Y.java:1)\n--\n6:2024-05-01 10:00:04 ERROR e\n");
         assert_eq!(run_args(&["filter", "-A", "x", "ERROR", &log]).0, 2);
+    }
+
+    #[test]
+    fn values_of_a_field() {
+        let d = tempfile::tempdir().unwrap();
+        let jl = file(&d, "e.jsonl", b"\n{\"level\":\"info\"}\n{\"level\":\"error\"}\n{\"level\":\"info\"}\n");
+        assert_eq!(run_args(&["values", "level", &jl]), (0, "level,lines,percent,first,last\ninfo,2,66.67,,\nerror,1,33.33,,\n".into(), String::new()));
+        let lf = file(&d, "a.log", b"ts=2024-05-01T10:00:00Z status=200\nts=2024-05-01T10:00:09Z status=200\n");
+        assert_eq!(run_args(&["values", "status", &lf]).1.lines().nth(1), Some("200,2,100.00,2024-05-01 10:00:00,2024-05-01 10:00:09"));
+        assert_eq!(run_args(&["values", "nope", &lf]).0, 1);
     }
 
     #[test]

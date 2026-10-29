@@ -63,6 +63,13 @@ All notable changes to BigText. Each release on
   the id was first and last seen, the time between, and how many of its lines are errors, with
   a button to highlight the id everywhere. **Search → Id patterns…** edits the list of keys
   (kept with the settings).
+- **View → Log fields** (Ctrl+Shift+L): a side panel with the caret's JSON Lines or logfmt
+  (`key=value`, `key="quoted"`) line as a key → value table that follows the caret. Nested
+  objects become `user.id`, escaped values (`"line1\nline2"`) are shown unescaped. Each field's
+  menu filters the file to the lines with that value or without it, highlights it, copies it,
+  or **counts the field's values** over the whole file in one streaming pass into a table
+  (value, lines, percent, first and last time), most frequent first. `bigtext-cli values FIELD
+  FILE` prints the same table.
 - **Level bar** above log files: **ERROR**, **WARN**, **INFO** and **DEBUG** buttons list only the
   lines of those levels in the filter view (click several to combine them). **F8** / **Shift+F8**
   jump to the next / previous error line, or to the next line of the levels shown. Upper-case
