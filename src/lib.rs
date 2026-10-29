@@ -39,3 +39,4 @@ pub mod text;
 pub mod textops;
 pub mod timestamp;
 pub mod update;
+pub mod xml;

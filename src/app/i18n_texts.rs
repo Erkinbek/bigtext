@@ -886,4 +886,7 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["(the check stops at the first problem of a document)", "(проверка документа останавливается на первой проблеме)", "(hujjat tekshiruvi birinchi muammoda to'xtaydi)"],
     ["One document", "Один документ", "Bitta hujjat"],
     ["byte {n}", "байт {n}", "{n}-bayt"],
+    // XML structure.
+    ["Structure (JSON / XML)", "Структура (JSON / XML)", "Tuzilma (JSON / XML)"],
+    ["XML structure", "Структура XML", "XML tuzilmasi"],
 ];

@@ -49,9 +49,9 @@ pub struct Child {
 /// Where to go on listing a container's children.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Resume {
-    at: u64,
-    index: usize,
-    object: bool,
+    pub(crate) at: u64,
+    pub(crate) index: usize,
+    pub(crate) object: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

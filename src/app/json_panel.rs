@@ -1,7 +1,7 @@
-//! View → JSON structure (Ctrl+Shift+J): the outline of a JSON file in a side panel, opened
+//! View → Structure (Ctrl+Shift+J): the outline of a JSON or XML file in a side panel, opened
 //! node by node (200 children at a time, so a root array of millions of items opens at once).
-//! Click a node to go to its value; type a path like `$.items[1234].id` to jump there; copy
-//! the path of the value at the caret. View → Open JSON Lines as table shows a `.jsonl` file
+//! Click a node to go to its value; type a path like `$.items[1234].id` (or, for XML,
+//! `/catalog/item[1234]/price`) to jump there; copy the path of the value at the caret. View → Open JSON Lines as table shows a `.jsonl` file
 //! as a table (converted to a temporary CSV with a column per key).
 
 use egui::RichText;
@@ -35,6 +35,8 @@ pub struct JsonTree {
     pub path: String,
     pub status: String,
     pub busy: Option<CancelToken>,
+    /// The document is XML (elements instead of JSON values).
+    pub xml: bool,
 }
 
 pub enum JsonMsg {
@@ -49,7 +51,18 @@ pub struct JsonDone {
     pub msg: JsonMsg,
 }
 
-fn summary(buf: &bigtext::text::TextBuf, c: &Child) -> String {
+fn summary(buf: &bigtext::text::TextBuf, c: &Child, xml: bool) -> String {
+    if xml {
+        // An element's text: between its start and end tags.
+        if c.kind == Kind::Object {
+            return "…".into();
+        }
+        let b = buf.read(c.start..c.end.min(c.start + 400)).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+        let inner = b.split_once('>').map(|x| x.1).unwrap_or("");
+        let inner = inner.rsplit_once('<').map(|x| x.0).unwrap_or(inner);
+        let t: String = inner.split_whitespace().collect::<Vec<_>>().join(" ");
+        return if t.chars().count() > 80 { t.chars().take(79).chain(['…']).collect() } else { t };
+    }
     match c.kind {
         Kind::Object => "{…}".into(),
         Kind::Array => "[…]".into(),
@@ -79,12 +92,15 @@ impl BigTextApp {
         if !d.is_ready() || d.json.as_ref().is_some_and(|t| t.version == d.version) {
             return;
         }
-        let mut tree = JsonTree { version: d.version, nodes: Vec::new(), error: None, path: String::new(), status: String::new(), busy: None };
-        match json::root(&d.buf, &CancelToken::new()) {
+        let xml = d.effective_lang() == crate::view::highlight::Lang::Xml;
+        let mut tree = JsonTree { version: d.version, nodes: Vec::new(), error: None, path: String::new(), status: String::new(), busy: None, xml };
+        let root = if xml { bigtext::xml::root(&d.buf, &CancelToken::new()) } else { json::root(&d.buf, &CancelToken::new()) };
+        match root {
             Ok(at) => {
                 let kind = d.buf.read(at..at + 1).map(|b| match b[0] {
                     b'{' => Kind::Object,
                     b'[' => Kind::Array,
+                    b'<' if xml => Kind::Object,
                     _ => Kind::Other,
                 });
                 let kind = kind.unwrap_or(Kind::Other);
@@ -112,11 +128,11 @@ impl BigTextApp {
             return;
         }
         n.loading = true;
-        let (at, resume) = (n.child.start, n.resume);
+        let (at, resume, xml) = (n.child.start, n.resume, t.xml);
         let (snap, id, version) = (d.buf.snapshot(), d.id, d.version);
         let (tx, waker) = (self.tx.clone(), self.waker.clone());
         jobs::spawn("json-children", move || {
-            let page = json::children(&snap, at, resume, PAGE, &CancelToken::new());
+            let page = if xml { bigtext::xml::children(&snap, at, resume, PAGE, &CancelToken::new()) } else { json::children(&snap, at, resume, PAGE, &CancelToken::new()) };
             let _ = tx.send(Msg::Json(Box::new(JsonDone { doc: id, version, msg: JsonMsg::Page { node: i, page } })));
             waker();
         });
@@ -144,6 +160,17 @@ impl BigTextApp {
 
     /// Goes to the value at the path typed in the panel.
     pub(crate) fn json_goto(&mut self, path: &str) {
+        if self.docs.get(self.active).and_then(|d| d.json.as_ref()).is_some_and(|t| t.xml) {
+            match bigtext::xml::parse_path(path) {
+                Ok(steps) => self.json_job(move |buf, cancel| JsonMsg::Goto(bigtext::xml::resolve(buf, &steps, cancel))),
+                Err(e) => {
+                    if let Some(t) = self.docs.get_mut(self.active).and_then(|d| d.json.as_mut()) {
+                        t.status = e;
+                    }
+                }
+            }
+            return;
+        }
         let steps = match json::parse_path(path) {
             Ok(s) => s,
             Err(e) => {
@@ -159,6 +186,10 @@ impl BigTextApp {
     /// Finds the path of the value at the caret (and copies it).
     pub(crate) fn json_path_at_caret(&mut self) {
         let Some(caret) = self.docs.get(self.active).map(|d| d.view.caret) else { return };
+        if self.docs.get(self.active).and_then(|d| d.json.as_ref()).is_some_and(|t| t.xml) {
+            self.json_job(move |buf, cancel| JsonMsg::PathAt(bigtext::xml::path_at(buf, caret, cancel).map(|s| bigtext::xml::format_path(&s))));
+            return;
+        }
         self.json_job(move |buf, cancel| JsonMsg::PathAt(json::path_at(buf, caret, cancel).map(|s| json::format_path(&s))));
     }
 
@@ -222,13 +253,13 @@ impl BigTextApp {
             let buf = d.buf.snapshot();
             let Some(t) = d.json.as_mut() else { return };
             ui.horizontal(|ui| {
-                ui.strong(tr("JSON structure"));
+                ui.strong(tr(if t.xml { "XML structure" } else { "JSON structure" }));
                 if t.busy.is_some() {
                     ui.spinner();
                 }
             });
             ui.horizontal(|ui| {
-                let r = ui.add(egui::TextEdit::singleline(&mut t.path).hint_text("$.items[0].id").desired_width(ui.available_width() - 40.0).font(egui::TextStyle::Monospace));
+                let r = ui.add(egui::TextEdit::singleline(&mut t.path).hint_text(if t.xml { "/catalog/item[1]/price" } else { "$.items[0].id" }).desired_width(ui.available_width() - 40.0).font(egui::TextStyle::Monospace));
                 if (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))) | ui.button(tr("Go")).clicked() {
                     goto = Some(t.path.clone());
                 }
@@ -263,11 +294,12 @@ impl BigTextApp {
                             ui.add_space(18.0);
                         }
                         let name = match (&n.child.key, i) {
+                            (_, 0) if t.xml => "/".to_string(),
                             (_, 0) => "$".to_string(),
                             (Some(k), _) => k.clone(),
                             (None, _) => format!("[{}]", n.child.index),
                         };
-                        let text = format!("{name}: {}", summary(&buf, &n.child));
+                        let text = format!("{name}: {}", summary(&buf, &n.child, t.xml));
                         if ui.selectable_label(false, RichText::new(text).monospace()).clicked() {
                             jump = Some(n.child.start);
                         }

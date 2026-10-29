@@ -67,6 +67,7 @@ const CSV: &str = "id;name;age;city\r\n1;Ann;30;Tashkent\r\n2;\"Bob; Jr\";41;Sam
 const LEVELS_LOG: &str = "2024-05-01 10:00:00 INFO start\n2024-05-01 10:00:01 DEBUG cfg loaded\n2024-05-01 10:00:02 WARN slow disk\n2024-05-01 10:00:03 ERROR db timeout\n2024-05-01 10:00:04 INFO no error here\n2024-05-01 10:00:05 [error] nginx style\n";
 const REQUESTS_LOG: &str = "2024-05-01 10:00:00 INFO request_id=r-1 GET /a\n2024-05-01 10:00:01 INFO request_id=r-2 GET /b\n2024-05-01 10:00:02 INFO request_id=r-1 done\n2024-05-01 10:00:03 ERROR request_id=r-2 failed\njava.lang.IllegalStateException: boom\n\tat x.Y.z(Y.java:1)\n2024-05-01 10:00:05 INFO request_id=r-2 done\n";
 const BRACKETS_JSON: &str = "{\"a\": [1, \"]\", {\"b\": 2}]}\n";
+const CATALOG_XML: &str = "<?xml version=\"1.0\"?>\n<catalog>\n  <item id=\"1\"><price>10</price></item>\n  <item id=\"2\"><price>12</price></item>\n</catalog>\n";
 const OUTLINE_JSON: &str = "{\"name\": \"demo\", \"items\": [{\"id\": 10}, {\"id\": 11}, {\"id\": 12}]}\n";
 const CSV_WITHOUT_NAME_CITY: &str = "id;age\r\n1;30\r\n2;41\r\n3;25\r\n";
 
@@ -172,6 +173,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("excel.csv"), "sep=;\n# exported\nname;qty\nann;1\nbob;2\n")?;
     std::fs::write(dir.join("numbers.csv"), "1,2\n3,4\n5,6\n")?;
     std::fs::write(dir.join("outline.json"), OUTLINE_JSON)?;
+    std::fs::write(dir.join("catalog.xml"), CATALOG_XML)?;
     std::fs::write(dir.join("events.jsonl"), "{\"id\": 1, \"msg\": \"start\"}\n{\"id\": 2, \"msg\": \"a, b\", \"user\": \"ann\"}\n")?;
     std::fs::write(dir.join("ws.txt"), "a b\tc\r\nnext\r\n")?;
     std::fs::write(dir.join("brackets.json"), BRACKETS_JSON)?;
@@ -1809,6 +1811,45 @@ impl SelfTest {
             }
             let path = doc(app).json.as_ref().map(|t| t.path.clone()).unwrap_or_default();
             if path != "$.items[1].id" {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("path {path:?}")) } else { Step::Wait };
+            }
+            c.mark = 0;
+            app.json_open = false;
+            Step::Next
+        }));
+        s("open catalog.xml", open_step("catalog.xml"));
+        s("XML structure: elements in the side panel, a path, the path at the caret", Box::new(|app, c| {
+            let at = |s: &str| CATALOG_XML.find(s).unwrap() as u64;
+            if c.first() {
+                app.json_open = false;
+                app.toggle_json_panel();
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let Some(t) = doc(app).json.as_ref() else { return Step::Fail("no outline".into()) };
+                let keys: Vec<String> = t.nodes.iter().skip(1).filter_map(|n| n.child.key.clone()).collect();
+                if keys.len() < 2 {
+                    return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("keys {keys:?}, error {:?}", t.error)) } else { Step::Wait };
+                }
+                if keys != ["item id=\"1\"", "item id=\"2\""] || !t.xml {
+                    return Step::Fail(format!("keys {keys:?}"));
+                }
+                c.mark = 1;
+                app.json_goto("/catalog/item[2]/price");
+                return Step::Wait;
+            }
+            if c.mark == 1 {
+                let sel = doc(app).selection();
+                if sel != (at("<price>12"), at("<price>12") + 17) {
+                    return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("selection {sel:?}")) } else { Step::Wait };
+                }
+                c.mark = 2;
+                doc(app).set_caret(at(">10<"), false);
+                app.json_path_at_caret();
+                return Step::Wait;
+            }
+            let path = doc(app).json.as_ref().map(|t| t.path.clone()).unwrap_or_default();
+            if path != "/catalog/item/price" {
                 return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("path {path:?}")) } else { Step::Wait };
             }
             c.mark = 0;

@@ -136,6 +136,12 @@ All notable changes to BigText. Each release on
 
 ### JSON
 
+- **View → Structure (JSON / XML)** (Ctrl+Shift+J) now also outlines XML: the element tree in the
+  same side panel, opened element by element (200 at a time), each shown as `item id="42"` with
+  its text, click to go there; paths like `/catalog/item[1234]/price` (1-based, as in XPath) jump
+  to an element, and **Copy path at caret** gives the element's path. Only the opened element's
+  children are read, so a 20 GB dump stays quick. Comments, CDATA, the prolog and DOCTYPE are
+  skipped; mismatched tags are reported.
 - **Search → Check JSON**: the file checked strictly in the background — bad escapes, control
   characters in strings, trailing commas, NaN and other words, numbers like `01` or `1.`,
   brackets that do not match, invalid UTF-8, text after the value — as one document (stopping at

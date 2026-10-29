@@ -290,7 +290,7 @@ impl Cmd {
             Cmd::WordWrap => "Word wrap",
             Cmd::HexView => "Hex view",
             Cmd::TableView => "Table view (CSV / TSV)",
-            Cmd::JsonStructure => "JSON structure",
+            Cmd::JsonStructure => "Structure (JSON / XML)",
             Cmd::LogFields => "Log fields",
             Cmd::CheckRows => "Check table rows…",
             Cmd::JsonlTable => "Open JSON Lines as table",
