@@ -44,6 +44,8 @@ fn shareable(p: &Persisted) -> Persisted {
         show_ws: p.show_ws,
         status: p.status,
         gutter: p.gutter,
+        wrap_column: p.wrap_column,
+        ruler: p.ruler,
         ..Default::default()
     }
 }
@@ -84,6 +86,12 @@ impl BigTextApp {
         }
         if let Some(v) = p.gutter {
             s.show_gutter = v;
+        }
+        if let Some(v) = p.wrap_column {
+            s.wrap_column = v;
+        }
+        if let Some(v) = p.ruler {
+            s.ruler = v;
         }
         for m in p.marks {
             if !s.marks.iter().any(|x| x.query == m.query) {

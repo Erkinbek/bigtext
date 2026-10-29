@@ -168,6 +168,10 @@ pub struct Settings {
     pub zen: bool,
     /// Line numbers in the text and table views.
     pub show_gutter: bool,
+    /// View → Wrap at: rows wrap at this column (`None`: the window's width).
+    pub wrap_column: Option<u16>,
+    /// View → Ruler at column.
+    pub ruler: Option<u16>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -337,6 +341,9 @@ pub struct BigTextApp {
     pub fullscreen: bool,
 }
 
+/// The narrowest View → Wrap at column.
+pub const WRAP_MIN: u16 = 4;
+
 /// Turns I/O errors into messages a user can act on.
 pub fn friendly_io(e: &std::io::Error, path: &Path) -> String {
     let p = file::display_path(path);
@@ -478,7 +485,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None, status: Default::default(), zen: false, show_gutter: true },
+            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None, status: Default::default(), zen: false, show_gutter: true, wrap_column: None, ruler: None },
             goto: None,
             confirm: None,
             error: None,
@@ -566,6 +573,8 @@ impl BigTextApp {
             app.file_opts = std::mem::take(&mut state.file_opts);
             app.settings.status = state.status.unwrap_or_default();
             app.settings.show_gutter = state.gutter.unwrap_or(true);
+            app.settings.wrap_column = state.wrap_column.flatten();
+            app.settings.ruler = state.ruler.flatten();
             app.settings.show_ws = state.show_ws.unwrap_or(false);
             app.recovery.enabled = state.recovery.unwrap_or(true);
             app.settings.id_keys = state.id_keys.take();
@@ -1779,6 +1788,7 @@ impl eframe::App for BigTextApp {
         let syntax = self.settings.syntax;
         let show_ws = self.settings.show_ws;
         let show_gutter = self.settings.show_gutter;
+        let (wrap_column, ruler) = (self.settings.wrap_column.map(usize::from), self.settings.ruler.map(usize::from));
         egui::CentralPanel::no_frame().show(ui, |ui| {
             if let Some(d) = self.docs.get_mut(self.active) {
                 if d.hex && d.is_ready() {
@@ -1795,11 +1805,11 @@ impl eframe::App for BigTextApp {
                     match (side, d.split.take()) {
                         (Some(r), split) => {
                             d.split = split;
-                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, show_gutter, diff: None };
+                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, show_gutter, wrap_column, ruler, diff: None };
                             extras::show_side_by_side(ui, d, r, &mut env);
                         }
                         (None, None) => {
-                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, show_gutter, diff: None };
+                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, show_gutter, wrap_column, ruler, diff: None };
                             text_view::show(ui, d, &mut env);
                         }
                         (None, Some(mut pane)) => {
@@ -1810,12 +1820,12 @@ impl eframe::App for BigTextApp {
                             let bottom = egui::Rect::from_min_max(egui::pos2(full.left(), mid + 2.0), full.max);
                             ui.painter().hline(full.x_range(), mid, ui.visuals().widgets.noninteractive.bg_stroke);
                             ui.scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
-                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, show_gutter, diff: None };
+                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, show_gutter, wrap_column, ruler, diff: None };
                                 text_view::show(ui, d, &mut env);
                             });
                             pane.swap_with(&mut d.view);
                             ui.scope_builder(egui::UiBuilder::new().max_rect(bottom), |ui| {
-                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 1, show_ws, show_gutter, diff: None };
+                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 1, show_ws, show_gutter, wrap_column, ruler, diff: None };
                                 text_view::show(ui, d, &mut env);
                             });
                             pane.swap_with(&mut d.view);

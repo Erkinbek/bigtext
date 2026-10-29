@@ -856,6 +856,52 @@ impl BigTextApp {
         }
     }
 
+    /// View → Wrap at and Ruler at column.
+    fn wrap_menu(&mut self, ui: &mut egui::Ui) {
+        let before = (self.settings.wrap_column, self.settings.ruler);
+        ui.menu_button(tr("Wrap at"), |ui| {
+            let s = &mut self.settings;
+            if ui.radio(s.wrap_column.is_none(), tr("Window width")).clicked() {
+                s.wrap_column = None;
+            }
+            for c in [80, 120, 160] {
+                if ui.radio(s.wrap_column == Some(c), trf("Column {n}", &[("n", &c.to_string())])).clicked() {
+                    s.wrap_column = Some(c);
+                }
+            }
+            ui.horizontal(|ui| {
+                let custom = s.wrap_column.is_some_and(|c| ![80, 120, 160].contains(&c));
+                let mut col = s.wrap_column.unwrap_or(100);
+                if ui.radio(custom, tr("Column")).clicked() && !custom {
+                    s.wrap_column = Some(100);
+                }
+                if ui.add(egui::DragValue::new(&mut col).range(super::WRAP_MIN..=4000)).changed() {
+                    s.wrap_column = Some(col);
+                }
+            });
+        });
+        ui.horizontal(|ui| {
+            let s = &mut self.settings;
+            let mut on = s.ruler.is_some();
+            if ui.checkbox(&mut on, tr("Ruler at column")).changed() {
+                s.ruler = on.then_some(s.ruler.unwrap_or(80));
+            }
+            let mut col = s.ruler.unwrap_or(80);
+            if ui.add_enabled(on, egui::DragValue::new(&mut col).range(1..=4000)).changed() {
+                s.ruler = Some(col);
+            }
+        });
+        if (self.settings.wrap_column, self.settings.ruler) != before {
+            // Choosing where to wrap means wrapping.
+            if self.settings.wrap_column != before.0 {
+                if let Some(d) = self.docs.get_mut(self.active) {
+                    d.view.wrap = true;
+                }
+            }
+            self.persist_state();
+        }
+    }
+
     fn is_toggle(cmd: Cmd) -> bool {
         matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::ColourBlind | Cmd::Fullscreen | Cmd::Zen | Cmd::LineNumbers | Cmd::Theme(_) | Cmd::Scale(_) | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
     }
@@ -1069,7 +1115,9 @@ impl BigTextApp {
                 }
             });
             ui.menu_button(tr("View"), |ui| {
-                for c in [Cmd::WordWrap, Cmd::HexView, Cmd::TableView, Cmd::CheckRows, Cmd::JsonStructure, Cmd::JsonFields, Cmd::LogFields, Cmd::JsonlTable, Cmd::Follow, Cmd::SplitView, Cmd::CompareSideBySide] {
+                run = run.or(self.item(ui, Cmd::WordWrap));
+                self.wrap_menu(ui);
+                for c in [Cmd::HexView, Cmd::TableView, Cmd::CheckRows, Cmd::JsonStructure, Cmd::JsonFields, Cmd::LogFields, Cmd::JsonlTable, Cmd::Follow, Cmd::SplitView, Cmd::CompareSideBySide] {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();

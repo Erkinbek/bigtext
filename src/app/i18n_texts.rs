@@ -1218,4 +1218,9 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Full screen", "Во весь экран", "To'liq ekran"],
     ["Zen mode", "Режим дзен", "Zen rejimi"],
     ["Zen mode: Esc or {key} leaves it; move the pointer to the top edge for the menu.", "Режим дзен: выход — Esc или {key}; меню появляется у верхнего края.", "Zen rejimi: Esc yoki {key} bilan chiqiladi; menyu uchun sichqonchani yuqori chetga olib boring."],
+    // Wrap at a column, ruler.
+    ["Column", "Столбец", "Ustun"],
+    ["Ruler at column", "Линейка на столбце", "Ustundagi chizg'ich"],
+    ["Window width", "Ширина окна", "Oyna kengligi"],
+    ["Wrap at", "Переносить на", "Qayerda o'rash"],
 ];

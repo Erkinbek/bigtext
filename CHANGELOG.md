@@ -7,6 +7,11 @@ All notable changes to BigText. Each release on
 
 ### Interface
 
+- **Wrap at a column, ruler**: **View → Wrap at ▸** the window width, 80, 120, 160 or any column
+  (4 and up), so wrapped rows stay put when a panel or the split view changes the width; a column
+  wider than the pane scrolls sideways. **View → Ruler at column** draws a faint guide line.
+  Wrapped rows get a dim mark in the gutter, apart from the ↪ of a huge line's 64 KB pieces. Both
+  are kept with the settings; Ctrl+D and the benchmarks now wrap exactly as the view does.
 - **Full screen, zen mode, line numbers**: **View → Full screen** (F11) and **View → Zen mode**
   (Ctrl+Shift+F11), which hides the menu, tab, level and status bars for the text alone; the menu
   bar floats in while the pointer is at the top edge, and Esc (with nothing selected) or the same

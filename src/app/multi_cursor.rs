@@ -25,7 +25,7 @@ impl BigTextApp {
         if !d.is_ready() || d.hex || d.table {
             return;
         }
-        let wrap = d.view.wrap.then_some(d.view.text_cols.saturating_sub(1).max(1));
+        let wrap = crate::view::text_view::wrap_cols(&d.view);
         if !d.has_selection() {
             let caret = d.view.caret;
             crate::view::text_view::select_word(d, caret, wrap);

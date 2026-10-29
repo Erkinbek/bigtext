@@ -81,6 +81,10 @@ pub struct Persisted {
     pub status: Option<super::status_bar::StatusFields>,
     /// Line numbers in the text and table views.
     pub gutter: Option<bool>,
+    /// View → Wrap at (`Some(None)`: the window's width).
+    pub wrap_column: Option<Option<u16>>,
+    /// View → Ruler at column (`Some(None)`: off).
+    pub ruler: Option<Option<u16>>,
 }
 
 /// What BigText remembers about a file, put back when it opens again.
@@ -306,6 +310,9 @@ pub(super) fn parse(text: &str) -> Persisted {
             "fileopt" => p.file_opts.extend(parse_file_opts(v)),
             "status" => p.status = Some(super::status_bar::StatusFields::from_line(v)),
             "gutter" => p.gutter = Some(v == "1"),
+            // 0: the window's width, or no ruler.
+            "wrap_column" => p.wrap_column = v.parse::<u16>().ok().map(|c| (c > 0).then_some(c.max(super::WRAP_MIN))),
+            "ruler" => p.ruler = v.parse::<u16>().ok().map(|c| (c > 0).then_some(c)),
             _ => {}
         }
     }
@@ -353,6 +360,12 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(g) = p.gutter {
         s.push_str(&format!("gutter={}\n", b(g)));
+    }
+    if let Some(c) = p.wrap_column {
+        s.push_str(&format!("wrap_column={}\n", c.unwrap_or(0)));
+    }
+    if let Some(c) = p.ruler {
+        s.push_str(&format!("ruler={}\n", c.unwrap_or(0)));
     }
     if let Some(d) = p.update_check {
         s.push_str(&format!("update_check={}\n", b(d)));
@@ -640,7 +653,7 @@ pub(super) fn show_side_by_side(ui: &mut egui::Ui, a: &mut Document, r: &mut Dif
             }
             v
         };
-        let mut e = ViewEnv { font_size: &mut *env.font_size, highlight: &hl, actions: &mut *env.actions, focus: env.focus, lang: env.lang, pane: 0, show_ws: env.show_ws, show_gutter: env.show_gutter, diff: Some(DiffOverlay { spans: &spans, added: false }) };
+        let mut e = ViewEnv { font_size: &mut *env.font_size, highlight: &hl, actions: &mut *env.actions, focus: env.focus, lang: env.lang, pane: 0, show_ws: env.show_ws, show_gutter: env.show_gutter, wrap_column: env.wrap_column, ruler: env.ruler, diff: Some(DiffOverlay { spans: &spans, added: false }) };
         ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| text_view::show(ui, a, &mut e));
     }
     {
@@ -649,7 +662,7 @@ pub(super) fn show_side_by_side(ui: &mut egui::Ui, a: &mut Document, r: &mut Dif
         let hl = |buf: &bigtext::text::TextBuf, range: std::ops::Range<u64>| if outdated { Vec::new() } else { changed_parts(hunks, buf, a_buf, range, false, green) };
         let lang = if env.lang == crate::view::highlight::Lang::Plain { env.lang } else { side.doc.effective_lang() };
         let mut actions = Vec::new();
-        let mut e = ViewEnv { font_size: &mut *env.font_size, highlight: &hl, actions: &mut actions, focus: env.focus, lang, pane: 1, show_ws: env.show_ws, show_gutter: env.show_gutter, diff: Some(DiffOverlay { spans: &spans, added: true }) };
+        let mut e = ViewEnv { font_size: &mut *env.font_size, highlight: &hl, actions: &mut actions, focus: env.focus, lang, pane: 1, show_ws: env.show_ws, show_gutter: env.show_gutter, wrap_column: env.wrap_column, ruler: env.ruler, diff: Some(DiffOverlay { spans: &spans, added: true }) };
         ui.scope_builder(egui::UiBuilder::new().max_rect(right), |ui| text_view::show(ui, &mut side.doc, &mut e));
     }
     if !outdated && a.is_ready() && side.doc.is_ready() {
@@ -730,6 +743,8 @@ impl BigTextApp {
             level_bar: Some(self.settings.level_bar),
             status: Some(self.settings.status),
             gutter: Some(self.settings.show_gutter),
+            wrap_column: Some(self.settings.wrap_column),
+            ruler: Some(self.settings.ruler),
             saved: self.settings.saved.clone(),
             show_ws: Some(self.settings.show_ws),
             filter_ctx: Some((self.settings.filter_context, self.settings.filter_entries)),
@@ -1384,6 +1399,8 @@ mod tests {
             level_bar: Some(false),
             status: Some(super::super::status_bar::StatusFields { path: true, legend: false, ..Default::default() }),
             gutter: Some(false),
+            wrap_column: Some(Some(100)),
+            ruler: Some(None),
             show_ws: Some(true),
             filter_ctx: Some((3, true)),
             id_keys: Some(vec!["rid".into(), "trace_id".into()]),
@@ -1420,6 +1437,7 @@ mod tests {
         assert_eq!(parse(&serialize(&p)).file_opts, p.file_opts);
         assert_eq!(parse(&serialize(&p)).status, p.status);
         assert_eq!(parse(&serialize(&p)).gutter, Some(false));
+        assert_eq!((q0.wrap_column, q0.ruler), (Some(Some(100)), Some(None)));
         assert_eq!((q0.theme, q0.cvd, q0.scale, q0.dark), (p.theme, Some(true), Some(150), Some(false)));
         assert_eq!(parse(&serialize(&p)).show_ws, Some(true));
         assert_eq!(parse(&serialize(&p)).filter_ctx, Some((3, true)));

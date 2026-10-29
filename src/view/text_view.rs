@@ -45,6 +45,10 @@ pub struct ViewEnv<'a> {
     pub show_ws: bool,
     /// Line numbers in the gutter.
     pub show_gutter: bool,
+    /// View → Wrap at: a fixed column (`None`: the pane's width).
+    pub wrap_column: Option<usize>,
+    /// View → Ruler at column.
+    pub ruler: Option<usize>,
     /// The lines a comparison marks in this pane (side by side).
     pub diff: Option<DiffOverlay<'a>>,
 }
@@ -61,6 +65,16 @@ pub struct DiffOverlay<'a> {
 struct Metrics {
     cw: f32,
     rh: f32,
+}
+
+/// The width rows wrap at (`None`: not wrapping): the column of View → Wrap at, or the pane's.
+pub(crate) fn wrap_cols(view: &crate::app::document::ViewState) -> Option<usize> {
+    view.wrap.then(|| view.wrap_column.unwrap_or(view.text_cols.saturating_sub(1)).max(1))
+}
+
+/// Rows scroll sideways: not wrapping, or wrapping wider than the pane.
+fn h_scroll(view: &crate::app::document::ViewState) -> bool {
+    wrap_cols(view).is_none_or(|w| w >= view.text_cols)
 }
 
 pub(crate) fn layout_rows(buf: &TextBuf, top: u64, n: usize, wrap: Option<usize>) -> Result<Vec<Row>, Pending> {
@@ -105,7 +119,12 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     let (line_est, _) = doc.buf.line_count();
     // Without line numbers a strip stays for the bookmark marks.
     let gutter_w = if env.show_gutter { digits(line_est).max(3) as f32 * m.cw + 24.0 } else { 6.0 };
-    let show_h = !doc.view.wrap;
+    doc.view.wrap_column = env.wrap_column;
+    let pane_cols = ((full.width() - gutter_w - 6.0 - SCROLLBAR) / m.cw).floor().max(4.0) as usize;
+    let show_h = !doc.view.wrap || env.wrap_column.is_some_and(|c| c >= pane_cols);
+    if !show_h {
+        doc.view.scroll_x = 0.0;
+    }
     let text_rect = Rect::from_min_max(
         pos2(full.left() + gutter_w + 6.0, full.top()),
         pos2(full.right() - SCROLLBAR, full.bottom() - if show_h { SCROLLBAR } else { 0.0 }),
@@ -117,7 +136,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     doc.view.cell = egui::vec2(m.cw, m.rh);
     doc.view.rows_on_screen = ((text_rect.height() / m.rh).floor() as usize).max(1);
     doc.view.text_cols = ((text_rect.width() / m.cw).floor() as usize).max(4);
-    let wrap = doc.view.wrap.then_some(doc.view.text_cols.saturating_sub(1).max(1));
+    let wrap = wrap_cols(&doc.view);
     if doc.view.width_cache_version != doc.version {
         doc.view.width_cache.clear();
         doc.view.width_cache_version = doc.version;
@@ -386,15 +405,17 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             } else {
                 format!("~{}", line + 1)
             }
-        } else if row.seg.line_start {
-            String::new()
-        } else if row.is_first_in_seg() {
+        } else if row.is_first_in_seg() && !row.seg.line_start {
+            // A 64 KB piece of a huge line.
             "↪".to_string()
         } else {
             String::new()
         };
         if !label.is_empty() && env.show_gutter {
             painter.text(pos2(gutter_rect.right() - 8.0, y), Align2::RIGHT_TOP, label, font.clone(), weak);
+        } else if !row.is_first_in_seg() && env.show_gutter {
+            // A wrapped row: a dim mark, so the line numbers stay readable.
+            painter.text(pos2(gutter_rect.right() - 8.0, y), Align2::RIGHT_TOP, "·", font.clone(), weak.gamma_multiply(0.5));
         }
         if in_diff && starts_line && env.show_gutter {
             let glyph = if env.diff.as_ref().is_some_and(|o| o.added) { "+" } else { "−" };
@@ -406,6 +427,12 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         }
     }
     doc.view.max_cells = max_w;
+    if let Some(col) = env.ruler {
+        let x = x_of(col as u32);
+        if text_rect.x_range().contains(x) {
+            text_painter.vline(x, text_rect.y_range(), egui::Stroke::new(1.0, weak.gamma_multiply(0.45)));
+        }
+    }
     if a11y_on {
         let (line, exact) = doc.buf.line_of(caret);
         let col = match doc.buf.line_start(line) {
@@ -674,7 +701,7 @@ fn handle_wheel(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, m: Metri
             }
         }
     }
-    if delta.x != 0.0 && wrap.is_none() {
+    if delta.x != 0.0 && h_scroll(&doc.view) {
         doc.view.scroll_x = (doc.view.scroll_x - delta.x).max(0.0);
     }
 }
@@ -1247,7 +1274,7 @@ fn ensure_caret_visible(doc: &mut Document, wrap: Option<usize>, center: bool, m
             doc.view.top = rows::step_rows(buf, crow, -((n as i64) - 1), wrap)?.start;
         }
     }
-    if wrap.is_none() {
+    if h_scroll(&doc.view) {
         let x = rows::cell_of_offset(buf, &crow, doc.view.caret)? as f32 * m.cw;
         if x < doc.view.scroll_x {
             doc.view.scroll_x = (x - 4.0 * m.cw).max(0.0);

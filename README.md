@@ -137,7 +137,8 @@ Single self-contained binary, no runtime dependencies.
 - **Full screen and zen mode**: F11 for full screen; View → Zen mode (Ctrl+Shift+F11) hides the
   menu, tab, level and status bars (the menu comes back at the top edge, Esc leaves); View → Line
   numbers turns the gutter off in the text and table views.
-- **Other**: line numbers, zoom (Ctrl+wheel), word wrap (off by default), light/dark theme,
+- **Other**: line numbers, zoom (Ctrl+wheel), word wrap (off by default; View → Wrap at the window
+  width or a column, View → Ruler at column), light/dark theme,
   read-only toggle (auto for read-only files), external change detection with Reload, and a
   **File → Properties…** (Ctrl+I): size, backing, encoding, origin, and from one background pass
   the exact line count, line breaks by kind, the longest line, NUL and non-UTF-8 bytes (with Go

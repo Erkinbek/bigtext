@@ -175,6 +175,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("excel.csv"), "sep=;\n# exported\nname;qty\nann;1\nbob;2\n")?;
     std::fs::write(dir.join("numbers.csv"), "1,2\n3,4\n5,6\n")?;
     std::fs::write(dir.join("semi.txt"), "id;note\n1;a,b\n2;c,d\n")?;
+    std::fs::write(dir.join("wide.txt"), "0123456789".repeat(30) + "\n" + &"abcdefghij".repeat(30) + "\n")?;
     std::fs::write(dir.join("outline.json"), OUTLINE_JSON)?;
     std::fs::write(dir.join("catalog.xml"), CATALOG_XML)?;
     std::fs::write(dir.join("events.jsonl"), "{\"id\": 1, \"msg\": \"start\"}\n{\"id\": 2, \"msg\": \"a, b\", \"user\": \"ann\"}\n")?;
@@ -3809,6 +3810,53 @@ impl SelfTest {
                         app.run(&ctx, Cmd::LineNumbers);
                         c.mark = 0;
                         check(narrow.left() < before.left() && app.settings.show_gutter, format!("text from x {} to {} without line numbers", before.left(), narrow.left()))
+                    }
+                }
+            }
+        }));
+        s("wrap at 20 columns keeps rows that wide; at 400 the rows scroll sideways", Box::new({
+            let mut bottom = 0.0f32;
+            move |app, c| {
+                use crate::view::text_view::{layout_rows, wrap_cols};
+                if c.first() {
+                    app.open_path(c.file("wide.txt"));
+                    return Step::Wait;
+                }
+                if !wait_ready(app) {
+                    return Step::Wait;
+                }
+                let widths = |app: &mut BigTextApp| {
+                    let d = doc(app);
+                    layout_rows(&d.buf, 0, 6, wrap_cols(&d.view)).map(|r| r.iter().map(|r| r.end - r.start).collect::<Vec<u64>>()).unwrap_or_default()
+                };
+                let rect = doc(app).view.text_rect.unwrap_or(egui::Rect::NOTHING);
+                match c.mark {
+                    0 => {
+                        app.settings.wrap_column = Some(20);
+                        app.settings.ruler = Some(10);
+                        doc(app).view.wrap = true;
+                        c.mark = 1;
+                        Step::Wait
+                    }
+                    1 => {
+                        let w = widths(app);
+                        if w.len() < 6 || w.iter().any(|&n| n > 20) {
+                            return Step::Fail(format!("rows at 20 columns: {w:?}"));
+                        }
+                        bottom = rect.bottom();
+                        app.settings.wrap_column = Some(400);
+                        c.mark = 2;
+                        Step::Wait
+                    }
+                    _ => {
+                        let w = widths(app);
+                        let got = format!("rows {w:?}, text bottom {bottom} → {}", rect.bottom());
+                        app.settings.wrap_column = None;
+                        app.settings.ruler = None;
+                        doc(app).view.wrap = false;
+                        c.mark = 0;
+                        // One row per line, and the horizontal scrollbar takes room again.
+                        check(w.first() == Some(&300) && rect.bottom() < bottom, got)
                     }
                 }
             }

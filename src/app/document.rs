@@ -59,6 +59,8 @@ pub enum Banner {
 
 /// Per-document view state (positions are byte offsets in the document).
 pub struct ViewState {
+    /// View → Wrap at: the column rows wrap at (`None`: the pane's width).
+    pub wrap_column: Option<usize>,
     /// What the last frame gave screen readers (tests read it).
     pub a11y_last: Option<String>,
     pub top: u64,
@@ -135,6 +137,7 @@ impl Default for ViewState {
             extra_version: 0,
             alt_prev: None,
             a11y_last: None,
+            wrap_column: None,
         }
     }
 }
