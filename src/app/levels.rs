@@ -67,7 +67,7 @@ impl BigTextApp {
         match Matcher::new(&query, codec) {
             Ok(m) => {
                 let spec = self.with_context(FilterSpec { range, ..Default::default() });
-                self.run_filter_req(super::filter_panel::FilterRequest { query, m: std::sync::Arc::new(m), spec, levels: Some(levels), follow: None, terms }, None);
+                self.run_filter_req(super::filter_panel::FilterRequest { query, m: std::sync::Arc::new(m), spec, levels: Some(levels), follow: None, terms, json: None }, None);
             }
             Err(e) => self.error = Some(e),
         }

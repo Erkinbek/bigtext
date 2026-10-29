@@ -219,7 +219,7 @@ impl BigTextApp {
         if let Some(query) = query {
             if let Ok(m) = bigtext::search::Matcher::new(&query, codec) {
                 let spec = self.with_context(bigtext::filter::FilterSpec { invert: f.invert && f.levels.is_none(), ..Default::default() });
-                self.run_filter_req(super::filter_panel::FilterRequest { query, m: std::sync::Arc::new(m), spec, levels: f.levels, follow: None, terms }, None);
+                self.run_filter_req(super::filter_panel::FilterRequest { query, m: std::sync::Arc::new(m), spec, levels: f.levels, follow: None, terms, json: None }, None);
             }
         }
         self.active = active;

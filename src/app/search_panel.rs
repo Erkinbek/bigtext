@@ -60,6 +60,8 @@ pub struct SearchUi {
     pub show_results: bool,
     /// Filter: keep the lines without a match.
     pub invert: bool,
+    /// Filter: the pattern is a field query over JSON Lines (`.level == "error"`).
+    pub fields: bool,
     pub show_filter: bool,
     /// Filter a table by this column only (0-based).
     pub filter_column: Option<usize>,
@@ -404,6 +406,7 @@ impl BigTextApp {
             }
             ui.separator();
             ui.toggle_value(&mut self.search.invert, RichText::new("!").monospace()).on_hover_text(tr("Filter: keep the lines WITHOUT a match"));
+            ui.toggle_value(&mut self.search.fields, RichText::new("{}").monospace()).on_hover_text(tr("Filter JSON Lines by fields: .level == \"error\" and .duration > 500 (also ==, !=, <, >, contains, ~ regex, exists, missing)"));
             if ui.button(tr("Filter")).on_hover_text(tr("Show only the lines with a match (Ctrl+Shift+F)")).clicked() {
                 do_filter = true;
             }

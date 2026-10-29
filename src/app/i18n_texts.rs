@@ -854,4 +854,13 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["the {n} most frequent", "{n} самых частых", "eng ko'p uchraydigan {n} tasi"],
     ["Click: the rows of this bar", "Щелчок: строки этого столбика", "Bosish: shu ustunchaning qatorlari"],
     ["Chart…", "Диаграмма…", "Diagramma…"],
+    // JSON Lines field queries.
+    [
+        "Filter JSON Lines by fields: .level == \"error\" and .duration > 500 (also ==, !=, <, >, contains, ~ regex, exists, missing)",
+        "Фильтр JSON Lines по полям: .level == \"error\" and .duration > 500 (также ==, !=, <, >, contains, ~ регулярное выражение, exists, missing)",
+        "JSON Lines ni maydonlar bo'yicha filtrlash: .level == \"error\" and .duration > 500 (yana ==, !=, <, >, contains, ~ regex, exists, missing)",
+    ],
+    ["Field queries need a UTF-8 file", "Запросам по полям нужен файл в UTF-8", "Maydon so'rovlari uchun UTF-8 fayl kerak"],
+    ["lines not where", "строк, где не", "shart bajarilmagan satrlar:"],
+    ["lines where", "строк, где", "shart bajarilgan satrlar:"],
 ];

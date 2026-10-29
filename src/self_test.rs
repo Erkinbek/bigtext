@@ -1859,6 +1859,26 @@ impl SelfTest {
                 _ => Step::Fail("the line was not parsed".into()),
             }
         }));
+        s("filter JSON Lines by a field query", Box::new(|app, c| {
+            if c.first() {
+                app.search.query.pattern = ".user exists and .id > 1".into();
+                app.search.fields = true;
+                app.start_filter();
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).filter.as_ref() else { return Step::Fail(format!("no filter ({})", app.search.status)) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let (lines, json) = (g.lines.clone(), r.json.is_some());
+            drop(g);
+            app.search.fields = false;
+            if let Some(r) = doc(app).filter.take() {
+                r.cancel.cancel();
+            }
+            check(lines == [26] && json, format!("lines {lines:?} json {json}"))
+        }));
         s("log fields: count a field's values into a table", Box::new(|app, c| {
             if c.first() {
                 app.count_field_values("user".into(), bigtext::fields::Syntax::Json);

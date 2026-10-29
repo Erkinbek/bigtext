@@ -9,6 +9,7 @@ use egui::{Color32, FontId};
 
 use bigtext::filter::{self, FilterSpec, LineKind};
 use bigtext::jobs::{self, human_bytes, CancelToken, Progress, Throttle};
+use bigtext::jsonq::FieldQuery;
 use bigtext::loglevel::{self, Level, Levels};
 use bigtext::search::{Matcher, Query, SearchEnd};
 use bigtext::text::TextBuf;
@@ -67,6 +68,18 @@ fn term_refs(terms: &[FilterTerm]) -> Vec<filter::Term<'_>> {
     terms.iter().map(|t| filter::Term { m: &t.matcher, negated: t.negated }).collect()
 }
 
+/// Whether a line's bytes (UTF-8) meet every added condition.
+fn line_meets(terms: &[filter::Term], line: &[u8]) -> bool {
+    terms.iter().all(|t| {
+        let mut found = false;
+        t.m.find_in(line, 0, 0, line.len(), line.len(), &mut None, &mut |_, _| {
+            found = true;
+            false
+        });
+        found != t.negated
+    })
+}
+
 pub struct FilterResults {
     pub query: Query,
     /// Set when the lines were picked by log level (the level bar), not by the search query.
@@ -77,6 +90,8 @@ pub struct FilterResults {
     pub matcher: Arc<Matcher>,
     /// Conditions added with the Narrow row, all of which a kept line meets.
     pub terms: Vec<FilterTerm>,
+    /// Set for a field query over JSON Lines (the search bar's {} switch).
+    pub json: Option<Arc<FieldQuery>>,
     pub version: u64,
     pub data: Arc<Mutex<FilterData>>,
     pub cancel: CancelToken,
@@ -97,6 +112,8 @@ pub(crate) struct FilterRequest {
     pub levels: Option<Levels>,
     pub follow: Option<String>,
     pub terms: Vec<FilterTerm>,
+    /// A field query over JSON Lines instead of a match of `m` (`m` only highlights).
+    pub json: Option<Arc<FieldQuery>>,
 }
 
 impl BigTextApp {
@@ -108,6 +125,11 @@ impl BigTextApp {
         }
         if self.search.query.pattern.is_empty() {
             self.open_search(false);
+            return;
+        }
+        let pattern = self.search.query.pattern.clone();
+        if self.search.fields || (d.effective_lang() == crate::view::highlight::Lang::Json && bigtext::jsonq::looks_like_query(&pattern)) {
+            self.start_field_filter(&pattern);
             return;
         }
         let m = match self.search.matcher(d.buf.codec) {
@@ -126,6 +148,34 @@ impl BigTextApp {
         let spec = self.with_context(FilterSpec { invert: self.search.invert, column, range, ..Default::default() });
         self.search.remember();
         self.run_filter(self.search.query.clone(), m, spec, None);
+    }
+
+    /// Filters JSON Lines by a field query (`.level == "error" and .duration > 500`).
+    pub(crate) fn start_field_filter(&mut self, text: &str) {
+        let Some(d) = self.docs.get(self.active) else { return };
+        let q = match FieldQuery::parse(text) {
+            Ok(q) => Arc::new(q),
+            Err(e) => {
+                self.search.status = e;
+                self.open_search(false);
+                return;
+            }
+        };
+        if d.buf.codec.unit() != 1 {
+            self.search.status = tr("Field queries need a UTF-8 file").into();
+            return;
+        }
+        let hl = Query { pattern: q.highlight(), regex: false, case_sensitive: true, whole_word: false, dot_all: false };
+        let Ok(m) = Matcher::new(&hl, d.buf.codec) else { return };
+        let range = match self.time_window(After::Filter) {
+            Window::Wait => return,
+            Window::Bytes(a, b) => Some((a, b)),
+            Window::All => None,
+        };
+        let spec = self.with_context(FilterSpec { invert: self.search.invert, range, ..Default::default() });
+        self.search.remember();
+        let query = Query { pattern: text.to_string(), ..self.search.query.clone() };
+        self.run_filter_req(FilterRequest { query, m: Arc::new(m), spec, levels: None, follow: None, terms: Vec::new(), json: Some(q) }, None);
     }
 
     /// `spec` with the context lines and whole entries chosen in the filter panel.
@@ -157,7 +207,12 @@ impl BigTextApp {
             Some(_) => FilterSpec { entries: true, ..Default::default() },
             None => self.with_context(FilterSpec { invert: r.spec.invert, column: r.spec.column, range, ..Default::default() }),
         };
-        let m = match Matcher::new(&r.query, codec) {
+        // A field query's matcher only highlights.
+        let q = match &r.json {
+            Some(j) => Query { pattern: j.highlight(), regex: false, case_sensitive: true, whole_word: false, dot_all: false },
+            None => r.query.clone(),
+        };
+        let m = match Matcher::new(&q, codec) {
             Ok(m) => Arc::new(m),
             Err(e) => {
                 self.error = Some(e);
@@ -166,7 +221,7 @@ impl BigTextApp {
         };
         let terms = terms.unwrap_or_else(|| r.terms.clone());
         let terms = terms.into_iter().filter_map(|t| Matcher::new(&t.query, codec).ok().map(|m| FilterTerm { matcher: Arc::new(m), ..t })).collect();
-        let req = FilterRequest { query: r.query.clone(), m, spec, levels: r.levels, follow: r.follow.clone(), terms };
+        let req = FilterRequest { query: r.query.clone(), m, spec, levels: r.levels, follow: r.follow.clone(), terms, json: r.json.clone() };
         self.run_filter_req(req, None);
     }
 
@@ -194,7 +249,7 @@ impl BigTextApp {
             (g.done && !g.capped && g.end == Some(SearchEnd::Completed) && r.version == d.version)
                 .then(|| g.lines.iter().enumerate().filter(|&(i, _)| !g.is_context(i)).map(|(_, &s)| s).collect::<Vec<u64>>())
         };
-        let req = FilterRequest { query: r.query.clone(), m: r.matcher.clone(), spec: r.spec, levels: r.levels, follow: r.follow.clone(), terms };
+        let req = FilterRequest { query: r.query.clone(), m: r.matcher.clone(), spec: r.spec, levels: r.levels, follow: r.follow.clone(), terms, json: r.json.clone() };
         self.run_filter_req(req, within);
     }
 
@@ -231,7 +286,7 @@ impl BigTextApp {
 
     /// Filters the active document with `m` in the background, replacing its previous filter.
     pub(crate) fn run_filter(&mut self, query: Query, m: Arc<Matcher>, spec: FilterSpec, levels: Option<Levels>) {
-        self.run_filter_req(FilterRequest { query, m, spec, levels, follow: None, terms: Vec::new() }, None);
+        self.run_filter_req(FilterRequest { query, m, spec, levels, follow: None, terms: Vec::new(), json: None }, None);
     }
 
     /// Filters the active document in the background, replacing its previous filter. With
@@ -242,7 +297,7 @@ impl BigTextApp {
         if let Some(r) = d.filter.take() {
             r.cancel.cancel();
         }
-        let FilterRequest { query, m, spec, levels, follow, terms } = req;
+        let FilterRequest { query, m, spec, levels, follow, terms, json } = req;
         let data = Arc::new(Mutex::new(FilterData::default()));
         let cancel = CancelToken::new();
         let progress = Progress::new(d.buf.len());
@@ -254,6 +309,7 @@ impl BigTextApp {
             spec,
             matcher: m.clone(),
             terms: terms.clone(),
+            json: json.clone(),
             version: d.version,
             data: data.clone(),
             cancel: cancel.clone(),
@@ -306,9 +362,10 @@ impl BigTextApp {
                 }
                 true
             };
-            let end = match &within {
-                Some(starts) => filter::filter_given(&snap, starts, spec, &refs, &cancel, Some(&progress), on_line),
-                None => filter::filter_lines_with(&snap, &m, spec, &refs, &cancel, Some(&progress), on_line),
+            let end = match (&within, &json) {
+                (Some(starts), _) => filter::filter_given(&snap, starts, spec, &refs, &cancel, Some(&progress), on_line),
+                (None, Some(q)) => filter::filter_predicate(&snap, spec, &|l| q.matches(l) && line_meets(&refs, l), &cancel, Some(&progress), on_line),
+                (None, None) => filter::filter_lines_with(&snap, &m, spec, &refs, &cancel, Some(&progress), on_line),
             };
             let mut g = data.lock().unwrap();
             g.lines.append(&mut batch);
@@ -333,6 +390,17 @@ impl BigTextApp {
             return;
         }
         let (snap, m, spec, terms, name) = (d.buf.snapshot(), r.matcher.clone(), r.spec, r.terms.clone(), d.title.clone());
+        if let Some(q) = r.json.clone() {
+            let Some(target) = self.pick_output_file(tr("Save lines"), &format!("{name}.lines.txt")) else { return };
+            self.spawn_task(tr("Saving lines").into(), move |progress, cancel| {
+                progress.set_total(snap.len());
+                tasks::write_via_temp(&target, |w| {
+                    Ok(filter::write_pred_lines_to(&snap, spec, &|l| q.matches(l) && line_meets(&term_refs(&terms), l), w, cancel, Some(progress))?
+                        .map(|n| trf("Saved {lines} lines ({size}) to {file}.", &[("lines", &fmt_count(n.lines)), ("size", &human_bytes(n.bytes)), ("file", &file_name(&target))])))
+                })
+            });
+            return;
+        }
         self.save_lines_dialog(snap, m, spec, terms, &name);
     }
 
@@ -362,6 +430,20 @@ impl BigTextApp {
         let Some(d) = self.docs.get(self.active) else { return };
         let Some(r) = &d.filter else { return };
         let (snap, m, spec, terms, id) = (d.buf.snapshot(), r.matcher.clone(), r.spec, r.terms.clone(), d.id);
+        if let Some(q) = r.json.clone() {
+            let (tx, waker) = (self.tx.clone(), self.waker.clone());
+            jobs::spawn("copy-lines", move || {
+                let mut out = Vec::new();
+                let r = filter::write_pred_lines_to(&snap, spec, &|l| q.matches(l) && line_meets(&term_refs(&terms), l), &mut CappedVec(&mut out, COPY_MAX), &CancelToken::new(), None);
+                let result = match r {
+                    Ok(_) => Ok(snap.codec.decode_lossy(&out)),
+                    Err(e) => Err(e.to_string()),
+                };
+                let _ = tx.send(Msg::Copied { doc: id, result, cut: false });
+                waker();
+            });
+            return;
+        }
         self.copy_lines(snap, m, spec, terms, id);
     }
 
@@ -410,6 +492,10 @@ impl BigTextApp {
                 match (&r.follow, r.levels) {
                     (Some(id), _) => ui.strong(trf("{n} lines with id “{id}”", &[("n", &fmt_count(hits as u64)), ("id", id)])),
                     (None, Some(lv)) => ui.strong(trf("{n} lines of level {levels}", &[("n", &fmt_count(hits as u64)), ("levels", &lv.names())])),
+                    (None, None) if r.json.is_some() => {
+                        let what = if r.spec.invert { tr("lines not where") } else { tr("lines where") };
+                        ui.strong(format!("{} {what} {}", fmt_count(hits as u64), r.query.pattern))
+                    }
                     (None, None) => {
                         let what = if r.spec.invert { tr("lines without") } else { tr("lines with") };
                         ui.strong(format!("{} {what} “{}”", fmt_count(hits as u64), r.query.pattern))

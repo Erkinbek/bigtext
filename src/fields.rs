@@ -144,39 +144,42 @@ pub fn find_value(line: &[u8], key: &str, syntax: Syntax) -> Option<String> {
             }
             None
         }
-        Syntax::Json if key.contains('.') => {
-            let mut obj = line;
-            let mut parts = key.split('.').peekable();
-            while let Some(p) = parts.next() {
-                let (_, r) = json::object_fields(obj)?.into_iter().find(|(k, _)| k == p)?;
-                let v = &obj[r];
-                if parts.peek().is_none() {
-                    return Some(json_text(v));
-                }
-                obj = v;
-            }
-            None
-        }
-        Syntax::Json => {
-            let needle = format!("\"{key}\"");
-            let mut from = 0;
-            while let Some(i) = memchr::memmem::find(&line[from..], needle.as_bytes()) {
-                let at = from + i;
-                let mut k = at + needle.len();
-                while k < line.len() && line[k].is_ascii_whitespace() {
-                    k += 1;
-                }
-                let before = line[..at].iter().rev().find(|c| !c.is_ascii_whitespace());
-                if line.get(k) == Some(&b':') && matches!(before, Some(b'{') | Some(b',')) {
-                    let rest = &line[k + 1..];
-                    let s = rest.iter().position(|c| !c.is_ascii_whitespace())?;
-                    return value_at(&rest[s..]).map(json_text);
-                }
-                from = at + 1;
-            }
-            None
-        }
+        Syntax::Json => find_raw_json(line, key).map(json_text),
     }
+}
+
+/// The value of `key` in a JSON line as it is written there (a string with its quotes).
+pub fn find_raw_json<'a>(line: &'a [u8], key: &str) -> Option<&'a [u8]> {
+    if key.contains('.') {
+        let mut obj = line;
+        let mut parts = key.split('.').peekable();
+        while let Some(p) = parts.next() {
+            let (_, r) = json::object_fields(obj)?.into_iter().find(|(k, _)| k == p)?;
+            let v = &obj[r];
+            if parts.peek().is_none() {
+                return Some(v);
+            }
+            obj = v;
+        }
+        return None;
+    }
+    let needle = format!("\"{key}\"");
+    let mut from = 0;
+    while let Some(i) = memchr::memmem::find(&line[from..], needle.as_bytes()) {
+        let at = from + i;
+        let mut k = at + needle.len();
+        while k < line.len() && line[k].is_ascii_whitespace() {
+            k += 1;
+        }
+        let before = line[..at].iter().rev().find(|c| !c.is_ascii_whitespace());
+        if line.get(k) == Some(&b':') && matches!(before, Some(b'{') | Some(b',')) {
+            let rest = &line[k + 1..];
+            let s = rest.iter().position(|c| !c.is_ascii_whitespace())?;
+            return value_at(&rest[s..]);
+        }
+        from = at + 1;
+    }
+    None
 }
 
 /// The JSON value at the start of `b`: a string, an object or array, or a number or literal.

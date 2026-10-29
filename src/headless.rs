@@ -62,6 +62,10 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         Each row of the LEFT table with the other columns of the RIGHT table's
         rows with the same key (COL: a header name or a 1-based number), as
         CSV; rows without a match get empty fields, or are left out (--inner).
+  jsonl FILE [-q QUERY] [-v] [--fields a,b.c] [--to jsonl|csv] [--count] [-o OUT]
+        JSON Lines that meet a field query (.level == error and .ms > 500;
+        ==, !=, <, >, <=, >=, contains, ~ regex, exists, missing), as they
+        are, only some fields (--fields), or as CSV; --count prints how many.
   derive FILE --name NAME --expr EXPR [-o OUT]
         The table with a new last column computed per row, like {price} * {qty},
         substr({ts}, 0, 10) or if({status} = \"ok\", 1, 0).
@@ -87,7 +91,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 15] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive"];
+const COMMANDS: [&str; 16] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -605,6 +609,57 @@ fn cmd_join(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(0)
 }
 
+fn cmd_jsonl(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["-v", "--invert", "--count"], &["-q", "--query", "--fields", "--to", "-o", "--output"])?;
+    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let q = a.opt(&["-q", "--query"]).map(crate::jsonq::FieldQuery::parse).transpose().map_err(Fail)?;
+    let invert = a.flag(&["-v", "--invert"]);
+    let fields: Vec<String> = a.opt(&["--fields"]).map(|f| f.split(',').map(|s| s.trim().trim_start_matches('.').to_string()).filter(|s| !s.is_empty()).collect()).unwrap_or_default();
+    let csv_out = match a.opt(&["--to"]).map(str::to_ascii_lowercase).as_deref() {
+        None | Some("jsonl") => false,
+        Some("csv") if !fields.is_empty() => true,
+        Some("csv") => return fail("--to csv needs --fields"),
+        Some(t) => return fail(format!("unknown --to {t} (jsonl, csv)")),
+    };
+    let (buf, _) = open(Path::new(file))?;
+    if buf.codec.unit() != 1 {
+        return fail("JSON Lines must be UTF-8");
+    }
+    let quote = |s: &str| if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() };
+    let mut n = 0u64;
+    with_output(a.opt(&["-o", "--output"]), out, |w| {
+        if csv_out {
+            writeln!(w, "{}", fields.iter().map(|f| quote(f)).collect::<Vec<_>>().join(","))?;
+        }
+        let mut r = LineReader::new(&buf);
+        while let Some((_, line)) = r.next()? {
+            let keep = q.as_ref().is_none_or(|q| q.matches(line)) != invert;
+            if !keep || (line.trim_ascii().is_empty() && q.is_none()) {
+                continue;
+            }
+            n += 1;
+            if a.flag(&["--count"]) {
+                continue;
+            }
+            if fields.is_empty() {
+                w.write_all(line.strip_suffix(b"\r").unwrap_or(line))?;
+                w.write_all(b"\n")?;
+            } else if csv_out {
+                let row: Vec<String> = fields.iter().map(|f| quote(&crate::fields::find_value(line, f, crate::fields::Syntax::Json).unwrap_or_default())).collect();
+                writeln!(w, "{}", row.join(","))?;
+            } else {
+                let parts: Vec<String> = fields.iter().map(|f| format!("\"{}\": {}", f.replace('"', "\\\""), crate::fields::find_raw_json(line, f).map(|v| String::from_utf8_lossy(v).into_owned()).unwrap_or_else(|| "null".into()))).collect();
+                writeln!(w, "{{{}}}", parts.join(", "))?;
+            }
+        }
+        if a.flag(&["--count"]) {
+            writeln!(w, "{n}")?;
+        }
+        Ok(())
+    })?;
+    Ok(if n > 0 { 0 } else { 1 })
+}
+
 fn cmd_derive(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &["--no-header", "--header"], &["--name", "--expr", "-o", "--output", "--skip", "--quote"])?;
     let [file] = &a.rest[..] else { return fail("needs FILE") };
@@ -785,6 +840,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "join" => cmd_join(rest, out),
         "pivot" => cmd_pivot(rest, out),
         "derive" => cmd_derive(rest, out),
+        "jsonl" => cmd_jsonl(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
             return 0;
@@ -868,6 +924,18 @@ mod tests {
         assert_eq!(run_args(&["convert", &n, "--to", "jsonl", "--header"]).1.lines().next(), Some("{\"1\": \"3\", \"2\": \"4\"}"));
         let q = file(&d, "q.csv", b"a,b\n'x,y',2\n");
         assert_eq!(run_args(&["convert", &q, "--to", "jsonl", "--quote", "'"]).1, "{\"a\": \"x,y\", \"b\": \"2\"}\n");
+    }
+
+    #[test]
+    fn json_lines_queries() {
+        let d = tempfile::tempdir().unwrap();
+        let f = file(&d, "e.jsonl", b"{\"level\":\"error\",\"ms\":700,\"u\":{\"id\":1}}\n{\"level\":\"info\",\"ms\":20}\n{\"level\":\"error\",\"ms\":5,\"msg\":\"a, b\"}\n");
+        assert_eq!(run_args(&["jsonl", &f, "-q", ".level == error and .ms > 500"]).1, "{\"level\":\"error\",\"ms\":700,\"u\":{\"id\":1}}\n");
+        assert_eq!(run_args(&["jsonl", &f, "-q", ".level = error", "--count"]).1, "2\n");
+        assert_eq!(run_args(&["jsonl", &f, "-q", ".level = error", "-v", "--fields", "level,ms"]).1, "{\"level\": \"info\", \"ms\": 20}\n");
+        assert_eq!(run_args(&["jsonl", &f, "--fields", "ms,u.id,msg", "--to", "csv"]).1, "ms,u.id,msg\n700,1,\n20,,\n5,,\"a, b\"\n");
+        assert_eq!(run_args(&["jsonl", &f, "-q", ".nope exists"]).0, 1);
+        assert_eq!(run_args(&["jsonl", &f, "-q", "level"]).0, 2);
     }
 
     #[test]

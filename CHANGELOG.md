@@ -136,6 +136,14 @@ All notable changes to BigText. Each release on
 
 ### JSON
 
+- **Filter JSON Lines by fields**: with the search bar's **{}** switch (or in a JSON file, a
+  pattern starting with a dot) the filter takes a field query instead of a pattern —
+  `.level == "error" and .duration > 500`, `.user.id = 42`, `.msg contains timeout`,
+  `.path ~ "^/api/"`, `.err exists`, `.trace missing` — and lists the lines that meet it, with
+  **!**, context lines, **Narrow**, Save lines and Copy lines as usual. Numbers compare as
+  numbers; values are found without parsing whole lines, so it streams at disk speed.
+  `bigtext-cli jsonl FILE -q QUERY [--fields a,b.c] [--to csv] [--count]` filters and picks
+  fields in one pass.
 - **View → JSON structure** (Ctrl+Shift+J): the outline of a JSON file in a side panel, opened
   node by node, 200 children at a time, so even a root array of millions of items opens at
   once. Click a node to go to its value. Type a path such as `$.items[1234].id` (or

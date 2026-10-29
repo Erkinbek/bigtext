@@ -570,6 +570,16 @@ pub struct Written {
 /// context, a "--" line separates groups of lines that are not next to each other, like grep.
 /// Returns `None` when cancelled.
 pub fn write_lines_to<W: Write>(buf: &TextBuf, m: &Matcher, spec: FilterSpec, terms: &[Term], out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<Written>> {
+    write_kept(buf, spec, out, |on_line| filter_lines_with(buf, m, spec, terms, cancel, progress, on_line))
+}
+
+/// [`write_lines_to`] for the lines [`filter_predicate`] keeps.
+pub fn write_pred_lines_to<W: Write>(buf: &TextBuf, spec: FilterSpec, keep: &dyn Fn(&[u8]) -> bool, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<Written>> {
+    write_kept(buf, spec, out, |on_line| filter_predicate(buf, spec, keep, cancel, progress, on_line))
+}
+
+/// Writes the lines that `run` passes on, with the byte order mark and "--" between groups.
+fn write_kept<W: Write>(buf: &TextBuf, spec: FilterSpec, out: &mut W, run: impl FnOnce(&mut dyn FnMut(u64, u64, LineKind) -> bool) -> SearchEnd) -> io::Result<Option<Written>> {
     let bom = buf.codec.bom_len as u64;
     let mut w = Written::default();
     if bom > 0 {
@@ -579,7 +589,7 @@ pub fn write_lines_to<W: Write>(buf: &TextBuf, m: &Matcher, spec: FilterSpec, te
     }
     let mut err: Option<io::Error> = None;
     let mut prev: Option<u64> = None;
-    let end = filter_lines_with(buf, m, spec, terms, cancel, progress, |ls, le, _| {
+    let end = run(&mut |ls, le, _| {
         if let Some(pe) = prev.filter(|&pe| spec.has_context() && ls > pe) {
             let mut sep = buf.codec.encode("--");
             sep.extend(line_break_before(buf, pe));
@@ -612,6 +622,63 @@ pub fn write_lines_to<W: Write>(buf: &TextBuf, m: &Matcher, spec: FilterSpec, te
         SearchEnd::Cancelled => Ok(None),
         _ => Err(io::Error::other("Could not read the document")),
     }
+}
+
+/// Like [`filter_lines`], keeping the lines for which `keep` is true (given a line's bytes without
+/// its line break) — say, JSON Lines that meet a field query — instead of the lines with a match.
+pub fn filter_predicate(
+    buf: &TextBuf,
+    spec: FilterSpec,
+    keep: &dyn Fn(&[u8]) -> bool,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut on_line: impl FnMut(u64, u64, LineKind) -> bool,
+) -> SearchEnd {
+    let mut spec = spec;
+    spec.entries = spec.entries && !spec.invert && looks_timed(buf);
+    let len = buf.len();
+    let (start, stop) = spec.bounds(len);
+    if let Some(p) = progress {
+        p.set_total(len);
+    }
+    let unit = buf.codec.unit() as u64;
+    let ctx = spec.has_context();
+    let mut around = Around { buf, spec, done: start, end: stop, pending: None, stamped: false, failed: false };
+    let mut lines = crate::lines::LineReader::new(buf);
+    let mut n = 0u32;
+    loop {
+        n += 1;
+        if n.is_multiple_of(4096) {
+            if cancel.is_cancelled() {
+                return SearchEnd::Cancelled;
+            }
+            if let Some(p) = progress {
+                p.set_done(lines.taken());
+            }
+        }
+        let (off, hit, le) = match lines.next() {
+            Ok(Some((off, line))) => (off, keep(line) != spec.invert, (off + line.len() as u64 + unit).min(len)),
+            Ok(None) => break,
+            Err(_) => return SearchEnd::Unavailable,
+        };
+        if off < start {
+            continue;
+        }
+        if off >= stop {
+            break;
+        }
+        if !hit {
+            continue;
+        }
+        let go = if ctx { around.hit(off, le, &mut on_line) } else { on_line(off, le, LineKind::Hit) };
+        if !go {
+            return if around.failed { SearchEnd::Unavailable } else { SearchEnd::Stopped };
+        }
+    }
+    if ctx && !around.flush(len, &mut on_line) {
+        return if around.failed { SearchEnd::Unavailable } else { SearchEnd::Stopped };
+    }
+    SearchEnd::Completed
 }
 
 /// The line break that ends at `end` (CR LF, or the document's single line break).
@@ -896,6 +963,25 @@ mod tests {
             true
         });
         assert_eq!(inv, [43]);
+    }
+
+    #[test]
+    fn lines_by_a_predicate() {
+        let (_f, t) = buf_with(b"{\"a\":1}\nplain\n{\"a\":2}\n", Codec::utf8());
+        let keep = |l: &[u8]| l.starts_with(b"{");
+        let mut got = Vec::new();
+        let end = filter_predicate(&t, FilterSpec::default(), &keep, &CancelToken::new(), None, |s, e, _| {
+            got.push(t.codec.decode_lossy(&t.read(s..e).unwrap()));
+            true
+        });
+        assert_eq!(end, SearchEnd::Completed);
+        assert_eq!(got, ["{\"a\":1}\n", "{\"a\":2}\n"]);
+        let mut out = Vec::new();
+        write_pred_lines_to(&t, FilterSpec { invert: true, ..Default::default() }, &keep, &mut out, &CancelToken::new(), None).unwrap();
+        assert_eq!(out, b"plain\n");
+        out.clear();
+        write_pred_lines_to(&t, FilterSpec { after: 1, ..Default::default() }, &keep, &mut out, &CancelToken::new(), None).unwrap();
+        assert_eq!(out, b"{\"a\":1}\nplain\n{\"a\":2}\n");
     }
 
     #[test]

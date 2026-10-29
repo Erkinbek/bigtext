@@ -107,7 +107,7 @@ impl BigTextApp {
         self.search.invert = false;
         self.search.remember();
         let spec = FilterSpec { entries: true, ..Default::default() };
-        let req = super::filter_panel::FilterRequest { query: q, m, spec, levels: None, follow: Some(id.to_string()), terms: Vec::new() };
+        let req = super::filter_panel::FilterRequest { query: q, m, spec, levels: None, follow: Some(id.to_string()), terms: Vec::new(), json: None };
         self.run_filter_req(req, None);
     }
 
