@@ -105,6 +105,9 @@ Single self-contained binary, no runtime dependencies.
   and bytes, the time it spans in a log (Δt) and the width of a block selection.
 - **Other**: line numbers, zoom (Ctrl+wheel), word wrap (off by default), light/dark theme,
   read-only toggle (auto for read-only files), external change detection with Reload, and a
+  **File → Properties…** (Ctrl+I): size, backing, encoding, origin, and from one background pass
+  the exact line count, line breaks by kind, the longest line, NUL and non-UTF-8 bytes (with Go
+  to), the first and last time, and on request the SHA-256 (`bigtext-cli stats` prints them too).
   **follow (tail) mode** for growing logs that resumes indexing where it stopped. Like
   `tail -F` it survives log rotation: when the file is truncated (copytruncate) or renamed away
   and created again, it goes on in the new file, with a button to open the rotated one

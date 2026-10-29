@@ -80,6 +80,12 @@ All notable changes to BigText. Each release on
   that drive and asks *Continue* / *Choose folder…* / *Cancel* instead of failing halfway with
   "disk full". **Help → Unpacked copies folder…** puts unpacked copies (and other temporary
   files) on another drive; the setting is kept, and leftovers in both folders are cleaned up.
+- **File → Properties…** (Ctrl+I) shows the size, how the file is read (mapped or in chunks),
+  the encoding, whether and why it is read-only, where an unpacked copy came from and when the
+  file changed, and fills in from one background pass: the exact line count, LF / CRLF / CR
+  counts, the longest line, NUL bytes and bytes that are not UTF-8 (each with Go to), whether
+  it ends with a line break, and the first and last time. The SHA-256 is computed on request,
+  with a Copy button. `bigtext-cli stats` prints the new figures too.
 
 ### Command line
 

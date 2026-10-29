@@ -144,6 +144,7 @@ mod tests {
         "app" / "patterns_window.rs",
         "app" / "pivot.rs",
         "app" / "portable.rs",
+        "app" / "properties.rs",
         "app" / "problems_panel.rs",
         "app" / "saved_searches.rs",
         "app" / "search_panel.rs",

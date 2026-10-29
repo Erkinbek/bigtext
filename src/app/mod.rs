@@ -37,6 +37,7 @@ pub mod ops;
 pub mod patterns_window;
 pub mod pivot;
 pub mod portable;
+pub mod properties;
 pub mod problems_panel;
 pub mod saved_searches;
 pub mod search_panel;
@@ -279,6 +280,7 @@ pub struct BigTextApp {
     pub archive_picker: Option<archive::ArchivePicker>,
     /// Help → Unpacked copies folder… is open.
     pub unpack_dir_open: bool,
+    pub properties: Option<properties::PropertiesUi>,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -486,6 +488,7 @@ impl BigTextApp {
             only_in: None,
             archive_picker: None,
             unpack_dir_open: false,
+            properties: None,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1603,6 +1606,9 @@ impl BigTextApp {
     pub(crate) fn test_close(&mut self, id: u64) {
         self.close_tab(id, true);
     }
+    pub(crate) fn test_properties_sha(&mut self) {
+        self.start_sha();
+    }
     pub(crate) fn test_dismiss(&mut self) {
         self.error = None;
         self.confirm = None;
@@ -1814,6 +1820,7 @@ impl eframe::App for BigTextApp {
         self.only_in_window(&ctx);
         self.archive_window(&ctx);
         self.unpack_dir_window(&ctx);
+        self.properties_window(&ctx);
         self.pivot_window(&ctx);
         self.derive_window(&ctx);
         self.json_fields_window(&ctx);

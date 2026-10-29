@@ -34,6 +34,7 @@ pub enum Cmd {
     SplitFile,
     Compare,
     CompareSideBySide,
+    Properties,
     CompareSaved,
     CompareBackup,
     ApplyPatch,
@@ -123,7 +124,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 93] = [
+    pub const ALL: [Cmd; 94] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -141,6 +142,7 @@ impl Cmd {
         Cmd::SplitFile,
         Cmd::Compare,
         Cmd::CompareSideBySide,
+        Cmd::Properties,
         Cmd::CompareSaved,
         Cmd::CompareBackup,
         Cmd::ApplyPatch,
@@ -267,6 +269,7 @@ impl Cmd {
             Cmd::SplitFile => "Split file…",
             Cmd::Compare => "Compare with…",
             Cmd::CompareSideBySide => "Compare side by side",
+            Cmd::Properties => "Properties…",
             Cmd::CompareSaved => "Compare with the saved file",
             Cmd::CompareBackup => "Compare with the backup (.bak)",
             Cmd::ApplyPatch => "Apply patch…",
@@ -350,7 +353,7 @@ impl Cmd {
     /// Menu the command lives in (shown in the palette).
     pub fn group(self) -> &'static str {
         match self {
-            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::CompareSaved | Cmd::CompareBackup | Cmd::ApplyPatch | Cmd::MergeLogs | Cmd::JoinTables | Cmd::CompareJson | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable => "File",
+            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::CompareSaved | Cmd::CompareBackup | Cmd::ApplyPatch | Cmd::Properties | Cmd::MergeLogs | Cmd::JoinTables | Cmd::CompareJson | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable => "File",
             Cmd::Undo
             | Cmd::Redo
             | Cmd::SelectAll
@@ -398,6 +401,7 @@ impl Cmd {
             Cmd::NextLevel => key(Modifiers::NONE, Key::F8),
             Cmd::PrevLevel => key(Modifiers::SHIFT, Key::F8),
             Cmd::FollowId => key(CTRL_SHIFT, Key::I),
+            Cmd::Properties => key(CTRL, Key::I),
             Cmd::NextDiff => key(Modifiers::NONE, Key::F7),
             Cmd::PrevDiff => key(Modifiers::SHIFT, Key::F7),
             Cmd::NextResult => key(Modifiers::NONE, Key::F4),
@@ -581,6 +585,7 @@ impl BigTextApp {
             Cmd::Compare => self.compare_dialog(),
             Cmd::CompareSaved => self.start_diff_with(super::extras::DiffOther::Saved),
             Cmd::ApplyPatch => self.apply_patch_dialog(),
+            Cmd::Properties => self.open_properties(),
             Cmd::CompareBackup => {
                 if let Some(p) = self.docs.get(self.active).and_then(|d| d.path.as_deref()) {
                     let bak = bigtext::save::backup_path_for(p);
@@ -744,6 +749,7 @@ impl BigTextApp {
             Cmd::CompareSaved => d.is_some_and(|d| d.path.is_some() && d.is_ready() && d.is_modified()),
             Cmd::CompareBackup => d.and_then(|d| d.path.as_deref()).is_some_and(|p| bigtext::save::backup_path_for(p).exists()),
             Cmd::ApplyPatch => d.is_some_and(|d| d.is_ready() && d.editable()),
+            Cmd::Properties => d.is_some_and(|d| d.is_ready()),
             Cmd::CheckRows => d.is_some_and(|d| d.table),
             Cmd::NavForward => !self.nav.forward.is_empty(),
             Cmd::Redo => d.is_some_and(|d| !d.redo.is_empty()),
@@ -867,7 +873,7 @@ impl BigTextApp {
                         }
                     });
                 });
-                for c in [Cmd::CompareSaved, Cmd::CompareBackup, Cmd::ApplyPatch] {
+                for c in [Cmd::CompareSaved, Cmd::CompareBackup, Cmd::ApplyPatch, Cmd::Properties] {
                     run = run.or(self.item(ui, c));
                 }
                 for c in [Cmd::CompareJson, Cmd::MergeLogs, Cmd::JoinTables, Cmd::ArrayToLines, Cmd::LinesToArray, Cmd::LogfmtTable] {

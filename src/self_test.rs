@@ -217,6 +217,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("patch-me.txt"), &base)?;
+    std::fs::write(dir.join("props.txt"), "one\r\ntwo\nthe longest line\nend")?;
     {
         use std::io::Write as _;
         let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
@@ -1192,6 +1193,47 @@ impl SelfTest {
                     check(disk.starts_with("xsave me\n"), format!("disk starts {:?}", &disk[..disk.len().min(12)]))
                 }
             }
+        }));
+        s("File → Properties counts lines and breaks and hashes the file", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("props.txt"));
+                return Step::Wait;
+            }
+            let waited = c.waited() > Duration::from_secs(8);
+            if c.mark == 0 {
+                if !wait_ready(app) {
+                    return Step::Wait;
+                }
+                c.key(Key::I, CTRL);
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let Some(p) = &app.properties else {
+                return if waited { Step::Fail("Ctrl+I did not open the properties".into()) } else { Step::Wait };
+            };
+            let (st, sha) = {
+                let g = p.data.lock().unwrap();
+                (g.stats, g.sha.clone())
+            };
+            let Some(st) = st.filter(|s| s.done) else { return if waited { Step::Fail("no figures".into()) } else { Step::Wait } };
+            if c.mark == 1 {
+                if (st.lines, st.crlf, st.lf, st.longest.0, st.longest.1, st.final_break) != (4, 1, 2, 16, 2, false) {
+                    return Step::Fail(format!("{st:?}"));
+                }
+                c.mark = 2;
+                return Step::Wait;
+            }
+            if c.mark == 2 {
+                // The Compute button.
+                app.test_properties_sha();
+                c.mark = 3;
+                return Step::Wait;
+            }
+            let Some(h) = sha else { return if waited { Step::Fail("no SHA-256".into()) } else { Step::Wait } };
+            use sha2::Digest;
+            let want: String = sha2::Sha256::digest(std::fs::read(c.file("props.txt")).unwrap_or_default()).iter().map(|b| format!("{b:02x}")).collect();
+            app.properties = None;
+            check(h == want, format!("{h} != {want}"))
         }));
         s("compare files (streaming diff)", Box::new(|app, c| {
             if c.first() {
@@ -3215,6 +3257,23 @@ impl SelfTest {
         s("shot compare-side.png", shot_step("compare-side.png"));
         s("side by side off", Box::new(|app, _| {
             app.side_by_side = false;
+            Step::Next
+        }));
+        s("file properties", Box::new(|app, c| {
+            if c.first() {
+                app.open_properties();
+                return Step::Wait;
+            }
+            let done = app.properties.as_ref().is_some_and(|p| p.data.lock().unwrap().stats.is_some_and(|s| s.done));
+            if done {
+                Step::Next
+            } else {
+                Step::Wait
+            }
+        }));
+        s("shot properties.png", shot_step("properties.png"));
+        s("properties off", Box::new(|app, _| {
+            app.properties = None;
             Step::Next
         }));
         s("JSON, light theme, split view, bookmarks", Box::new(|app, c| {

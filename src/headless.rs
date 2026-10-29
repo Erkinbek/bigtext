@@ -48,7 +48,8 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         Parts name.part001.ext, … cut at line breaks (compressed: .ext.gz, …);
         prints their paths.
   stats [--fields] FILE...
-        Size, lines, encoding, line endings and the first and last times;
+        Size, lines, encoding, line breaks by kind, the longest line, NUL and
+        non-UTF-8 bytes, and the first and last times;
         with --fields, the key paths of JSON records (JSON Lines or an array's
         items) with their types, counts, nulls, numbers and examples, as CSV.
   merge FILE FILE... [-o OUT]
@@ -468,40 +469,23 @@ fn cmd_stats(args: &[String], out: &mut dyn Write) -> Res<i32> {
         let path = Path::new(file);
         let (buf, det) = open(path)?;
         let codec = buf.codec;
-        let mut lines = 0u64;
-        let read = buf.for_each_chunk(0..buf.len(), |base, chunk| {
-            lines += codec.count_nl(chunk, base);
-            true
-        });
-        if read.is_none() {
+        let Some(st) = crate::stats::scan(&buf.snapshot(), &CancelToken::new(), None, |_| {}) else {
             return fail(format!("{}: could not read the file", display_path(path)));
-        }
-        // A last line without a line break counts too.
-        let tail = buf.len().saturating_sub(codec.unit() as u64);
-        if buf.len() > codec.bom_len as u64 && buf.read(tail..buf.len()).is_some_and(|b| codec.find_nl(&b, tail).is_none()) {
-            lines += 1;
-        }
-        let mut first = None;
-        let mut r = LineReader::new(&buf);
-        for _ in 0..1000 {
-            let Some((_, l)) = r.next()? else { break };
-            if let Some(st) = timestamp::parse(&codec.decode_lossy(&l[..l.len().min(640)])) {
-                first = Some(st);
-                break;
-            }
-        }
-        let last = (|| {
-            let from = buf.len().saturating_sub(1 << 20);
-            let b = buf.read(from..buf.len())?;
-            let text = codec.decode_lossy(&b);
-            text.lines().rev().take(1000).find_map(timestamp::parse)
-        })();
+        };
         writeln!(out, "file: {}", display_path(path))?;
         writeln!(out, "size: {} ({} bytes)", human_bytes(buf.len()), buf.len())?;
-        writeln!(out, "lines: {lines}")?;
+        writeln!(out, "lines: {}", st.lines)?;
         writeln!(out, "encoding: {}", codec.enc.name())?;
-        writeln!(out, "line endings: {}", det.line_ending.name())?;
-        if let (Some(f), Some(l)) = (first, last) {
+        writeln!(out, "line endings: {} (LF {}, CRLF {}, CR {})", det.line_ending.name(), st.lf, st.crlf, st.cr)?;
+        writeln!(out, "final line break: {}", if st.final_break { "yes" } else { "no" })?;
+        writeln!(out, "longest line: {} bytes (line {})", st.longest.0, st.longest.1 + 1)?;
+        if st.nul > 0 {
+            writeln!(out, "NUL bytes: {} (first at byte {})", st.nul, st.first_nul.unwrap_or(0))?;
+        }
+        if st.invalid_utf8 > 0 {
+            writeln!(out, "bytes that are not UTF-8: {} (first at byte {})", st.invalid_utf8, st.first_invalid.unwrap_or(0))?;
+        }
+        if let Some((f, l)) = crate::stats::time_span(&buf) {
             let key = |s: timestamp::Stamp| timestamp::format_key(s.ms, s.has_date, true);
             writeln!(out, "first time: {}", key(f))?;
             writeln!(out, "last time: {}", key(l))?;
@@ -1380,6 +1364,7 @@ mod tests {
         crate::decompress::unpack_to(Path::new(&gz), crate::decompress::Kind::Gzip, &mut text, &CancelToken::new(), &Progress::default()).unwrap();
         assert_eq!(text, b"2024-05-01 10:00:02 two\n");
         let (_, s, _) = run_args(&["stats", &log]);
+        assert!(s.contains("line endings: LF (LF 3, CRLF 0, CR 0)\n") && s.contains("final line break: yes\n") && s.contains("longest line: 25 bytes (line 3)\n"), "{s}");
         assert!(s.contains("lines: 3\n") && s.contains("encoding: UTF-8") && s.contains("first time: 2024-05-01 10:00:00") && s.contains("last time: 2024-05-01 11:00:00") && s.contains("span: 1 h 00 m 00 s"), "{s}");
         let b = file(&d, "b.log", b"2024-05-01 10:00:01 b1\n");
         assert_eq!(run_args(&["merge", &log, &b]).1.lines().nth(1), Some("b.log │ 2024-05-01 10:00:01 b1"));

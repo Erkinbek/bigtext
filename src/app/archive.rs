@@ -20,7 +20,7 @@ pub struct ArchivePicker {
     pub focus: bool,
 }
 
-fn date(t: std::time::SystemTime) -> String {
+pub(crate) fn date(t: std::time::SystemTime) -> String {
     let Ok(d) = t.duration_since(std::time::UNIX_EPOCH) else { return String::new() };
     let (days, secs) = ((d.as_secs() / 86_400) as i64, d.as_secs() % 86_400);
     // Civil date from days since 1970-01-01.

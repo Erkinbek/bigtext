@@ -39,6 +39,7 @@ pub mod split;
 pub mod search;
 pub mod setdiff;
 mod spill;
+pub mod stats;
 pub mod sysinfo;
 pub mod table_export;
 pub mod text;
