@@ -182,7 +182,8 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("excel.csv"), "sep=;\n# exported\nname;qty\nann;1\nbob;2\n")?;
     std::fs::write(dir.join("numbers.csv"), "1,2\n3,4\n5,6\n")?;
     std::fs::write(dir.join("semi.txt"), "id;note\n1;a,b\n2;c,d\n")?;
-    std::fs::write(dir.join("sort-me.txt"), "b\nc\na\n")?;
+    // Words, not letters: Windows' sort.exe takes a few bytes like "b\nc\na\n" for UTF-16.
+    std::fs::write(dir.join("sort-me.txt"), "banana\ncherry\napple\n")?;
     std::fs::write(dir.join("fold.json"), FOLD_JSON)?;
     // Past the 8 MB a JSON path needs checkpoints for.
     let rows: Vec<String> = (0..120_000).map(|i| format!("{{\"id\": {i}, \"name\": \"row {i:06}\", \"tags\": [\"alpha\", \"beta\"]}}")).collect();
@@ -4093,7 +4094,7 @@ impl SelfTest {
                 }
                 1 => {
                     let got = lines(app);
-                    if got != ["a", "b", "c"] {
+                    if got != ["apple", "banana", "cherry"] {
                         return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("{got:?} {:?}", app.test_error())) } else { Step::Wait };
                     }
                     app.run_cmd.output = RunOutput::NewTab;
@@ -4116,7 +4117,7 @@ impl SelfTest {
                         app.test_close(d);
                     }
                     c.mark = 0;
-                    check(got == ["a", "b", "c"] && temporary && app.run_cmd.history.first().is_some_and(|h| h.starts_with("sort")), format!("{got:?}"))
+                    check(got == ["apple", "banana", "cherry"] && temporary && app.run_cmd.history.first().is_some_and(|h| h.starts_with("sort")), format!("{got:?}"))
                 }
             }
         }));

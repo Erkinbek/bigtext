@@ -209,10 +209,11 @@ mod tests {
     #[test]
     fn sorts_through_the_shell() {
         let mut out = Vec::new();
-        let ran = run(&Shell::system(), "sort", feed("b\nc\na\n"), &mut out, &CancelToken::new(), None).unwrap();
+        // Words, not letters: Windows' sort.exe takes a few bytes like "b\nc\na\n" for UTF-16.
+        let ran = run(&Shell::system(), "sort", feed("banana\ncherry\napple\n"), &mut out, &CancelToken::new(), None).unwrap();
         assert_eq!(ran.code, Some(0));
         let lines: Vec<&str> = std::str::from_utf8(&out).unwrap().lines().map(str::trim_end).collect();
-        assert_eq!(lines, ["a", "b", "c"]);
+        assert_eq!(lines, ["apple", "banana", "cherry"]);
     }
 
     #[test]
