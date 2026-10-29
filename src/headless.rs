@@ -43,6 +43,10 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         Size, lines, encoding, line endings and the first and last times.
   merge FILE FILE... [-o OUT]
         Log lines of all files in time order, each labelled with its file.
+  gaps FILE [--min 30s]
+        Places where the next timestamp is at least that much later (or
+        earlier: the clock went back), with line numbers. Exit code 1 when
+        there are none.
   values FIELD FILE [-o OUT]
         The values of a JSON Lines or logfmt (key=value) field with how many
         lines have each and their first and last time, as CSV, most frequent
@@ -54,7 +58,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 8] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values"];
+const COMMANDS: [&str; 9] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -467,6 +471,32 @@ fn cmd_values(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(if c.lines > 0 { 0 } else { 1 })
 }
 
+fn cmd_gaps(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &[], &["--min"])?;
+    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let min = a.opt(&["--min"]).unwrap_or("30s");
+    let min_ms = crate::gaps::parse_duration(min).ok_or_else(|| Fail(format!("not a duration: {min} (30s, 5m, 1h)")))?;
+    let (buf, _) = open(Path::new(file))?;
+    let g = crate::gaps::scan(&buf, min_ms, &CancelToken::new(), None, |_| {})?.unwrap_or_default();
+    // Line numbers, counted forward from gap to gap.
+    let (mut at, mut line) = (0u64, 0u64);
+    let mut line_of = |off: u64| -> Res<u64> {
+        buf.for_each_chunk(at..off, |base, c| {
+            line += buf.codec.count_nl(c, base);
+            true
+        })
+        .ok_or_else(|| Fail("could not read the file".into()))?;
+        at = off;
+        Ok(line + 1)
+    };
+    for x in &g.gaps {
+        let (a1, a2) = (line_of(x.before)?, line_of(x.after)?);
+        let key = |k| timestamp::format_key(k, g.dated, true);
+        writeln!(out, "{a1}-{a2}: {} ({} -> {})", timestamp::format_delta(x.ms()), key(x.from), key(x.to))?;
+    }
+    Ok(if g.gaps.is_empty() { 1 } else { 0 })
+}
+
 /// Runs a command; returns the exit code. `args` start with the command name.
 pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
     let Some(cmd) = args.first().map(|c| c.trim_start_matches('-').to_string()) else {
@@ -483,6 +513,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "merge" => cmd_merge(rest, out),
         "convert" => cmd_convert(rest, out),
         "values" => cmd_values(rest, out),
+        "gaps" => cmd_gaps(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
             return 0;
@@ -564,6 +595,15 @@ mod tests {
         let lf = file(&d, "a.log", b"ts=2024-05-01T10:00:00Z status=200\nts=2024-05-01T10:00:09Z status=200\n");
         assert_eq!(run_args(&["values", "status", &lf]).1.lines().nth(1), Some("200,2,100.00,2024-05-01 10:00:00,2024-05-01 10:00:09"));
         assert_eq!(run_args(&["values", "nope", &lf]).0, 1);
+    }
+
+    #[test]
+    fn gaps_with_line_numbers() {
+        let d = tempfile::tempdir().unwrap();
+        let log = file(&d, "a.log", b"2024-05-01 10:00:00 a\n2024-05-01 10:00:05 b\n  trace\n2024-05-01 10:02:05 c\n");
+        assert_eq!(run_args(&["gaps", &log]), (0, "2-4: +2 m 00.000 s (2024-05-01 10:00:05 -> 2024-05-01 10:02:05)\n".into(), String::new()));
+        assert_eq!(run_args(&["gaps", "--min", "5m", &log]).0, 1);
+        assert_eq!(run_args(&["gaps", "--min", "soon", &log]).0, 2);
     }
 
     #[test]

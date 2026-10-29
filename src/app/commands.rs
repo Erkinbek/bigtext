@@ -57,6 +57,7 @@ pub enum Cmd {
     GotoOffset,
     GotoTime,
     Timeline,
+    TimeGaps,
     MatchBracket,
     WordWrap,
     HexView,
@@ -96,7 +97,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 68] = [
+    pub const ALL: [Cmd; 69] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -139,6 +140,7 @@ impl Cmd {
         Cmd::GotoOffset,
         Cmd::GotoTime,
         Cmd::Timeline,
+        Cmd::TimeGaps,
         Cmd::MatchBracket,
         Cmd::WordWrap,
         Cmd::HexView,
@@ -238,6 +240,7 @@ impl Cmd {
             Cmd::GotoOffset => "Go to byte offset…",
             Cmd::GotoTime => "Go to time…",
             Cmd::Timeline => "Time histogram",
+            Cmd::TimeGaps => "Find time gaps…",
             Cmd::MatchBracket => "Go to matching bracket",
             Cmd::WordWrap => "Word wrap",
             Cmd::HexView => "Hex view",
@@ -285,7 +288,7 @@ impl Cmd {
             | Cmd::ClearBookmarks
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
-            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::MatchBracket => "Search",
+            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::TimeGaps | Cmd::MatchBracket => "Search",
             Cmd::Palette | Cmd::Shortcuts | Cmd::ExportSettings | Cmd::ImportSettings | Cmd::Portable | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
@@ -530,6 +533,7 @@ impl BigTextApp {
             Cmd::GotoOffset => self.goto = GotoDialog::new(GotoMode::Offset),
             Cmd::GotoTime => self.goto = GotoDialog::new(GotoMode::Time),
             Cmd::MatchBracket => self.goto_matching_bracket(),
+            Cmd::TimeGaps => self.open_gaps(),
             Cmd::Timeline => {
                 if self.is_on(Cmd::Timeline) {
                     self.timeline.open = false;
@@ -749,7 +753,7 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                for c in [Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::MatchBracket, Cmd::Timeline] {
+                for c in [Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::MatchBracket, Cmd::Timeline, Cmd::TimeGaps] {
                     run = run.or(self.item(ui, c));
                 }
             });

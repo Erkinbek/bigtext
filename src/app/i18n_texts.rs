@@ -676,4 +676,14 @@ pub static TEXTS: &[[&str; 3]] = &[
         "Показаны только первые {max} разных значений; у {n} строк другие.",
         "Faqat dastlabki {max} ta turli qiymat ko'rsatildi; {n} ta satrda boshqa qiymatlar bor.",
     ],
+    // Time gaps.
+    ["Find time gaps…", "Найти паузы во времени…", "Vaqt bo'shliqlarini topish…"],
+    ["{n} time gaps", "Пауз во времени: {n}", "{n} ta vaqt bo'shlig'i"],
+    ["of at least", "не короче", "kamida"],
+    ["Largest first", "Сначала самые длинные", "Avval eng kattalari"],
+    ["(list capped at {n})", "(список ограничен {n})", "(ro'yxat {n} bilan cheklangan)"],
+    ["No gaps that long.", "Таких длинных пауз нет.", "Bunchalik uzun bo'shliq yo'q."],
+    ["line {n}", "строка {n}", "{n}-satr"],
+    ["(clock went back)", "(часы пошли назад)", "(soat orqaga ketgan)"],
+    ["Time since the previous line with a timestamp", "Время от предыдущей строки с отметкой времени", "Vaqt belgisi bor oldingi satrdan beri o'tgan vaqt"],
 ];

@@ -10,6 +10,7 @@ pub mod fields_panel;
 pub mod filter_panel;
 pub mod find_in_files;
 pub mod follow_id;
+pub mod gaps_panel;
 pub mod fonts;
 pub mod i18n;
 mod i18n_texts;
@@ -227,6 +228,7 @@ pub struct BigTextApp {
     pub portable: portable::PortableUi,
     pub ids: follow_id::IdUi,
     pub fields: fields_panel::FieldsUi,
+    pub gaps: gaps_panel::GapsUi,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -352,6 +354,7 @@ impl BigTextApp {
             portable: portable::PortableUi::default(),
             ids: follow_id::IdUi::default(),
             fields: fields_panel::FieldsUi::default(),
+            gaps: gaps_panel::GapsUi::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -706,6 +709,7 @@ impl BigTextApp {
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {
         let ids = self.caret_ids();
+        let delta = self.caret_time_delta();
         let mut follow = None;
         ui.horizontal(|ui| {
             let Some(d) = self.docs.get(self.active) else { return };
@@ -721,6 +725,10 @@ impl BigTextApp {
                     _ => "?".into(),
                 };
                 ui.label(i18n::trf("Ln {line}, Col {col}", &[("line", &format!("{}{}", if exact { "" } else { "~" }, line + 1)), ("col", &col)]));
+                if let Some(ms) = delta {
+                    ui.separator();
+                    ui.label(format!("Δ {}", bigtext::timestamp::format_delta(ms))).on_hover_text(i18n::tr("Time since the previous line with a timestamp"));
+                }
                 if !d.view.extra.is_empty() {
                     ui.separator();
                     ui.label(i18n::trf("{n} cursors", &[("n", &(d.view.extra.len() + 1).to_string())])).on_hover_text(i18n::tr("Esc: back to one cursor"));
@@ -1339,6 +1347,9 @@ impl eframe::App for BigTextApp {
         if self.timeline.open && self.docs.get(self.active).is_some_and(|d| d.timeline.is_some()) {
             egui::Panel::bottom("timeline").resizable(true).default_size(170.0).show(ui, |ui| self.timeline_panel(ui));
         }
+        if self.gaps.open && self.docs.get(self.active).is_some_and(|d| d.gaps.is_some()) {
+            egui::Panel::bottom("gaps").resizable(true).default_size(160.0).show(ui, |ui| self.gaps_panel(ui));
+        }
         if self.diff.is_some() {
             egui::Panel::bottom("diff").resizable(true).default_size(200.0).show(ui, |ui| self.diff_panel(ui));
         }
@@ -1448,6 +1459,7 @@ impl eframe::App for BigTextApp {
                 || d.results.as_ref().is_some_and(|r| r.is_running())
                 || d.filter.as_ref().is_some_and(|r| r.is_running())
                 || d.timeline.as_ref().is_some_and(|t| t.is_running())
+                || d.gaps.as_ref().is_some_and(|g| g.is_running())
         }) || !self.tasks.is_empty()
             || self.files.is_running();
         if busy {

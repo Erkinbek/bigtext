@@ -9,6 +9,7 @@ pub mod diff;
 pub mod encoding;
 pub mod fields;
 pub mod file;
+pub mod gaps;
 pub mod filter;
 pub mod find_files;
 pub mod headless;

@@ -70,6 +70,13 @@ All notable changes to BigText. Each release on
   or **counts the field's values** over the whole file in one streaming pass into a table
   (value, lines, percent, first and last time), most frequent first. `bigtext-cli values FIELD
   FILE` prints the same table.
+- **Search → Find time gaps…**: a list under the text of every place where the next line with a
+  timestamp is at least N seconds (30 by default) later than the one before — the service was
+  down or quiet — or earlier, when the clock went back; largest first or in file order, with
+  both times and the line; click one to go there. A single line with a stray time (a time
+  inside a message) does not make a gap. The status bar shows **Δ** — the time since the
+  previous timestamped line — for the caret's line in logs. `bigtext-cli gaps FILE --min 5m`
+  lists them with line numbers.
 - **Level bar** above log files: **ERROR**, **WARN**, **INFO** and **DEBUG** buttons list only the
   lines of those levels in the filter view (click several to combine them). **F8** / **Shift+F8**
   jump to the next / previous error line, or to the next line of the levels shown. Upper-case

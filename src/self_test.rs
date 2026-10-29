@@ -1142,6 +1142,29 @@ impl SelfTest {
             doc(app).select(0, 0);
             check(dt == Some(60_000), format!("Δt {dt:?}"))
         }));
+        s("time gaps: largest first, click one to go there; Δ to the previous time", Box::new(|app, c| {
+            if c.first() {
+                app.gaps.min_secs = 30.0;
+                app.open_gaps();
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).gaps.as_ref() else { return Step::Fail("no gaps".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let got: Vec<i64> = g.gaps.gaps.iter().map(|x| x.ms()).collect();
+            let after_b = g.gaps.gaps.first().map(|x| x.after);
+            drop(g);
+            if got != [55_000, 3_540_000] || !app.gaps.open {
+                return Step::Fail(format!("gaps {got:?}"));
+            }
+            // The caret on "b" (after the trace line): 55 s since "a".
+            doc(app).set_caret(after_b.unwrap_or(0), false);
+            let delta = app.caret_time_delta();
+            app.gaps.open = false;
+            check(delta == Some(55_000), format!("Δ {delta:?}"))
+        }));
         s("save in another encoding (UTF-16 LE with BOM)", Box::new(|app, c| {
             let target = c.file("time-utf16.log");
             if c.first() {

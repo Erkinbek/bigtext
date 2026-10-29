@@ -158,6 +158,9 @@ Single self-contained binary, no runtime dependencies.
   key → value table that follows the caret (nested objects as `user.id`, escaped stack traces
   shown as lines). Each field can filter the file to its value or away from it, highlight it,
   or **count its values** over the whole file into a table (lines, share, first and last time).
+- **Time gaps** (Search → Find time gaps…): every place where the next timestamp is at least N
+  seconds later — or earlier, when the clock went back — largest first; click one to go there.
+  The status bar shows **Δ** since the previous timestamped line for the caret's line.
 - **Find in files** (Search, Ctrl+Alt+F): the pattern in every `*.log` (or any pattern) file of a
   folder and its sub-folders, listed as `file:line`; click to open the file there.
 - **Saved searches** (★ in the search bar): a pattern with its options, `!` and column under a
@@ -242,6 +245,7 @@ bigtext-cli stats FILE...                                      size, lines, enco
 bigtext-cli merge FILE FILE... [-o OUT]                        logs merged by time
 bigtext-cli convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]  tables (and JSON Lines → CSV)
 bigtext-cli values FIELD FILE [-o OUT]                         a JSON Lines / logfmt field's values
+bigtext-cli gaps FILE [--min 30s]                              time gaps, with line numbers
 ```
 
 `filter` and `levels` take `-A N` / `-B N` / `-C N` (lines after / before / around each match),
