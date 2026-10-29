@@ -4,20 +4,12 @@
 
 use egui::RichText;
 
-use bigtext::search::Query;
+
 
 use super::i18n::{tr, trf};
 use super::BigTextApp;
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct SavedSearch {
-    pub name: String,
-    pub query: Query,
-    /// Filter the lines without a match.
-    pub invert: bool,
-    /// Filter by this table column only (0-based).
-    pub column: Option<usize>,
-}
+pub use bigtext::settings_file::SavedSearch;
 
 #[derive(Default)]
 pub struct SavedUi {

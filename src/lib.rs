@@ -41,6 +41,7 @@ pub mod save;
 pub mod split;
 pub mod search;
 pub mod setdiff;
+pub mod settings_file;
 mod spill;
 pub mod stats;
 pub mod sysinfo;

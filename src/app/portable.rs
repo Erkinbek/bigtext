@@ -22,9 +22,7 @@ pub struct PortableUi {
 
 /// The settings folder next to the program, when there is one.
 pub fn portable_dir() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let d = exe.parent()?.join(PORTABLE_DIR);
-    d.is_dir().then_some(d)
+    bigtext::settings_file::portable_dir()
 }
 
 /// The settings to carry to another computer (no files, tabs or update state).

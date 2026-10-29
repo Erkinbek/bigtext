@@ -71,23 +71,11 @@ pub struct Persisted {
     pub id_keys: Option<Vec<String>>,
 }
 
-pub(super) fn query_flags(q: &bigtext::search::Query) -> String {
-    [(q.regex, 'r'), (q.case_sensitive, 'c'), (q.whole_word, 'w'), (q.dot_all, 'd')].iter().filter(|x| x.0).map(|x| x.1).collect()
-}
-
-pub(super) fn query_from(pattern: String, flags: &str) -> bigtext::search::Query {
-    bigtext::search::Query { pattern, regex: flags.contains('r'), case_sensitive: flags.contains('c'), whole_word: flags.contains('w'), dot_all: flags.contains('d') }
-}
+pub(super) use bigtext::settings_file::{query_flags, query_from};
 
 /// "name|flags|invert|column|pattern".
 fn parse_saved(v: &str) -> Option<super::saved_searches::SavedSearch> {
-    let mut it = v.splitn(5, '|');
-    let name = it.next()?.to_string();
-    let flags = it.next()?;
-    let invert = it.next()? == "1";
-    let column = it.next()?.parse().ok();
-    let query = query_from(it.next()?.to_string(), flags);
-    Some(super::saved_searches::SavedSearch { name, query, invert, column })
+    bigtext::settings_file::parse_saved(v)
 }
 
 /// "enabled|color|flags|pattern".
@@ -139,21 +127,7 @@ pub(super) fn parse_mark(v: &str) -> Option<super::marks::Mark> {
 }
 
 pub fn state_file() -> Option<PathBuf> {
-    if std::env::var_os("BIGTEXT_NO_STATE").is_some() {
-        return None;
-    }
-    // Portable mode: a BigText-data folder next to the program.
-    if let Some(d) = super::portable::portable_dir() {
-        return Some(d.join("state.txt"));
-    }
-    let base = if cfg!(windows) {
-        std::env::var_os("APPDATA").map(PathBuf::from)
-    } else if cfg!(target_os = "macos") {
-        std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library").join("Application Support"))
-    } else {
-        std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-    }?;
-    Some(base.join("BigText").join("state.txt"))
+    bigtext::settings_file::state_file()
 }
 
 pub fn load() -> Persisted {

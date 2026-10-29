@@ -352,6 +352,8 @@ bigtext-cli extract [-E] [-g N] [--count] PATTERN FILE          only the matched
 bigtext-cli split (--size 100MB | --lines N) FILE [--out-dir DIR]
 bigtext-cli grep [-i] [-w] [-E] PATTERN FILES... | -r DIR      find in files (file:line:text)
 bigtext-cli head [-n N] FILE / tail [-n N] FILE                the first / last N lines
+bigtext-cli replace [-E] PATTERN REPLACEMENT FILE [--in-place [--bak]]   Replace All, streamed
+bigtext-cli saved / filter --saved NAME [--settings FILE]     searches saved in the app
 bigtext-cli slice FILE --lines A-B | --bytes A-B | --from T --to T   a part, by binary search
 bigtext-cli diff A B [-w] [-i] [-t] [--mask RE] [-U N] [-q]    a unified diff
 bigtext-cli only-in A B [-t] [--mask RE]                       lines of A nowhere in B
@@ -368,6 +370,8 @@ bigtext-cli gaps FILE [--min 30s]                              time gaps, with l
 bigtext-cli patterns FILE [--top N] [--rare] [-o OUT]          message templates with counts
 ```
 
+`--json` gives one JSON record per line on filter, levels, grep, count, stats, replace and saved
+(`{file, line, offset, text}`, errors as `{"error": …}`).
 `filter`, `count` and `levels` take several files, `*.log` patterns (expanded on Windows too) and
 `-r DIR --names '*.log;*.gz'`, printing `file:` before each line (count: per file and a total),
 or `--out-dir DIR` for one output per input; compressed inputs are unpacked on the way.

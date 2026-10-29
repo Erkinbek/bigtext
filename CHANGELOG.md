@@ -151,6 +151,15 @@ All notable changes to BigText. Each release on
 
 ### Command line
 
+- **`--json`** on `filter`, `levels`, `grep`, `count`, `stats`, `replace` and `saved` prints one
+  JSON record per line — `{file, line, offset, text, context}` with exact line numbers for kept
+  lines — and errors as `{"error": …}` with exit code 2.
+- **`bigtext-cli replace [-i] [-w] [-E] PATTERN REPLACEMENT FILE`** streams Replace All (`$1`,
+  `${name}` with `-E`) to stdout or `-o OUT`, or `--in-place [--bak]` swaps the file atomically,
+  keeping its encoding and line breaks; exit code 1 when nothing matched.
+- **Saved searches on the command line**: `bigtext-cli saved` lists the searches saved in the app,
+  and `filter`, `count` and `grep --saved NAME` run one, from the app's settings or an exported
+  settings file (`--settings FILE`, so a team can keep its searches in a repository).
 - **Many files at once**: `filter`, `count` and `levels` take several files, `*.log` patterns
   (expanded by BigText, since Windows shells do not) and `-r DIR --names '*.log;*.gz'`, put the
   file name before each output line (count: each file's count and a total), or write one

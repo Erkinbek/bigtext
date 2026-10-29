@@ -90,6 +90,16 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         changed columns, and A's columns with \"old → new\" where a value
         changed. Columns pair up by header name. Exit code 0 when they are the
         same, 1 when they differ.
+  replace [-i] [-w] [-E] PATTERN REPLACEMENT FILE [-o OUT | --in-place [--bak]]
+        Every match replaced (-E: $1 and ${name} in REPLACEMENT), streamed,
+        keeping the encoding and line breaks; --in-place swaps the file
+        atomically (--bak keeps the old one). Exit code 1 when nothing matched.
+  saved [--settings FILE]
+        The searches saved in BigText (the search bar's star menu);
+        filter, count and grep --saved NAME run one.
+  --json on filter, levels, grep, count, stats, replace and saved gives one
+  JSON record per line ({file, line, offset, text}; errors as {\"error\": …}).
+
   grep [-i] [-w] [-E] PATTERN FILES... | -r DIR [--names '*.log;*.gz']
         Find in files without a window: file:line:text for every line with a
         match, over files, *.log patterns or a folder (compressed files are
@@ -152,7 +162,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 28] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format", "sort", "uniq", "head", "tail", "slice", "grep"];
+const COMMANDS: [&str; 30] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format", "sort", "uniq", "head", "tail", "slice", "grep", "replace", "saved"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -211,6 +221,15 @@ impl Args {
     fn all(&self, names: &[&str]) -> Vec<&str> {
         self.opts.iter().filter(|(k, _)| names.contains(&k.as_str())).map(|(_, v)| v.as_str()).collect()
     }
+}
+
+thread_local! {
+    /// `--json`: records rather than text.
+    static JSON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn json() -> bool {
+    JSON.with(|j| j.get())
 }
 
 thread_local! {
@@ -303,11 +322,14 @@ fn query(a: &Args, pattern: &str) -> Query {
 
 /// Writes the kept lines: in the file's encoding to a file, as UTF-8 to the console. With
 /// `numbers`, each line starts with its line number ("12:" a match, "13-" context, like grep).
-fn write_kept(buf: &TextBuf, m: &Matcher, spec: FilterSpec, terms: &[filter::Term], numbers: bool, target: Option<&str>, out: &mut dyn Write) -> Res<u64> {
+#[allow(clippy::too_many_arguments)]
+fn write_kept(buf: &TextBuf, file: &str, m: &Matcher, spec: FilterSpec, terms: &[filter::Term], numbers: bool, target: Option<&str>, out: &mut dyn Write) -> Res<u64> {
     let cancel = CancelToken::new();
     let mut kept = 0;
+    let json = json();
+    let numbers = numbers || json;
     with_output(target, out, |w| {
-        let to_file = target.is_some();
+        let to_file = target.is_some() && !json;
         if to_file && !numbers {
             kept = filter::write_lines_to(buf, m, spec, terms, &mut &mut *w, &cancel, None)?.map(|n| n.lines).unwrap_or(0);
             return Ok(());
@@ -323,7 +345,7 @@ fn write_kept(buf: &TextBuf, m: &Matcher, spec: FilterSpec, terms: &[filter::Ter
         let mut counted = (0u64, 0u64);
         let end = filter::filter_lines_with(buf, m, spec, terms, &cancel, None, |ls, le, kind| {
             let r = (|| -> io::Result<()> {
-                if let Some(pe) = prev.filter(|&pe| spec.has_context() && ls > pe) {
+                if let Some(pe) = prev.filter(|&pe| spec.has_context() && ls > pe && !json) {
                     if to_file {
                         w.write_all(&codec.encode("--"))?;
                         w.write_all(&filter::line_break_before(buf, pe))?;
@@ -344,6 +366,12 @@ fn write_kept(buf: &TextBuf, m: &Matcher, spec: FilterSpec, terms: &[filter::Ter
                     prefix = format!("{}{}", n + 1, if kind == filter::LineKind::Hit { ':' } else { '-' });
                 }
                 let bytes = buf.read(ls.max(bom)..le).ok_or_else(|| io::Error::other("could not read the file"))?;
+                if json {
+                    let text = codec.decode_lossy(&bytes);
+                    let line: u64 = prefix.trim_end_matches([':', '-']).parse().unwrap_or(0);
+                    let rec = serde_json::json!({"file": file, "line": line, "offset": ls, "text": text.trim_end_matches(['\n', '\r']), "context": kind != filter::LineKind::Hit});
+                    return writeln!(w, "{rec}");
+                }
                 if to_file {
                     w.write_all(&codec.encode(&prefix))?;
                     w.write_all(&bytes)
@@ -437,10 +465,14 @@ fn cmd_filter(args: &[String], out: &mut dyn Write, count_only: bool) -> Res<i32
             n += 1;
             true
         });
-        writeln!(out, "{n}")?;
+        if json() {
+            writeln!(out, "{}", serde_json::json!({"file": file, "count": n}))?;
+        } else {
+            writeln!(out, "{n}")?;
+        }
         n
     } else {
-        write_kept(&buf, &m, spec, &terms, a.flag(&["-n", "--line-numbers"]), a.opt(&["-o", "--output"]), out)?
+        write_kept(&buf, file, &m, spec, &terms, a.flag(&["-n", "--line-numbers"]), a.opt(&["-o", "--output"]), out)?
     };
     Ok(if n > 0 { 0 } else { 1 })
 }
@@ -461,7 +493,7 @@ fn cmd_levels(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let (buf, _) = open(Path::new(file))?;
     let m = Matcher::new(&q, buf.codec).map_err(Fail)?;
     let spec = FilterSpec { range: time_range(&a, &buf)?, ..spec_from(&a, false)? };
-    let n = write_kept(&buf, &m, spec, &[], a.flag(&["-n", "--line-numbers"]), a.opt(&["-o", "--output"]), out)?;
+    let n = write_kept(&buf, file, &m, spec, &[], a.flag(&["-n", "--line-numbers"]), a.opt(&["-o", "--output"]), out)?;
     Ok(if n > 0 { 0 } else { 1 })
 }
 
@@ -520,6 +552,20 @@ fn cmd_stats(args: &[String], out: &mut dyn Write) -> Res<i32> {
         let Some(st) = crate::stats::scan(&buf.snapshot(), &CancelToken::new(), None, |_| {}) else {
             return fail(format!("{}: could not read the file", display_path(path)));
         };
+        if json() {
+            let span = crate::stats::time_span(&buf).map(|(f, l)| {
+                let key = |s: timestamp::Stamp| timestamp::format_key(s.ms, s.has_date, true);
+                (key(f), key(l))
+            });
+            let rec = serde_json::json!({
+                "file": display_path(path), "bytes": buf.len(), "lines": st.lines, "encoding": codec.enc.name(),
+                "lf": st.lf, "crlf": st.crlf, "cr": st.cr, "final_line_break": st.final_break,
+                "longest_line": {"bytes": st.longest.0, "line": st.longest.1 + 1}, "nul": st.nul, "not_utf8": st.invalid_utf8,
+                "first_time": span.as_ref().map(|s| s.0.clone()), "last_time": span.map(|s| s.1),
+            });
+            writeln!(out, "{rec}")?;
+            continue;
+        }
         writeln!(out, "file: {}", display_path(path))?;
         writeln!(out, "size: {} ({} bytes)", human_bytes(buf.len()), buf.len())?;
         writeln!(out, "lines: {}", st.lines)?;
@@ -735,6 +781,114 @@ fn cmd_join(args: &[String], out: &mut dyn Write) -> Res<i32> {
         Ok(())
     })?;
     Ok(0)
+}
+
+/// The settings file `--settings FILE` names, or the app's.
+fn settings_path(a: &Args) -> Res<PathBuf> {
+    match a.opt(&["--settings"]) {
+        Some(p) => Ok(PathBuf::from(p)),
+        None => crate::settings_file::state_file().ok_or_else(|| Fail("no settings file (give --settings FILE)".into())),
+    }
+}
+
+/// `--saved NAME [--settings FILE]` replaced by the saved search's pattern and switches.
+fn with_saved(rest: &[String]) -> Res<Vec<String>> {
+    let Some(i) = rest.iter().position(|a| a == "--saved") else { return Ok(rest.to_vec()) };
+    let name = rest.get(i + 1).ok_or_else(|| Fail("--saved needs a NAME".into()))?.clone();
+    let mut others: Vec<String> = Vec::new();
+    let mut settings = None;
+    let mut it = rest.iter().enumerate();
+    while let Some((k, x)) = it.next() {
+        if k == i || k == i + 1 {
+            continue;
+        }
+        if x == "--settings" {
+            settings = it.next().map(|(_, v)| v.clone());
+            continue;
+        }
+        others.push(x.clone());
+    }
+    let path = match settings {
+        Some(p) => PathBuf::from(p),
+        None => crate::settings_file::state_file().ok_or_else(|| Fail("no settings file (give --settings FILE)".into()))?,
+    };
+    let all = crate::settings_file::saved_searches(&path).map_err(|e| Fail(format!("{}: {e}", display_path(&path))))?;
+    let s = all.iter().find(|s| s.name == name).ok_or_else(|| Fail(format!("no saved search named “{name}”")))?;
+    let mut out = Vec::new();
+    if s.query.regex {
+        out.push("-E".into());
+    }
+    if !s.query.case_sensitive {
+        out.push("-i".into());
+    }
+    if s.query.whole_word {
+        out.push("-w".into());
+    }
+    if s.invert {
+        out.push("-v".into());
+    }
+    out.push("-e".into());
+    out.push(s.query.pattern.clone());
+    out.extend(others);
+    Ok(out)
+}
+
+fn cmd_saved(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &[], &["--settings"])?;
+    let path = settings_path(&a)?;
+    let all = crate::settings_file::saved_searches(&path).map_err(|e| Fail(format!("{}: {e}", display_path(&path))))?;
+    for s in &all {
+        let flags = crate::settings_file::query_flags(&s.query);
+        if json() {
+            writeln!(out, "{}", serde_json::json!({"name": s.name, "pattern": s.query.pattern, "regex": s.query.regex, "case_sensitive": s.query.case_sensitive, "whole_word": s.query.whole_word, "invert": s.invert}))?;
+        } else {
+            writeln!(out, "{}\t{}{}{}", s.name, s.query.pattern, if flags.is_empty() { String::new() } else { format!("  ({flags})") }, if s.invert { "  (lines without)" } else { "" })?;
+        }
+    }
+    Ok(if all.is_empty() { 1 } else { 0 })
+}
+
+fn cmd_replace(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["-i", "--ignore-case", "-w", "--word", "-E", "--regex", "--in-place", "--bak"], &["-o", "--output"])?;
+    let [pattern, replacement, file] = &a.rest[..] else { return fail("needs PATTERN, REPLACEMENT and FILE") };
+    let path = Path::new(file);
+    if a.flag(&["--in-place"]) && crate::decompress::detect(path).is_some() {
+        return fail("--in-place does not work on a compressed file; give -o OUT");
+    }
+    let (buf, _) = open(path)?;
+    let q = query(&a, pattern);
+    let m = Matcher::new(&q, buf.codec).map_err(Fail)?;
+    let tpl = crate::replace::Template::new(replacement, q.regex);
+    let cancel = CancelToken::new();
+    let count = if a.flag(&["--in-place"]) {
+        let t = crate::save::Transform::Replace { matcher: &m, template: &tpl, range: 0..buf.len() };
+        let (temp, stats) = match crate::save::write_temp(&buf, path, t, &cancel, &Progress::default()) {
+            Ok(x) => x,
+            Err(crate::save::SaveError::Io(e)) => return fail(e),
+            Err(crate::save::SaveError::Cancelled) => return fail("cancelled"),
+        };
+        // The file is still mapped until the buffer goes.
+        drop(buf);
+        if stats.count == 0 {
+            let _ = std::fs::remove_file(&temp);
+        } else {
+            crate::save::finalize(&temp, path, a.flag(&["--bak"])).map_err(Fail)?;
+        }
+        stats.count
+    } else {
+        let mut n = 0;
+        with_output(a.opt(&["-o", "--output"]), out, |w| {
+            n = crate::replace::replace_all_to(&buf, &m, &tpl, 0..buf.len(), &mut &mut *w, &cancel, None)?.map(|s| s.count).unwrap_or(0);
+            Ok(())
+        })?;
+        n
+    };
+    if json() {
+        writeln!(out, "{}", serde_json::json!({"file": file, "replaced": count}))?;
+    } else if a.flag(&["--in-place"]) {
+        writeln!(out, "{count} replaced")?;
+    }
+    Ok(if count > 0 { 0 } else { 1 })
 }
 
 /// Writes `range` of `buf` (with line 1 first when `header` and the range starts later): as it
@@ -1396,7 +1550,25 @@ fn run_command(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32
         let _ = write!(err, "{USAGE}");
         return 2;
     };
-    let rest = &args[1..];
+    // --json anywhere: records; errors as {"error": …}.
+    // (format has a --json option of its own.)
+    let json = cmd != "format" && args.iter().any(|a| a == "--json");
+    JSON.with(|j| j.set(json));
+    let mut rest: Vec<String> = args[1..].iter().filter(|a| !json || *a != "--json").cloned().collect();
+    if matches!(cmd.as_str(), "filter" | "count" | "grep") {
+        match with_saved(&rest) {
+            Ok(r) => rest = r,
+            Err(Fail(e)) => {
+                if json {
+                    let _ = writeln!(out, "{}", serde_json::json!({"error": e}));
+                } else {
+                    let _ = writeln!(err, "bigtext-cli {cmd}: {e}");
+                }
+                return 2;
+            }
+        }
+    }
+    let rest = &rest[..];
     if let Some(code) = run_batch(&cmd, rest, out, err) {
         return code;
     }
@@ -1422,6 +1594,8 @@ fn run_command(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32
         "only-in" => cmd_only_in(rest, out),
         "diff-table" => cmd_diff_table(rest, out),
         "transform" => cmd_transform(rest, out),
+        "replace" => cmd_replace(rest, out),
+        "saved" => cmd_saved(rest, out),
         "head" => cmd_head_tail(rest, out, true),
         "tail" => cmd_head_tail(rest, out, false),
         "slice" => cmd_slice(rest, out),
@@ -1437,6 +1611,10 @@ fn run_command(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32
     let _ = out.flush();
     match r {
         Ok(code) => code,
+        Err(Fail(m)) if json => {
+            let _ = writeln!(out, "{}", serde_json::json!({"error": m}));
+            2
+        }
         Err(Fail(m)) => {
             let _ = writeln!(err, "bigtext {cmd}: {m}");
             2
@@ -1610,6 +1788,33 @@ mod tests {
         assert_eq!(run_args(&["diff-table", &a, &b, "--key", "1", "--key-b", "3", "--all"]).1.lines().nth(2), Some("same,2,,banana,7"));
         assert_eq!(run_args(&["diff-table", &a, &a, "--key", "id"]).0, 0);
         assert_eq!(run_args(&["diff-table", &a, &b]).0, 2);
+    }
+
+    #[test]
+    fn json_replace_and_saved_searches() {
+        let d = tempfile::tempdir().unwrap();
+        let log = file(&d, "a.log", b"ok\r\nERROR one\r\nERROR two\r\n");
+        let (code, out, _) = run_args(&["filter", "ERROR", &log, "--json"]);
+        assert_eq!(code, 0);
+        let recs: Vec<serde_json::Value> = out.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!((recs.len(), recs[0]["line"].as_u64(), recs[0]["offset"].as_u64(), recs[1]["text"].as_str()), (2, Some(2), Some(4), Some("ERROR two")));
+        let c: serde_json::Value = serde_json::from_str(run_args(&["count", "ERROR", &log, "--json"]).1.trim()).unwrap();
+        assert_eq!(c["count"], 2);
+        let st: serde_json::Value = serde_json::from_str(run_args(&["stats", &log, "--json"]).1.trim()).unwrap();
+        assert_eq!((st["lines"].as_u64(), st["crlf"].as_u64()), (Some(3), Some(3)));
+        let e: serde_json::Value = serde_json::from_str(run_args(&["count", "x", "--saved", "nope", "--settings", &log, "--json"]).1.trim()).unwrap();
+        assert!(e["error"].as_str().unwrap().contains("nope"));
+        // Replace to stdout, then in place with a backup.
+        assert_eq!(run_args(&["replace", "-E", "ERROR (\\w+)", "E[$1]", &log]).1, "ok\r\nE[one]\r\nE[two]\r\n");
+        assert_eq!(run_args(&["replace", "ERROR", "Error", &log, "--in-place", "--bak"]), (0, "2 replaced\n".into(), String::new()));
+        assert_eq!(std::fs::read(&log).unwrap(), b"ok\r\nError one\r\nError two\r\n");
+        assert!(std::path::Path::new(&format!("{log}.bak")).exists());
+        assert_eq!(run_args(&["replace", "nothing", "x", &log, "--in-place"]).0, 1);
+        // A saved search from a settings file.
+        let settings = file(&d, "settings.txt", b"saved=Errors|i|0||error\nsaved=Not ok|c|1||ok\n");
+        assert_eq!(run_args(&["saved", "--settings", &settings]).1, "Errors\terror\nNot ok\tok  (c)  (lines without)\n");
+        assert_eq!(run_args(&["count", "--saved", "Errors", "--settings", &settings, &log]).1, "2\n");
+        assert_eq!(run_args(&["filter", "--saved", "Not ok", "--settings", &settings, &log]).1, "Error one\nError two\n");
     }
 
     #[test]
