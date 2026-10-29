@@ -149,6 +149,13 @@ All notable changes to BigText. Each release on
 
 ### CSV tables
 
+- **Check rows…** (in a column header's menu, and View → Check table rows…) streams over the table
+  once and lists, under it, every record whose field count differs from the header's (or the
+  usual one), with a stray quote or a quote that is never closed, with a control character, or
+  with text in the columns typed into **Number columns** — "12 of 48,000,000 rows have
+  problems". Click one to go there; **Save rows…** writes the header and those rows to a file.
+  Quoted fields with line breaks are fine. `bigtext-cli validate FILE [--numeric 3,5]` prints
+  `line: problem` and exits with 1 when something is wrong.
 - **Group rows by this column…** (column header menu): the number of rows of each value, like
   `GROUP BY`, optionally with the sum, mean, minimum and maximum of another column; largest
   groups first, exportable to CSV.

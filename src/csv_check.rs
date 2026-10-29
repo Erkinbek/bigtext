@@ -101,7 +101,7 @@ pub fn check(
                 if quoted {
                     // "…" with doubled quotes inside; at the end of the file it may be unclosed.
                     let inner = &t[1..];
-                    let closes = inner.len() >= 1 && inner.last() == Some(&q) && inner[..inner.len() - 1].split(|&c| c == q).count() % 2 == 1;
+                    let closes = !inner.is_empty() && inner.last() == Some(&q) && inner[..inner.len() - 1].split(|&c| c == q).count() % 2 == 1;
                     if !closes {
                         found = Some(if r.next >= len && f.end >= len { Kind::Unclosed { col } } else { Kind::StrayQuote { col } });
                         break;
