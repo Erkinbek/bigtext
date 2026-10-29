@@ -594,7 +594,7 @@ impl BigTextApp {
                     (g.lines[a..b].to_vec(), (a..b).map(|i| g.kinds.get(i).copied().unwrap_or(0)).collect())
                 };
                 for (i, (ls, k)) in lines.into_iter().zip(kinds).enumerate() {
-                    let job = line_job(buf, ls, &m, &font, ui.visuals(), stale, k & KIND_CONTEXT != 0);
+                    let job = line_job(buf, ls, Some(&m), &font, ui.visuals(), stale, k & KIND_CONTEXT != 0);
                     let resp = ui.selectable_label(caret_line == Some(ls) && !stale, job);
                     if k & KIND_GAP != 0 && range.start + i > 0 {
                         let y = resp.rect.top() - 1.0;
@@ -694,7 +694,8 @@ impl std::io::Write for CappedVec<'_> {
 /// One list row: line number and the line's text with its matches highlighted (context lines
 /// dimmed, without highlights). When the first match is far to the right, the text starts a
 /// little before it.
-fn line_job(buf: &TextBuf, ls: u64, m: &Matcher, font: &FontId, v: &egui::Visuals, stale: bool, context: bool) -> LayoutJob {
+/// A listed line: its number and text, with `m`'s matches highlighted (context lines dim).
+pub(crate) fn line_job(buf: &TextBuf, ls: u64, m: Option<&Matcher>, font: &FontId, v: &egui::Visuals, stale: bool, context: bool) -> LayoutJob {
     let mut job = LayoutJob::default();
     let weak = TextFormat { font_id: font.clone(), color: v.weak_text_color(), ..Default::default() };
     let normal = TextFormat { font_id: font.clone(), color: if stale || context { v.weak_text_color() } else { v.text_color() }, ..Default::default() };
@@ -715,7 +716,10 @@ fn line_job(buf: &TextBuf, ls: u64, m: &Matcher, font: &FontId, v: &egui::Visual
         raw = &raw[..raw.len() - cr.len()];
     }
     let end = start + raw.len() as u64;
-    let hits = if context { Vec::new() } else { bigtext::search::matches_in_view(buf, m, start..end, 64) };
+    let hits = match m {
+        Some(m) if !context => bigtext::search::matches_in_view(buf, m, start..end, 64),
+        _ => Vec::new(),
+    };
     let mut from = start;
     if let Some(&(s, _)) = hits.first() {
         if s > start + 160 {

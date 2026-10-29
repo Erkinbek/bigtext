@@ -33,6 +33,12 @@ All notable changes to BigText. Each release on
   up to 4,096 lines away when it matches one place only; the hunks it cannot place are listed.
 - `bigtext diff A B` now prints a unified diff with context (`-U N`, default 3), `-q` only says
   whether the files differ, `-o OUT` writes it to a file.
+- **Search → Lines only in this file…** lists the lines of one open file that occur nowhere in
+  another, in the file's order whatever the other's, with how many are in both; white space,
+  case, timestamps and a mask can be ignored as in Compare. The list jumps to each line, and
+  Save lines… / Copy lines write them out. Any size: past 25 million distinct lines the
+  comparison splits both files by hash into partitions on disk. On the command line:
+  `bigtext only-in A B [-w] [-i] [-t] [--mask RE] [--count] [-o OUT]`.
 - Fixed: a comparison where one file's last line lost its line break ("b\n" against "b")
   reported a difference in the middle of the line.
 

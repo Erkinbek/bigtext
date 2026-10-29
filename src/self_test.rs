@@ -217,6 +217,9 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("patch-me.txt"), &base)?;
+    let tasks = |h: u32, order: &mut dyn Iterator<Item = u32>| order.map(|i| format!("2024-05-0{} {h:02}:{:02}:{:02} INFO task {i} done\n", h / 10, i / 60, i % 60)).collect::<String>();
+    std::fs::write(dir.join("only-a.log"), tasks(10, &mut (0..50)) + "2024-05-01 10:01:00 ERROR disk full\n")?;
+    std::fs::write(dir.join("only-b.log"), tasks(23, &mut (0..50).rev()) + "2024-05-02 23:59:00 WARN slow\n")?;
     std::fs::write(dir.join("diff-b.txt"), base.replace("row 100\n", "row one hundred\n").replace("row 1500\n", "row 1500\nextra line\n"))?;
     let times = |h: u32| (0..200).map(|i| format!("2024-05-01 {h:02}:{:02}:{:02} INFO step {i} req=r{}\n", i / 60, i % 60, i * h)).collect::<String>();
     std::fs::write(dir.join("times-a.log"), times(9))?;
@@ -1079,6 +1082,31 @@ impl SelfTest {
             app.side_by_side = false;
             app.diff = None;
             check(b_top == 1601 && spans == 2, format!("B top line {b_top}, {spans} spans in B"))
+        }));
+        s("lines only in one log, timestamps ignored, whatever the order", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("only-a.log"));
+                app.open_path(c.file("only-b.log"));
+                return Step::Wait;
+            }
+            let id = |app: &BigTextApp, name: &str| app.docs.iter().find(|d| d.title == name && d.is_ready()).map(|d| d.id);
+            if c.mark == 0 {
+                let (Some(a), Some(b)) = (id(app, "only-a.log"), id(app, "only-b.log")) else { return Step::Wait };
+                app.start_only_in(a, b, crate::app::extras::DiffSwitches { timestamps: true, ..Default::default() });
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let Some(r) = &app.only_in else { return Step::Fail("no results".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let (counts, lines) = (g.counts, g.lines.clone());
+            drop(g);
+            let text = app.docs.iter().find(|d| d.id == r.doc).and_then(|d| lines.first().and_then(|&o| d.buf.read(o..o + 35))).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+            app.only_in = None;
+            let ok = counts == Some(bigtext::setdiff::Counts { only: 1, common: 50 }) && lines.len() == 1 && text.starts_with("2024-05-01 10:01:00 ERROR disk full");
+            check(ok, format!("{counts:?}, {} lines, first {text:?}", lines.len()))
         }));
         s("save the comparison as a .diff and apply it to a copy: it becomes B", Box::new(|app, c| {
             if c.first() {

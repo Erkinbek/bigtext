@@ -36,6 +36,7 @@ pub mod replace;
 pub mod save;
 pub mod split;
 pub mod search;
+pub mod setdiff;
 pub mod sysinfo;
 pub mod table_export;
 pub mod text;

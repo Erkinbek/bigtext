@@ -66,6 +66,7 @@ pub enum Cmd {
     NextLevel,
     PrevLevel,
     NextDiff,
+    OnlyIn,
     PrevDiff,
     NextResult,
     PrevResult,
@@ -121,7 +122,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 91] = [
+    pub const ALL: [Cmd; 92] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -171,6 +172,7 @@ impl Cmd {
         Cmd::NextLevel,
         Cmd::PrevLevel,
         Cmd::NextDiff,
+        Cmd::OnlyIn,
         Cmd::PrevDiff,
         Cmd::NextResult,
         Cmd::PrevResult,
@@ -295,6 +297,7 @@ impl Cmd {
             Cmd::NextLevel => "Next error line",
             Cmd::PrevLevel => "Previous error line",
             Cmd::NextDiff => "Next difference",
+            Cmd::OnlyIn => "Lines only in this file…",
             Cmd::PrevDiff => "Previous difference",
             Cmd::NextResult => "Next entry of the list",
             Cmd::PrevResult => "Previous entry of the list",
@@ -358,7 +361,7 @@ impl Cmd {
             | Cmd::ClearBookmarks
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
-            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::NextDiff | Cmd::PrevDiff | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::CheckJson | Cmd::MatchBracket => "Search",
+            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::NextDiff | Cmd::PrevDiff | Cmd::OnlyIn | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::CheckJson | Cmd::MatchBracket => "Search",
             Cmd::Palette | Cmd::Shortcuts | Cmd::ExportSettings | Cmd::ImportSettings | Cmd::Portable | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
@@ -621,6 +624,7 @@ impl BigTextApp {
             Cmd::NextLevel => self.next_level(true),
             Cmd::PrevLevel => self.next_level(false),
             Cmd::NextDiff => self.step_diff(true),
+            Cmd::OnlyIn => self.open_only_in(),
             Cmd::PrevDiff => self.step_diff(false),
             Cmd::NextResult => self.step_result(true),
             Cmd::PrevResult => self.step_result(false),
@@ -902,7 +906,7 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                for c in [Cmd::NextDiff, Cmd::PrevDiff, Cmd::NavBack, Cmd::NavForward, Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::MatchBracket, Cmd::Timeline, Cmd::TimeGaps, Cmd::Patterns, Cmd::CheckJson] {
+                for c in [Cmd::NextDiff, Cmd::PrevDiff, Cmd::OnlyIn, Cmd::NavBack, Cmd::NavForward, Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::MatchBracket, Cmd::Timeline, Cmd::TimeGaps, Cmd::Patterns, Cmd::CheckJson] {
                     run = run.or(self.item(ui, c));
                 }
             });

@@ -971,4 +971,17 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["matches more than one place", "подходит к нескольким местам", "bir nechta joyga mos keladi"],
     ["#{k} (line {line}): {why}", "№{k} (строка {line}): {why}", "#{k} ({line}-qator): {why}"],
     ["Patch hunks not applied: {list}", "Не применённые блоки патча: {list}", "Qo'llanmagan patch bloklari: {list}"],
+    // Lines only in one file.
+    ["Lines only in this file…", "Строки только в этом файле…", "Faqat shu fayldagi qatorlar…"],
+    ["Open the other file in a tab too, then look for the lines only in one of them.", "Откройте во вкладке и другой файл, затем ищите строки, которые есть только в одном из них.", "Boshqa faylni ham varaqda oching, keyin faqat bittasida bor qatorlarni qidiring."],
+    ["Lines only in one file", "Строки только в одном файле", "Faqat bitta fayldagi qatorlar"],
+    ["Lists the lines of one file that occur nowhere in the other, whatever their order.", "Показывает строки одного файла, которых нет нигде в другом, независимо от порядка.", "Bir fayldagi, ikkinchisida hech qayerda uchramaydigan qatorlarni tartibidan qat'i nazar ko'rsatadi."],
+    ["Lines of", "Строки из", "Qatorlar:"],
+    ["not found in", "которых нет в", "quyidagida yo'q:"],
+    ["The other way round", "Наоборот", "Teskarisi"],
+    ["Log lines rarely repeat exactly: ignore the timestamps, and mask ids and durations.", "Строки логов редко повторяются точно: не учитывайте время и маскируйте идентификаторы и длительности.", "Log qatorlari kamdan-kam aynan takrorlanadi: vaqtni hisobga olmang, identifikator va davomiyliklarni maskalang."],
+    ["Saved {n} lines to {file}.", "Сохранено строк: {n} в {file}.", "{n} ta qator {file} ga saqlandi."],
+    ["{n} lines of {a} are not in {b}", "Строк {a}, которых нет в {b}: {n}", "{a} dagi {n} ta qator {b} da yo'q"],
+    ["Lines of {a} not in {b}", "Строки {a}, которых нет в {b}", "{a} dagi, {b} da yo'q qatorlar"],
+    ["({n} in both)", "({n} в обоих)", "({n} tasi ikkalasida)"],
 ];

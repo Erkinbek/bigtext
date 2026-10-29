@@ -78,6 +78,10 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         of each line, --mask what RE matches (ids, durations); -q only says
         whether they differ. Exit code 0 when they are the same, 1 when they
         differ.
+  only-in A B [-w] [-i] [-t] [--mask RE] [--count] [-o OUT]
+        The lines of A that occur nowhere in B, whatever their order, in A's
+        order (files of any size); -w, -i, -t and --mask as for diff; --count
+        prints how many. Exit code 0 when there are none, 1 when there are.
   derive FILE --name NAME --expr EXPR [-o OUT]
         The table with a new last column computed per row, like {price} * {qty},
         substr({ts}, 0, 10) or if({status} = \"ok\", 1, 0).
@@ -108,7 +112,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 18] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff"];
+const COMMANDS: [&str; 19] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -776,14 +780,52 @@ fn cmd_jsondiff(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(if r.map_err(Fail)?.unwrap_or(false) { 1 } else { 0 })
 }
 
-fn cmd_diff(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["-w", "-b", "-i", "-t", "-q", "-u"], &["--mask", "-U", "--context", "-o", "--output"])?;
-    let [fa, fb] = &a.rest[..] else { return fail("needs A and B") };
+/// What -w, -b, -i, -t and --mask ignore.
+fn diff_options(a: &Args) -> Res<crate::diff::DiffOptions> {
     let mask = match a.opt(&["--mask"]) {
         Some(m) => Some(regex_automata::meta::Regex::new(m).map_err(|e| Fail(format!("--mask: {e}")))?),
         None => None,
     };
-    let opts = crate::diff::DiffOptions { whitespace: a.flag(&["-w", "-b"]), case: a.flag(&["-i"]), timestamps: a.flag(&["-t"]), mask };
+    Ok(crate::diff::DiffOptions { whitespace: a.flag(&["-w", "-b"]), case: a.flag(&["-i"]), timestamps: a.flag(&["-t"]), mask })
+}
+
+fn cmd_only_in(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["-w", "-b", "-i", "-t", "--count"], &["--mask", "-o", "--output"])?;
+    let [fa, fb] = &a.rest[..] else { return fail("needs A and B") };
+    let opts = diff_options(&a)?;
+    let (ba, _) = open(Path::new(fa))?;
+    let (bb, _) = open(Path::new(fb))?;
+    let (ba, bb) = (ba.snapshot(), bb.snapshot());
+    let cancel = CancelToken::new();
+    let budget = crate::setdiff::BUDGET;
+    if a.flag(&["--count"]) {
+        let c = crate::setdiff::only_in(&ba, &bb, &opts, budget, &cancel, None, |_| true)?.ok_or_else(|| Fail("cancelled".into()))?;
+        writeln!(out, "{}", c.only)?;
+        return Ok((c.only > 0) as i32);
+    }
+    let mut only = 0u64;
+    with_output(a.opt(&["-o", "--output"]), out, |w| {
+        let mut err = None;
+        let c = crate::setdiff::only_in(&ba, &bb, &opts, budget, &cancel, None, |off| match crate::setdiff::write_line_at(&ba, off, w) {
+            Ok(()) => true,
+            Err(e) => {
+                err = Some(e);
+                false
+            }
+        })?;
+        if let Some(e) = err {
+            return Err(e.into());
+        }
+        only = c.map(|c| c.only).unwrap_or(0);
+        Ok(())
+    })?;
+    Ok((only > 0) as i32)
+}
+
+fn cmd_diff(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["-w", "-b", "-i", "-t", "-q", "-u"], &["--mask", "-U", "--context", "-o", "--output"])?;
+    let [fa, fb] = &a.rest[..] else { return fail("needs A and B") };
+    let opts = diff_options(&a)?;
     let context = match a.opt(&["-U", "--context"]) {
         Some(n) => n.parse::<u64>().map_err(|_| Fail(format!("-U needs a number of lines, not {n}")))?,
         None => 3,
@@ -1014,6 +1056,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "jsonl" => cmd_jsonl(rest, out),
         "jsondiff" => cmd_jsondiff(rest, out),
         "diff" => cmd_diff(rest, out),
+        "only-in" => cmd_only_in(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
             return 0;
@@ -1173,6 +1216,18 @@ mod tests {
         assert_eq!(run_args(&["diff", &a, &a]), (0, String::new(), String::new()));
         assert_eq!(run_args(&["diff", &a, &a, "-q"]).0, 0);
         assert_eq!(run_args(&["diff", &a, &b, "--mask", "("]).0, 2);
+    }
+
+    #[test]
+    fn lines_only_in_one_file() {
+        let d = tempfile::tempdir().unwrap();
+        let a = file(&d, "a.log", b"09:00:01 start job=1\n09:00:02 load\n09:00:03 crash\n09:00:04 load\n");
+        let b = file(&d, "b.log", b"10:15:00 load\n10:15:01 start job=7\n");
+        assert_eq!(run_args(&["only-in", &a, &b]), (1, "09:00:01 start job=1\n09:00:02 load\n09:00:03 crash\n09:00:04 load\n".into(), String::new()));
+        let masked = ["only-in", &a, &b, "-t", "--mask", "job=[0-9]+"];
+        assert_eq!(run_args(&masked), (1, "09:00:03 crash\n".into(), String::new()));
+        assert_eq!(run_args(&[&masked[..], &["--count"]].concat()), (1, "1\n".into(), String::new()));
+        assert_eq!(run_args(&["only-in", &b, &a, "-t", "--mask", "job=[0-9]+"]), (0, String::new(), String::new()));
     }
 
     #[test]

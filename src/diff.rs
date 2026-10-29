@@ -113,12 +113,12 @@ pub struct DiffOptions {
 }
 
 impl DiffOptions {
-    fn plain(&self) -> bool {
+    pub(crate) fn plain(&self) -> bool {
         !self.whitespace && !self.case && !self.timestamps && self.mask.is_none()
     }
 
     /// The line as it is compared.
-    fn normalise(&self, line: &[u8]) -> Vec<u8> {
+    pub(crate) fn normalise(&self, line: &[u8]) -> Vec<u8> {
         let mut b: &[u8] = line;
         if self.timestamps {
             b = &b[crate::patterns::time_prefix(b)..];

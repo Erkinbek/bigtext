@@ -138,6 +138,7 @@ mod tests {
         "app" / "merge_logs.rs",
         "app" / "multi_cursor.rs",
         "app" / "nav.rs",
+        "app" / "only_in.rs",
         "app" / "ops.rs",
         "app" / "patterns_window.rs",
         "app" / "pivot.rs",

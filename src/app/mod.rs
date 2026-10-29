@@ -31,6 +31,7 @@ pub mod match_values;
 pub mod merge_logs;
 pub mod multi_cursor;
 pub mod nav;
+pub mod only_in;
 pub mod ops;
 pub mod patterns_window;
 pub mod pivot;
@@ -262,6 +263,8 @@ pub struct BigTextApp {
     pub diff_switches: extras::DiffSwitches,
     /// View → Compare side by side.
     pub side_by_side: bool,
+    pub only_in_dialog: Option<only_in::OnlyInDialog>,
+    pub only_in: Option<only_in::OnlyInResults>,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -403,6 +406,8 @@ impl BigTextApp {
             diff_pending: None,
             diff_switches: extras::DiffSwitches::default(),
             side_by_side: false,
+            only_in_dialog: None,
+            only_in: None,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1432,6 +1437,9 @@ impl eframe::App for BigTextApp {
         if self.diff.is_some() {
             egui::Panel::bottom("diff").resizable(true).default_size(200.0).show(ui, |ui| self.diff_panel(ui));
         }
+        if self.only_in.is_some() {
+            egui::Panel::bottom("only-in").resizable(true).default_size(220.0).show(ui, |ui| self.only_in_panel(ui));
+        }
         if self.docs.get(self.active).is_some_and(|d| d.banner.is_some()) {
             egui::Panel::top("banner").show_separator_line(false).show(ui, |ui| self.banner(ui));
         }
@@ -1531,6 +1539,7 @@ impl eframe::App for BigTextApp {
         self.patterns_window(&ctx);
         self.values_window(&ctx);
         self.join_window(&ctx);
+        self.only_in_window(&ctx);
         self.pivot_window(&ctx);
         self.derive_window(&ctx);
         self.json_fields_window(&ctx);

@@ -159,6 +159,10 @@ Single self-contained binary, no runtime dependencies.
   streamed, any size); **File → Apply patch…** applies a .diff/.patch to the document as one undo
   step, finding a hunk up to 4,096 lines away when it matches only one place there and listing
   the hunks it could not place.
+- **Lines only in this file…** (Search): the lines of one open file that occur nowhere in another,
+  whatever their order, listed below the text with jumps, Save lines… and Copy lines; ignore
+  timestamps and mask ids to compare two runs of a job. Works on files of any size (the other
+  file's line hashes spill to disk past 25 million). `bigtext only-in A B -t --mask RE`.
 - **Log tools**: a **level bar** above logs (ERROR / WARN / INFO / DEBUG lines in the filter view,
   F8 / Shift+F8 to the next / previous error); **Search → Time histogram** (Ctrl+Shift+H), a bar
   chart of lines and errors per second, minute, hour or day, click a bar to go there;
