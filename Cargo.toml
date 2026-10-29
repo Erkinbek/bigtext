@@ -51,10 +51,13 @@ ureq = "3.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
-zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs", "deflate64", "bzip2", "lzma", "xz"] }
 flate2 = "1"
 tar = { version = "0.4", default-features = false }
 ruzstd = "0.9"
+# .xz and .bz2 logs (pure Rust).
+lzma-rust2 = { version = "0.23", default-features = false, features = ["std", "xz", "optimization"] }
+bzip2 = "0.6"
 skrifa = "0.44"
 
 [build-dependencies]

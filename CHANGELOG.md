@@ -58,6 +58,18 @@ All notable changes to BigText. Each release on
 - A followed file is read in chunks instead of mapped, so the writer can truncate it on Windows
   and a shrinking file cannot crash BigText with SIGBUS on Linux and macOS.
 
+### Files
+
+- **Archives open**: a `.zip`, `.tar`, `.tar.gz` / `.tgz`, `.tar.zst`, `.tar.xz` or `.tar.bz2`
+  lists its files in a picker (name, size, date; type to filter, arrows and Enter to open), and
+  the file picked is unpacked into a temporary read-only copy like a `.gz`, titled
+  `bundle.zip › app.log`. A compressed file inside the archive is unpacked as well, an archive
+  with a single file skips the picker, and sessions reopen the same file of the archive. A
+  `.tgz` used to open as one unpacked `.tar`; it now lists its files.
+- **`.xz` and `.bz2`** files open directly (pure-Rust decoders; several streams back to back,
+  as `xz` and `bzip2` write them, are read as one). Zip members compressed with Deflate64,
+  bzip2, LZMA or xz can be read too.
+
 ### Command line
 
 - **Script commands without a window**, in the new console program **`bigtext-cli`** (also

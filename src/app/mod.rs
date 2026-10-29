@@ -1,6 +1,7 @@
 //! Application shell: tabs, menus, dialogs, status bar and background-job plumbing.
 
 pub mod column_chart;
+pub mod archive;
 pub mod columns;
 pub mod commands;
 pub mod convert;
@@ -86,6 +87,8 @@ pub struct Opened {
     pub read_only: bool,
     /// The compressed file that `path` was unpacked from.
     pub unpacked: Option<PathBuf>,
+    /// The archive's file it is, when `unpacked` is an archive.
+    pub member: Option<String>,
 }
 
 pub enum Msg {
@@ -99,6 +102,8 @@ pub enum Msg {
     ReplaceTooMany { doc: u64, version: u64, matcher: Arc<Matcher>, template: Template, range: std::ops::Range<u64> },
     Preview { doc: u64, items: Vec<(u64, String, String)>, lines: Vec<u64> },
     FileChanged(Box<FileChange>),
+    /// An archive's files, for the picker: (tab, archive, files).
+    ArchiveListed(Box<(u64, PathBuf, Vec<bigtext::decompress::Member>)>),
     Update(update::Event),
     ColumnsDeleted(Box<columns::ColumnsDeleted>),
     TaskDone { id: u64, outcome: tasks::TaskOutcome },
@@ -267,6 +272,7 @@ pub struct BigTextApp {
     pub side_by_side: bool,
     pub only_in_dialog: Option<only_in::OnlyInDialog>,
     pub only_in: Option<only_in::OnlyInResults>,
+    pub archive_picker: Option<archive::ArchivePicker>,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -317,10 +323,42 @@ fn open_worker(path: &Path, forced: Option<Encoding>, mode: OpenMode) -> Result<
             None => encoding::detect(&sample, whole),
         }
     };
-    Ok(Opened { source: Arc::new(src), detected: det, elapsed: t.elapsed(), path: canonical.clone(), read_only, unpacked: None })
+    Ok(Opened { source: Arc::new(src), detected: det, elapsed: t.elapsed(), path: canonical.clone(), read_only, unpacked: None, member: None })
 }
 
 /// Opens `path`, unpacking it into a temporary file first when it is compressed.
+/// What went wrong unpacking `path`.
+fn unpack_error(path: &Path, e: std::io::Error) -> String {
+    match e.kind() {
+        std::io::ErrorKind::InvalidData | std::io::ErrorKind::NotFound => format!("{}: {e}", file::display_path(path)),
+        _ => i18n::trf("Could not unpack into {dir}: {e}", &[("dir", &file::display_path(&bigtext::decompress::temp_dir())), ("e", &e.to_string())]),
+    }
+}
+
+/// Unpacks the archive's file `member` (and a compressed file inside it) and opens the copy.
+fn open_member(path: &Path, member: &str, forced: Option<Encoding>, cancel: &CancelToken, progress: &jobs::Progress) -> Result<Opened, String> {
+    use bigtext::decompress as dc;
+    let archive = dc::detect_archive(path).ok_or_else(|| i18n::trf("{file} is not an archive any more.", &[("file", &file::display_path(path))]))?;
+    let cancelled = || i18n::tr("Unpacking was cancelled.").to_string();
+    let mut temp = dc::unpack_member(path, archive, member, cancel, progress).map_err(|e| unpack_error(path, e))?.ok_or_else(cancelled)?;
+    if let Some(kind) = dc::detect(&temp) {
+        let inner = dc::unpack(&temp, kind, cancel, progress);
+        dc::remove_temp(&temp);
+        temp = inner.map_err(|e| unpack_error(path, e))?.ok_or_else(cancelled)?;
+    }
+    match open_worker(&temp, forced, OpenMode::Auto) {
+        Ok(mut o) => {
+            o.unpacked = Some(path.to_path_buf());
+            o.member = Some(member.to_string());
+            Ok(o)
+        }
+        Err(e) => {
+            dc::remove_temp(&temp);
+            Err(e)
+        }
+    }
+}
+
 fn open_or_unpack(path: &Path, forced: Option<Encoding>, cancel: &CancelToken, progress: &jobs::Progress) -> Result<Opened, String> {
     let Some(kind) = bigtext::decompress::detect(path) else { return open_worker(path, forced, OpenMode::Auto) };
     match bigtext::decompress::unpack(path, kind, cancel, progress) {
@@ -423,6 +461,7 @@ impl BigTextApp {
             side_by_side: false,
             only_in_dialog: None,
             only_in: None,
+            archive_picker: None,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -543,7 +582,9 @@ impl BigTextApp {
 
     pub fn open_path(&mut self, path: PathBuf) {
         let canon = std::path::absolute(&path).unwrap_or(path);
-        if let Some(i) = self.docs.iter().position(|d| d.path.as_deref().or(d.unpacked_from.as_deref()).is_some_and(|p| same_path(p, &canon))) {
+        // An archive opens again for another of its files.
+        let archive = bigtext::decompress::detect_archive(&canon).is_some();
+        if let Some(i) = self.docs.iter().position(|d| !archive && d.path.as_deref().or(d.unpacked_from.as_deref()).is_some_and(|p| same_path(p, &canon))) {
             self.active = i;
             return;
         }
@@ -557,6 +598,25 @@ impl BigTextApp {
         self.spawn_open(id, canon, None);
     }
 
+    /// Opens `path`, or the archive `path`'s file `member` without asking which.
+    pub(crate) fn open_path_member(&mut self, path: PathBuf, member: Option<String>) {
+        let Some(member) = member else { return self.open_path(path) };
+        let canon = std::path::absolute(&path).unwrap_or(path);
+        let same = |d: &Document| d.member.as_deref() == Some(member.as_str()) && d.unpacked_from.as_deref().is_some_and(|p| same_path(p, &canon));
+        if let Some(i) = self.docs.iter().position(same) {
+            self.active = i;
+            return;
+        }
+        let id = self.alloc_id();
+        let mut d = Document::loading(id, canon.clone());
+        let archive = canon.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        d.title = format!("{archive} › {}", bigtext::decompress::member_file_name(&member));
+        d.member = Some(member.clone());
+        self.docs.push(d);
+        self.active = self.docs.len() - 1;
+        self.spawn_open_member(id, canon, Some(member));
+    }
+
     fn spawn_open(&mut self, id: u64, path: PathBuf, forced: Option<Encoding>) {
         let tx = self.tx.clone();
         let waker = self.waker.clone();
@@ -565,7 +625,48 @@ impl BigTextApp {
             d.unpacking = Some((progress.clone(), cancel.clone()));
         }
         jobs::spawn("open", move || {
-            let result = open_or_unpack(&path, forced, &cancel, &progress);
+            // An archive lists its files first; one file opens without asking.
+            let mut member = None;
+            if let Some(a) = bigtext::decompress::detect_archive(&path) {
+                match bigtext::decompress::list_members(&path, a, &cancel, &progress) {
+                    Ok(Some(m)) if m.len() == 1 => member = Some(m[0].name.clone()),
+                    Ok(Some(m)) if !m.is_empty() => {
+                        let _ = tx.send(Msg::ArchiveListed(Box::new((id, path, m))));
+                        waker();
+                        return;
+                    }
+                    r => {
+                        let result = match r {
+                            Ok(Some(_)) => Err(i18n::tr("The archive has no files.").into()),
+                            Ok(None) => Err(i18n::tr("Unpacking was cancelled.").into()),
+                            Err(e) => Err(unpack_error(&path, e)),
+                        };
+                        let _ = tx.send(Msg::Opened { doc: id, result });
+                        waker();
+                        return;
+                    }
+                }
+            }
+            let result = match &member {
+                Some(m) => open_member(&path, m, forced, &cancel, &progress),
+                None => open_or_unpack(&path, forced, &cancel, &progress),
+            };
+            let _ = tx.send(Msg::Opened { doc: id, result });
+            waker();
+        });
+    }
+
+    /// Unpacks and opens the archive's file `member` into the loading tab `id`.
+    fn spawn_open_member(&mut self, id: u64, path: PathBuf, member: Option<String>) {
+        let Some(member) = member else { return self.spawn_open(id, path, None) };
+        let tx = self.tx.clone();
+        let waker = self.waker.clone();
+        let (progress, cancel) = (jobs::Progress::default(), CancelToken::new());
+        if let Some(d) = self.doc_mut(id) {
+            d.unpacking = Some((progress.clone(), cancel.clone()));
+        }
+        jobs::spawn("open", move || {
+            let result = open_member(&path, &member, None, &cancel, &progress);
             let _ = tx.send(Msg::Opened { doc: id, result });
             waker();
         });
@@ -597,6 +698,11 @@ impl BigTextApp {
                                 d.open_elapsed = Some(o.elapsed);
                                 d.read_only = d.read_only || o.read_only;
                                 d.path = Some(o.path.clone());
+                                if let Some(m) = &o.member {
+                                    let archive = o.unpacked.as_deref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                                    d.title = format!("{archive} › {}", bigtext::decompress::member_file_name(m));
+                                    d.member = Some(m.clone());
+                                }
                                 if let Some(orig) = o.unpacked {
                                     d.read_only = true;
                                     d.banner = Some(Banner::Info(i18n::trf(
@@ -660,6 +766,10 @@ impl BigTextApp {
                 Msg::ReplaceBatch { doc, version, add_len, pieces, add, count } => self.on_replace_batch(doc, version, add_len, pieces, add, count),
                 Msg::ReplaceTooMany { doc, version, matcher, template, range } => self.on_replace_too_many(doc, version, matcher, template, range),
                 Msg::Preview { doc, items, lines } => self.preview = Some((doc, items, lines)),
+                Msg::ArchiveListed(a) => {
+                    let (doc, archive, members) = *a;
+                    self.on_archive_listed(doc, archive, members);
+                }
                 Msg::FileChanged(c) => {
                     let (tx, waker) = (self.tx.clone(), self.waker.clone());
                     if let Some(d) = self.doc_mut(c.doc) {
@@ -727,7 +837,7 @@ impl BigTextApp {
         CTX.with(|c| c.borrow().clone())
     }
 
-    fn close_tab(&mut self, id: u64, force: bool) {
+    pub(crate) fn close_tab(&mut self, id: u64, force: bool) {
         let Some(i) = self.docs.iter().position(|d| d.id == id) else { return };
         if !force && self.docs[i].is_modified() {
             self.confirm = Some(Confirm {
@@ -1613,6 +1723,7 @@ impl eframe::App for BigTextApp {
         self.join_window(&ctx);
         self.table_compare_window(&ctx);
         self.only_in_window(&ctx);
+        self.archive_window(&ctx);
         self.pivot_window(&ctx);
         self.derive_window(&ctx);
         self.json_fields_window(&ctx);

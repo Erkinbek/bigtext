@@ -217,6 +217,25 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("patch-me.txt"), &base)?;
+    {
+        use std::io::Write as _;
+        let zip = |name: &str, files: &[(&str, Vec<u8>)]| -> std::io::Result<()> {
+            let mut z = zip::ZipWriter::new(std::fs::File::create(dir.join(name))?);
+            for (n, data) in files {
+                z.start_file(*n, zip::write::SimpleFileOptions::default()).map_err(std::io::Error::other)?;
+                z.write_all(data)?;
+            }
+            z.finish().map_err(std::io::Error::other)?;
+            Ok(())
+        };
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        gz.write_all(b"packed line\n")?;
+        zip("bundle.zip", &[("logs/app.log", b"one\ntwo\n".to_vec()), ("logs/old/app.log.gz", gz.finish()?), ("readme.txt", b"hi\n".to_vec())])?;
+        zip("single.zip", &[("only.log", b"only\n".to_vec())])?;
+        let mut xz = lzma_rust2::XzWriter::new(Vec::new(), lzma_rust2::XzOptions::with_preset(1)).map_err(std::io::Error::other)?;
+        xz.write_all(b"from xz\n")?;
+        std::fs::write(dir.join("small.log.xz"), xz.finish().map_err(std::io::Error::other)?)?;
+    }
     std::fs::write(dir.join("rot.log"), (0..500).map(|i| format!("old line {i}\n")).collect::<String>())?;
     std::fs::write(dir.join("cmp-a.csv"), "id,name,qty\n1,apple,5\n2,banana,7\n3,cherry,9\n")?;
     std::fs::write(dir.join("cmp-b.csv"), "id,qty,name\n3,9,cherry\n1,6,apple\n4,1,date\n")?;
@@ -1068,6 +1087,45 @@ impl SelfTest {
             let named = to.as_deref().and_then(|p| p.file_name()).is_some_and(|n| n == "rot.log.1");
             d.follow = false;
             check(named && d.rotations >= 2, format!("rotated to {to:?}, rotations {}", d.rotations))
+        }));
+        s("an archive lists its files; the one picked (a .gz inside) opens unpacked", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("bundle.zip"));
+                return Step::Wait;
+            }
+            let waited = c.waited() > Duration::from_secs(8);
+            if c.mark == 0 {
+                let n = app.archive_picker.as_ref().map(|p| p.members.len());
+                if n != Some(3) {
+                    return if waited { Step::Fail(format!("picker {n:?}")) } else { Step::Wait };
+                }
+                app.pick_archive_member("logs/old/app.log.gz");
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let Some(i) = app.docs.iter().position(|d| d.title == "bundle.zip › app.log.gz" && d.is_ready()) else {
+                return if waited { Step::Fail(format!("tabs {:?}", app.docs.iter().map(|d| d.title.clone()).collect::<Vec<_>>())) } else { Step::Wait };
+            };
+            app.active = i;
+            let d = doc(app);
+            let (ro, temp, member) = (d.read_only, d.temporary, d.member.clone());
+            let t = text(app);
+            check(t == "packed line\n" && ro && temp && member.as_deref() == Some("logs/old/app.log.gz"), format!("text {t:?}, read-only {ro}, temporary {temp}, member {member:?}"))
+        }));
+        s("a zip with one file and an .xz file open straight away", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("single.zip"));
+                app.open_path(c.file("small.log.xz"));
+                return Step::Wait;
+            }
+            let text_of = |app: &BigTextApp, title: &str| {
+                app.docs.iter().find(|d| d.title == title && d.is_ready()).and_then(|d| d.buf.read(0..d.buf.len())).map(|b| String::from_utf8_lossy(&b).into_owned())
+            };
+            let (zip, xz) = (text_of(app, "single.zip › only.log"), text_of(app, "small.log.xz"));
+            if zip.is_none() || xz.is_none() {
+                return if c.waited() > Duration::from_secs(8) { Step::Fail(format!("zip {zip:?}, xz {xz:?}")) } else { Step::Wait };
+            }
+            check(zip.as_deref() == Some("only\n") && xz.as_deref() == Some("from xz\n") && app.archive_picker.is_none(), format!("zip {zip:?}, xz {xz:?}"))
         }));
         s("compare files (streaming diff)", Box::new(|app, c| {
             if c.first() {

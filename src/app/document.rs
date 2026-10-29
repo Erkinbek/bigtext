@@ -182,6 +182,8 @@ pub struct Document {
     pub diff_marks: Vec<u64>,
     /// The compressed file this document is an unpacked copy of (`path` is the temporary copy).
     pub unpacked_from: Option<PathBuf>,
+    /// The file of the archive `unpacked_from` this is a copy of.
+    pub member: Option<String>,
     /// `path` is a temporary copy (unpacked archive, standard input): Save means Save As, and
     /// the copy is deleted when the tab closes.
     pub temporary: bool,
@@ -302,6 +304,7 @@ impl Document {
             bookmarks: Vec::new(),
             diff_marks: Vec::new(),
             unpacked_from: None,
+            member: None,
             temporary: false,
             unpacking: None,
             sel_chars: std::cell::Cell::new(None),

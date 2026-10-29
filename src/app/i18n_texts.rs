@@ -1000,4 +1000,12 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["The log was rotated; following the new file.", "Лог ротирован; слежение продолжается в новом файле.", "Log aylantirildi; yangi fayl kuzatilmoqda."],
     ["Open {file}", "Открыть {file}", "{file} ni ochish"],
     ["The file the earlier lines most likely went to", "Файл, в который, скорее всего, ушли прежние строки", "Oldingi qatorlar katta ehtimol bilan ko'chgan fayl"],
+    // Archives.
+    ["Open a file from {archive}", "Открыть файл из {archive}", "{archive} ichidan fayl ochish"],
+    ["filter by name", "фильтр по имени", "nom bo'yicha saralash"],
+    ["{n} of {total} files", "{n} из {total} файлов", "{total} ta fayldan {n} tasi"],
+    ["Only the first {n} files are listed.", "Показаны только первые {n} файлов.", "Faqat dastlabki {n} ta fayl ko'rsatilgan."],
+    ["A compressed file inside (.gz, .zst, .xz, .bz2) is unpacked too.", "Сжатый файл внутри (.gz, .zst, .xz, .bz2) тоже распаковывается.", "Ichidagi siqilgan fayl (.gz, .zst, .xz, .bz2) ham ochiladi."],
+    ["The archive has no files.", "В архиве нет файлов.", "Arxivda fayl yo'q."],
+    ["{file} is not an archive any more.", "{file} больше не архив.", "{file} endi arxiv emas."],
 ];

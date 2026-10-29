@@ -135,7 +135,7 @@ impl BigTextApp {
             if i == self.active {
                 s.active = s.tabs.len();
             }
-            let tab = TabState { path: PathBuf::from(file::display_path(path)), caret: d.view.caret, top: d.view.top, wrap: d.view.wrap, bookmarks: d.bookmarks.clone() };
+            let tab = TabState { path: PathBuf::from(file::display_path(path)), member: d.member.clone(), caret: d.view.caret, top: d.view.top, wrap: d.view.wrap, bookmarks: d.bookmarks.clone() };
             let filter = d.filter.as_ref().map(|f| SavedFilter { query: f.query.clone(), invert: f.spec.invert, levels: f.levels, terms: f.terms.iter().map(|t| (t.query.clone(), t.negated)).collect() });
             s.tabs.push((tab, d.pinned, filter));
         }
@@ -175,7 +175,7 @@ impl BigTextApp {
         }
         let mut active = None;
         for (i, (t, pinned, filter)) in s.tabs.into_iter().enumerate() {
-            self.open_path(t.path.clone());
+            self.open_path_member(t.path.clone(), t.member.clone());
             let Some(d) = self.docs.get_mut(self.active) else { continue };
             d.pinned |= pinned;
             if i == s.active {
@@ -298,8 +298,8 @@ mod tests {
     fn round_trip() {
         let s = Session {
             tabs: vec![
-                (TabState { path: PathBuf::from(r"C:\logs\a|b.log"), caret: 10, top: 5, wrap: true, bookmarks: vec![1, 2] }, true, Some(SavedFilter { query: Query { pattern: "ERROR|WARN".into(), regex: true, case_sensitive: true, whole_word: false, dot_all: false }, invert: true, levels: None, terms: vec![(Query { pattern: "db|x".into(), regex: false, case_sensitive: true, whole_word: true, dot_all: false }, true), (Query { pattern: "user=1".into(), ..Query::default() }, false)] })),
-                (TabState { path: PathBuf::from("/var/log/x.log"), caret: 0, top: 0, wrap: false, bookmarks: vec![] }, false, Some(SavedFilter { query: Query::default(), invert: false, levels: Some(Levels::only(Level::Error).toggled(Level::Warn)), terms: Vec::new() })),
+                (TabState { path: PathBuf::from(r"C:\logs\a|b.log"), member: None, caret: 10, top: 5, wrap: true, bookmarks: vec![1, 2] }, true, Some(SavedFilter { query: Query { pattern: "ERROR|WARN".into(), regex: true, case_sensitive: true, whole_word: false, dot_all: false }, invert: true, levels: None, terms: vec![(Query { pattern: "db|x".into(), regex: false, case_sensitive: true, whole_word: true, dot_all: false }, true), (Query { pattern: "user=1".into(), ..Query::default() }, false)] })),
+                (TabState { path: PathBuf::from("/var/log/x.log"), member: Some("x/y.log".into()), caret: 0, top: 0, wrap: false, bookmarks: vec![] }, false, Some(SavedFilter { query: Query::default(), invert: false, levels: Some(Levels::only(Level::Error).toggled(Level::Warn)), terms: Vec::new() })),
             ],
             active: 1,
             marks: vec![Mark { query: Query { pattern: "id=\\d+".into(), regex: true, ..Default::default() }, color: 2, enabled: true }],

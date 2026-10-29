@@ -29,10 +29,14 @@ Single self-contained binary, no runtime dependencies.
 - **Sparse, incremental line index**: one `u64` per 64 KB, built in the background from the top.
   Go to line and the scrollbar work immediately (estimated positions, shown with `~`, refined
   when the index catches up).
-- **Compressed files** (`.gz`, `.zst`, also multi-member/multi-frame as log rotators write
-  them): unpacked once, streaming, into a temporary copy (with progress and cancel) that then
-  opens like any other file. The copy is read-only; Save becomes Save As. It is deleted when
-  the tab closes, and the session remembers the compressed file.
+- **Compressed files** (`.gz`, `.zst`, `.xz`, `.bz2`, also multi-member/multi-frame as log
+  rotators write them): unpacked once, streaming, into a temporary copy (with progress and
+  cancel) that then opens like any other file. The copy is read-only; Save becomes Save As. It
+  is deleted when the tab closes, and the session remembers the compressed file.
+- **Archives** (`.zip`, `.tar`, `.tar.gz` / `.tgz`, `.tar.zst`, `.tar.xz`, `.tar.bz2`): a picker
+  lists the files with their sizes and dates (filter, arrows, Enter), and the one picked opens
+  as `bundle.zip › app.log`; a compressed file inside (`app.log.gz`) is unpacked too. An archive
+  with one file opens straight away, and the session remembers which file was open.
 - **Encodings**: BOM, UTF-8, UTF-16 LE/BE (with or without BOM), heuristic Windows-1251 /
   Windows-1252 / ISO-8859-1; File → Reopen with encoding. Invalid bytes show as U+FFFD, control
   characters and NUL as dim placeholders. **File → Save with encoding** writes a copy in

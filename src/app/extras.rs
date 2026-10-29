@@ -23,6 +23,8 @@ pub const DIFF_CAP: usize = 100_000;
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TabState {
     pub path: PathBuf,
+    /// The file of the archive `path` that was open.
+    pub member: Option<String>,
     pub caret: u64,
     pub top: u64,
     pub wrap: bool,
@@ -87,20 +89,30 @@ pub(super) fn mark_line(m: &super::marks::Mark) -> String {
     format!("{}|{}|{}|{}", if m.enabled { "1" } else { "0" }, m.color, query_flags(&m.query), m.query.pattern)
 }
 
-/// "caret|top|wrap|bookmarks|path".
+/// Between an archive's path and its file in a tab line.
+const MEMBER_SEP: char = '\u{1f}';
+
+/// "caret|top|wrap|bookmarks|path", the path followed by U+001F and the archive's file when
+/// it is one.
 pub(super) fn tab_line(t: &TabState) -> String {
     let bm: Vec<String> = t.bookmarks.iter().map(|x| x.to_string()).collect();
-    format!("{}|{}|{}|{}|{}", t.caret, t.top, if t.wrap { "1" } else { "0" }, bm.join(","), t.path.display())
+    let member = t.member.as_deref().map(|m| format!("{MEMBER_SEP}{m}")).unwrap_or_default();
+    format!("{}|{}|{}|{}|{}{member}", t.caret, t.top, if t.wrap { "1" } else { "0" }, bm.join(","), t.path.display())
 }
 
 pub(super) fn parse_tab(v: &str) -> Option<TabState> {
     let parts: Vec<&str> = v.splitn(5, '|').collect();
+    let (path, member) = match parts.get(4)?.split_once(MEMBER_SEP) {
+        Some((p, m)) => (p, Some(m.to_string())),
+        None => (parts[4], None),
+    };
     (parts.len() == 5).then(|| TabState {
         caret: parts[0].parse().unwrap_or(0),
         top: parts[1].parse().unwrap_or(0),
         wrap: parts[2] == "1",
         bookmarks: parts[3].split(',').filter_map(|x| x.parse().ok()).collect(),
-        path: PathBuf::from(parts[4]),
+        path: PathBuf::from(path),
+        member,
     })
 }
 
@@ -540,6 +552,7 @@ impl BigTextApp {
                 .filter_map(|d| {
                     Some(TabState {
                         path: PathBuf::from(file::display_path(d.unpacked_from.as_deref().or(d.path.as_deref())?)),
+                        member: d.member.clone(),
                         caret: d.view.caret,
                         top: d.view.top,
                         wrap: d.view.wrap,
@@ -592,7 +605,7 @@ impl BigTextApp {
         self.recent = p.recent;
         for t in p.tabs {
             let pinned = p.pinned.contains(&t.path);
-            self.open_path(t.path.clone());
+            self.open_path_member(t.path.clone(), t.member.clone());
             if let Some(d) = self.docs.last_mut() {
                 d.pinned = pinned;
                 d.restore = Some(Restore { caret: t.caret, top: t.top, wrap: t.wrap, bookmarks: t.bookmarks, ..Default::default() });
@@ -1128,7 +1141,10 @@ mod tests {
     fn session_roundtrip() {
         let p = Persisted {
             recent: vec![PathBuf::from(r"C:\logs\a.log"), PathBuf::from("/tmp/b|c.txt")],
-            tabs: vec![TabState { path: PathBuf::from(r"D:\big file.txt"), caret: 123, top: 100, wrap: true, bookmarks: vec![0, 55, 1 << 40] }],
+            tabs: vec![
+                TabState { path: PathBuf::from(r"D:\big file.txt"), member: None, caret: 123, top: 100, wrap: true, bookmarks: vec![0, 55, 1 << 40] },
+                TabState { path: PathBuf::from(r"D:\logs|old.zip"), member: Some("logs/app.log.gz".into()), caret: 1, top: 0, wrap: false, bookmarks: vec![] },
+            ],
             active: 0,
             font_size: Some(16.0),
             dark: Some(false),
@@ -1177,7 +1193,9 @@ mod tests {
         let q = parse(&serialize(&p));
         assert_eq!((q.marks.clone(), q.history.clone(), q.keys.clone()), (p.marks.clone(), p.history.clone(), p.keys.clone()));
         assert_eq!(q.recent, p.recent);
-        assert_eq!(q.tabs.len(), 1);
+        assert_eq!(q.tabs.len(), 2);
+        assert_eq!((q.tabs[1].path.clone(), q.tabs[1].member.as_deref()), (PathBuf::from(r"D:\logs|old.zip"), Some("logs/app.log.gz")));
+        assert_eq!(q.tabs[0].member, None);
         let t = &q.tabs[0];
         assert_eq!((t.caret, t.top, t.wrap, t.bookmarks.clone(), t.path.clone()), (123, 100, true, vec![0, 55, 1 << 40], PathBuf::from(r"D:\big file.txt")));
         assert_eq!((q.font_size, q.dark, q.backup_on_save, q.syntax), (Some(16.0), Some(false), Some(true), Some(false)));
