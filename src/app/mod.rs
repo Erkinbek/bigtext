@@ -52,6 +52,7 @@ pub mod shell;
 pub mod status_bar;
 pub mod tabs;
 pub mod tasks;
+pub mod theme;
 pub mod text_tools;
 pub mod time_range;
 pub mod timeline;
@@ -136,7 +137,11 @@ pub enum Msg {
 
 pub struct Settings {
     pub font_size: f32,
-    pub dark: bool,
+    pub theme: theme::Theme,
+    /// Colour-blind-safe colours.
+    pub cvd: bool,
+    /// Interface scale in per cent (menus and dialogs; the text has its own size).
+    pub scale: u16,
     pub show_perf: bool,
     pub backup_on_save: bool,
     pub syntax: bool,
@@ -463,7 +468,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None, status: Default::default() },
+            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None, status: Default::default() },
             goto: None,
             confirm: None,
             error: None,
@@ -571,14 +576,14 @@ impl BigTextApp {
             if start.files.is_empty() && start.stdin.is_none() {
                 app.restore_session(state);
             } else {
+                app.restore_look(&state);
                 app.recent = state.recent;
                 app.settings.font_size = state.font_size.unwrap_or(14.0).clamp(6.0, 72.0);
-                app.settings.dark = state.dark.unwrap_or(true);
                 app.settings.syntax = state.syntax.unwrap_or(true);
             }
             app.start_recovery(recovery::default_dir());
         }
-        cc.egui_ctx.set_theme(if app.settings.dark { egui::Theme::Dark } else { egui::Theme::Light });
+        app.apply_look(&cc.egui_ctx);
         app.apply_start(start);
         if app.docs.is_empty() {
             app.new_doc();

@@ -141,7 +141,7 @@ impl BigTextApp {
             let g = t.data.lock().unwrap();
             let stale = t.version != d.version;
             let hits_color = match t.count {
-                Count::Search => Color32::from_rgb(220, 170, 0),
+                Count::Search => super::theme::role(Color32::from_rgb(220, 170, 0), super::theme::Tone::Found, dark),
                 _ => highlight::color(Kind::Error, dark),
             };
             let mut picked = count;
@@ -161,7 +161,7 @@ impl BigTextApp {
                     }
                 }
                 if stale {
-                    ui.colored_label(Color32::from_rgb(220, 150, 60), tr("stale (document changed)"));
+                    ui.colored_label(super::theme::warn_text(ui), tr("stale (document changed)"));
                     if ui.small_button(tr("Run again")).clicked() {
                         rerun = true;
                     }

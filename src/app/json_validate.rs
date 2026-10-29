@@ -4,7 +4,6 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use egui::Color32;
 
 use bigtext::jobs::{self, CancelToken, Progress, Throttle};
 use bigtext::json_check::{self, JsonChecked};
@@ -110,7 +109,7 @@ impl BigTextApp {
             ui.horizontal(|ui| {
                 if g.done && n == 0 && g.error.is_none() {
                     let what = if r.lines { trf("{lines} lines", &[("lines", &fmt_count(g.checked.lines))]) } else { trf("{n} values", &[("n", &fmt_count(g.checked.values))]) };
-                    ui.colored_label(Color32::from_rgb(90, 180, 90), trf("Valid JSON: {what}", &[("what", &what)]));
+                    ui.colored_label(super::theme::ok_text(ui), trf("Valid JSON: {what}", &[("what", &what)]));
                 } else {
                     ui.strong(trf("{n} JSON problems", &[("n", &fmt_count(n as u64))]));
                     if !r.lines && n > 0 {
@@ -135,7 +134,7 @@ impl BigTextApp {
                     }
                 }
                 if stale {
-                    ui.colored_label(Color32::from_rgb(220, 150, 60), tr("stale (document changed)"));
+                    ui.colored_label(super::theme::warn_text(ui), tr("stale (document changed)"));
                     if ui.small_button(tr("Run again")).clicked() {
                         rerun = Some(r.lines);
                     }

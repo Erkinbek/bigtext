@@ -7,6 +7,15 @@ All notable changes to BigText. Each release on
 
 ### Interface
 
+- **High-contrast and colour-blind-safe themes**: View → Theme ▸ Dark, Light, High contrast dark
+  or High contrast light (pure black or white, 1.5 px outlines, an opaque selection, a bright
+  focus colour), and **Colour-blind-safe colours** (Okabe-Ito) for syntax and log levels (ERROR
+  vermillion, WARN yellow, INFO blue, so they differ in lightness too), highlight marks, merged
+  logs, scrollbar marks, search and bracket fills, diff colours, the histogram and the status
+  bar. With high contrast, painted colours move away from the background and fills are stronger.
+  **View → Interface scale ▸ 100–200 %** enlarges menus and dialogs while the text keeps its own
+  size. All three are kept with the settings and exported with them; View → Dark theme still
+  flips between dark and light, and every theme is in the command palette.
 - **The status bar is clickable**: Ln/Col opens Go to line, the offset Go to byte offset, the
   encoding a Reopen with encoding list (with Auto-detect), LF / CRLF a menu of the line ending to
   save with (shown as `CRLF → LF` while a conversion is set), READ-ONLY turns it off (not for a

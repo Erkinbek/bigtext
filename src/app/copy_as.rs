@@ -117,7 +117,7 @@ impl BigTextApp {
                     self.error = Some(tr("Copy as HTML works on up to 2 MB. Select a smaller part.").into());
                     return;
                 }
-                let html = html_block(&text, lang, self.settings.dark, Some(&caption));
+                let html = html_block(&text, lang, self.settings.theme.is_dark(), Some(&caption));
                 if let Err(e) = copy_html(&html, &text) {
                     ctx.copy_text(text);
                     self.notify(format!("{} ({e})", tr("HTML could not be put on the clipboard; copied as plain text")), None);

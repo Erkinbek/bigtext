@@ -1198,4 +1198,18 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Show in the status bar", "Показывать в строке состояния", "Holat qatorida ko'rsatish"],
     ["Time since the previous line", "Время от предыдущей строки", "Oldingi qatordan beri o'tgan vaqt"],
     ["{n} files", "Файлов: {n}", "{n} ta fayl"],
+    // Themes and interface scale.
+    ["Colour-blind-safe colours", "Цвета для дальтоников", "Rang ko'rlik uchun xavfsiz ranglar"],
+    ["Dark", "Тёмная", "To'q"],
+    ["High contrast dark", "Высококонтрастная тёмная", "Yuqori kontrastli to'q"],
+    ["High contrast light", "Высококонтрастная светлая", "Yuqori kontrastli och"],
+    ["Interface scale", "Масштаб интерфейса", "Interfeys masshtabi"],
+    ["Interface scale 100 %", "Масштаб интерфейса 100 %", "Interfeys masshtabi 100 %"],
+    ["Interface scale 125 %", "Масштаб интерфейса 125 %", "Interfeys masshtabi 125 %"],
+    ["Interface scale 150 %", "Масштаб интерфейса 150 %", "Interfeys masshtabi 150 %"],
+    ["Interface scale 175 %", "Масштаб интерфейса 175 %", "Interfeys masshtabi 175 %"],
+    ["Interface scale 200 %", "Масштаб интерфейса 200 %", "Interfeys masshtabi 200 %"],
+    ["Light", "Светлая", "Och"],
+    ["Menus and dialogs; the text has its own size (Ctrl+wheel)", "Меню и диалоги; у текста свой размер (Ctrl+колесо)", "Menyular va oynalar; matnning o'z o'lchami bor (Ctrl+g'ildirak)"],
+    ["Theme", "Тема", "Mavzu"],
 ];

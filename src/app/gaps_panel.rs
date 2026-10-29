@@ -6,7 +6,6 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use egui::Color32;
 
 use bigtext::gaps::{self, Gaps};
 use bigtext::jobs::{self, CancelToken, Progress};
@@ -128,7 +127,7 @@ impl BigTextApp {
                     }
                 }
                 if stale {
-                    ui.colored_label(Color32::from_rgb(220, 150, 60), tr("stale (document changed)"));
+                    ui.colored_label(super::theme::warn_text(ui), tr("stale (document changed)"));
                     if ui.small_button(tr("Run again")).clicked() {
                         rerun = true;
                     }
@@ -175,7 +174,7 @@ impl BigTextApp {
                         );
                         let mut rt = egui::RichText::new(text).font(font.clone());
                         if back {
-                            rt = rt.color(Color32::from_rgb(220, 150, 60));
+                            rt = rt.color(super::theme::warn_text(ui));
                         }
                         if ui.selectable_label(false, rt).clicked() && !stale {
                             jump = Some(gap.after);

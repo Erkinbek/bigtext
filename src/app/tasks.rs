@@ -174,7 +174,7 @@ impl BigTextApp {
                         clear = true;
                     }
                 }
-                ui.label(egui::RichText::new(&n.text).color(egui::Color32::from_rgb(90, 180, 90)));
+                ui.label(egui::RichText::new(&n.text).color(super::theme::ok_text(ui)));
                 ui.separator();
                 ui.ctx().request_repaint_after(Duration::from_millis(500));
             }

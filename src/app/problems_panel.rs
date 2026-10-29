@@ -5,7 +5,6 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use egui::Color32;
 
 use bigtext::csv_check::{self, Checked, Kind, Problem};
 use bigtext::jobs::{self, CancelToken, Progress, Throttle};
@@ -132,7 +131,7 @@ impl BigTextApp {
                     }
                 }
                 if stale {
-                    ui.colored_label(Color32::from_rgb(220, 150, 60), tr("stale (document changed)"));
+                    ui.colored_label(super::theme::warn_text(ui), tr("stale (document changed)"));
                 }
                 if (stale || g.done) && ui.small_button(tr("Run again")).clicked() {
                     rerun = true;

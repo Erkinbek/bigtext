@@ -412,7 +412,7 @@ impl BigTextApp {
             }
             let table = self.docs.get(self.active).is_some_and(|d| d.table);
             if let (Some(c), true) = (self.search.filter_column, table) {
-                ui.label(RichText::new(trf("in column {n}", &[("n", &(c + 1).to_string())])).color(Color32::from_rgb(90, 160, 220)))
+                ui.label(RichText::new(trf("in column {n}", &[("n", &(c + 1).to_string())])).color(super::theme::info_text(ui)))
                     .on_hover_text(tr("Filter looks at this column only (set from a column header's menu)"));
                 if ui.small_button("×").on_hover_text(tr("Filter in all columns")).clicked() {
                     self.search.filter_column = None;
@@ -516,7 +516,7 @@ impl BigTextApp {
                 ui.label(format!("{} {:.2}s ({:.0} MB/s){note}", tr("in"), t.as_secs_f64(), mb / t.as_secs_f64().max(1e-6)));
             }
             if r.version != d.version {
-                ui.colored_label(Color32::from_rgb(220, 150, 60), tr("stale (document changed)"));
+                ui.colored_label(super::theme::warn_text(ui), tr("stale (document changed)"));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button("×").clicked() {
@@ -606,10 +606,10 @@ impl BigTextApp {
         };
         let occ = self.occurrence_matcher();
         let pair = self.caret_pair();
-        let pair_color = if dark { Color32::from_rgba_unmultiplied(110, 170, 255, 85) } else { Color32::from_rgba_unmultiplied(40, 110, 230, 65) };
+        let pair_color = super::theme::role(if dark { Color32::from_rgba_unmultiplied(110, 170, 255, 85) } else { Color32::from_rgba_unmultiplied(40, 110, 230, 65) }, super::theme::Tone::Info, dark);
         // The file labels of a merged log, each in its file's colour.
         let tags: Vec<(Arc<Matcher>, usize)> = self.docs.get(self.active).and_then(|d| d.merged.as_ref()).map(|t| t.matchers.iter().cloned().zip(0..).collect()).unwrap_or_default();
-        let found_color = if dark { Color32::from_rgba_unmultiplied(200, 160, 0, 90) } else { Color32::from_rgba_unmultiplied(255, 200, 0, 120) };
+        let found_color = super::theme::role(if dark { Color32::from_rgba_unmultiplied(200, 160, 0, 90) } else { Color32::from_rgba_unmultiplied(255, 200, 0, 120) }, super::theme::Tone::Found, dark);
         let occ_color = if dark { Color32::from_white_alpha(30) } else { Color32::from_black_alpha(30) };
         move |b: &TextBuf, r: Range<u64>| {
             let mut v = Vec::new();

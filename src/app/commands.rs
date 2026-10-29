@@ -119,6 +119,10 @@ pub enum Cmd {
     CheckUpdates,
     About,
     Text(Op),
+    Theme(super::theme::Theme),
+    ColourBlind,
+    /// Interface scale, per cent.
+    Scale(u16),
 }
 
 const fn key(m: Modifiers, k: Key) -> Option<KeyboardShortcut> {
@@ -131,7 +135,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 101] = [
+    pub const ALL: [Cmd; 102] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -218,6 +222,7 @@ impl Cmd {
         Cmd::Syntax,
         Cmd::ShowWhitespace,
         Cmd::DarkTheme,
+        Cmd::ColourBlind,
         Cmd::Highlights,
         Cmd::LevelBar,
         Cmd::ZoomIn,
@@ -237,7 +242,12 @@ impl Cmd {
 
     /// Every command, the text operations included.
     pub fn all() -> impl Iterator<Item = Cmd> {
-        Cmd::ALL.into_iter().chain(Op::ALL.into_iter().map(Cmd::Text)).chain((1..=9).map(Cmd::GotoTab))
+        Cmd::ALL
+            .into_iter()
+            .chain(Op::ALL.into_iter().map(Cmd::Text))
+            .chain((1..=9).map(Cmd::GotoTab))
+            .chain(super::theme::Theme::ALL.into_iter().map(Cmd::Theme))
+            .chain(super::theme::SCALES.into_iter().map(Cmd::Scale))
     }
 
     /// Stable name for the saved key bindings.
@@ -245,6 +255,8 @@ impl Cmd {
         let s = match self {
             Cmd::Text(op) => return format!("text.{op:?}").to_lowercase(),
             Cmd::GotoTab(n) => return format!("goto_tab.{n}"),
+            Cmd::Theme(t) => return format!("theme.{}", t.id()),
+            Cmd::Scale(s) => return format!("scale.{s}"),
             other => format!("{other:?}"),
         };
         // CamelCase → snake_case.
@@ -368,6 +380,15 @@ impl Cmd {
             Cmd::About => "About BigText",
             Cmd::UnpackDir => "Unpacked copies folder…",
             Cmd::Text(op) => op.name(),
+            Cmd::Theme(t) => t.label(),
+            Cmd::ColourBlind => "Colour-blind-safe colours",
+            Cmd::Scale(s) => match s {
+                100 => "Interface scale 100 %",
+                125 => "Interface scale 125 %",
+                150 => "Interface scale 150 %",
+                175 => "Interface scale 175 %",
+                _ => "Interface scale 200 %",
+            },
         }
     }
 
@@ -743,8 +764,24 @@ impl BigTextApp {
                 self.persist_state();
             }
             Cmd::DarkTheme => {
-                self.settings.dark = !self.settings.dark;
-                ctx.set_theme(if self.settings.dark { egui::Theme::Dark } else { egui::Theme::Light });
+                self.settings.theme = self.settings.theme.flipped();
+                self.apply_look(ctx);
+                self.persist_state();
+            }
+            Cmd::Theme(t) => {
+                self.settings.theme = t;
+                self.apply_look(ctx);
+                self.persist_state();
+            }
+            Cmd::ColourBlind => {
+                self.settings.cvd = !self.settings.cvd;
+                self.apply_look(ctx);
+                self.persist_state();
+            }
+            Cmd::Scale(s) => {
+                self.settings.scale = s;
+                self.apply_look(ctx);
+                self.persist_state();
             }
             Cmd::Highlights => self.marks.open = true,
             Cmd::LevelBar => {
@@ -783,7 +820,10 @@ impl BigTextApp {
             Cmd::CompareSideBySide => self.side_by_side,
             Cmd::Syntax => self.settings.syntax,
             Cmd::ShowWhitespace => self.settings.show_ws,
-            Cmd::DarkTheme => self.settings.dark,
+            Cmd::DarkTheme => self.settings.theme.is_dark(),
+            Cmd::Theme(t) => self.settings.theme == t,
+            Cmd::ColourBlind => self.settings.cvd,
+            Cmd::Scale(s) => self.settings.scale == s,
             Cmd::PerfOverlay => self.settings.show_perf,
             Cmd::LevelBar => self.settings.level_bar,
             Cmd::Timeline => self.timeline.open && d.is_some_and(|d| d.timeline.is_some()),
@@ -792,7 +832,7 @@ impl BigTextApp {
     }
 
     fn is_toggle(cmd: Cmd) -> bool {
-        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
+        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::ColourBlind | Cmd::Theme(_) | Cmd::Scale(_) | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
     }
 
     fn enabled(&self, cmd: Cmd) -> bool {
@@ -1034,7 +1074,23 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                run = run.or(self.item(ui, Cmd::DarkTheme));
+                ui.menu_button(tr("Theme"), |ui| {
+                    for t in super::theme::Theme::ALL {
+                        if ui.radio(self.settings.theme == t, tr(t.label())).clicked() {
+                            run = Some(Cmd::Theme(t));
+                        }
+                    }
+                    ui.separator();
+                    run = run.or(self.item(ui, Cmd::DarkTheme));
+                    run = run.or(self.item(ui, Cmd::ColourBlind));
+                });
+                ui.menu_button(tr("Interface scale"), |ui| {
+                    for s in super::theme::SCALES {
+                        if ui.radio(self.settings.scale == s, format!("{s} %")).on_hover_text(tr("Menus and dialogs; the text has its own size (Ctrl+wheel)")).clicked() {
+                            run = Some(Cmd::Scale(s));
+                        }
+                    }
+                });
                 self.language_menu(ui);
                 run = run.or(self.item(ui, Cmd::Font));
                 for c in [Cmd::ZoomIn, Cmd::ZoomOut, Cmd::ZoomReset, Cmd::PerfOverlay] {
@@ -1180,7 +1236,7 @@ impl BigTextApp {
             });
             ui.weak(tr("Click a shortcut, then press the new keys (Esc cancels). Editing keys of the text are fixed."));
             if let Some(c) = &self.shortcuts_ui.conflict {
-                ui.colored_label(egui::Color32::from_rgb(220, 150, 60), c);
+                ui.colored_label(super::theme::warn_text(ui), c);
             }
             ui.separator();
             egui::ScrollArea::vertical().show(ui, |ui| {

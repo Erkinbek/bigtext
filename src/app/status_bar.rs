@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use egui::{Align, Color32, CursorIcon, Layout, RichText};
+use egui::{Align, CursorIcon, Layout, RichText};
 
 use bigtext::encoding::{Encoding, LineEnding};
 use bigtext::file;
@@ -207,12 +207,12 @@ impl BigTextApp {
                     }
                     if d.follow {
                         let label = if d.rotations > 0 { format!("{} ×{}", tr("FOLLOW"), d.rotations + 1) } else { tr("FOLLOW").to_string() };
-                        ui.label(RichText::new(label).color(Color32::from_rgb(90, 180, 90))).on_hover_text(trf("Following the file; it was rotated {n} times so far", &[("n", &d.rotations.to_string())]));
+                        ui.label(RichText::new(label).color(super::theme::ok_text(ui))).on_hover_text(trf("Following the file; it was rotated {n} times so far", &[("n", &d.rotations.to_string())]));
                         ui.separator();
                     }
                     if d.table && !d.hex {
                         let delim = d.table_state.dialect.map(|x| tr(x.name())).unwrap_or("…");
-                        ui.label(RichText::new(format!("{} · {delim}", tr("TABLE"))).color(Color32::from_rgb(90, 160, 220)));
+                        ui.label(RichText::new(format!("{} · {delim}", tr("TABLE"))).color(super::theme::info_text(ui)));
                         ui.separator();
                     }
                     if let Some(r) = d.results.as_ref().filter(|r| r.is_running()) {
@@ -223,7 +223,7 @@ impl BigTextApp {
                         ui.separator();
                     }
                     if d.read_only {
-                        let text = RichText::new(tr("READ-ONLY")).color(Color32::from_rgb(220, 150, 60));
+                        let text = RichText::new(tr("READ-ONLY")).color(super::theme::warn_text(ui));
                         // A merged log has no file of its own to edit.
                         if d.merged.is_some() {
                             ui.label(text);

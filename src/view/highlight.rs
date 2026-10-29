@@ -106,8 +106,14 @@ pub fn color(kind: Kind, dark: bool) -> Color32 {
             (DARK[i as usize % 6], LIGHT[i as usize % 6])
         }
     };
-    let (r, g, b) = if dark { d } else { l };
-    Color32::from_rgb(r, g, b)
+    let theme = crate::app::theme::cvd().then(|| crate::app::theme::cvd_syntax(kind, dark));
+    let (r, g, b) = theme.unwrap_or(if dark { d } else { l });
+    let c = Color32::from_rgb(r, g, b);
+    if crate::app::theme::high_contrast_on() {
+        crate::app::theme::contrast(c, dark)
+    } else {
+        c
+    }
 }
 
 fn is_ident(b: u8) -> bool {

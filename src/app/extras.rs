@@ -37,7 +37,13 @@ pub struct Persisted {
     pub tabs: Vec<TabState>,
     pub active: usize,
     pub font_size: Option<f32>,
+    /// Kept beside `theme` for older versions.
     pub dark: Option<bool>,
+    pub theme: Option<super::theme::Theme>,
+    /// Colour-blind-safe colours.
+    pub cvd: Option<bool>,
+    /// Interface scale, per cent.
+    pub scale: Option<u16>,
     pub backup_on_save: Option<bool>,
     pub syntax: Option<bool>,
     pub update_check: Option<bool>,
@@ -272,6 +278,9 @@ pub(super) fn parse(text: &str) -> Persisted {
             "active" => p.active = v.parse().unwrap_or(0),
             "font_size" => p.font_size = v.parse().ok(),
             "dark" => p.dark = Some(v == "1"),
+            "theme" => p.theme = super::theme::Theme::from_id(v),
+            "cvd" => p.cvd = Some(v == "1"),
+            "scale" => p.scale = v.parse().ok().filter(|s| super::theme::SCALES.contains(s)),
             "backup_on_save" => p.backup_on_save = Some(v == "1"),
             "syntax" => p.syntax = Some(v == "1"),
             "level_bar" => p.level_bar = Some(v == "1"),
@@ -308,6 +317,15 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(d) = p.dark {
         s.push_str(&format!("dark={}\n", b(d)));
+    }
+    if let Some(t) = p.theme {
+        s.push_str(&format!("theme={}\n", t.id()));
+    }
+    if let Some(c) = p.cvd {
+        s.push_str(&format!("cvd={}\n", b(c)));
+    }
+    if let Some(x) = p.scale {
+        s.push_str(&format!("scale={x}\n"));
     }
     if let Some(d) = p.backup_on_save {
         s.push_str(&format!("backup_on_save={}\n", b(d)));
@@ -605,7 +623,7 @@ pub(super) fn show_side_by_side(ui: &mut egui::Ui, a: &mut Document, r: &mut Dif
     ui.painter().vline(mid, full.y_range(), ui.visuals().widgets.noninteractive.bg_stroke);
     let lead_b = ui.ctx().pointer_hover_pos().is_some_and(|p| right.contains(p));
     let alpha = if dark { 90 } else { 110 };
-    let (red, green) = (egui::Color32::from_rgba_unmultiplied(230, 70, 70, alpha), egui::Color32::from_rgba_unmultiplied(70, 190, 90, alpha));
+    let (red, green) = (super::theme::role(egui::Color32::from_rgba_unmultiplied(230, 70, 70, alpha), super::theme::Tone::Bad, dark), super::theme::role(egui::Color32::from_rgba_unmultiplied(70, 190, 90, alpha), super::theme::Tone::Ok, dark));
     {
         let b_buf = &side.doc.buf;
         let spans = |range: std::ops::Range<u64>| if outdated { Vec::new() } else { diff_spans(hunks, range, true) };
@@ -687,7 +705,10 @@ impl BigTextApp {
                 .collect(),
             active: self.active,
             font_size: Some(self.settings.font_size),
-            dark: Some(self.settings.dark),
+            dark: Some(self.settings.theme.is_dark()),
+            theme: Some(self.settings.theme),
+            cvd: Some(self.settings.cvd),
+            scale: Some(self.settings.scale),
             backup_on_save: Some(self.settings.backup_on_save),
             syntax: Some(self.settings.syntax),
             update_check: Some(self.update.auto),
@@ -723,6 +744,25 @@ impl BigTextApp {
         self.file_opts.iter().find(|o| super::same_path(&o.path, path)).cloned()
     }
 
+    /// Takes the theme, colours and scale of saved settings (without showing them yet).
+    pub(super) fn restore_look(&mut self, p: &Persisted) {
+        if let Some(t) = p.theme.or(p.dark.map(|d| if d { super::theme::Theme::Dark } else { super::theme::Theme::Light })) {
+            self.settings.theme = t;
+        }
+        if let Some(c) = p.cvd {
+            self.settings.cvd = c;
+        }
+        if let Some(s) = p.scale {
+            self.settings.scale = s;
+        }
+    }
+
+    /// Shows the theme, colours and interface scale.
+    pub(crate) fn apply_look(&self, ctx: &egui::Context) {
+        super::theme::apply(ctx, self.settings.theme, self.settings.cvd);
+        ctx.set_zoom_factor(self.settings.scale as f32 / 100.0);
+    }
+
     pub(super) fn persist_state(&self) {
         if self.persist {
             save_async(self.persisted());
@@ -739,9 +779,7 @@ impl BigTextApp {
         if let Some(f) = p.font_size {
             self.settings.font_size = f.clamp(6.0, 72.0);
         }
-        if let Some(d) = p.dark {
-            self.settings.dark = d;
-        }
+        self.restore_look(&p);
         if let Some(b) = p.backup_on_save {
             self.settings.backup_on_save = b;
         }
@@ -1222,10 +1260,10 @@ impl BigTextApp {
                             ui.add(egui::Label::new(egui::RichText::new(text).font(font.clone()).color(color)).truncate());
                         });
                     };
-                    side(ui, a_text, egui::Color32::from_rgb(220, 110, 110));
+                    side(ui, a_text, super::theme::role(egui::Color32::from_rgb(220, 110, 110), super::theme::Tone::Bad, ui.visuals().dark_mode));
                     // The arrow is in the monospace font only.
                     ui.monospace("→");
-                    side(ui, b_text, egui::Color32::from_rgb(110, 190, 110));
+                    side(ui, b_text, super::theme::role(egui::Color32::from_rgb(110, 190, 110), super::theme::Tone::Ok, ui.visuals().dark_mode));
                 });
             }
         });
@@ -1316,6 +1354,9 @@ mod tests {
             active: 0,
             font_size: Some(16.0),
             dark: Some(false),
+            theme: Some(super::super::theme::Theme::HighContrastLight),
+            cvd: Some(true),
+            scale: Some(150),
             backup_on_save: Some(true),
             syntax: Some(false),
             update_check: Some(false),
@@ -1366,9 +1407,11 @@ mod tests {
                 },
             ],
         };
+        let q0 = parse(&serialize(&p));
         assert_eq!(parse(&serialize(&p)).saved, p.saved);
         assert_eq!(parse(&serialize(&p)).file_opts, p.file_opts);
         assert_eq!(parse(&serialize(&p)).status, p.status);
+        assert_eq!((q0.theme, q0.cvd, q0.scale, q0.dark), (p.theme, Some(true), Some(150), Some(false)));
         assert_eq!(parse(&serialize(&p)).show_ws, Some(true));
         assert_eq!(parse(&serialize(&p)).filter_ctx, Some((3, true)));
         assert_eq!(parse(&serialize(&p)).id_keys, p.id_keys);

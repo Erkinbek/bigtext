@@ -30,6 +30,9 @@ fn shareable(p: &Persisted) -> Persisted {
     Persisted {
         font_size: p.font_size,
         dark: p.dark,
+        theme: p.theme,
+        cvd: p.cvd,
+        scale: p.scale,
         backup_on_save: p.backup_on_save,
         syntax: p.syntax,
         marks: p.marks.clone(),
@@ -55,6 +58,10 @@ impl BigTextApp {
     pub(crate) fn import_settings_from(&mut self, path: &Path, ctx: Option<&egui::Context>) -> Result<(), String> {
         let text = std::fs::read_to_string(path).map_err(|e| super::friendly_io(&e, path))?;
         let p = extras::parse(&text);
+        self.restore_look(&p);
+        if let Some(ctx) = ctx {
+            self.apply_look(ctx);
+        }
         let s = &mut self.settings;
         if let Some(v) = p.font_size {
             s.font_size = v.clamp(6.0, 72.0);
@@ -95,12 +102,6 @@ impl BigTextApp {
         }
         if let Some(l) = p.lang.as_deref().and_then(i18n::Lang::from_code) {
             i18n::set_lang(l);
-        }
-        if let Some(d) = p.dark {
-            self.settings.dark = d;
-            if let Some(ctx) = ctx {
-                ctx.set_theme(if d { egui::Theme::Dark } else { egui::Theme::Light });
-            }
         }
         // A font that is not on this computer is skipped.
         if let (Some(f), Some(ctx)) = (p.font, ctx) {

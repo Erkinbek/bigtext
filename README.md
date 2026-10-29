@@ -126,6 +126,11 @@ Single self-contained binary, no runtime dependencies.
 - **Status bar**: line and column of the caret, byte offset, the number of lines (exact once
   indexing has finished, `~` before), and for a selection its lines, characters (up to 4 MB)
   and bytes, the time it spans in a log (Δt) and the width of a block selection.
+- **Themes**: View → Theme offers Dark, Light, High contrast dark and High contrast light, and
+  **Colour-blind-safe colours** (the Okabe-Ito palette) for everything BigText paints itself:
+  syntax and log levels, highlights, merged logs, scrollbar marks, search hits, the histogram and
+  the status bar. **View → Interface scale** (100–200 %) enlarges menus and dialogs, leaving the
+  text at its own size.
 - **Other**: line numbers, zoom (Ctrl+wheel), word wrap (off by default), light/dark theme,
   read-only toggle (auto for read-only files), external change detection with Reload, and a
   **File → Properties…** (Ctrl+I): size, backing, encoding, origin, and from one background pass

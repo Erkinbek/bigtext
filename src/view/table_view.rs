@@ -370,7 +370,7 @@ fn step(doc: &mut Document, n: i64) {
 }
 
 pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
-    let font = FontId::monospace(*env.font_size);
+    let font = FontId::monospace(*env.font_size / ui.ctx().zoom_factor());
     let (cw, fh) = ui.ctx().fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
     let cw = cw.max(1.0);
     let rh = (fh + 8.0).round();

@@ -401,7 +401,7 @@ impl BigTextApp {
 
 fn hit_job(name: &str, h: &Hit, font: &FontId, v: &egui::Visuals) -> LayoutJob {
     let mut job = LayoutJob::default();
-    let file = TextFormat { font_id: font.clone(), color: Color32::from_rgb(90, 160, 220), ..Default::default() };
+    let file = TextFormat { font_id: font.clone(), color: super::theme::role(Color32::from_rgb(90, 160, 220), super::theme::Tone::Info, v.dark_mode), ..Default::default() };
     let weak = TextFormat { font_id: font.clone(), color: v.weak_text_color(), ..Default::default() };
     let normal = TextFormat { font_id: font.clone(), color: v.text_color(), ..Default::default() };
     let hl = TextFormat { font_id: font.clone(), color: v.strong_text_color(), background: v.selection.bg_fill, ..Default::default() };

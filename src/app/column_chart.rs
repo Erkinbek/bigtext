@@ -104,7 +104,7 @@ impl BigTextApp {
                     }
                 }
                 if r.version != d.version {
-                    ui.colored_label(egui::Color32::from_rgb(220, 150, 60), tr("stale (document changed)"));
+                    ui.colored_label(super::theme::warn_text(ui), tr("stale (document changed)"));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.small_button("×").clicked() {

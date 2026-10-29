@@ -31,12 +31,12 @@ pub const COLORS: [(u8, u8, u8); 8] = [
 ];
 
 pub fn fill(color: usize, dark: bool) -> Color32 {
-    let (r, g, b) = COLORS[color % COLORS.len()];
-    Color32::from_rgba_unmultiplied(r, g, b, if dark { 95 } else { 110 })
+    let (r, g, b) = super::theme::mark_rgb(color, &COLORS);
+    Color32::from_rgba_unmultiplied(r, g, b, super::theme::mark_alpha(dark))
 }
 
 pub fn solid(color: usize) -> Color32 {
-    let (r, g, b) = COLORS[color % COLORS.len()];
+    let (r, g, b) = super::theme::mark_rgb(color, &COLORS);
     Color32::from_rgb(r, g, b)
 }
 

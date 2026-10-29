@@ -8,7 +8,7 @@ const PER_ROW: u64 = 16;
 const SCROLLBAR: f32 = 14.0;
 
 pub fn show(ui: &mut Ui, doc: &mut Document, font_size: f32, take_focus: bool) {
-    let font = FontId::monospace(font_size);
+    let font = FontId::monospace(font_size / ui.ctx().zoom_factor());
     let (cw, rh) = ui.ctx().fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
     let full = ui.available_rect_before_wrap();
     let id = ui.id().with(("hexview", doc.id));

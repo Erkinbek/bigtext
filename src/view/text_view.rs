@@ -13,6 +13,7 @@ use bigtext::text::rows::{self, CellKind, Pending, Row};
 use bigtext::text::TextBuf;
 
 use super::block::{block_rows, block_text, edit_block, Block, BlockEdit};
+use crate::app::theme::{role, Tone};
 use crate::app::document::Document;
 
 const SCROLLBAR: f32 = 14.0;
@@ -75,7 +76,7 @@ pub(crate) fn digits(n: u64) -> usize {
 }
 
 pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
-    let font = FontId::monospace(*env.font_size);
+    let font = FontId::monospace(*env.font_size / ui.ctx().zoom_factor());
     let (cw, rh) = ui.ctx().fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
     let m = Metrics { cw: cw.max(1.0), rh: rh.max(1.0) };
 
@@ -194,8 +195,8 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         _ => Vec::new(),
     };
     let diff_color = match env.diff.as_ref().map(|o| o.added) {
-        Some(true) => Color32::from_rgba_unmultiplied(70, 190, 90, if visuals.dark_mode { 40 } else { 55 }),
-        _ => Color32::from_rgba_unmultiplied(230, 70, 70, if visuals.dark_mode { 40 } else { 50 }),
+        Some(true) => role(Color32::from_rgba_unmultiplied(70, 190, 90, if visuals.dark_mode { 40 } else { 55 }), Tone::Ok, visuals.dark_mode),
+        _ => role(Color32::from_rgba_unmultiplied(230, 70, 70, if visuals.dark_mode { 40 } else { 50 }), Tone::Bad, visuals.dark_mode),
     };
 
     let (mut line, line_exact) = rows.first().map(|r| doc.buf.line_of(r.start)).unwrap_or((0, true));
@@ -563,9 +564,9 @@ fn paint_marks(painter: &egui::Painter, doc: &mut Document, bar: Rect, dark: boo
     // Lanes from the left: diff, filter, search, bookmarks across the whole width.
     let lane = (bar.width() - 4.0) / 3.0;
     let colors = [
-        (MARK_DIFF, 0.0, if dark { Color32::from_rgb(220, 90, 90) } else { Color32::from_rgb(200, 50, 50) }),
-        (MARK_FILTER, 1.0, if dark { Color32::from_rgb(90, 160, 240) } else { Color32::from_rgb(40, 110, 220) }),
-        (MARK_FOUND, 2.0, if dark { Color32::from_rgb(230, 180, 30) } else { Color32::from_rgb(220, 150, 0) }),
+        (MARK_DIFF, 0.0, role(if dark { Color32::from_rgb(220, 90, 90) } else { Color32::from_rgb(200, 50, 50) }, Tone::Bad, dark)),
+        (MARK_FILTER, 1.0, role(if dark { Color32::from_rgb(90, 160, 240) } else { Color32::from_rgb(40, 110, 220) }, Tone::Info, dark)),
+        (MARK_FOUND, 2.0, role(if dark { Color32::from_rgb(230, 180, 30) } else { Color32::from_rgb(220, 150, 0) }, Tone::Found, dark)),
     ];
     for (y, &bits) in m.rows.iter().enumerate() {
         if bits == 0 {
@@ -579,7 +580,7 @@ fn paint_marks(painter: &egui::Painter, doc: &mut Document, bar: Rect, dark: boo
             }
         }
         if bits & MARK_BOOKMARK != 0 {
-            painter.rect_filled(Rect::from_min_max(pos2(bar.left() + 1.0, top), pos2(bar.right() - 1.0, top + 2.0)), 0.0, if dark { Color32::from_rgb(120, 200, 255) } else { Color32::from_rgb(30, 120, 200) });
+            painter.rect_filled(Rect::from_min_max(pos2(bar.left() + 1.0, top), pos2(bar.right() - 1.0, top + 2.0)), 0.0, role(if dark { Color32::from_rgb(120, 200, 255) } else { Color32::from_rgb(30, 120, 200) }, Tone::Caret, dark));
         }
     }
     doc.view.scroll_marks = m;

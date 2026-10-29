@@ -159,6 +159,7 @@ mod tests {
         "app" / "status_bar.rs",
         "app" / "tabs.rs",
         "app" / "tasks.rs",
+        "app" / "theme.rs",
         "app" / "text_tools.rs",
         "app" / "time_range.rs",
         "app" / "timeline.rs",

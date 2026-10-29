@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use egui::text::{LayoutJob, TextFormat};
-use egui::{Color32, FontId};
+use egui::FontId;
 
 use bigtext::filter::{self, FilterSpec, LineKind};
 use bigtext::jobs::{self, human_bytes, CancelToken, Progress, Throttle};
@@ -538,7 +538,7 @@ impl BigTextApp {
                     ui.label(format!("{} {:.2}s{note}", tr("in"), t.as_secs_f64()));
                 }
                 if stale {
-                    ui.colored_label(Color32::from_rgb(220, 150, 60), tr("stale (document changed)"));
+                    ui.colored_label(super::theme::warn_text(ui), tr("stale (document changed)"));
                     if ui.small_button(tr("Run again")).clicked() {
                         rerun = true;
                     }

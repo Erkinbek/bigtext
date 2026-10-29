@@ -40,8 +40,8 @@ pub struct Ctx {
     log: Vec<String>,
     shot: Option<PathBuf>,
     pending_shot: Option<PathBuf>,
-    /// Theme to switch to on the next frame (true = dark).
-    theme: Option<bool>,
+    /// Theme to switch to on the next frame.
+    theme: Option<crate::app::theme::Theme>,
 }
 
 type StepFn = Box<dyn FnMut(&mut BigTextApp, &mut Ctx) -> Step>;
@@ -3792,6 +3792,39 @@ impl SelfTest {
                 None => Step::Wait,
             }
         }));
+        s("themes: high contrast, colour-blind-safe colours and the interface scale are applied and kept", Box::new(|app, c| {
+            use crate::app::commands::Cmd;
+            use crate::app::theme::Theme;
+            use crate::view::highlight::Kind;
+            use egui::Color32;
+            let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+            if c.mark == 0 {
+                app.run(&ctx, Cmd::Theme(Theme::HighContrastDark));
+                app.run(&ctx, Cmd::ColourBlind);
+                app.run(&ctx, Cmd::Scale(150));
+                c.mark = 1;
+                return Step::Wait;
+            }
+            if c.waited() < Duration::from_millis(200) {
+                return Step::Wait;
+            }
+            let v = ctx.style_of(egui::Theme::Dark).visuals.clone();
+            let zoom = ctx.zoom_factor();
+            let error = crate::view::highlight::color(Kind::Error, true);
+            let st = app.test_state_round_trip();
+            let got = format!("panel {:?} text {:?} zoom {zoom} error {error:?} saved {:?} {:?} {:?} {:?}", v.panel_fill, v.override_text_color, st.theme, st.cvd, st.scale, st.dark);
+            let ok = v.panel_fill == Color32::BLACK
+                && v.override_text_color == Some(Color32::WHITE)
+                && (zoom - 1.5).abs() < 1e-3
+                && error != Color32::from_rgb(240, 90, 90)
+                && (st.theme, st.cvd, st.scale, st.dark) == (Some(Theme::HighContrastDark), Some(true), Some(150), Some(true));
+            // Back to the stock look.
+            app.run(&ctx, Cmd::Theme(Theme::Dark));
+            app.run(&ctx, Cmd::ColourBlind);
+            app.run(&ctx, Cmd::Scale(100));
+            c.mark = 0;
+            check(ok && crate::view::highlight::color(Kind::Error, true) == Color32::from_rgb(240, 90, 90), got)
+        }));
         SelfTest::build(steps, report, dir, shot_dir)
     }
 
@@ -3922,7 +3955,7 @@ impl SelfTest {
         s("JSON, light theme, split view, bookmarks", Box::new(|app, c| {
             if c.first() {
                 app.diff = None;
-                c.theme = Some(false);
+                c.theme = Some(crate::app::theme::Theme::Light);
                 app.open_path(c.file("orders.json"));
                 return Step::Wait;
             }
@@ -3946,6 +3979,17 @@ impl SelfTest {
             Step::Next
         }));
         s("shot json.png", shot_step("json.png"));
+        s("the log in high contrast with colour-blind-safe colours", Box::new(|app, c| {
+            if c.first() {
+                app.settings.cvd = true;
+                c.theme = Some(crate::app::theme::Theme::HighContrastDark);
+                app.settings.show_perf = false;
+                app.active = 0;
+                return Step::Wait;
+            }
+            Step::Next
+        }));
+        s("shot high-contrast.png", shot_step("high-contrast.png"));
         let report = shot_dir.join("screenshots-report.txt");
         SelfTest::build(steps, report, dir, Some(shot_dir))
     }
@@ -3998,9 +4042,9 @@ impl SelfTest {
         if self.finished {
             return;
         }
-        if let Some(dark) = self.ctx.theme.take() {
-            app.settings.dark = dark;
-            ctx.set_theme(if dark { egui::Theme::Dark } else { egui::Theme::Light });
+        if let Some(t) = self.ctx.theme.take() {
+            app.settings.theme = t;
+            app.apply_look(ctx);
         }
         if let Some(path) = self.ctx.pending_shot.take() {
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));

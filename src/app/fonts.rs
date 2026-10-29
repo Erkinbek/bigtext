@@ -178,7 +178,7 @@ impl BigTextApp {
             if let Some(e) = &self.fonts.error {
                 ui.colored_label(ui.visuals().error_fg_color, e);
             } else if self.fonts.proportional {
-                ui.colored_label(egui::Color32::from_rgb(220, 150, 60), tr("This font is not monospaced, so columns will not line up."));
+                ui.colored_label(super::theme::warn_text(ui), tr("This font is not monospaced, so columns will not line up."));
             }
             ui.separator();
             ui.label(egui::RichText::new("0O 1lI| {}[] => != ~ -- ...\nThe quick brown fox · Привет · O'zbekcha").monospace().size(self.settings.font_size));

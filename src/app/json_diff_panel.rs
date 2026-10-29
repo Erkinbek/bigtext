@@ -130,7 +130,7 @@ impl BigTextApp {
             let n = g.changes.len();
             ui.horizontal(|ui| {
                 if g.done && n == 0 && g.error.is_none() {
-                    ui.colored_label(egui::Color32::from_rgb(90, 180, 90), trf("Same JSON as {other}", &[("other", &r.other)]));
+                    ui.colored_label(super::theme::ok_text(ui), trf("Same JSON as {other}", &[("other", &r.other)]));
                 } else {
                     ui.strong(trf("{n} JSON differences with {other}", &[("n", &fmt_count(n as u64)), ("other", &r.other)]));
                 }
@@ -138,7 +138,7 @@ impl BigTextApp {
                     ui.label(trf("(list capped at {n})", &[("n", &fmt_count(json_diff::CHANGES_MAX as u64))]));
                 }
                 if r.version != d.version {
-                    ui.colored_label(egui::Color32::from_rgb(220, 150, 60), tr("stale (document changed)"));
+                    ui.colored_label(super::theme::warn_text(ui), tr("stale (document changed)"));
                 }
                 if !g.done {
                     let f = r.progress.fraction();
@@ -163,8 +163,8 @@ impl BigTextApp {
                 for ch in &g.changes[range.start.min(n)..range.end.min(n)] {
                     let (text, color) = match (&ch.old, &ch.new) {
                         (Some(o), Some(nw)) => (format!("{}: {} → {}", ch.path, cut(o), cut(nw)), ui.visuals().text_color()),
-                        (None, Some(nw)) => (format!("{}: {} {}", ch.path, tr("added"), cut(nw)), egui::Color32::from_rgb(90, 180, 90)),
-                        (Some(o), None) => (format!("{}: {} {}", ch.path, tr("removed"), cut(o)), egui::Color32::from_rgb(220, 90, 90)),
+                        (None, Some(nw)) => (format!("{}: {} {}", ch.path, tr("added"), cut(nw)), super::theme::ok_text(ui)),
+                        (Some(o), None) => (format!("{}: {} {}", ch.path, tr("removed"), cut(o)), super::theme::role(egui::Color32::from_rgb(220, 90, 90), super::theme::Tone::Bad, ui.visuals().dark_mode)),
                         (None, None) => continue,
                     };
                     if ui.selectable_label(false, egui::RichText::new(text).font(font.clone()).color(color)).clicked() && ch.old.is_some() {
