@@ -794,4 +794,10 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Table…", "Таблица…", "Jadval…"],
     ["Skip lines before the table", "Пропустить строки перед таблицей", "Jadvaldan oldingi satrlarni o'tkazib yuborish"],
     ["Quote", "Кавычка", "Qo'shtirnoq"],
+    // Frozen and hidden columns.
+    ["Unfreeze columns", "Открепить столбцы", "Ustunlarni bo'shatish"],
+    ["Freeze columns up to here", "Закрепить столбцы до этого", "Shu ustungacha muzlatish"],
+    ["Hide from the view", "Скрыть из вида", "Ko'rinishdan yashirish"],
+    ["{n} hidden · Show all", "Скрыто: {n} · Показать все", "{n} ta yashirin · Hammasini ko'rsatish"],
+    ["Show the columns hidden from the view", "Показать скрытые столбцы", "Yashirilgan ustunlarni ko'rsatish"],
 ];

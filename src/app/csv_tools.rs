@@ -108,6 +108,17 @@ impl BigTextApp {
                 self.csv.group = Some(GroupDialog { col, value: None, names });
             }
             TableAction::CheckRows => self.check_rows(),
+            TableAction::Freeze { upto } => {
+                if let Some(d) = self.docs.get_mut(self.active) {
+                    d.table_state.frozen = upto;
+                }
+            }
+            TableAction::Hide { cols } => {
+                if let Some(d) = self.docs.get_mut(self.active) {
+                    d.table_state.hidden.extend(cols);
+                    d.table_state.selected.clear();
+                }
+            }
             TableAction::Conditions { col } => {
                 let names = self.column_names();
                 self.csv.conds = Some(CondDialog { conds: vec![Cond { col, op: CondOp::Contains, value: String::new() }], names });

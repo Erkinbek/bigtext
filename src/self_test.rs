@@ -1929,6 +1929,31 @@ impl SelfTest {
             check(!st.header && st.skip == 0, format!("header {} skip {}", st.header, st.skip))
         }));
         s("open sales.csv", open_step("sales.csv"));
+        s("table: hide a column from the view, freeze the first one", Box::new(|app, c| {
+            use crate::view::table_view::TableAction;
+            if c.first() {
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if doc(app).table_state.header_cells.len() != 2 {
+                    return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("header cells {:?}", doc(app).table_state.header_cells)) } else { Step::Wait };
+                }
+                app.on_table_action(TableAction::Hide { cols: vec![1] });
+                app.on_table_action(TableAction::Freeze { upto: 1 });
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let len = doc(app).buf.len();
+            let st = &doc(app).table_state;
+            let cells: Vec<usize> = st.header_cells.iter().map(|h| h.0).collect();
+            let ok = cells == [0] && st.frozen == 1 && len == 41;
+            let got = format!("cells {cells:?} frozen {} len {len}", st.frozen);
+            let st = &mut doc(app).table_state;
+            st.hidden.clear();
+            st.frozen = 0;
+            c.mark = 0;
+            check(ok, got)
+        }));
         s("CSV: group rows by a column and sum another", Box::new(|app, c| {
             if c.first() {
                 return Step::Wait;

@@ -49,6 +49,10 @@ pub struct TableState {
     pub header_cells: Vec<(usize, Rect)>,
     /// Lines before the table (`sep=;`, comments, a title); `dialect.start` is where it begins.
     pub skip: usize,
+    /// Columns 0..frozen stay on the left while the others scroll.
+    pub frozen: usize,
+    /// Columns left out of the view (the file is not changed).
+    pub hidden: BTreeSet<usize>,
 }
 
 impl Default for TableState {
@@ -64,6 +68,8 @@ impl Default for TableState {
             first_line: None,
             header_cells: Vec::new(),
             skip: 0,
+            frozen: 0,
+            hidden: BTreeSet::new(),
         }
     }
 }
@@ -76,6 +82,8 @@ impl TableState {
         self.scroll_x = 0.0;
         self.selected.clear();
         self.anchor = None;
+        self.frozen = 0;
+        self.hidden.clear();
     }
 
     /// After the header was edited on purpose (a rename): keep the layout.
@@ -93,6 +101,13 @@ impl TableState {
         self.selected.insert(b);
         self.anchor = Some(b);
         self.first_line = None;
+        let (ha, hb) = (self.hidden.remove(&a), self.hidden.remove(&b));
+        if ha {
+            self.hidden.insert(b);
+        }
+        if hb {
+            self.hidden.insert(a);
+        }
     }
 
     /// After `cols` were deleted from the document: the other columns keep their widths.
@@ -107,6 +122,9 @@ impl TableState {
         self.anchor = None;
         // The first line changed on purpose; take the new one as it is.
         self.first_line = None;
+        let gone = |c: usize| cols.iter().filter(|&&d| d < c).count();
+        self.hidden = self.hidden.iter().filter(|c| !cols.contains(c)).map(|&c| c - gone(c)).collect();
+        self.frozen -= gone(self.frozen);
     }
 
     fn click_header(&mut self, col: usize, m: egui::Modifiers) {
@@ -154,6 +172,10 @@ pub enum TableAction {
     Conditions { col: usize },
     /// Check every row (field counts, quotes, numbers).
     CheckRows,
+    /// Keep columns 0..upto on the left (0: none).
+    Freeze { upto: usize },
+    /// Leave these columns out of the view.
+    Hide { cols: Vec<usize> },
 }
 
 pub struct TableEnv<'a> {
@@ -375,9 +397,10 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
             None => tr_f("Column {n}", &[("n", &(col + 1).to_string())]),
         }
     };
+    st.hidden.retain(|&c| c < ncols);
     let measure: Vec<usize> = visible_columns(&st.widths, default_w, st.scroll_x, body.width()).collect();
     for col in measure {
-        if st.fixed[col] {
+        if st.fixed[col] || st.hidden.contains(&col) {
             continue;
         }
         let chars = lines.iter().filter_map(|l| l.value(&codec, dialect, col)).map(|v| v.chars().count()).chain([name(col).chars().count() + 1]).max().unwrap_or(0);
@@ -385,17 +408,30 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         st.widths[col] = st.widths[col].max(want);
     }
     let width = |st: &TableState, col: usize| if st.widths[col] > 0.0 { st.widths[col] } else { default_w };
+    let shown_w = |st: &TableState, col: usize| if st.hidden.contains(&col) { 0.0 } else { width(st, col) };
     let mut xs = Vec::with_capacity(ncols + 1);
     xs.push(0.0f32);
     for col in 0..ncols {
-        xs.push(xs[col] + width(st, col));
+        xs.push(xs[col] + shown_w(st, col));
     }
+    // Frozen columns, at most two thirds of the width.
+    let mut frozen = st.frozen.min(ncols);
+    while frozen > 0 && xs[frozen] > body.width() * 0.66 {
+        frozen -= 1;
+    }
+    let strip = xs[frozen];
     let total = xs[ncols];
     let max_scroll = (total - body.width() + 2.0 * cw).max(0.0);
     st.scroll_x = st.scroll_x.clamp(0.0, max_scroll);
     let scroll_x = st.scroll_x;
-    let x_of = |col: usize| body.left() + xs[col] - scroll_x;
-    let visible: Vec<usize> = visible_columns(&st.widths, default_w, scroll_x, body.width()).collect();
+    let shift = |col: usize| if col < frozen { 0.0 } else { scroll_x };
+    // Left and right edges of a column on screen; frozen columns do not scroll.
+    let left = |col: usize| body.left() + xs[col] - shift(col);
+    let right = |col: usize| body.left() + xs[col + 1] - shift(col);
+    let split = body.left() + strip;
+    // The part of `r` a column may paint in: the frozen strip, or right of it.
+    let clip_of = |col: usize, r: Rect| if col < frozen { Rect::from_min_max(r.min, pos2(r.right().min(split), r.bottom())) } else { Rect::from_min_max(pos2(r.left().max(split), r.top()), r.max) };
+    let visible: Vec<usize> = (0..ncols).filter(|&c| !st.hidden.contains(&c) && (c < frozen || (right(c) > split && left(c) < body.right()))).collect();
     st.selected.retain(|&c| c < ncols);
     let selected = st.selected.clone();
 
@@ -421,8 +457,8 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     let body_painter = painter.with_clip_rect(body);
     let sel_tint = visuals.selection.bg_fill.gamma_multiply(0.35);
     for &col in visible.iter().filter(|c| selected.contains(c)) {
-        let r = Rect::from_min_max(pos2(x_of(col), body.top()), pos2(x_of(col + 1), body.top() + lines.len() as f32 * rh));
-        body_painter.rect_filled(r, 0.0, sel_tint);
+        let r = Rect::from_min_max(pos2(left(col), body.top()), pos2(right(col), body.top() + lines.len() as f32 * rh));
+        body_painter.with_clip_rect(clip_of(col, body)).rect_filled(r, 0.0, sel_tint);
     }
     let caret = doc.view.caret;
     let (mut line, line_exact) = lines.first().map(|l| doc.buf.line_of(l.row.start)).unwrap_or((0, true));
@@ -438,13 +474,13 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         }
         for &col in &visible {
             let Some(v) = l.value(&codec, dialect, col) else { continue };
-            let cell = Rect::from_min_max(pos2(x_of(col), y), pos2(x_of(col + 1), y + rh));
-            paint_text(&body_painter.with_clip_rect(cell.intersect(body)), cell, &v, &font, text_color, cw, is_number(&v));
+            let cell = Rect::from_min_max(pos2(left(col), y), pos2(right(col), y + rh));
+            paint_text(&body_painter.with_clip_rect(clip_of(col, cell.intersect(body))), cell, &v, &font, text_color, cw, is_number(&v));
         }
         if caret >= l.row.start && caret <= l.row.end.max(l.row.start) {
             if let Some(col) = l.field_at(caret) {
-                let cell = Rect::from_min_max(pos2(x_of(col), y), pos2(x_of(col + 1), y + rh)).shrink(1.0);
-                body_painter.rect_stroke(cell, 2.0, Stroke::new(1.5, visuals.selection.stroke.color), egui::StrokeKind::Inside);
+                let cell = Rect::from_min_max(pos2(left(col), y), pos2(right(col), y + rh)).shrink(1.0);
+                body_painter.with_clip_rect(clip_of(col, body)).rect_stroke(cell, 2.0, Stroke::new(1.5, visuals.selection.stroke.color), egui::StrokeKind::Inside);
             }
         }
         let label = match (starts_line, line_exact, l.row.seg.line_start) {
@@ -457,8 +493,8 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         body_painter.hline(body.x_range(), y + rh, Stroke::new(0.5, grid));
     }
     for &col in &visible {
-        let x = x_of(col + 1);
-        painter.with_clip_rect(header_rect.union(body)).vline(x, header_rect.top()..=body.top() + lines.len() as f32 * rh, Stroke::new(1.0, grid));
+        let x = right(col);
+        painter.with_clip_rect(clip_of(col, header_rect.union(body)).expand2(vec2(1.0, 0.0))).vline(x, header_rect.top()..=body.top() + lines.len() as f32 * rh, Stroke::new(1.0, grid));
     }
     painter.hline(gutter.left()..=header_rect.right(), header_rect.bottom(), Stroke::new(1.0, grid));
     painter.text(pos2(gutter.right() - 8.0, header_rect.center().y), Align2::RIGHT_CENTER, "#", font.clone(), weak);
@@ -468,15 +504,15 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     let strong = visuals.strong_text_color();
     let mut header_cells = Vec::with_capacity(visible.len());
     for &col in &visible {
-        let cell = Rect::from_min_max(pos2(x_of(col), header_rect.top()), pos2(x_of(col + 1), header_rect.bottom()));
+        let cell = Rect::from_min_max(pos2(left(col), header_rect.top()), pos2(right(col), header_rect.bottom()));
         let on = selected.contains(&col);
         if on {
             header_painter.rect_filled(cell.shrink2(vec2(0.5, 0.0)), 0.0, visuals.selection.bg_fill);
         }
         let n = name(col);
         let color = if on { visuals.selection.stroke.color } else { strong };
-        paint_text(&header_painter.with_clip_rect(cell.intersect(header_rect)), cell, &n, &font, color, cw, false);
-        let hit = cell.intersect(header_rect);
+        let hit = clip_of(col, cell.intersect(header_rect));
+        paint_text(&header_painter.with_clip_rect(hit), cell, &n, &font, color, cw, false);
         let r = ui.interact(hit, id.with(("head", col)), Sense::click());
         if r.clicked() {
             let m = ui.input(|i| i.modifiers);
@@ -488,7 +524,18 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         r.context_menu(|ui| {
             let cols: Vec<usize> = if selected.contains(&col) { selected.iter().copied().collect() } else { vec![col] };
             let names: Vec<String> = cols.iter().map(|&c| name(c)).collect();
-            column_menu(ui, env.actions, col, &n, ncols, cols, names, editable)
+            column_menu(ui, env.actions, col, &n, ncols, cols, names, editable);
+            ui.separator();
+            let unfreeze = frozen == col + 1;
+            if ui.button(tr(if unfreeze { "Unfreeze columns" } else { "Freeze columns up to here" })).clicked() {
+                env.actions.push(TableAction::Freeze { upto: if unfreeze { 0 } else { col + 1 } });
+                ui.close();
+            }
+            if ui.button(tr("Hide from the view")).clicked() {
+                let cols: Vec<usize> = if selected.contains(&col) { selected.iter().copied().collect() } else { vec![col] };
+                env.actions.push(TableAction::Hide { cols });
+                ui.close();
+            }
         });
         r.on_hover_text(format!(
             "{n}\n{}\n{}",
@@ -499,7 +546,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     }
     doc.table_state.header_cells = header_cells;
     for &col in &visible {
-        let x = x_of(col + 1);
+        let x = right(col);
         let handle = Rect::from_min_max(pos2(x - 4.0, header_rect.top()), pos2(x + 4.0, header_rect.bottom()));
         if !header_rect.intersects(handle) {
             continue;
@@ -525,7 +572,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     if let Some(pos) = resp.interact_pointer_pos().filter(|_| resp.clicked() || resp.double_clicked()) {
         let double = resp.double_clicked();
         let i = ((pos.y - body.top()) / rh).floor().max(0.0) as usize;
-        let col = (0..ncols).find(|&c| pos.x >= x_of(c) && pos.x < x_of(c + 1));
+        let col = visible.iter().copied().find(|&c| pos.x >= left(c) && pos.x < right(c) && (c < frozen || pos.x >= split));
         if let (Some(l), Some(col)) = (lines.get(i), col) {
             let off = l.fields.get(col).map(|r| l.base + r.start as u64).unwrap_or(l.row.end);
             doc.set_caret(off, false);
@@ -655,6 +702,9 @@ fn toolbar(ui: &mut Ui, doc: &mut Document, rect: Rect, ncols: usize, can_delete
         });
         if skip != st.skip {
             set_skip_later = Some(skip);
+        }
+        if !st.hidden.is_empty() && ui.button(tr_f("{n} hidden · Show all", &[("n", &st.hidden.len().to_string())])).on_hover_text(tr("Show the columns hidden from the view")).clicked() {
+            st.hidden.clear();
         }
         ui.separator();
         if st.selected.is_empty() {

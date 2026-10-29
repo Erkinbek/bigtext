@@ -149,6 +149,10 @@ All notable changes to BigText. Each release on
 
 ### CSV tables
 
+- **Freeze and hide columns** (a column header's right-click menu): **Freeze columns up to here**
+  keeps those columns on the left while the others scroll; **Hide from the view** leaves columns
+  out of the table without touching the file, and the toolbar's "3 hidden · Show all" brings them
+  back. Moving and deleting columns keep both in step.
 - **Tables read their own layout**: Excel's `sep=;` first line sets the delimiter, and comment
   (`#`), blank and title lines before the table are skipped by the view, statistics, grouping,
   filters, checks and exports — and kept as they are by sorting, moving and deleting columns.

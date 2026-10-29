@@ -187,6 +187,8 @@ Single self-contained binary, no runtime dependencies.
   are skipped (and kept as they are by sorting and other rewrites), and a table of numbers is
   shown without a header row. The toolbar's **Table…** menu sets the lines to skip and the quote
   (`"` or `'`).
+- **Freeze and hide columns** in tables (a header's right-click menu): frozen columns stay on the
+  left while the rest scroll; hidden ones leave the view, not the file.
 - **Check rows…** (a column's menu, or View → Check table rows…): every record with another field
   count, a stray or unclosed quote, a control character or text in a number column, listed under
   the table with its line; **Save rows…** writes them to a file.
