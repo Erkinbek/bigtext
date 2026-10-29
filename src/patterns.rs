@@ -111,7 +111,7 @@ fn level_word(w: &[u8], before: Option<u8>) -> Option<Level> {
 }
 
 /// Length of a leading timestamp: a run of digits and date punctuation with a ':' in it.
-fn time_prefix(b: &[u8]) -> usize {
+pub(crate) fn time_prefix(b: &[u8]) -> usize {
     let e = run(b, 0, |c| c.is_ascii_digit() || matches!(c, b'-' | b':' | b'.' | b'/' | b' ' | b'T' | b'Z' | b'+' | b',' | b'[' | b']'));
     if e >= 8 && b[..e].contains(&b':') {
         e

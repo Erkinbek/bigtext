@@ -259,6 +259,7 @@ pub struct BigTextApp {
     pub json_diff: json_diff_panel::JsonDiffUi,
     /// A comparison to start once its document is ready: (document, other file).
     pub diff_pending: Option<(u64, PathBuf)>,
+    pub diff_switches: extras::DiffSwitches,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -398,6 +399,7 @@ impl BigTextApp {
             json_fields: json_fields_window::JsonFieldsUi::default(),
             json_diff: json_diff_panel::JsonDiffUi::default(),
             diff_pending: None,
+            diff_switches: extras::DiffSwitches::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),

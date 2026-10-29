@@ -11,6 +11,11 @@ All notable changes to BigText. Each release on
   of a comparison, around the ends, with "Difference 12 of 340"; the compare panel has the same
   as ◀ ▶ buttons and **Swap A↔B** to compare the other way round. **File → Compare with tab ▸**
   lists the other open files, so a comparison takes one click.
+- The compare panel can ignore **white space**, **case**, the **timestamp** at the start of
+  each line, and whatever a **mask** regular expression matches (`req=[0-9a-f]+`, durations), so
+  two runs of the same job compare by what they did, not when; the header says what is ignored.
+  On the command line, `bigtext diff A B [-w] [-i] [-t] [--mask RE]` prints `@@ -12,2 +12,3 @@`
+  hunks and exits 0 when the files are the same, 1 when they differ.
 
 ### Command line
 

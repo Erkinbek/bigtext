@@ -217,6 +217,9 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("diff-b.txt"), base.replace("row 100\n", "row one hundred\n").replace("row 1500\n", "row 1500\nextra line\n"))?;
+    let times = |h: u32| (0..200).map(|i| format!("2024-05-01 {h:02}:{:02}:{:02} INFO step {i} req=r{}\n", i / 60, i % 60, i * h)).collect::<String>();
+    std::fs::write(dir.join("times-a.log"), times(9))?;
+    std::fs::write(dir.join("times-b.log"), times(14))?;
     Ok(())
 }
 
@@ -1044,6 +1047,48 @@ impl SelfTest {
             c.key(Key::F7, if c.mark == 3 { SHIFT } else { NONE });
             c.mark += 1;
             Step::Wait
+        }));
+        s("compare ignoring timestamps and a mask: logs that differ only there are the same", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("times-a.log"));
+                return Step::Wait;
+            }
+            let hunks = |app: &BigTextApp| {
+                let r = app.diff.as_ref()?;
+                let g = r.data.lock().unwrap();
+                g.done.then(|| g.hunks.len())
+            };
+            match c.mark {
+                0 => {
+                    if !wait_ready(app) {
+                        return Step::Wait;
+                    }
+                    app.diff_switches = Default::default();
+                    app.start_diff(c.file("times-b.log"));
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => match hunks(app) {
+                    None => Step::Wait,
+                    Some(0) => Step::Fail("plain compare found no differences".into()),
+                    Some(_) => {
+                        app.diff_switches.timestamps = true;
+                        app.diff_switches.mask = "req=r[0-9]+".into();
+                        app.start_diff(c.file("times-b.log"));
+                        c.mark = 2;
+                        Step::Wait
+                    }
+                },
+                _ => match hunks(app) {
+                    None => Step::Wait,
+                    Some(n) => {
+                        let summary = app.diff.as_ref().and_then(|r| r.switches.summary()).unwrap_or_default();
+                        app.diff = None;
+                        app.diff_switches = Default::default();
+                        check(n == 0 && summary.contains("req=r"), format!("{n} hunks, summary {summary:?}"))
+                    }
+                },
+            }
         }));
         s("CSV opens as a table (semicolon detected)", Box::new(|app, c| {
             if c.first() {

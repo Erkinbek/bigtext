@@ -285,9 +285,42 @@ pub struct DiffData {
     pub elapsed: Option<Duration>,
 }
 
+/// What the comparison ignores (the compare panel's switches).
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct DiffSwitches {
+    pub whitespace: bool,
+    pub case: bool,
+    pub timestamps: bool,
+    pub mask: String,
+}
+
+impl DiffSwitches {
+    pub fn options(&self) -> Result<diff::DiffOptions, String> {
+        let mask = match self.mask.trim() {
+            "" => None,
+            m => Some(regex_automata::meta::Regex::new(m).map_err(|e| trf("Mask: {error}", &[("error", &e.to_string())]))?),
+        };
+        Ok(diff::DiffOptions { whitespace: self.whitespace, case: self.case, timestamps: self.timestamps, mask })
+    }
+
+    /// The switches that are on, "white space, case", or `None`.
+    pub fn summary(&self) -> Option<String> {
+        let mask = self.mask.trim();
+        let parts: Vec<String> = [(self.whitespace, tr("white space")), (self.case, tr("case")), (self.timestamps, tr("timestamps"))]
+            .into_iter()
+            .filter(|(on, _)| *on)
+            .map(|(_, s)| s.to_string())
+            .chain((!mask.is_empty()).then(|| format!("{} {mask}", tr("mask"))))
+            .collect();
+        (!parts.is_empty()).then(|| parts.join(", "))
+    }
+}
+
 pub struct DiffResults {
     pub doc: u64,
     pub other_path: PathBuf,
+    /// The switches it ran with.
+    pub switches: DiffSwitches,
     pub data: Arc<Mutex<DiffData>>,
     pub cancel: CancelToken,
     pub progress: Progress,
@@ -437,11 +470,19 @@ impl BigTextApp {
         if let Some(r) = self.diff.take() {
             r.cancel.cancel();
         }
+        let switches = self.diff_switches.clone();
+        let opts = match switches.options() {
+            Ok(o) => o,
+            Err(e) => {
+                self.notify(e, None);
+                return;
+            }
+        };
         let a = d.buf.source.clone();
         let data = Arc::new(Mutex::new(DiffData::default()));
         let cancel = CancelToken::new();
         let progress = Progress::default();
-        self.diff = Some(DiffResults { doc: d.id, other_path: other.clone(), data: data.clone(), cancel: cancel.clone(), progress: progress.clone() });
+        self.diff = Some(DiffResults { doc: d.id, other_path: other.clone(), switches, data: data.clone(), cancel: cancel.clone(), progress: progress.clone() });
         if d.is_modified() {
             self.search.status = tr("Comparing the saved file; unsaved edits are not included").into();
         }
@@ -463,7 +504,7 @@ impl BigTextApp {
             let mut count = 0usize;
             let mut capped = false;
             let mut last_wake = Instant::now();
-            let end = diff::diff(&a, &b, &cancel, Some(&progress), |h| {
+            let end = diff::diff_with(&a, &b, &opts, &cancel, Some(&progress), |h| {
                 if count >= DIFF_CAP {
                     capped = true;
                     return false;
@@ -521,6 +562,8 @@ impl BigTextApp {
         let mut open_other: Option<u64> = None;
         let mut jump: Option<u64> = None;
         let (mut swap, mut step) = (false, None);
+        let mut switches = self.diff_switches.clone();
+        let mut rerun = false;
         ui.horizontal(|ui| {
             ui.strong(trf("Compare with {file}", &[("file", &file::display_path(&r.other_path))]));
             if let Some(e) = &err {
@@ -540,6 +583,9 @@ impl BigTextApp {
                     if capped { tr(" (capped, more exist)") } else { "" }
                 ));
             }
+            if let Some(what) = r.switches.summary() {
+                ui.weak(trf("ignoring {what}", &[("what", &what)]));
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button("×").clicked() {
                     close = true;
@@ -554,6 +600,18 @@ impl BigTextApp {
                     step = Some(true);
                 }
             });
+        });
+        ui.horizontal(|ui| {
+            ui.label(tr("Ignore:"));
+            ui.checkbox(&mut switches.whitespace, tr("white space"));
+            ui.checkbox(&mut switches.case, tr("case"));
+            ui.checkbox(&mut switches.timestamps, tr("timestamps")).on_hover_text(tr("The time at the start of each line"));
+            ui.label(tr("mask"));
+            let resp = ui.add(egui::TextEdit::singleline(&mut switches.mask).desired_width(160.0).hint_text("req=[0-9a-f]+").font(egui::TextStyle::Monospace));
+            resp.on_hover_text(tr("A regular expression; its matches do not count (ids, durations)"));
+            if switches != r.switches && ui.button(tr("Run again")).clicked() {
+                rerun = true;
+            }
         });
         let a_src = self.docs.iter().find(|d| d.id == r.doc).map(|d| (d.buf.source.clone(), d.buf.codec));
         let data = r.data.clone();
@@ -628,6 +686,16 @@ impl BigTextApp {
         if close {
             if let Some(r) = self.diff.take() {
                 r.cancel.cancel();
+            }
+        }
+        self.diff_switches = switches;
+        if rerun {
+            if let Some(r) = &self.diff {
+                let (doc, other) = (r.doc, r.other_path.clone());
+                if let Some(i) = self.docs.iter().position(|d| d.id == doc) {
+                    self.active = i;
+                    self.start_diff(other);
+                }
             }
         }
         if swap {

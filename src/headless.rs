@@ -72,6 +72,11 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         Two JSON files compared by structure, whatever the key order and the
         formatting: path: old -> new, path: added, path: removed. Exit code 0
         when they are the same, 1 when they differ.
+  diff A B [-w] [-i] [-t] [--mask RE]
+        The lines that differ, as @@ -12,2 +12,3 @@ hunks of -A and +B lines;
+        -w ignores white space, -i case, -t the timestamp at the start of each
+        line, --mask what RE matches (ids, durations). Exit code 0 when they
+        are the same, 1 when they differ.
   derive FILE --name NAME --expr EXPR [-o OUT]
         The table with a new last column computed per row, like {price} * {qty},
         substr({ts}, 0, 10) or if({status} = \"ok\", 1, 0).
@@ -102,7 +107,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 17] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff"];
+const COMMANDS: [&str; 18] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -770,6 +775,52 @@ fn cmd_jsondiff(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(if r.map_err(Fail)?.unwrap_or(false) { 1 } else { 0 })
 }
 
+fn cmd_diff(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["-w", "-b", "-i", "-t"], &["--mask"])?;
+    let [fa, fb] = &a.rest[..] else { return fail("needs A and B") };
+    let mask = match a.opt(&["--mask"]) {
+        Some(m) => Some(regex_automata::meta::Regex::new(m).map_err(|e| Fail(format!("--mask: {e}")))?),
+        None => None,
+    };
+    let opts = crate::diff::DiffOptions { whitespace: a.flag(&["-w", "-b"]), case: a.flag(&["-i"]), timestamps: a.flag(&["-t"]), mask };
+    let (ba, _) = open(Path::new(fa))?;
+    let (bb, _) = open(Path::new(fb))?;
+    let mut hunks = Vec::new();
+    match crate::diff::diff_with(&ba.source, &bb.source, &opts, &CancelToken::new(), None, |h| {
+        hunks.push(h);
+        true
+    }) {
+        crate::diff::DiffEnd::Completed => {}
+        _ => return fail("could not read the files"),
+    }
+    if hunks.is_empty() {
+        return Ok(0);
+    }
+    writeln!(out, "--- {fa}\n+++ {fb}")?;
+    let (mut ra, mut rb) = (LineReader::new(&ba), LineReader::new(&bb));
+    let (mut na, mut nb) = (0u64, 0u64);
+    // Lines `from..from + count` of a reader at line `at`, each after `mark`.
+    fn lines(r: &mut LineReader, at: &mut u64, from: u64, count: u64, mark: &[u8], out: &mut dyn Write) -> Res<()> {
+        while *at < from + count {
+            let Some((_, l)) = r.next()? else { break };
+            if *at >= from {
+                out.write_all(mark)?;
+                out.write_all(l)?;
+                out.write_all(b"\n")?;
+            }
+            *at += 1;
+        }
+        Ok(())
+    }
+    let start = |line: u64, count: u64| if count == 0 { line } else { line + 1 };
+    for h in hunks {
+        writeln!(out, "@@ -{},{} +{},{} @@", start(h.a_line, h.a_count), h.a_count, start(h.b_line, h.b_count), h.b_count)?;
+        lines(&mut ra, &mut na, h.a_line, h.a_count, b"-", out)?;
+        lines(&mut rb, &mut nb, h.b_line, h.b_count, b"+", out)?;
+    }
+    Ok(1)
+}
+
 fn cmd_derive(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &["--no-header", "--header"], &["--name", "--expr", "-o", "--output", "--skip", "--quote"])?;
     let [file] = &a.rest[..] else { return fail("needs FILE") };
@@ -970,6 +1021,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "derive" => cmd_derive(rest, out),
         "jsonl" => cmd_jsonl(rest, out),
         "jsondiff" => cmd_jsondiff(rest, out),
+        "diff" => cmd_diff(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
             return 0;
@@ -1105,6 +1157,21 @@ mod tests {
         assert_eq!(run_args(&["join", &o, &u, "--left-on", "user", "--right-on", "id"]).1, "order,user,name\n1,u1,Ann\n2,u3,\n");
         assert_eq!(run_args(&["join", &o, &u, "--left-on", "2", "--right-on", "1", "--inner"]).1, "order,user,name\n1,u1,Ann\n");
         assert_eq!(run_args(&["join", &o, &u, "--on", "nope"]).0, 2);
+    }
+
+    #[test]
+    fn line_diff() {
+        let d = tempfile::tempdir().unwrap();
+        let a = file(&d, "a.log", b"10:00:01 start req=a1\n10:00:02 Working\n10:00:03 end\n");
+        let b = file(&d, "b.log", b"11:20:01 start req=f9\n11:20:02 working\n11:20:03 end\nextra\n");
+        let (code, out, _) = run_args(&["diff", &a, &b]);
+        assert_eq!(code, 1);
+        assert!(out.contains("@@ -1,3 +1,4 @@\n-10:00:01 start req=a1\n"), "{out}");
+        assert!(out.ends_with("+11:20:03 end\n+extra\n"), "{out}");
+        let (code, out, _) = run_args(&["diff", &a, &b, "-t", "-i", "--mask", "req=[0-9a-f]+"]);
+        assert_eq!((code, out.lines().skip(2).collect::<Vec<_>>()), (1, vec!["@@ -3,0 +4,1 @@", "+extra"]));
+        assert_eq!(run_args(&["diff", &a, &a]).0, 0);
+        assert_eq!(run_args(&["diff", &a, &b, "--mask", "("]).0, 2);
     }
 
     #[test]

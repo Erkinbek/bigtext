@@ -932,4 +932,14 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Next difference", "Следующее отличие", "Keyingi farq"],
     ["Previous difference", "Предыдущее отличие", "Oldingi farq"],
     ["Compare with tab", "Сравнить с вкладкой", "Varaq bilan solishtirish"],
+    // Compare switches.
+    ["Mask: {error}", "Маска: {error}", "Maska: {error}"],
+    ["Ignore:", "Не учитывать:", "Hisobga olmaslik:"],
+    ["white space", "пробелы", "bo'shliqlar"],
+    ["case", "регистр", "harf katta-kichikligi"],
+    ["timestamps", "время", "vaqt belgilari"],
+    ["The time at the start of each line", "Время в начале каждой строки", "Har bir qator boshidagi vaqt"],
+    ["mask", "маска", "maska"],
+    ["A regular expression; its matches do not count (ids, durations)", "Регулярное выражение; его совпадения не учитываются (идентификаторы, длительности)", "Muntazam ifoda; uning mosliklari hisobga olinmaydi (identifikatorlar, davomiyliklar)"],
+    ["ignoring {what}", "без учёта: {what}", "hisobga olinmadi: {what}"],
 ];

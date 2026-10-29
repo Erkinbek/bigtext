@@ -46,6 +46,51 @@ struct Line {
     off: u64,
     len: u64,
     hash: u64,
+    /// The length compared: of the line, or of its normalised form.
+    key: u64,
+}
+
+/// What does not count as a difference.
+#[derive(Clone, Debug, Default)]
+pub struct DiffOptions {
+    /// Spaces, tabs and carriage returns.
+    pub whitespace: bool,
+    /// Upper and lower case (ASCII).
+    pub case: bool,
+    /// The timestamp at the start of a line.
+    pub timestamps: bool,
+    /// Text matching this pattern (`req=[0-9a-f]+`).
+    pub mask: Option<regex_automata::meta::Regex>,
+}
+
+impl DiffOptions {
+    fn plain(&self) -> bool {
+        !self.whitespace && !self.case && !self.timestamps && self.mask.is_none()
+    }
+
+    /// The line as it is compared.
+    fn normalise(&self, line: &[u8]) -> Vec<u8> {
+        let mut b: &[u8] = line;
+        if self.timestamps {
+            b = &b[crate::patterns::time_prefix(b)..];
+        }
+        let masked;
+        if let Some(re) = &self.mask {
+            let mut out = Vec::with_capacity(b.len());
+            let mut at = 0;
+            for m in re.find_iter(b) {
+                out.extend_from_slice(&b[at..m.start()]);
+                at = m.end();
+            }
+            out.extend_from_slice(&b[at..]);
+            masked = out;
+            b = &masked;
+        }
+        b.iter()
+            .filter(|c| !(self.whitespace && matches!(c, b' ' | b'\t' | b'\r')))
+            .map(|&c| if self.case { c.to_ascii_lowercase() } else { c })
+            .collect()
+    }
 }
 
 /// Streaming 64-bit hash (FNV-1a over 8-byte words with a final mix).
@@ -105,11 +150,14 @@ struct Reader<'a> {
     buf: Vec<u8>,
     buf_start: u64,
     buf_len: usize,
+    opts: &'a DiffOptions,
+    /// The line read so far, when lines are normalised.
+    text: Vec<u8>,
 }
 
 impl<'a> Reader<'a> {
-    fn new(src: &'a Source) -> Self {
-        Reader { src, pos: 0, line: 0, buf: vec![0; CHUNK], buf_start: 0, buf_len: 0 }
+    fn new(src: &'a Source, opts: &'a DiffOptions) -> Self {
+        Reader { src, pos: 0, line: 0, buf: vec![0; CHUNK], buf_start: 0, buf_len: 0, opts, text: Vec::new() }
     }
 
     fn eof(&self) -> bool {
@@ -139,6 +187,9 @@ impl<'a> Reader<'a> {
 
     /// Reads the next line (including its '\n') as a hash record.
     fn next_line(&mut self) -> Option<Line> {
+        if !self.opts.plain() {
+            return self.next_normalised();
+        }
         let off = self.pos;
         let mut h = LineHasher::new();
         let mut len = 0u64;
@@ -153,7 +204,7 @@ impl<'a> Reader<'a> {
                     len += i as u64 + 1;
                     self.pos += i as u64 + 1;
                     self.line += 1;
-                    return Some(Line { off, len, hash: h.finish() ^ len });
+                    return Some(Line { off, len, hash: h.finish() ^ len, key: len });
                 }
                 None => {
                     let n = chunk.len();
@@ -166,8 +217,49 @@ impl<'a> Reader<'a> {
         if len == 0 {
             None
         } else {
-            Some(Line { off, len, hash: h.finish() ^ len })
+            Some(Line { off, len, hash: h.finish() ^ len, key: len })
         }
+    }
+
+    /// [`Self::next_line`] hashing the line's normalised form (lines over 1 MB as they are past
+    /// that).
+    fn next_normalised(&mut self) -> Option<Line> {
+        let off = self.pos;
+        let mut text = std::mem::take(&mut self.text);
+        text.clear();
+        let mut len = 0u64;
+        loop {
+            let Some(chunk) = self.peek() else {
+                self.text = text;
+                return None;
+            };
+            if chunk.is_empty() {
+                break;
+            }
+            let (part, done) = match memchr::memchr(b'\n', chunk) {
+                Some(i) => (i + 1, true),
+                None => (chunk.len(), false),
+            };
+            if text.len() < (1 << 20) {
+                let room = ((1 << 20) - text.len()).min(part);
+                text.extend_from_slice(&chunk[..room]);
+            }
+            len += part as u64;
+            self.pos += part as u64;
+            if done {
+                self.line += 1;
+                break;
+            }
+        }
+        let norm = self.opts.normalise(text.strip_suffix(b"\n").unwrap_or(&text));
+        self.text = text;
+        if len == 0 {
+            return None;
+        }
+        let mut h = LineHasher::new();
+        h.update(&norm);
+        let key = norm.len() as u64;
+        Some(Line { off, len, hash: h.finish() ^ key, key })
     }
 }
 
@@ -204,12 +296,12 @@ fn read_window(r: &mut Reader) -> Option<Vec<Line>> {
 fn find_anchor(a: &[Line], b: &[Line], a_eof: bool, b_eof: bool) -> Option<(usize, usize)> {
     let mut first_in_b: HashMap<(u64, u64), Vec<usize>> = HashMap::with_capacity(b.len());
     for (j, l) in b.iter().enumerate() {
-        first_in_b.entry((l.hash, l.len)).or_default().push(j);
+        first_in_b.entry((l.hash, l.key)).or_default().push(j);
     }
     let agree = |i: usize, j: usize| -> bool {
         for k in 0..ANCHOR {
             match (a.get(i + k), b.get(j + k)) {
-                (Some(x), Some(y)) if x.hash == y.hash && x.len == y.len => {}
+                (Some(x), Some(y)) if x.hash == y.hash && x.key == y.key => {}
                 // Both sides end together: the tail matches.
                 (None, None) if a_eof && b_eof => return true,
                 _ => return false,
@@ -224,7 +316,7 @@ fn find_anchor(a: &[Line], b: &[Line], a_eof: bool, b_eof: bool) -> Option<(usiz
                 break;
             }
         }
-        if let Some(js) = first_in_b.get(&(l.hash, l.len)) {
+        if let Some(js) = first_in_b.get(&(l.hash, l.key)) {
             for &j in js {
                 if let Some((bi, bj)) = best {
                     if i + j >= bi + bj {
@@ -247,9 +339,14 @@ fn find_anchor(a: &[Line], b: &[Line], a_eof: bool, b_eof: bool) -> Option<(usiz
 
 /// Compares `a` and `b`, calling `on_hunk` for each differing region in order (return false to
 /// stop). Progress is reported in bytes of `a` + `b` consumed.
-pub fn diff(a: &Source, b: &Source, cancel: &CancelToken, progress: Option<&Progress>, mut on_hunk: impl FnMut(Hunk) -> bool) -> DiffEnd {
-    let mut ra = Reader::new(a);
-    let mut rb = Reader::new(b);
+pub fn diff(a: &Source, b: &Source, cancel: &CancelToken, progress: Option<&Progress>, on_hunk: impl FnMut(Hunk) -> bool) -> DiffEnd {
+    diff_with(a, b, &DiffOptions::default(), cancel, progress, on_hunk)
+}
+
+/// [`diff`] where lines that differ only in what `opts` ignores count as the same.
+pub fn diff_with(a: &Source, b: &Source, opts: &DiffOptions, cancel: &CancelToken, progress: Option<&Progress>, mut on_hunk: impl FnMut(Hunk) -> bool) -> DiffEnd {
+    let mut ra = Reader::new(a, opts);
+    let mut rb = Reader::new(b, opts);
     if let Some(p) = progress {
         p.set_total(a.len() + b.len());
     }
@@ -279,6 +376,23 @@ pub fn diff(a: &Source, b: &Source, cancel: &CancelToken, progress: Option<&Prog
         let nl = count_byte(&x[..back], b'\n');
         ra.advance(back as u64, nl);
         rb.advance(back as u64, nl);
+        // Lines equal once normalised, one by one, before looking for an anchor.
+        if !opts.plain() {
+            let mut same = false;
+            loop {
+                let (pa, la, pb, lb) = (ra.pos, ra.line, rb.pos, rb.line);
+                match (ra.next_line(), rb.next_line()) {
+                    (Some(x), Some(y)) if x.hash == y.hash && x.key == y.key => same = true,
+                    _ => {
+                        (ra.pos, ra.line, rb.pos, rb.line) = (pa, la, pb, lb);
+                        break;
+                    }
+                }
+            }
+            if same {
+                continue;
+            }
+        }
         // Slow path: re-synchronise using line hashes.
         let (sa_line, sa_off, sb_line, sb_off) = (ra.line, ra.pos, rb.line, rb.pos);
         let Some(wa) = read_window(&mut ra) else { return DiffEnd::Failed };
@@ -347,6 +461,41 @@ mod tests {
 
     fn summary(h: &[Hunk]) -> Vec<(u64, u64, u64, u64)> {
         h.iter().map(|h| (h.a_line, h.a_count, h.b_line, h.b_count)).collect()
+    }
+
+    #[test]
+    fn ignoring_timestamps_case_whitespace_and_masks() {
+        let a = "2024-05-01 10:00:00 INFO start req=ab12\n2024-05-01 10:00:01 INFO   Working\n2024-05-01 10:00:02 ERROR boom\n";
+        let b = "2024-06-09 08:30:00 INFO start req=ff99\n2024-06-09 08:30:01 info working\n2024-06-09 08:30:02 ERROR bang\n";
+        let (_a, sa) = src(a.as_bytes());
+        let (_b, sb) = src(b.as_bytes());
+        let run = |o: &DiffOptions| {
+            let mut v = Vec::new();
+            diff_with(&sa, &sb, o, &CancelToken::new(), None, |h| {
+                v.push(h);
+                true
+            });
+            summary(&v)
+        };
+        assert_eq!(run(&DiffOptions::default()), vec![(0, 3, 0, 3)]);
+        let all = DiffOptions { whitespace: true, case: true, timestamps: true, mask: Some(regex_automata::meta::Regex::new("req=[0-9a-f]+").unwrap()) };
+        assert_eq!(run(&all), vec![(2, 1, 2, 1)]);
+        let no_mask = DiffOptions { mask: None, ..all.clone() };
+        // One equal line between two changes is too short an anchor: one hunk.
+        assert_eq!(run(&no_mask), vec![(0, 3, 0, 3)]);
+        // Many lines that differ only in their times: no hunks, and quickly.
+        let big_a: String = (0..20_000).map(|i| format!("10:00:{:02} line {i}\n", i % 60)).collect();
+        let big_b: String = (0..20_000).map(|i| format!("11:30:{:02} line {i}\n", (i + 7) % 60)).collect();
+        let (_c, sc) = src(big_a.as_bytes());
+        let (_d, sd) = src(big_b.as_bytes());
+        let t = std::time::Instant::now();
+        let mut n = 0;
+        diff_with(&sc, &sd, &DiffOptions { timestamps: true, ..Default::default() }, &CancelToken::new(), None, |_| {
+            n += 1;
+            true
+        });
+        assert_eq!(n, 0);
+        assert!(t.elapsed() < std::time::Duration::from_secs(5));
     }
 
     #[test]
