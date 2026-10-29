@@ -1182,4 +1182,7 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["To (inclusive)", "По (включительно)", "Gacha (shu bilan)"],
     ["The log's lines in time order are found by binary search; an empty field means its start or end.", "Строки лога, упорядоченные по времени, находятся двоичным поиском; пустое поле — начало или конец.", "Vaqt bo'yicha tartiblangan log qatorlari ikkilik qidiruv bilan topiladi; bo'sh maydon — boshi yoki oxiri."],
     ["Enter a time like 2024-05-01 14:00:00 or 14:30.", "Введите время, например 2024-05-01 14:00:00 или 14:30.", "Vaqtni kiriting, masalan 2024-05-01 14:00:00 yoki 14:30."],
+    // Per-file settings.
+    ["Auto-detect (forget)", "Определить автоматически (забыть)", "Avtomatik aniqlash (unutish)"],
+    ["Detect the encoding again and stop remembering the one chosen for this file", "Определить кодировку заново и больше не запоминать выбранную для этого файла", "Kodirovkani qayta aniqlash va bu fayl uchun tanlanganini endi eslab qolmaslik"],
 ];

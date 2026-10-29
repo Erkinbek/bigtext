@@ -6,7 +6,6 @@
 //! never changed by the view.
 
 use std::collections::BTreeSet;
-use std::hash::{Hash, Hasher};
 use std::ops::Range;
 
 use egui::{pos2, vec2, Align, Align2, Color32, CursorIcon, Event, EventFilter, FontId, Key, Layout, Painter, Rect, Sense, Stroke, Ui, UiBuilder};
@@ -53,6 +52,32 @@ pub struct TableState {
     pub frozen: usize,
     /// Columns left out of the view (the file is not changed).
     pub hidden: BTreeSet<usize>,
+    /// The layout remembered for the file, put back once its first line is read and the same.
+    pub pending: Option<TableLayout>,
+    /// The user changed the delimiter, the header switch or a width (the app saves it).
+    pub layout_changed: bool,
+    /// The layout was chosen (or put back), so it is worth remembering.
+    custom: bool,
+}
+
+/// A table's layout as BigText remembers it for a file.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TableLayout {
+    pub delim: u8,
+    pub header: bool,
+    /// FNV-1a of the table's first line: when it changed, the columns may have moved.
+    pub sig: u64,
+    /// The widths of the columns whose border was dragged.
+    pub fixed: Vec<(u16, f32)>,
+    pub scroll_x: f32,
+}
+
+/// Dragged widths kept per file.
+pub const LAYOUT_COLUMNS_MAX: usize = 64;
+
+/// FNV-1a (stable across builds, unlike `DefaultHasher`).
+pub fn fnv1a(b: &[u8]) -> u64 {
+    b.iter().fold(0xcbf2_9ce4_8422_2325, |h, &x| (h ^ x as u64).wrapping_mul(0x0000_0100_0000_01b3))
 }
 
 impl Default for TableState {
@@ -70,6 +95,9 @@ impl Default for TableState {
             skip: 0,
             frozen: 0,
             hidden: BTreeSet::new(),
+            pending: None,
+            layout_changed: false,
+            custom: false,
         }
     }
 }
@@ -84,6 +112,33 @@ impl TableState {
         self.anchor = None;
         self.frozen = 0;
         self.hidden.clear();
+    }
+
+    /// The layout to remember for the file: `None` while it is the detected one.
+    pub fn layout(&self) -> Option<TableLayout> {
+        if let Some(p) = &self.pending {
+            return Some(p.clone());
+        }
+        let (d, sig) = (self.dialect?, self.first_line?);
+        if !self.custom {
+            return None;
+        }
+        let fixed = self.widths.iter().zip(&self.fixed).enumerate().filter(|(_, (_, &f))| f).map(|(c, (&w, _))| (c as u16, w)).take(LAYOUT_COLUMNS_MAX).collect();
+        Some(TableLayout { delim: d.delim, header: self.header, sig, fixed, scroll_x: self.scroll_x })
+    }
+
+    /// Splits the columns at `delim` instead (the toolbar's Delimiter).
+    pub fn set_delim(&mut self, delim: u8) {
+        let cur = self.dialect.unwrap_or(Dialect::new(b','));
+        self.dialect = Some(Dialect { delim, ..cur });
+        self.reset_columns();
+        self.changed();
+    }
+
+    /// The user changed the layout.
+    fn changed(&mut self) {
+        self.custom = true;
+        self.layout_changed = true;
     }
 
     /// After the header was edited on purpose (a rename): keep the layout.
@@ -275,6 +330,36 @@ fn set_skip(doc: &mut Document, skip: usize) {
     st.reset_columns();
 }
 
+/// Puts back the layout remembered for the file when its first line is still the one it was
+/// saved with; otherwise the columns may have moved, and it is dropped.
+fn apply_pending(doc: &mut Document) {
+    let Some(d) = doc.table_state.dialect else { return };
+    let start = d.first(&doc.buf).max(doc.min_caret());
+    let Ok(head) = rows::row_at(&doc.buf, start, None) else { return };
+    let Some(first) = doc.buf.read(head.start..head.end) else { return };
+    let Some(p) = doc.table_state.pending.take() else { return };
+    let sig = fnv1a(&first);
+    if p.sig != sig {
+        return;
+    }
+    let st = &mut doc.table_state;
+    st.reset_columns();
+    st.dialect = Some(Dialect { delim: p.delim, ..d });
+    st.header = p.header;
+    for &(c, w) in p.fixed.iter().take(LAYOUT_COLUMNS_MAX) {
+        let c = c as usize;
+        if st.widths.len() <= c {
+            st.widths.resize(c + 1, 0.0);
+            st.fixed.resize(c + 1, false);
+        }
+        st.widths[c] = w;
+        st.fixed[c] = true;
+    }
+    st.scroll_x = p.scroll_x;
+    st.first_line = Some(sig);
+    st.custom = true;
+}
+
 /// Moves the first visible row by `n` rows.
 fn step(doc: &mut Document, n: i64) {
     if let Ok(top) = rows::row_at(&doc.buf, doc.view.top, None) {
@@ -294,6 +379,9 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     let visuals = ui.visuals().clone();
     if doc.table_state.dialect.is_none() {
         detect_dialect(doc);
+    }
+    if doc.table_state.pending.is_some() {
+        apply_pending(doc);
     }
     let dialect = doc.table_state.dialect.unwrap_or(Dialect::new(b','));
     let codec = doc.buf.codec;
@@ -325,9 +413,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         _ => table_start,
     };
     if let Some(first) = head.and_then(|h| doc.buf.read(h.start..h.end)) {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        first.hash(&mut hasher);
-        let sig = Some(hasher.finish());
+        let sig = Some(fnv1a(&first));
         let st = &mut doc.table_state;
         if st.first_line.is_some() && st.first_line != sig {
             let scroll_x = st.scroll_x;
@@ -573,6 +659,9 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
             st.widths[col] = 0.0;
             st.fixed[col] = false;
         }
+        if r.drag_stopped() || r.double_clicked() {
+            st.changed();
+        }
     }
 
     // Clicks in the body: a click puts the caret in the cell, a double click opens it in the
@@ -690,12 +779,13 @@ fn toolbar(ui: &mut Ui, doc: &mut Document, rect: Rect, ncols: usize, can_delete
         egui::ComboBox::from_id_salt(("delimiter", doc_id)).selected_text(tr(cur.name())).show_ui(ui, |ui| {
             for delim in DELIMITERS {
                 if ui.selectable_label(cur.delim == delim, tr(Dialect::new(delim).name())).clicked() && cur.delim != delim {
-                    st.dialect = Some(Dialect { delim, ..cur });
-                    st.reset_columns();
+                    st.set_delim(delim);
                 }
             }
         });
-        ui.checkbox(&mut st.header, tr("First row is header"));
+        if ui.checkbox(&mut st.header, tr("First row is header")).changed() {
+            st.changed();
+        }
         let mut skip = st.skip;
         ui.menu_button(tr("Table…"), |ui| {
             ui.horizontal(|ui| {

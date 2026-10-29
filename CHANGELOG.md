@@ -84,6 +84,13 @@ All notable changes to BigText. Each release on
 
 ### Files
 
+- **BigText remembers each file's choices**: the encoding picked with File → Reopen with
+  encoding (a remembered one opens the file in one pass; a byte order mark the file has since
+  gained wins), Highlight as, table, hex, follow, read-only and word wrap, and for tables the
+  delimiter, the header switch, dragged column widths and the horizontal scroll. They come back
+  from session restore, Open recent, a saved session or the command line; a table whose first
+  line changed starts with a fresh layout. **Reopen with encoding → Auto-detect (forget)** goes
+  back to detecting. Up to 200 files are remembered in `state.txt`.
 - **Archives open**: a `.zip`, `.tar`, `.tar.gz` / `.tgz`, `.tar.zst`, `.tar.xz` or `.tar.bz2`
   lists its files in a picker (name, size, date; type to filter, arrows and Enter to open), and
   the file picked is unpacked into a temporary read-only copy like a `.gz`, titled

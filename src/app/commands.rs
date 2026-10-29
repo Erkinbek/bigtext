@@ -654,7 +654,10 @@ impl BigTextApp {
             Cmd::NextBookmark => doc(self).into_iter().for_each(|d| d.goto_bookmark(true)),
             Cmd::PrevBookmark => doc(self).into_iter().for_each(|d| d.goto_bookmark(false)),
             Cmd::ClearBookmarks => doc(self).into_iter().for_each(|d| d.bookmarks.clear()),
-            Cmd::ReadOnly => doc(self).into_iter().for_each(|d| d.read_only = !d.read_only),
+            Cmd::ReadOnly => {
+                doc(self).into_iter().for_each(|d| d.read_only = !d.read_only);
+                self.persist_state();
+            }
             Cmd::Find => self.open_search(false),
             Cmd::Replace => self.open_search(true),
             Cmd::FindNext => self.find_next(true),
@@ -697,24 +700,36 @@ impl BigTextApp {
                     self.open_timeline();
                 }
             }
-            Cmd::WordWrap => doc(self).into_iter().for_each(|d| {
-                d.view.wrap = !d.view.wrap;
-                d.view.scroll_to_caret = true;
-            }),
-            Cmd::HexView => doc(self).into_iter().for_each(|d| {
-                d.hex = !d.hex;
-                d.view.scroll_to_caret = true;
-            }),
-            Cmd::TableView => doc(self).into_iter().for_each(|d| {
-                d.table = !d.table;
-                d.view.scroll_to_caret = true;
-            }),
+            Cmd::WordWrap => {
+                doc(self).into_iter().for_each(|d| {
+                    d.view.wrap = !d.view.wrap;
+                    d.view.scroll_to_caret = true;
+                });
+                self.persist_state();
+            }
+            Cmd::HexView => {
+                doc(self).into_iter().for_each(|d| {
+                    d.hex = !d.hex;
+                    d.view.scroll_to_caret = true;
+                });
+                self.persist_state();
+            }
+            Cmd::TableView => {
+                doc(self).into_iter().for_each(|d| {
+                    d.table = !d.table;
+                    d.view.scroll_to_caret = true;
+                });
+                self.persist_state();
+            }
             Cmd::JsonStructure => self.toggle_json_panel(),
             Cmd::LogFields => self.fields.open = !self.fields.open,
             Cmd::JsonFields => self.start_json_fields(),
             Cmd::CheckRows => self.check_rows(),
             Cmd::JsonlTable => self.open_jsonl_table(),
-            Cmd::Follow => doc(self).into_iter().for_each(|d| d.follow = !d.follow),
+            Cmd::Follow => {
+                doc(self).into_iter().for_each(|d| d.follow = !d.follow);
+                self.persist_state();
+            }
             Cmd::SplitView => doc(self).into_iter().for_each(toggle_split),
             Cmd::CompareSideBySide => {
                 self.side_by_side = !self.side_by_side;
@@ -879,9 +894,15 @@ impl BigTextApp {
                     }
                 });
                 ui.menu_button(tr("Reopen with encoding"), |ui| {
+                    let forced = self.docs.get(self.active).and_then(|d| d.forced_enc);
+                    let auto = ui.add_enabled(forced.is_some(), egui::Button::new(tr("Auto-detect (forget)")));
+                    if auto.on_hover_text(tr("Detect the encoding again and stop remembering the one chosen for this file")).clicked() {
+                        self.reopen_with(None);
+                    }
+                    ui.separator();
                     for enc in Encoding::ALL {
-                        if ui.button(enc.name()).clicked() {
-                            self.reopen_with(enc);
+                        if ui.radio(forced == Some(enc), enc.name()).clicked() {
+                            self.reopen_with(Some(enc));
                         }
                     }
                 });
@@ -990,18 +1011,24 @@ impl BigTextApp {
                 for c in [Cmd::Syntax, Cmd::ShowWhitespace] {
                     run = run.or(self.item(ui, c));
                 }
+                let mut lang_changed = false;
                 if let Some(d) = self.docs.get_mut(self.active) {
                     let auto = d.auto_lang();
                     ui.menu_button(tr("Highlight as"), |ui| {
                         if ui.radio(d.lang.is_none(), trf("Auto ({lang})", &[("lang", auto.name())])).clicked() {
                             d.lang = None;
+                            lang_changed = true;
                         }
                         for l in crate::view::highlight::Lang::ALL {
                             if ui.radio(d.lang == Some(l), l.name()).clicked() {
                                 d.lang = Some(l);
+                                lang_changed = true;
                             }
                         }
                     });
+                }
+                if lang_changed {
+                    self.persist_state();
                 }
                 for c in [Cmd::Highlights, Cmd::LevelBar] {
                     run = run.or(self.item(ui, c));

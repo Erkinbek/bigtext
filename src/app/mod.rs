@@ -96,6 +96,8 @@ pub struct Opened {
     pub unpacked: Option<PathBuf>,
     /// The archive's file it is, when `unpacked` is an archive.
     pub member: Option<String>,
+    /// The encoding of the byte order mark the file starts with.
+    pub bom: Option<Encoding>,
 }
 
 pub enum Msg {
@@ -313,6 +315,8 @@ pub struct BigTextApp {
     occurrences: Option<(String, bigtext::encoding::Codec, Option<Arc<Matcher>>)>,
     /// Document to search once it is open (command line --find).
     pending_find: Option<u64>,
+    /// What was chosen for files that are not open, most recently used first.
+    pub file_opts: Vec<extras::FileOpts>,
 }
 
 /// Turns I/O errors into messages a user can act on.
@@ -363,14 +367,16 @@ fn open_worker(path: &Path, forced: Option<Encoding>, mode: OpenMode) -> Result<
     let read_only = std::fs::metadata(path).map(|m| m.permissions().readonly()).unwrap_or(false);
     let n = src.len().min(1 << 20);
     let whole = n == src.len();
-    let det = {
+    let (det, bom) = {
         let sample = src.read(0..n).map_err(|e| friendly_io(&e, path))?;
-        match forced {
+        let bom = Encoding::ALL.into_iter().find(|e| !e.bom().is_empty() && sample.starts_with(e.bom()));
+        let det = match forced {
             Some(enc) => encoding::detect_with(&sample, whole, enc, 0),
             None => encoding::detect(&sample, whole),
-        }
+        };
+        (det, bom)
     };
-    Ok(Opened { source: Arc::new(src), detected: det, elapsed: t.elapsed(), path: canonical.clone(), read_only, unpacked: None, member: None })
+    Ok(Opened { source: Arc::new(src), detected: det, elapsed: t.elapsed(), path: canonical.clone(), read_only, unpacked: None, member: None, bom })
 }
 
 /// Opens `path`, unpacking it into a temporary file first when it is compressed.
@@ -524,6 +530,7 @@ impl BigTextApp {
             fonts: fonts::FontsUi::default(),
             occurrences: None,
             pending_find: None,
+            file_opts: Vec::new(),
         };
         app.search.query.case_sensitive = true;
         if persist {
@@ -535,6 +542,7 @@ impl BigTextApp {
             app.search.history = std::mem::take(&mut state.history);
             app.settings.level_bar = state.level_bar.unwrap_or(true);
             app.settings.saved = std::mem::take(&mut state.saved);
+            app.file_opts = std::mem::take(&mut state.file_opts);
             app.settings.show_ws = state.show_ws.unwrap_or(false);
             app.recovery.enabled = state.recovery.unwrap_or(true);
             app.settings.id_keys = state.id_keys.take();
@@ -649,9 +657,30 @@ impl BigTextApp {
             self.docs.clear();
         }
         let id = self.alloc_id();
-        self.docs.push(Document::loading(id, canon.clone()));
+        let mut d = Document::loading(id, canon.clone());
+        // What was chosen for the file before; a remembered encoding opens it in one pass.
+        d.pending_opts = if archive { None } else { self.opts_for(&canon) };
+        let forced = d.pending_opts.as_ref().and_then(|o| o.enc);
+        self.docs.push(d);
         self.active = self.docs.len() - 1;
-        self.spawn_open(id, canon, None);
+        self.spawn_open(id, canon, forced);
+    }
+
+    /// A remembered encoding gives way to the byte order mark the file now starts with (it was
+    /// saved again): returns the file to open again, detecting.
+    fn bom_wins(&mut self, doc: u64, result: &Result<Opened, String>) -> Option<PathBuf> {
+        let o = result.as_ref().ok()?;
+        let p = self.doc_mut(doc)?.pending_opts.as_mut()?;
+        let enc = p.enc?;
+        if o.bom.is_none_or(|b| b == enc) {
+            return None;
+        }
+        p.enc = None;
+        if o.unpacked.is_some() {
+            let temp = o.path.clone();
+            jobs::spawn("remove-unpacked", move || bigtext::decompress::remove_temp(&temp));
+        }
+        Some(o.unpacked.clone().unwrap_or_else(|| o.path.clone()))
     }
 
     /// Opens `path`, or the archive `path`'s file `member` without asking which.
@@ -791,6 +820,11 @@ impl BigTextApp {
         while let Ok(msg) = self.rx.try_recv() {
             match msg {
                 Msg::Opened { doc, result } => {
+                    if let Some(path) = self.bom_wins(doc, &result) {
+                        drop(result);
+                        self.spawn_open(doc, path, None);
+                        continue;
+                    }
                     let waker = self.waker.clone();
                     let tx = self.tx.clone();
                     if let Some(d) = self.doc_mut(doc) {
@@ -820,7 +854,11 @@ impl BigTextApp {
                                 if let Some(b) = d.banner_after_reload.take() {
                                     d.banner = Some(b);
                                 }
+                                d.file_read_only = o.read_only || d.temporary;
                                 d.install(o.source, o.detected, prefix, waker.clone());
+                                if let Some(opts) = d.pending_opts.take() {
+                                    d.apply_opts(opts);
+                                }
                                 if follow_end {
                                     let len = d.buf.len();
                                     d.set_caret(len, false);
@@ -964,6 +1002,7 @@ impl BigTextApp {
             });
             return;
         }
+        extras::remember(&mut self.file_opts, &self.docs[i]);
         let mut d = self.docs.remove(i);
         if self.diff.as_ref().is_some_and(|r| r.doc == id) {
             if let Some(r) = self.diff.take() {
@@ -983,6 +1022,7 @@ impl BigTextApp {
             self.new_doc();
         }
         self.active = self.active.min(self.docs.len() - 1);
+        self.persist_state();
     }
 
     fn start_copy_job(&mut self, id: u64, cut: bool) {
@@ -1009,7 +1049,8 @@ impl BigTextApp {
     // ------------------------------------------------------------------------------------------
     // UI pieces.
 
-    fn reopen_with(&mut self, enc: Encoding) {
+    /// Opens the file again in `enc` (remembered for it), or detecting with `None`.
+    fn reopen_with(&mut self, enc: Option<Encoding>) {
         let Some(d) = self.docs.get_mut(self.active) else { return };
         let Some(path) = d.path.clone() else { return };
         if d.is_modified() {
@@ -1018,8 +1059,9 @@ impl BigTextApp {
         }
         d.state = DocState::Loading;
         d.index_cancel.cancel();
+        d.forced_enc = enc;
         let id = d.id;
-        self.spawn_open(id, path, Some(enc));
+        self.spawn_open(id, path, enc);
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {
@@ -1666,6 +1708,9 @@ impl BigTextApp {
     pub(crate) fn test_close(&mut self, id: u64) {
         self.close_tab(id, true);
     }
+    pub(crate) fn test_reopen_with(&mut self, enc: Option<Encoding>) {
+        self.reopen_with(enc);
+    }
     /// Takes the files of later launches (see `instance`).
     pub(crate) fn start_instance_server(&mut self, lock: PathBuf) {
         self.instance = crate::instance::serve_app(lock, self.tx.clone(), self.waker.clone());
@@ -1854,6 +1899,9 @@ impl eframe::App for BigTextApp {
         });
         for a in table_actions {
             self.on_table_action(a);
+        }
+        if self.docs.get_mut(self.active).is_some_and(|d| std::mem::take(&mut d.table_state.layout_changed)) {
+            self.persist_state();
         }
         for a in actions {
             match a {

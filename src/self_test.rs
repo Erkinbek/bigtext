@@ -174,6 +174,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("app.logfmt"), "level=info msg=ok\nlevel=error msg=\"bad x\" code=7\n")?;
     std::fs::write(dir.join("excel.csv"), "sep=;\n# exported\nname;qty\nann;1\nbob;2\n")?;
     std::fs::write(dir.join("numbers.csv"), "1,2\n3,4\n5,6\n")?;
+    std::fs::write(dir.join("semi.txt"), "id;note\n1;a,b\n2;c,d\n")?;
     std::fs::write(dir.join("outline.json"), OUTLINE_JSON)?;
     std::fs::write(dir.join("catalog.xml"), CATALOG_XML)?;
     std::fs::write(dir.join("events.jsonl"), "{\"id\": 1, \"msg\": \"start\"}\n{\"id\": 2, \"msg\": \"a, b\", \"user\": \"ann\"}\n")?;
@@ -3610,6 +3611,118 @@ impl SelfTest {
                 check(n == lines && exact && content_ok, format!("lines {n} (exact {exact}), content ok {content_ok}, encoding {}", doc(app).buf.codec.enc.name()))
             }));
         }
+        s("per file: a table's delimiter, header and dragged width come back after closing", Box::new({
+            let mut width = 0.0f32;
+            move |app, c| {
+            if c.first() {
+                app.open_path(c.file("semi.txt"));
+                return Step::Wait;
+            }
+            match c.mark {
+                0 => {
+                    if !wait_ready(app) {
+                        return Step::Wait;
+                    }
+                    // A .txt file: the table is turned on by hand.
+                    c.key(Key::T, CTRL);
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    if doc(app).table_state.header_cells.is_empty() {
+                        return if c.waited() > Duration::from_secs(3) { Step::Fail("no table".into()) } else { Step::Wait };
+                    }
+                    if doc(app).table_state.dialect.map(|d| d.delim) != Some(b';') {
+                        return Step::Fail("not detected as ;".into());
+                    }
+                    let st = &mut doc(app).table_state;
+                    st.set_delim(b',');
+                    st.header = false;
+                    c.mark = 2;
+                    Step::Wait
+                }
+                2 => {
+                    let Some(&(_, r)) = doc(app).table_state.header_cells.first() else { return Step::Wait };
+                    if c.waited() < Duration::from_millis(500) {
+                        return Step::Wait;
+                    }
+                    let y = r.center().y;
+                    c.drag(Pos2::new(r.right(), y), Pos2::new(r.right() + 60.0, y));
+                    c.mark = 3;
+                    Step::Wait
+                }
+                3 => {
+                    let st = &doc(app).table_state;
+                    if !st.fixed.first().copied().unwrap_or(false) {
+                        return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("not dragged: {:?}", st.widths)) } else { Step::Wait };
+                    }
+                    c.mark = 4;
+                    let w = st.widths[0];
+                    let id = doc(app).id;
+                    width = w;
+                    app.test_close(id);
+                    app.open_path(c.file("semi.txt"));
+                    Step::Wait
+                }
+                _ => {
+                    if !wait_ready(app) || doc(app).table_state.header_cells.is_empty() {
+                        return if c.waited() > Duration::from_secs(5) { Step::Fail("not reopened as a table".into()) } else { Step::Wait };
+                    }
+                    let d = doc(app);
+                    let st = &d.table_state;
+                    let got = format!("table {} delim {:?} header {} widths {:?} (dragged to {width})", d.table, st.dialect.map(|x| x.delim as char), st.header, st.widths);
+                    let ok = d.table && st.dialect.map(|x| x.delim) == Some(b',') && !st.header && st.fixed.first() == Some(&true) && (st.widths[0] - width).abs() < 0.5;
+                    let id = d.id;
+                    app.test_close(id);
+                    app.file_opts.clear();
+                    c.mark = 0;
+                    check(ok, got)
+                }
+            }
+            }
+        }));
+        s("per file: a chosen encoding is remembered until Auto-detect (forget)", Box::new(|app, c| {
+            use bigtext::encoding::Encoding;
+            if c.first() {
+                app.open_path(c.file("cp1251.txt"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) {
+                return Step::Wait;
+            }
+            let d = doc(app);
+            let (id, enc, forced) = (d.id, d.buf.codec.enc, d.forced_enc);
+            match c.mark {
+                0 => {
+                    app.test_reopen_with(Some(Encoding::Latin1));
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    if enc != Encoding::Latin1 {
+                        return Step::Fail(format!("reopened as {}", enc.name()));
+                    }
+                    app.test_close(id);
+                    app.open_path(c.file("cp1251.txt"));
+                    c.mark = 2;
+                    Step::Wait
+                }
+                2 => {
+                    if (enc, forced) != (Encoding::Latin1, Some(Encoding::Latin1)) {
+                        return Step::Fail(format!("opened again as {} ({forced:?})", enc.name()));
+                    }
+                    app.test_reopen_with(None);
+                    c.mark = 3;
+                    Step::Wait
+                }
+                _ => {
+                    app.test_close(id);
+                    let kept = app.file_opts.len();
+                    c.mark = 0;
+                    check(enc == Encoding::Windows1251 && forced.is_none() && kept == 0, format!("{} ({forced:?}), {kept} remembered", enc.name()))
+                }
+            }
+        }));
         s("typing into an empty file", Box::new(|app, c| {
             if c.first() {
                 app.open_path(c.file("empty.txt"));

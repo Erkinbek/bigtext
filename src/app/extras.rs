@@ -69,6 +69,129 @@ pub struct Persisted {
     pub filter_ctx: Option<(u32, bool)>,
     /// Keys whose values are ids (Search → Id patterns…).
     pub id_keys: Option<Vec<String>>,
+    /// What was chosen for each file, most recently used first.
+    pub file_opts: Vec<FileOpts>,
+}
+
+/// What BigText remembers about a file, put back when it opens again.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FileOpts {
+    pub path: PathBuf,
+    /// Chosen with File → Reopen with encoding.
+    pub enc: Option<bigtext::encoding::Encoding>,
+    /// View → Highlight as.
+    pub lang: Option<crate::view::highlight::Lang>,
+    pub table: bool,
+    pub hex: bool,
+    pub follow: bool,
+    pub read_only: bool,
+    pub wrap: bool,
+    pub layout: Option<crate::view::table_view::TableLayout>,
+}
+
+/// Files whose choices are remembered.
+pub const FILE_OPTS_MAX: usize = 200;
+
+impl FileOpts {
+    /// Anything other than what the file gets anyway.
+    pub(super) fn worth_keeping(&self) -> bool {
+        self.enc.is_some() || self.lang.is_some() || self.table != super::document::table_by_default(&self.path) || self.hex || self.follow || self.read_only || self.wrap || self.layout.is_some()
+    }
+}
+
+/// "enc|lang|flags|layout|path"; flags are t(able) h(ex) f(ollow) r(ead-only) w(rap), the
+/// layout "delimiter/header/sig/scroll/col:width,…".
+pub(super) fn file_opts_line(o: &FileOpts) -> String {
+    let flags: String = [(o.table, 't'), (o.hex, 'h'), (o.follow, 'f'), (o.read_only, 'r'), (o.wrap, 'w')].iter().filter(|x| x.0).map(|x| x.1).collect();
+    let layout = o
+        .layout
+        .as_ref()
+        .map(|l| {
+            let widths: Vec<String> = l.fixed.iter().map(|(c, w)| format!("{c}:{w}")).collect();
+            format!("{}/{}/{:x}/{}/{}", l.delim, u8::from(l.header), l.sig, l.scroll_x, widths.join(","))
+        })
+        .unwrap_or_default();
+    format!("{}|{}|{flags}|{layout}|{}", o.enc.map(|e| e.name()).unwrap_or_default(), o.lang.map(|l| l.name()).unwrap_or_default(), file::display_path(&o.path))
+}
+
+pub(super) fn parse_file_opts(v: &str) -> Option<FileOpts> {
+    let mut it = v.splitn(5, '|');
+    let enc = it.next()?;
+    let lang = it.next()?;
+    let flags = it.next()?;
+    let layout = it.next()?;
+    let path = PathBuf::from(it.next().filter(|p| !p.is_empty())?);
+    let layout = (!layout.is_empty())
+        .then(|| {
+            let mut p = layout.splitn(5, '/');
+            let delim = p.next()?.parse().ok()?;
+            let header = p.next()? == "1";
+            let sig = u64::from_str_radix(p.next()?, 16).ok()?;
+            let scroll_x = p.next()?.parse::<f32>().ok().filter(|x| x.is_finite())?.max(0.0);
+            let fixed = p
+                .next()?
+                .split(',')
+                .filter_map(|x| x.split_once(':'))
+                .filter_map(|(c, w)| Some((c.parse().ok()?, w.parse::<f32>().ok().filter(|w| w.is_finite() && *w > 0.0)?)))
+                .take(crate::view::table_view::LAYOUT_COLUMNS_MAX)
+                .collect();
+            Some(crate::view::table_view::TableLayout { delim, header, sig, fixed, scroll_x })
+        })
+        .flatten();
+    Some(FileOpts {
+        path,
+        enc: bigtext::encoding::Encoding::ALL.into_iter().find(|e| e.name() == enc),
+        lang: crate::view::highlight::Lang::ALL.into_iter().find(|l| l.name() == lang),
+        table: flags.contains('t'),
+        hex: flags.contains('h'),
+        follow: flags.contains('f'),
+        read_only: flags.contains('r'),
+        wrap: flags.contains('w'),
+        layout,
+    })
+}
+
+/// The path a document's choices are remembered under (`None`: an archive's file, standard
+/// input).
+fn opts_key(d: &Document) -> Option<PathBuf> {
+    if d.member.is_some() || (d.temporary && d.unpacked_from.is_none()) {
+        return None;
+    }
+    Some(PathBuf::from(file::display_path(d.unpacked_from.as_deref().or(d.path.as_deref())?)))
+}
+
+/// What to remember for `d` (`None` while it is opening).
+pub(super) fn doc_opts(d: &Document) -> Option<FileOpts> {
+    if !d.is_ready() || d.pending_opts.is_some() {
+        return None;
+    }
+    Some(FileOpts {
+        path: opts_key(d)?,
+        enc: d.forced_enc,
+        lang: d.lang,
+        table: d.table,
+        hex: d.hex,
+        follow: d.follow,
+        read_only: d.read_only && !d.file_read_only,
+        wrap: d.view.wrap,
+        layout: d.table_state.layout(),
+    })
+}
+
+/// Puts `o` first in `list`, or forgets the file when nothing about it is worth keeping.
+pub(super) fn merge_opts(list: &mut Vec<FileOpts>, o: FileOpts) {
+    list.retain(|x| !super::same_path(&x.path, &o.path));
+    if o.worth_keeping() {
+        list.insert(0, o);
+        list.truncate(FILE_OPTS_MAX);
+    }
+}
+
+/// Remembers `d`'s choices in `list`.
+pub(super) fn remember(list: &mut Vec<FileOpts>, d: &Document) {
+    if let Some(o) = doc_opts(d) {
+        merge_opts(list, o);
+    }
 }
 
 pub(super) use bigtext::settings_file::{query_flags, query_from};
@@ -167,6 +290,7 @@ pub(super) fn parse(text: &str) -> Persisted {
             "clip" => p.clips.push(super::clipboard::unescape(v)),
             "key" => p.keys.extend(v.split_once('=').map(|(a, b)| (a.to_string(), b.to_string()))),
             "tab" => p.tabs.extend(parse_tab(v)),
+            "fileopt" => p.file_opts.extend(parse_file_opts(v)),
             _ => {}
         }
     }
@@ -242,6 +366,9 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     for h in p.history.iter().filter(|h| !h.contains(['\n', '\r'])) {
         s.push_str(&format!("find={h}\n"));
+    }
+    for o in &p.file_opts {
+        s.push_str(&format!("fileopt={}\n", file_opts_line(o)));
     }
     for t in &p.tabs {
         s.push_str(&format!("tab={}\n", tab_line(t)));
@@ -574,7 +701,19 @@ impl BigTextApp {
             id_keys: self.settings.id_keys.clone(),
             pinned: self.docs.iter().filter(|d| d.pinned).filter_map(|d| Some(PathBuf::from(file::display_path(d.unpacked_from.as_deref().or(d.path.as_deref())?)))).collect(),
             keys: self.keymap.changed.iter().map(|(c, k)| (c.id(), super::commands::key_to_string(*k))).collect(),
+            file_opts: {
+                let mut list = self.file_opts.clone();
+                for d in self.docs.iter().rev() {
+                    remember(&mut list, d);
+                }
+                list
+            },
         }
+    }
+
+    /// What was remembered for the file at `path`.
+    pub(super) fn opts_for(&self, path: &Path) -> Option<FileOpts> {
+        self.file_opts.iter().find(|o| super::same_path(&o.path, path)).cloned()
     }
 
     pub(super) fn persist_state(&self) {
@@ -1138,6 +1277,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn file_opts_are_kept_while_they_say_something() {
+        let mut list = Vec::new();
+        let csv = PathBuf::from("/data/x.csv");
+        // A .csv file shown as a table is what it gets anyway.
+        merge_opts(&mut list, FileOpts { path: csv.clone(), table: true, ..Default::default() });
+        assert!(list.is_empty());
+        merge_opts(&mut list, FileOpts { path: csv.clone(), table: false, ..Default::default() });
+        assert_eq!(list.len(), 1);
+        for i in 0..FILE_OPTS_MAX + 5 {
+            merge_opts(&mut list, FileOpts { path: PathBuf::from(format!("/data/{i}.txt")), hex: true, ..Default::default() });
+        }
+        assert_eq!(list.len(), FILE_OPTS_MAX);
+        assert_eq!(list[0].path, PathBuf::from(format!("/data/{}.txt", FILE_OPTS_MAX + 4)));
+        // Turning everything off forgets the file.
+        let first = list[0].path.clone();
+        merge_opts(&mut list, FileOpts { path: first, ..Default::default() });
+        assert_eq!(list.len(), FILE_OPTS_MAX - 1);
+        assert!(parse_file_opts("|||1/0/zz/0/|/x.csv").is_some_and(|o| o.layout.is_none()));
+        assert!(parse_file_opts("||t||").is_none());
+    }
+
+    #[test]
     fn session_roundtrip() {
         let p = Persisted {
             recent: vec![PathBuf::from(r"C:\logs\a.log"), PathBuf::from("/tmp/b|c.txt")],
@@ -1170,6 +1331,18 @@ mod tests {
             filter_ctx: Some((3, true)),
             id_keys: Some(vec!["rid".into(), "trace_id".into()]),
             pinned: vec![PathBuf::from(r"D:\big file.txt")],
+            file_opts: vec![
+                FileOpts {
+                    path: PathBuf::from("/data/a|b.txt"),
+                    enc: Some(bigtext::encoding::Encoding::Windows1251),
+                    lang: Some(crate::view::highlight::Lang::Csv(b'\t')),
+                    table: true,
+                    read_only: true,
+                    layout: Some(crate::view::table_view::TableLayout { delim: b';', header: false, sig: u64::MAX - 7, fixed: vec![(0, 120.5), (7, 64.0)], scroll_x: 33.25 }),
+                    ..Default::default()
+                },
+                FileOpts { path: PathBuf::from(r"C:\logs\app.log"), follow: true, wrap: true, hex: true, ..Default::default() },
+            ],
             saved: vec![
                 super::super::saved_searches::SavedSearch {
                     name: "5xx responses".into(),
@@ -1186,6 +1359,7 @@ mod tests {
             ],
         };
         assert_eq!(parse(&serialize(&p)).saved, p.saved);
+        assert_eq!(parse(&serialize(&p)).file_opts, p.file_opts);
         assert_eq!(parse(&serialize(&p)).show_ws, Some(true));
         assert_eq!(parse(&serialize(&p)).filter_ctx, Some((3, true)));
         assert_eq!(parse(&serialize(&p)).id_keys, p.id_keys);

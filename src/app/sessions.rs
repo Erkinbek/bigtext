@@ -30,6 +30,8 @@ pub struct SavedFilter {
 #[derive(Clone, Debug, Default)]
 pub struct Session {
     pub tabs: Vec<(TabState, bool, Option<SavedFilter>)>,
+    /// What was chosen for the files (encoding, view, table layout).
+    pub opts: Vec<extras::FileOpts>,
     pub active: usize,
     pub marks: Vec<Mark>,
 }
@@ -82,6 +84,9 @@ pub fn serialize(s: &Session) -> String {
             }
         }
     }
+    for o in &s.opts {
+        out.push_str(&format!("fileopt={}\n", extras::file_opts_line(o)));
+    }
     for m in &s.marks {
         out.push_str(&format!("mark={}\n", extras::mark_line(m)));
     }
@@ -116,6 +121,7 @@ pub fn parse(text: &str) -> Session {
                 }
             }
             "mark" => s.marks.extend(extras::parse_mark(v)),
+            "fileopt" => s.opts.extend(extras::parse_file_opts(v)),
             "active" => s.active = v.parse().unwrap_or(0),
             _ => {}
         }
@@ -138,6 +144,7 @@ impl BigTextApp {
             let tab = TabState { path: PathBuf::from(file::display_path(path)), member: d.member.clone(), caret: d.view.caret, top: d.view.top, wrap: d.view.wrap, bookmarks: d.bookmarks.clone() };
             let filter = d.filter.as_ref().map(|f| SavedFilter { query: f.query.clone(), invert: f.spec.invert, levels: f.levels, terms: f.terms.iter().map(|t| (t.query.clone(), t.negated)).collect() });
             s.tabs.push((tab, d.pinned, filter));
+            s.opts.extend(extras::doc_opts(d).filter(|o| o.worth_keeping()));
         }
         s
     }
@@ -168,6 +175,9 @@ impl BigTextApp {
     }
 
     pub(crate) fn apply_session(&mut self, s: Session) {
+        for o in s.opts.into_iter().rev() {
+            extras::merge_opts(&mut self.file_opts, o);
+        }
         for m in s.marks {
             if !self.settings.marks.iter().any(|x| x.query == m.query) {
                 self.settings.marks.push(m);
@@ -302,6 +312,7 @@ mod tests {
                 (TabState { path: PathBuf::from("/var/log/x.log"), member: Some("x/y.log".into()), caret: 0, top: 0, wrap: false, bookmarks: vec![] }, false, Some(SavedFilter { query: Query::default(), invert: false, levels: Some(Levels::only(Level::Error).toggled(Level::Warn)), terms: Vec::new() })),
             ],
             active: 1,
+            opts: vec![extras::FileOpts { path: PathBuf::from(r"C:\logs\a|b.log"), enc: Some(bigtext::encoding::Encoding::Utf16Be), wrap: true, ..Default::default() }],
             marks: vec![Mark { query: Query { pattern: "id=\\d+".into(), regex: true, ..Default::default() }, color: 2, enabled: true }],
         };
         let back = parse(&serialize(&s));
@@ -311,6 +322,7 @@ mod tests {
         assert_eq!(back.tabs[0].2, s.tabs[0].2);
         assert_eq!(back.tabs[1].2.as_ref().and_then(|f| f.levels), Some(Levels::only(Level::Error).toggled(Level::Warn)));
         assert_eq!((back.active, back.marks.clone()), (1, s.marks.clone()));
+        assert_eq!(back.opts, s.opts);
     }
 
     #[test]

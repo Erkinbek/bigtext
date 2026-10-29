@@ -219,6 +219,12 @@ pub struct Document {
     pub table_state: crate::view::table_view::TableState,
     /// Position to restore once the file has opened (session restore, diff jumps).
     pub restore: Option<Restore>,
+    /// What was remembered for the file, put back once it has opened.
+    pub pending_opts: Option<super::extras::FileOpts>,
+    /// The encoding chosen with File → Reopen with encoding (`None`: detected).
+    pub forced_enc: Option<bigtext::encoding::Encoding>,
+    /// Read-only because of the file (its attribute, an unpacked copy), not by choice.
+    pub file_read_only: bool,
     last_indexed: u64,
 }
 
@@ -260,10 +266,34 @@ impl PaneView {
     }
 }
 
+/// .csv and .tsv files open as a table.
+pub fn table_by_default(path: &std::path::Path) -> bool {
+    matches!(crate::view::highlight::Lang::from_path(Some(path)), crate::view::highlight::Lang::Csv(_))
+}
+
 impl Document {
+    /// Puts back what was remembered for the file, once it has opened.
+    pub fn apply_opts(&mut self, o: super::extras::FileOpts) {
+        self.forced_enc = o.enc;
+        self.lang = o.lang;
+        self.table = o.table;
+        self.hex = o.hex;
+        self.read_only |= o.read_only;
+        self.view.wrap = o.wrap;
+        self.table_state.pending = o.layout;
+        if o.follow && !self.follow {
+            self.follow = true;
+            let len = self.buf.len();
+            self.set_caret(len, false);
+            if let Some(r) = self.restore.as_mut().filter(|r| r.line.is_none() && r.select.is_none()) {
+                r.end = true;
+            }
+        }
+    }
+
     pub fn loading(id: u64, path: PathBuf) -> Document {
         let title = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| file::display_path(&path));
-        let table = matches!(crate::view::highlight::Lang::from_path(Some(&path)), crate::view::highlight::Lang::Csv(_));
+        let table = table_by_default(&path);
         let src = Arc::new(Source::empty());
         let idx = LineIndex::new(0);
         Document {
@@ -326,6 +356,9 @@ impl Document {
             table,
             table_state: Default::default(),
             restore: None,
+            pending_opts: None,
+            forced_enc: None,
+            file_read_only: false,
             last_indexed: 0,
         }
     }

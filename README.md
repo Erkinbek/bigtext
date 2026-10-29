@@ -290,6 +290,9 @@ Single self-contained binary, no runtime dependencies.
   mode** keeps them in a `BigText-data` folder next to the program instead (Help → Portable
   mode…), and **Help → Export / Import settings** carries highlights, key bindings, saved
   searches and the look to another computer.
+- **Per-file memory**: an encoding chosen with Reopen with encoding, Highlight as, table, hex,
+  follow, read-only and wrap, and a table's delimiter, header switch, dragged column widths and
+  scroll come back whenever the file opens again (Open recent, a session, the command line).
 - **Updates**: once a day BigText asks GitHub for a newer release (Help → Check for updates
   does it on demand; Help → Check for updates automatically turns it off). A dialog shows the
   release notes of every newer version and installs nothing until you choose **Update now**;
