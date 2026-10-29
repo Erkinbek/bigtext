@@ -153,6 +153,7 @@ mod tests {
         "app" / "properties.rs",
         "app" / "recovery.rs",
         "app" / "problems_panel.rs",
+        "app" / "run_command.rs",
         "app" / "saved_searches.rs",
         "app" / "search_panel.rs",
         "app" / "table_compare.rs",

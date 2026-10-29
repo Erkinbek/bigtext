@@ -35,6 +35,7 @@ pub mod lines;
 pub mod loglevel;
 pub mod merge;
 pub mod patch;
+pub mod pipe;
 pub mod patterns;
 pub mod replace;
 pub mod save;

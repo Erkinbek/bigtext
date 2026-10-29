@@ -168,6 +168,12 @@ Single self-contained binary, no runtime dependencies.
   document over 64 MB sort it through temporary runs and a k-way merge and replace it on disk;
   **Count duplicate lines…** opens each line with its count, most frequent first, as a table.
   `bigtext-cli sort [-r] [-n] [-i] [-u]` and `uniq [-c]` do the same.
+- **Run a command on the text** (Edit → Run command on selection…, Ctrl+Shift+R): `sort | uniq
+  -c`, `jq .` or `python fix.py` gets the selection or the document on its standard input, and
+  its output replaces the selection (one undo step), opens in a new tab or only its exit code is
+  shown; both stream through pipes and a temporary file, with Cancel in the status bar. The shell
+  is cmd, Git Bash or WSL on Windows. Saved commands become **Edit → External tools** with
+  `{file}`, `{dir}`, `{line}`, `{col}` and `{selection}` filled in (`code -g "{file}:{line}"`).
 - **Decode and encode** (Edit → Text): Base64 (either alphabet; a JWT shows its header and payload),
   URL `%xx`, hex, HTML entities and JSON string escapes, on the selection or the word at the
   caret. A result that is not text for the document (bytes, characters its encoding lacks) opens
@@ -438,6 +444,7 @@ times). Exit codes: 0 done, 1 nothing matched, 2 error.
 | Ctrl+G / Ctrl+Shift+G | Go to line / go to byte offset (decimal or `0x` hex; also `50%`, `+100` / `-100` from the caret, `$-100` from the end) |
 | Ctrl+Shift+T | Go to time (first log line at or after a timestamp) |
 | Ctrl+Alt+T | Go to this time in all tabs |
+| Ctrl+Shift+R | Run a command on the selection |
 | Ctrl+Shift+{ / Ctrl+Shift+} | Fold / unfold the object, array or element at the caret |
 | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) | Undo / redo |
 | Ctrl+X / Ctrl+C / Ctrl+V | Cut / copy / paste |

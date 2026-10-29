@@ -46,6 +46,7 @@ pub mod portable;
 pub mod properties;
 pub mod recovery;
 pub mod problems_panel;
+pub mod run_command;
 pub mod saved_searches;
 pub mod search_panel;
 pub mod table_compare;
@@ -180,6 +181,8 @@ pub struct Settings {
     pub ruler: Option<u16>,
     /// The JSON path at the caret in the status bar.
     pub json_crumb: bool,
+    /// Edit → External tools.
+    pub tools: Vec<run_command::Tool>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -287,6 +290,8 @@ pub struct BigTextApp {
     pub export: export::ExportUi,
     pub csv: csv_tools::CsvUi,
     pub merge: merge_logs::MergeUi,
+    /// Edit → Run command on selection.
+    pub run_cmd: run_command::RunCommandUi,
     pub saved_ui: saved_searches::SavedUi,
     pairs: match_bracket::PairCache,
     /// View → JSON structure is shown.
@@ -500,7 +505,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None, status: Default::default(), zen: false, show_gutter: true, wrap_column: None, ruler: None, json_crumb: true },
+            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None, status: Default::default(), zen: false, show_gutter: true, wrap_column: None, ruler: None, json_crumb: true, tools: Vec::new() },
             goto: None,
             confirm: None,
             error: None,
@@ -526,6 +531,7 @@ impl BigTextApp {
             export: export::ExportUi::default(),
             csv: csv_tools::CsvUi::default(),
             merge: merge_logs::MergeUi::default(),
+            run_cmd: Default::default(),
             saved_ui: saved_searches::SavedUi::default(),
             pairs: match_bracket::PairCache::default(),
             json_open: false,
@@ -595,6 +601,9 @@ impl BigTextApp {
             app.settings.wrap_column = state.wrap_column.flatten();
             app.settings.ruler = state.ruler.flatten();
             app.settings.json_crumb = state.json_crumb.unwrap_or(true);
+            app.settings.tools = std::mem::take(&mut state.tools);
+            app.run_cmd.history = std::mem::take(&mut state.commands);
+            app.run_cmd.shell = state.shell.as_deref().map(run_command::ShellChoice::from_id).unwrap_or_default();
             app.settings.show_ws = state.show_ws.unwrap_or(false);
             app.recovery.enabled = state.recovery.unwrap_or(true);
             app.settings.id_keys = state.id_keys.take();
@@ -1712,7 +1721,7 @@ impl eframe::App for BigTextApp {
         }
 
         self.update_tick();
-        let modal_open = self.goto.is_some() || self.clips.open.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
+        let modal_open = self.run_cmd.open || self.goto.is_some() || self.clips.open.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
         if !modal_open {
             self.shortcuts(&ctx);
             // The mouse's back and forward buttons.
@@ -1912,6 +1921,7 @@ impl eframe::App for BigTextApp {
         self.export_windows(&ctx);
         self.csv_windows(&ctx);
         self.merge_window(&ctx);
+        self.run_command_window(&ctx);
         self.find_in_files_window(&ctx);
         self.switcher_window(&ctx);
         self.portable_window(&ctx);

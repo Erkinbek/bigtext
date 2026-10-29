@@ -176,6 +176,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("excel.csv"), "sep=;\n# exported\nname;qty\nann;1\nbob;2\n")?;
     std::fs::write(dir.join("numbers.csv"), "1,2\n3,4\n5,6\n")?;
     std::fs::write(dir.join("semi.txt"), "id;note\n1;a,b\n2;c,d\n")?;
+    std::fs::write(dir.join("sort-me.txt"), "b\nc\na\n")?;
     std::fs::write(dir.join("fold.json"), FOLD_JSON)?;
     // Past the 8 MB a JSON path needs checkpoints for.
     let rows: Vec<String> = (0..120_000).map(|i| format!("{{\"id\": {i}, \"name\": \"row {i:06}\", \"tags\": [\"alpha\", \"beta\"]}}")).collect();
@@ -4063,6 +4064,56 @@ impl SelfTest {
                 }
             }
         }));
+        s("run command: sort replaces the selection, then opens in a new tab", Box::new(|app, c| {
+            use crate::app::run_command::{RunInput, RunOutput};
+            if c.first() {
+                app.open_path(c.file("sort-me.txt"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) {
+                return Step::Wait;
+            }
+            let lines = |app: &mut BigTextApp| text(app).lines().map(|l| l.trim_end().to_string()).collect::<Vec<String>>();
+            match c.mark {
+                0 => {
+                    let len = doc(app).buf.len();
+                    doc(app).select(0, len);
+                    app.run_cmd.command = "sort".into();
+                    app.run_cmd.input = RunInput::Selection;
+                    app.run_cmd.output = RunOutput::Replace;
+                    app.start_command();
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    let got = lines(app);
+                    if got != ["a", "b", "c"] {
+                        return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("{got:?} {:?}", app.test_error())) } else { Step::Wait };
+                    }
+                    app.run_cmd.output = RunOutput::NewTab;
+                    app.run_cmd.input = RunInput::Document;
+                    // Plain sort: Windows' and GNU's take different switches, and either may come first.
+                    app.run_cmd.command = "sort".into();
+                    app.start_command();
+                    c.mark = 2;
+                    Step::Wait
+                }
+                _ => {
+                    if !doc(app).temporary || !wait_ready(app) {
+                        return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("no new tab ({:?})", app.test_error())) } else { Step::Wait };
+                    }
+                    let got = lines(app);
+                    let temporary = doc(app).temporary;
+                    let id = doc(app).id;
+                    app.test_close(id);
+                    if let Some(d) = app.docs.iter().find(|d| d.title == "sort-me.txt").map(|d| d.id) {
+                        app.test_close(d);
+                    }
+                    c.mark = 0;
+                    check(got == ["a", "b", "c"] && temporary && app.run_cmd.history.first().is_some_and(|h| h.starts_with("sort")), format!("{got:?}"))
+                }
+            }
+        }));
         s("typing into an empty file", Box::new(|app, c| {
             if c.first() {
                 app.open_path(c.file("empty.txt"));
@@ -4312,6 +4363,22 @@ impl SelfTest {
             Step::Next
         }));
         s("shot folds.png", shot_step("folds.png"));
+        s("run command window", Box::new(|app, c| {
+            if c.first() {
+                app.open_run_command();
+                app.run_cmd.command = "jq -c '.[] | select(.paid)'".into();
+                return Step::Wait;
+            }
+            if c.waited() < Duration::from_millis(400) {
+                return Step::Wait;
+            }
+            Step::Next
+        }));
+        s("shot run-command.png", shot_step("run-command.png"));
+        s("run command window closed", Box::new(|app, _| {
+            app.run_cmd.open = false;
+            Step::Next
+        }));
         s("two logs linked by time", Box::new(|app, c| {
             if c.first() {
                 app.open_path(c.file("server-b.log"));

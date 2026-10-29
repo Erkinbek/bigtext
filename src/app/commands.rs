@@ -129,6 +129,7 @@ pub enum Cmd {
     FoldAll1,
     FoldAll2,
     UnfoldAll,
+    RunCommand,
     Theme(super::theme::Theme),
     ColourBlind,
     /// Interface scale, per cent.
@@ -145,7 +146,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 112] = [
+    pub const ALL: [Cmd; 113] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -243,6 +244,7 @@ impl Cmd {
         Cmd::FoldAll1,
         Cmd::FoldAll2,
         Cmd::UnfoldAll,
+        Cmd::RunCommand,
         Cmd::Highlights,
         Cmd::LevelBar,
         Cmd::ZoomIn,
@@ -373,6 +375,7 @@ impl Cmd {
             Cmd::FoldAll1 => "Fold all at level 1",
             Cmd::FoldAll2 => "Fold all at level 2",
             Cmd::UnfoldAll => "Unfold all",
+            Cmd::RunCommand => "Run command on selection…",
             Cmd::Timeline => "Time histogram",
             Cmd::TimeGaps => "Find time gaps…",
             Cmd::Patterns => "Message patterns…",
@@ -442,6 +445,7 @@ impl Cmd {
             | Cmd::CopyMarkdown
             | Cmd::CopyHtml
             | Cmd::ReadOnly
+            | Cmd::RunCommand
             | Cmd::Text(_) => "Edit",
             Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::NextDiff | Cmd::PrevDiff | Cmd::OnlyIn | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::TimeAllTabs | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::CheckJson | Cmd::MatchBracket => "Search",
             Cmd::Palette | Cmd::Shortcuts | Cmd::ExportSettings | Cmd::ImportSettings | Cmd::Portable | Cmd::UnpackDir | Cmd::CheckUpdates | Cmd::About => "Help",
@@ -495,6 +499,7 @@ impl Cmd {
             Cmd::GotoTime => key(CTRL_SHIFT, Key::T),
             Cmd::TimeAllTabs => key(CTRL_ALT, Key::T),
             Cmd::Fold => key(CTRL_SHIFT, Key::OpenCurlyBracket),
+            Cmd::RunCommand => key(CTRL_SHIFT, Key::R),
             Cmd::Unfold => key(CTRL_SHIFT, Key::CloseCurlyBracket),
             Cmd::Timeline => key(CTRL_SHIFT, Key::H),
             Cmd::MatchBracket => key(CTRL, Key::CloseBracket),
@@ -751,6 +756,7 @@ impl BigTextApp {
             Cmd::FoldAll1 => self.fold_all(1),
             Cmd::FoldAll2 => self.fold_all(2),
             Cmd::UnfoldAll => self.unfold_all(),
+            Cmd::RunCommand => self.open_run_command(),
             Cmd::JsonCrumb => {
                 self.settings.json_crumb = !self.settings.json_crumb;
                 self.persist_state();
@@ -956,6 +962,7 @@ impl BigTextApp {
             Cmd::CopyMarkdown | Cmd::CopyHtml => d.is_some_and(|d| d.has_selection()),
             Cmd::Properties => d.is_some_and(|d| d.is_ready()),
             Cmd::Fold => self.foldable(),
+            Cmd::RunCommand => d.is_some_and(|d| d.is_ready()),
             Cmd::FoldAll1 | Cmd::FoldAll2 => self.foldable() && d.is_some_and(|d| d.effective_lang() == crate::view::highlight::Lang::Json),
             Cmd::Unfold | Cmd::UnfoldAll => d.is_some_and(|d| !d.view.folds.is_empty()),
             Cmd::CheckRows => d.is_some_and(|d| d.table),
@@ -1133,6 +1140,8 @@ impl BigTextApp {
                         run = run.or(self.item(ui, c));
                     }
                 });
+                run = run.or(self.item(ui, Cmd::RunCommand));
+                self.tools_menu(ui);
                 self.text_menu(ui);
                 run = run.or(self.item(ui, Cmd::ColumnEditor));
                 run = run.or(self.item(ui, Cmd::PasteHistory));

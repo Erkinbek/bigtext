@@ -499,6 +499,16 @@ All notable changes to BigText. Each release on
 
 ### Editing
 
+- **Run a command on the text**: **Edit → Run command on selection…** (Ctrl+Shift+R) sends the
+  selection or the whole document (as UTF-8) to a shell command's standard input and takes its
+  standard output: it replaces the text (one undo step; over 64 MB it opens in a new tab), opens
+  in a new tab, or only the exit code is shown. Input, output and errors are pumped on their own
+  threads and the output goes through a temporary file, so huge selections do not sit in memory
+  and chatty commands do not hang; Cancel in the status bar stops the whole pipeline. A non-zero
+  exit changes nothing and shows the end of its error output. The shell is `cmd /C`, Git Bash or
+  WSL on Windows, the login shell on macOS and `/bin/sh` elsewhere; Up and Down recall earlier
+  commands. **Save as external tool** adds a command to **Edit → External tools**, which fills in
+  `{file}`, `{dir}`, `{line}`, `{col}` and `{selection}` (`code -g "{file}:{line}"`).
 - **Multiple cursors.** **Ctrl+D** selects the word at the caret, and each further press adds
   the next occurrence of the selection as another cursor (searched in the background, so it
   never blocks on a large file). **Alt+click** adds a cursor where you click. Typing, pasting

@@ -87,6 +87,12 @@ pub struct Persisted {
     pub ruler: Option<Option<u16>>,
     /// The JSON path at the caret in the status bar.
     pub json_crumb: Option<bool>,
+    /// Edit → External tools.
+    pub tools: Vec<super::run_command::Tool>,
+    /// Edit → Run command's history, newest first.
+    pub commands: Vec<String>,
+    /// The shell commands run in.
+    pub shell: Option<String>,
 }
 
 /// What BigText remembers about a file, put back when it opens again.
@@ -316,6 +322,9 @@ pub(super) fn parse(text: &str) -> Persisted {
             "wrap_column" => p.wrap_column = v.parse::<u16>().ok().map(|c| (c > 0).then_some(c.max(super::WRAP_MIN))),
             "ruler" => p.ruler = v.parse::<u16>().ok().map(|c| (c > 0).then_some(c)),
             "json_crumb" => p.json_crumb = Some(v == "1"),
+            "tool" => p.tools.extend(v.split_once('|').filter(|(n, c)| !n.is_empty() && !c.is_empty()).map(|(n, c)| super::run_command::Tool { name: n.to_string(), command: c.to_string() })),
+            "cmd" => p.commands.push(v.to_string()),
+            "shell" => p.shell = Some(v.to_string()),
             _ => {}
         }
     }
@@ -372,6 +381,15 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(j) = p.json_crumb {
         s.push_str(&format!("json_crumb={}\n", b(j)));
+    }
+    for t in p.tools.iter().filter(|t| !t.command.contains(['\n', '\r'])) {
+        s.push_str(&format!("tool={}|{}\n", t.name.replace('|', "/"), t.command));
+    }
+    for c in p.commands.iter().filter(|c| !c.contains(['\n', '\r'])) {
+        s.push_str(&format!("cmd={c}\n"));
+    }
+    if let Some(sh) = &p.shell {
+        s.push_str(&format!("shell={sh}\n"));
     }
     if let Some(d) = p.update_check {
         s.push_str(&format!("update_check={}\n", b(d)));
@@ -752,6 +770,9 @@ impl BigTextApp {
             wrap_column: Some(self.settings.wrap_column),
             ruler: Some(self.settings.ruler),
             json_crumb: Some(self.settings.json_crumb),
+            tools: self.settings.tools.clone(),
+            commands: self.run_cmd.history.clone(),
+            shell: Some(self.run_cmd.shell.id().to_string()),
             saved: self.settings.saved.clone(),
             show_ws: Some(self.settings.show_ws),
             filter_ctx: Some((self.settings.filter_context, self.settings.filter_entries)),
@@ -1409,6 +1430,9 @@ mod tests {
             wrap_column: Some(Some(100)),
             ruler: Some(None),
             json_crumb: Some(false),
+            tools: vec![super::super::run_command::Tool { name: "Open in VS Code".into(), command: "code -g \"{file}:{line}\"".into() }],
+            commands: vec!["sort | uniq -c".into(), "jq .".into()],
+            shell: Some("git-bash".into()),
             show_ws: Some(true),
             filter_ctx: Some((3, true)),
             id_keys: Some(vec!["rid".into(), "trace_id".into()]),
@@ -1446,6 +1470,7 @@ mod tests {
         assert_eq!(parse(&serialize(&p)).status, p.status);
         assert_eq!(parse(&serialize(&p)).gutter, Some(false));
         assert_eq!((q0.wrap_column, q0.ruler, q0.json_crumb), (Some(Some(100)), Some(None), Some(false)));
+        assert_eq!((&q0.tools, &q0.commands, q0.shell.as_deref()), (&p.tools, &p.commands, Some("git-bash")));
         assert_eq!((q0.theme, q0.cvd, q0.scale, q0.dark), (p.theme, Some(true), Some(150), Some(false)));
         assert_eq!(parse(&serialize(&p)).show_ws, Some(true));
         assert_eq!(parse(&serialize(&p)).filter_ctx, Some((3, true)));

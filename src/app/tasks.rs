@@ -36,6 +36,8 @@ pub enum TaskOutcome {
     JsonFields(Box<(String, bigtext::json_fields::Fields)>),
     /// Where a patch's hunks go, to apply to the document.
     Patch(Box<super::extras::PatchDone>),
+    /// A command run on the text (Edit → Run command).
+    Command(Box<super::run_command::CommandOutput>),
 }
 
 pub struct TempTable {
@@ -123,6 +125,7 @@ impl BigTextApp {
             TaskOutcome::Stats(s) => self.csv.stats = Some(*s),
             TaskOutcome::Merged(m) => self.on_merged(*m),
             TaskOutcome::TempTable(t) => self.open_temp_table(*t),
+            TaskOutcome::Command(o) => self.on_command_output(*o),
             TaskOutcome::Groups(g) => self.csv.groups = Some(*g),
             TaskOutcome::JsonFields(f) => self.json_fields.result = Some(*f),
             TaskOutcome::Patch(p) => self.on_patch_done(*p),
