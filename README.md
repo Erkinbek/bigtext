@@ -97,6 +97,9 @@ Single self-contained binary, no runtime dependencies.
 - **Editing**: piece table over the mmap + add buffer; insert/delete, cut/copy/paste (copies
   above 100 MB ask first and run on a worker), undo/redo, multi-line selection, duplicate line
   (zero-copy), delete line, auto-indent, large-file-safe Select All.
+- **Copy as Markdown / HTML** (Edit → Copy as): the selection as a fenced code block with its
+  language and a `file:line` caption, or as HTML in the theme's syntax colours (with the plain
+  text beside it) for mail, wikis and documents.
 - **Paste from history** (Edit, Ctrl+Shift+V): the last 30 texts copied in BigText (up to 1 MB
   each), to paste again with ↑ ↓ and Enter; kept across restarts only when you tick it.
 - **Show in folder**, **Open terminal here** and **Open with the default app** (File menu and a

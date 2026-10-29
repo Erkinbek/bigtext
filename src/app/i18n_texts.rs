@@ -1164,4 +1164,13 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["↑ ↓ to choose, Enter to paste, Esc to close", "↑ ↓ — выбор, Enter — вставить, Esc — закрыть", "↑ ↓ — tanlash, Enter — qo'yish, Esc — yopish"],
     ["Keep across restarts", "Сохранять между запусками", "Qayta ishga tushirishlarda saqlash"],
     ["Writes the copied texts into the settings file; off, they are forgotten when BigText closes", "Записывает скопированные тексты в файл настроек; если выключено, они забываются при закрытии BigText", "Nusxalangan matnlarni sozlamalar fayliga yozadi; o'chiq bo'lsa, BigText yopilganda unutiladi"],
+    // Copy as.
+    ["Copy as", "Копировать как", "Qanday nusxalash"],
+    ["Copy as Markdown", "Копировать как Markdown", "Markdown sifatida nusxalash"],
+    ["Copy as HTML", "Копировать как HTML", "HTML sifatida nusxalash"],
+    ["Select the text to copy.", "Выделите текст для копирования.", "Nusxalanadigan matnni tanlang."],
+    ["The selection is too large to copy this way (over 4 MB).", "Выделение слишком велико для такого копирования (больше 4 МБ).", "Tanlangan qism bu usulda nusxalash uchun juda katta (4 MB dan ortiq)."],
+    ["Copy as HTML works on up to 2 MB. Select a smaller part.", "Копирование как HTML работает максимум на 2 МБ. Выделите часть поменьше.", "HTML sifatida nusxalash 2 MB gacha ishlaydi. Kichikroq qismni tanlang."],
+    ["HTML could not be put on the clipboard; copied as plain text", "Не удалось поместить HTML в буфер обмена; скопировано как обычный текст", "HTML ni almashish buferiga qo'yib bo'lmadi; oddiy matn sifatida nusxalandi"],
+    ["Copied.", "Скопировано.", "Nusxalandi."],
 ];

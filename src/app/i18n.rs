@@ -115,6 +115,7 @@ mod tests {
         "app" / "clipboard.rs",
         "app" / "column_editor.rs",
         "app" / "columns.rs",
+        "app" / "copy_as.rs",
         "app" / "commands.rs",
         "app" / "convert.rs",
         "app" / "csv_tools.rs",

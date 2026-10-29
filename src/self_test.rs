@@ -219,6 +219,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("patch-me.txt"), &base)?;
+    std::fs::write(dir.join("md.log"), "2024-05-01 10:00:00 INFO start\n2024-05-01 10:00:01 ERROR <boom>\n")?;
     std::fs::write(dir.join("inst.txt"), "handed over\nby a second launch\n")?;
     std::fs::write(dir.join("dups.txt"), "apple\npear\napple\nfig\napple\npear\n")?;
     let block: String = (0..10_000).map(|i| format!("k{:04}\n", (i * 7919) % 10_000)).collect();
@@ -1693,6 +1694,29 @@ impl SelfTest {
                     check(app.clips.open.is_none() && app.clips.items[0] == "first clip", format!("{:?}", app.clips.items))
                 }
             }
+        }));
+        s("Copy as Markdown: a fenced log block captioned file:line", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("md.log"));
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if !wait_ready(app) {
+                    return Step::Wait;
+                }
+                let len = doc(app).buf.len();
+                doc(app).select(0, len);
+                c.copied.clear();
+                if let Some(ctx) = app.test_ctx() {
+                    app.copy_as(&ctx, crate::app::copy_as::CopyAs::Markdown);
+                }
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let Some(got) = c.copied.last().cloned() else {
+                return if c.waited() > Duration::from_secs(3) { Step::Fail("nothing copied".into()) } else { Step::Wait };
+            };
+            check(got == "md.log:1\n```log\n2024-05-01 10:00:00 INFO start\n2024-05-01 10:00:01 ERROR <boom>\n```\n", format!("{got:?}"))
         }));
         s("compare files (streaming diff)", Box::new(|app, c| {
             if c.first() {

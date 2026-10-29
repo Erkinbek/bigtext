@@ -76,6 +76,11 @@ All notable changes to BigText. Each release on
   their first line and how many lines — to copy and paste again with ↑ ↓ and Enter (copied
   only, in a read-only document). Texts over 1 MB are not kept, and they stay out of the
   settings file unless *Keep across restarts* is ticked.
+- **Edit → Copy as ▸ Markdown / HTML**: the selection (up to 4 MB) as a fenced code block —
+  with the language tag (` ```log `, ` ```json `…) and a `file:line` caption, the fence longer
+  than any backticks inside — or as HTML in the theme's syntax colours, put on the clipboard
+  as HTML with the plain text beside it, so it keeps its colours when pasted into mail, wikis
+  and documents (plain text where the system clipboard takes no HTML).
 
 ### Files
 

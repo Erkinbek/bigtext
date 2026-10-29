@@ -40,6 +40,8 @@ pub enum Cmd {
     ApplyPatch,
     ColumnEditor,
     PasteHistory,
+    CopyMarkdown,
+    CopyHtml,
     RevealFile,
     OpenTerminal,
     OpenWithDefault,
@@ -129,7 +131,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 99] = [
+    pub const ALL: [Cmd; 101] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -153,6 +155,8 @@ impl Cmd {
         Cmd::ApplyPatch,
         Cmd::ColumnEditor,
         Cmd::PasteHistory,
+        Cmd::CopyMarkdown,
+        Cmd::CopyHtml,
         Cmd::RevealFile,
         Cmd::OpenTerminal,
         Cmd::OpenWithDefault,
@@ -285,6 +289,8 @@ impl Cmd {
             Cmd::ApplyPatch => "Apply patch…",
             Cmd::ColumnEditor => "Column editor…",
             Cmd::PasteHistory => "Paste from history…",
+            Cmd::CopyMarkdown => "Copy as Markdown",
+            Cmd::CopyHtml => "Copy as HTML",
             Cmd::RevealFile => "Show in folder",
             Cmd::OpenTerminal => "Open terminal here",
             Cmd::OpenWithDefault => "Open with the default app",
@@ -382,6 +388,8 @@ impl Cmd {
             | Cmd::ClearBookmarks
             | Cmd::ColumnEditor
             | Cmd::PasteHistory
+            | Cmd::CopyMarkdown
+            | Cmd::CopyHtml
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
             Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::NextDiff | Cmd::PrevDiff | Cmd::OnlyIn | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::CheckJson | Cmd::MatchBracket => "Search",
@@ -605,6 +613,8 @@ impl BigTextApp {
             Cmd::ApplyPatch => self.apply_patch_dialog(),
             Cmd::ColumnEditor => self.open_column_editor(),
             Cmd::PasteHistory => self.open_paste_history(),
+            Cmd::CopyMarkdown => self.copy_as(ctx, super::copy_as::CopyAs::Markdown),
+            Cmd::CopyHtml => self.copy_as(ctx, super::copy_as::CopyAs::Html),
             Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault => {
                 let action = match cmd {
                     Cmd::RevealFile => super::shell::ShellAction::Reveal,
@@ -782,6 +792,7 @@ impl BigTextApp {
             Cmd::ColumnEditor => d.is_some_and(|d| d.is_ready() && d.editable() && !d.view.wrap),
             Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault => d.is_some_and(|d| d.path.is_some()),
             Cmd::PasteHistory => !self.clips.items.is_empty(),
+            Cmd::CopyMarkdown | Cmd::CopyHtml => d.is_some_and(|d| d.has_selection()),
             Cmd::Properties => d.is_some_and(|d| d.is_ready()),
             Cmd::CheckRows => d.is_some_and(|d| d.table),
             Cmd::NavForward => !self.nav.forward.is_empty(),
@@ -947,6 +958,11 @@ impl BigTextApp {
                 for c in [Cmd::SelectAll, Cmd::AddNextOccurrence, Cmd::DuplicateLine, Cmd::DeleteLine, Cmd::CopyFileLine] {
                     run = run.or(self.item(ui, c));
                 }
+                ui.menu_button(tr("Copy as"), |ui| {
+                    for c in [Cmd::CopyMarkdown, Cmd::CopyHtml] {
+                        run = run.or(self.item(ui, c));
+                    }
+                });
                 self.text_menu(ui);
                 run = run.or(self.item(ui, Cmd::ColumnEditor));
                 run = run.or(self.item(ui, Cmd::PasteHistory));

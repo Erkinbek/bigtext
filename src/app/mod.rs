@@ -5,6 +5,7 @@ pub mod archive;
 pub mod clipboard;
 pub mod column_editor;
 pub mod columns;
+pub mod copy_as;
 pub mod commands;
 pub mod convert;
 pub mod csv_tools;
