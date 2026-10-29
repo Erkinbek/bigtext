@@ -64,12 +64,12 @@ pub struct FilterTerm {
     pub matcher: Arc<Matcher>,
 }
 
-fn term_refs(terms: &[FilterTerm]) -> Vec<filter::Term<'_>> {
+pub(super) fn term_refs(terms: &[FilterTerm]) -> Vec<filter::Term<'_>> {
     terms.iter().map(|t| filter::Term { m: &t.matcher, negated: t.negated }).collect()
 }
 
 /// Whether a line's bytes (UTF-8) meet every added condition.
-fn line_meets(terms: &[filter::Term], line: &[u8]) -> bool {
+pub(super) fn line_meets(terms: &[filter::Term], line: &[u8]) -> bool {
     terms.iter().all(|t| {
         let mut found = false;
         t.m.find_in(line, 0, 0, line.len(), line.len(), &mut None, &mut |_, _| {
@@ -478,6 +478,8 @@ impl BigTextApp {
         let (mut narrow_text, mut narrow_exclude) = (std::mem::take(&mut self.search.narrow), self.search.narrow_exclude);
         let mut narrow = false;
         let range_label = self.range_label();
+        let edit_block = self.lines_edit_blocked();
+        let mut remove_lines: Option<bool> = None;
         // Some(None): drop all added conditions; Some(Some(i)): drop the i-th.
         let mut drop_terms: Option<Option<usize>> = None;
         {
@@ -550,6 +552,14 @@ impl BigTextApp {
                     }
                     if ui.add_enabled(done && !stale && n > 0, egui::Button::new(tr("Copy lines")).small()).clicked() {
                         copy = true;
+                    }
+                    let can = done && edit_block.is_none();
+                    let hint = edit_block.unwrap_or("");
+                    if ui.add_enabled(can && n > 0, egui::Button::new(tr("Keep only these")).small()).on_hover_text(tr("Delete every other line from the document (one undo step up to 50,000 runs of lines)")).on_disabled_hover_text(hint).clicked() {
+                        remove_lines = Some(true);
+                    }
+                    if ui.add_enabled(can && n > 0, egui::Button::new(tr("Delete these")).small()).on_hover_text(tr("Delete these lines from the document (one undo step up to 50,000 runs of lines)")).on_disabled_hover_text(hint).clicked() {
+                        remove_lines = Some(false);
                     }
                 });
             });
@@ -626,6 +636,9 @@ impl BigTextApp {
         }
         if rerun {
             self.rerun_filter();
+        }
+        if let Some(keep) = remove_lines {
+            self.remove_filtered_lines(keep);
         }
         if let Some(q) = mark {
             self.add_mark(q);

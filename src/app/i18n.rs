@@ -133,6 +133,7 @@ mod tests {
         "app" / "json_validate.rs",
         "app" / "keynav.rs",
         "app" / "levels.rs",
+        "app" / "lines_edit.rs",
         "app" / "marks.rs",
         "app" / "match_bracket.rs",
         "app" / "match_values.rs",

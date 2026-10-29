@@ -73,7 +73,9 @@ Single self-contained binary, no runtime dependencies.
   narrowing a finished filter reads only its lines. Click a line to jump to it.
   **Save lines…** streams every kept line to a
   new file (no limit); **Copy lines** puts them on the clipboard (up to 100 MB). Find All
-  results offer the same two buttons.
+  results offer the same two buttons. **Delete these** / **Keep only these** change the document
+  itself (drop every DEBUG line, keep only the errors): one undo step up to 50,000 runs of
+  lines, beyond that rewritten on disk like Replace All, with an optional `.bak`.
 - **Highlights** (View → Highlights…, or **Mark** in the search bar): patterns painted in their
   own colours in every document — `ERROR` in red, a request id in blue — kept across sessions.
   Selecting a word (double click) also highlights its other occurrences on screen.

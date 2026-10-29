@@ -94,6 +94,11 @@ All notable changes to BigText. Each release on
   holds a lock so another one's journals are left alone; journals go when the edits are saved,
   undone or discarded and on a clean exit. File → Keep a recovery journal of unsaved edits
   turns it off.
+- **Delete these** and **Keep only these** in the filter panel change the open document instead
+  of writing a copy — drop every DEBUG line, or keep only the errors, a level-bar filter
+  included. Up to 50,000 runs of lines are one undoable edit; beyond that the document is
+  rewritten on disk (temp file, atomic swap, optional `.bak`) like Replace All. They are off
+  while the filter shows lines around matches, a column or a time range.
 
 ### Command line
 

@@ -217,6 +217,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("patch-me.txt"), &base)?;
+    std::fs::write(dir.join("drop.log"), "10:00 INFO a\n10:01 DEBUG b\n10:02 DEBUG c\n10:03 INFO d\n10:04 WARN e\n10:05 DEBUG f\n")?;
     std::fs::write(dir.join("journal.txt"), "first line\nsecond line\n")?;
     std::fs::write(dir.join("props.txt"), "one\r\ntwo\nthe longest line\nend")?;
     {
@@ -1312,6 +1313,69 @@ impl SelfTest {
             let id = d.id;
             app.test_close(id);
             check(gone && app.recovery.offered.is_empty(), format!("journal removed {gone}"))
+        }));
+        s("filter DEBUG, delete these lines in place (one undo), then keep only them", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("drop.log"));
+                return Step::Wait;
+            }
+            let waited = c.waited() > Duration::from_secs(8);
+            let filtered = |app: &mut BigTextApp| doc(app).filter.as_ref().is_some_and(|r| r.data.lock().unwrap().done);
+            match c.mark {
+                0 => {
+                    if !wait_ready(app) {
+                        return Step::Wait;
+                    }
+                    app.search.query = bigtext::search::Query { pattern: "DEBUG".into(), case_sensitive: true, ..Default::default() };
+                    app.search.invert = false;
+                    app.start_filter();
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    if !filtered(app) {
+                        return if waited { Step::Fail("the filter did not finish".into()) } else { Step::Wait };
+                    }
+                    app.remove_filtered_lines(false);
+                    c.mark = 2;
+                    Step::Wait
+                }
+                2 => {
+                    let t = text(app);
+                    if t != "10:00 INFO a\n10:03 INFO d\n10:04 WARN e\n" {
+                        return if waited { Step::Fail(format!("after delete {t:?}")) } else { Step::Wait };
+                    }
+                    c.key(Key::Z, CTRL);
+                    c.mark = 3;
+                    Step::Wait
+                }
+                3 => {
+                    if doc(app).is_modified() {
+                        return if waited { Step::Fail("undo did not bring the lines back".into()) } else { Step::Wait };
+                    }
+                    app.start_filter();
+                    c.mark = 4;
+                    Step::Wait
+                }
+                4 => {
+                    if !filtered(app) {
+                        return if waited { Step::Fail("the filter did not finish".into()) } else { Step::Wait };
+                    }
+                    app.remove_filtered_lines(true);
+                    c.mark = 5;
+                    Step::Wait
+                }
+                _ => {
+                    let t = text(app);
+                    if t != "10:01 DEBUG b\n10:02 DEBUG c\n10:05 DEBUG f\n" {
+                        return if waited { Step::Fail(format!("after keep {t:?}")) } else { Step::Wait };
+                    }
+                    c.key(Key::Z, CTRL);
+                    app.search.show_filter = false;
+                    app.search.query = bigtext::search::Query::default();
+                    Step::Next
+                }
+            }
         }));
         s("compare files (streaming diff)", Box::new(|app, c| {
             if c.first() {

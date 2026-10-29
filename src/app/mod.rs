@@ -26,6 +26,7 @@ pub mod json_panel;
 pub mod json_validate;
 pub mod keynav;
 pub mod levels;
+pub mod lines_edit;
 pub mod marks;
 pub mod match_bracket;
 pub mod match_values;
@@ -107,6 +108,8 @@ pub enum Msg {
     LowSpace(Box<LowSpace>),
     /// A document's recovery journal was written (or failed to be).
     Journaled { doc: u64, version: u64, add_len: u64, ok: bool },
+    LinesRemoved(Box<lines_edit::LinesRemoved>),
+    LinesTooMany { doc: u64, version: u64, sel: Arc<lines_edit::LineSel>, keep: bool },
     /// An archive's files, for the picker: (tab, archive, files).
     ArchiveListed(Box<(u64, PathBuf, Vec<bigtext::decompress::Member>)>),
     Update(update::Event),
@@ -185,6 +188,7 @@ enum ConfirmAction {
     DeleteColumns { doc: u64, dialect: bigtext::csv::Dialect, cols: Vec<usize>, on_disk: bool },
     CsvRewrite { doc: u64, dialect: bigtext::csv::Dialect, rewrite: bigtext::csv::Rewrite, on_disk: bool },
     LowSpace(Box<LowSpace>),
+    LinesOnDisk { doc: u64, sel: Arc<lines_edit::LineSel>, keep: bool },
 }
 
 #[derive(Default)]
@@ -849,6 +853,8 @@ impl BigTextApp {
                 Msg::Preview { doc, items, lines } => self.preview = Some((doc, items, lines)),
                 Msg::LowSpace(l) => self.on_low_space(*l),
                 Msg::Journaled { doc, version, add_len, ok } => self.on_journaled(doc, version, add_len, ok),
+                Msg::LinesRemoved(l) => self.on_lines_removed(*l),
+                Msg::LinesTooMany { doc, version, sel, keep } => self.on_lines_too_many(doc, version, sel, keep),
                 Msg::ArchiveListed(a) => {
                     let (doc, archive, members) = *a;
                     self.on_archive_listed(doc, archive, members);
@@ -1282,6 +1288,7 @@ impl BigTextApp {
                         ConfirmAction::DeleteColumns { .. } => "Delete",
                         ConfirmAction::CsvRewrite { .. } => "Rewrite",
                         ConfirmAction::LowSpace(_) => "Continue",
+                        ConfirmAction::LinesOnDisk { .. } => "Delete on disk",
                     };
                     if ui.button(i18n::tr(primary)).clicked() {
                         decision = Some(1);
@@ -1373,6 +1380,7 @@ impl BigTextApp {
             (1, ConfirmAction::DeleteColumns { doc, dialect, cols, on_disk }) => self.delete_columns(doc, dialect, cols, on_disk, checked),
             (1, ConfirmAction::CsvRewrite { doc, dialect, rewrite, on_disk }) => self.rewrite_csv(doc, dialect, rewrite, on_disk, checked),
             (1, ConfirmAction::LowSpace(l)) => self.resume(l.resume, false),
+            (1, ConfirmAction::LinesOnDisk { doc, sel, keep }) => self.lines_on_disk(doc, sel, keep, checked),
             (3, ConfirmAction::LowSpace(l)) => match rfd::FileDialog::new().set_title(i18n::tr("Folder for unpacked copies")).pick_folder() {
                 Some(dir) => {
                     self.set_unpack_folder(Some(dir));

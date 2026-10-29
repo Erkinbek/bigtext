@@ -34,6 +34,8 @@ pub enum Transform<'a> {
     Transcode { enc: Encoding, bom: bool, eol: Option<LineEnding> },
     /// Sort rows, swap or select columns of a CSV document.
     Csv { dialect: Dialect, rewrite: &'a csv::Rewrite },
+    /// Only the lines `keep` is true for (given a line's bytes without its line break).
+    Lines { keep: &'a dyn Fn(&[u8]) -> bool },
 }
 
 const TRANSCODE_STEP: u64 = 4 * 1024 * 1024;
@@ -277,6 +279,11 @@ pub fn write_temp(buf: &TextBuf, target: &Path, transform: Transform, cancel: &C
             },
             Transform::Csv { dialect, rewrite } => match csv::rewrite_to(buf, dialect, rewrite, &mut w, cancel, Some(progress)).map_err(io)? {
                 Some(s) => s,
+                None => return Err(SaveError::Cancelled),
+            },
+            // The byte order mark stays (write_pred_lines_to writes it).
+            Transform::Lines { keep } => match crate::filter::write_pred_lines_to(buf, crate::filter::FilterSpec::default(), keep, &mut w, cancel, Some(progress)).map_err(io)? {
+                Some(n) => ReplaceStats { count: n.lines, bytes_in: len, bytes_out: n.bytes },
                 None => return Err(SaveError::Cancelled),
             },
             Transform::Transcode { enc, bom, eol } => match transcode_to(buf, enc, bom, eol, &mut w, cancel, Some(progress)).map_err(io)? {
@@ -530,6 +537,22 @@ mod tests {
         let t2 = open(&p2, u16c);
         let (temp3, _) = write_temp(&t2, &p2, Transform::Eol(LineEnding::CrLf), &CancelToken::new(), &Progress::default()).unwrap();
         assert_eq!(fs::read(&temp3).unwrap(), u16c.encode("x\r\ny\r\nz"));
+    }
+
+    #[test]
+    fn only_some_lines_keeping_the_bom() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("l.txt");
+        fs::write(&path, b"\xEF\xBB\xBFkeep 1\ndrop\nkeep 2\ndrop\nkeep 3").unwrap();
+        let mut codec = Codec::utf8();
+        codec.bom_len = 3;
+        let t = open(&path, codec);
+        let keep = |l: &[u8]| l.starts_with(b"keep");
+        let (temp, stats) = write_temp(&t, &path, Transform::Lines { keep: &keep }, &CancelToken::new(), &Progress::default()).unwrap();
+        assert_eq!(stats.count, 3);
+        drop(t);
+        finalize(&temp, &path, false).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"\xEF\xBB\xBFkeep 1\nkeep 2\nkeep 3");
     }
 
     #[test]
