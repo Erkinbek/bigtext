@@ -732,6 +732,27 @@ impl Document {
         }
     }
 
+    /// The word at the caret for decoding: the run of characters around it up to white space,
+    /// quotes and angle brackets. `None` when there is none.
+    pub fn token_at_caret(&self) -> Option<std::ops::Range<u64>> {
+        let caret = self.view.caret;
+        let (start, end, _) = self.line_bounds(caret, 64 * 1024)?;
+        let bytes = self.buf.read(start..end)?;
+        let text = self.buf.codec.decode_lossy(&bytes);
+        if self.buf.codec.encode(&text) != *bytes {
+            return None;
+        }
+        let at = self.buf.codec.decode_lossy(&bytes[..(caret - start) as usize]).len();
+        let stop = |c: char| c.is_whitespace() || "\"'<>`".contains(c);
+        let lo = text[..at].rfind(stop).map(|i| i + text[i..].chars().next().map_or(1, char::len_utf8)).unwrap_or(0);
+        let hi = text[at..].find(stop).map(|i| at + i).unwrap_or(text.len());
+        if lo >= hi {
+            return None;
+        }
+        let enc = |s: &str| self.buf.codec.encode(s).len() as u64;
+        Some(start + enc(&text[..lo])..start + enc(&text[..hi]))
+    }
+
     /// Bounds of the real line containing `off`: (start, content_end, next_line_start).
     /// Scans at most `limit` bytes in each direction.
     pub fn line_bounds(&self, off: u64, limit: u64) -> Option<(u64, u64, u64)> {

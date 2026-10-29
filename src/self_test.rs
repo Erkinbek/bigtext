@@ -139,6 +139,8 @@ impl Ctx {
     }
 }
 
+const CODEC_TXT: &str = "data: aGVsbG8gd29ybGQ=\njwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMiLCJuYW1lIjoiQW5uIn0.c2lnbmF0dXJl end\nbin AAEC\n";
+
 fn wait_ready(app: &mut BigTextApp) -> bool {
     let d = doc(app);
     d.is_ready() && d.view.first_paint.is_some() && d.view.text_rect.is_some() && d.buf.index.is_done()
@@ -217,6 +219,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("patch-me.txt"), &base)?;
+    std::fs::write(dir.join("codec.txt"), CODEC_TXT)?;
     std::fs::write(dir.join("big-case.txt"), b"abc def\n".repeat(9_000_000))?;
     std::fs::write(dir.join("drop.log"), "10:00 INFO a\n10:01 DEBUG b\n10:02 DEBUG c\n10:03 INFO d\n10:04 WARN e\n10:05 DEBUG f\n")?;
     std::fs::write(dir.join("journal.txt"), "first line\nsecond line\n")?;
@@ -1415,6 +1418,70 @@ impl SelfTest {
                     check(len == 72_000_000 && disk == len, format!("{len} bytes, {disk} on disk"))
                 }
             }
+        }));
+        s("Base64 decode the word at the caret, then encode the result back", Box::new(|app, c| {
+            use bigtext::textops::Op;
+            if c.first() {
+                app.open_path(c.file("codec.txt"));
+                return Step::Wait;
+            }
+            let waited = c.waited() > Duration::from_secs(5);
+            match c.mark {
+                0 => {
+                    if !wait_ready(app) {
+                        return Step::Wait;
+                    }
+                    doc(app).set_caret(10, false);
+                    app.text_op(Op::B64Decode);
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    let t = text(app);
+                    if !t.starts_with("data: hello world\n") {
+                        return if waited { Step::Fail(format!("decoded {:?}", &t[..t.len().min(30)])) } else { Step::Wait };
+                    }
+                    // The decoded text stays selected.
+                    app.text_op(Op::B64Encode);
+                    c.mark = 2;
+                    Step::Wait
+                }
+                _ => {
+                    let t = text(app);
+                    if t != CODEC_TXT {
+                        return if waited { Step::Fail(format!("encoded {:?}", &t[..t.len().min(30)])) } else { Step::Wait };
+                    }
+                    Step::Next
+                }
+            }
+        }));
+        s("a JWT and bytes that are not text are shown, not put in the document", Box::new(|app, c| {
+            use bigtext::textops::Op;
+            if c.first() {
+                app.text_result = None;
+                let at = CODEC_TXT.find("eyJzdWI").unwrap_or(0) as u64;
+                doc(app).set_caret(at, false);
+                app.text_op(Op::B64Decode);
+                return Step::Wait;
+            }
+            let waited = c.waited() > Duration::from_secs(5);
+            if c.mark == 0 {
+                let Some(r) = &app.text_result else { return if waited { Step::Fail("no JWT window".into()) } else { Step::Wait } };
+                if !(r.text.contains("\"name\": \"Ann\"") && r.text.contains("\"alg\": \"HS256\"") && !r.binary) {
+                    return Step::Fail(r.text.clone());
+                }
+                app.text_result = None;
+                let at = CODEC_TXT.find("AAEC").unwrap_or(0) as u64 + 1;
+                doc(app).set_caret(at, false);
+                app.text_op(Op::B64Decode);
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let Some(r) = &app.text_result else { return if waited { Step::Fail("no window for the bytes".into()) } else { Step::Wait } };
+            let ok = r.binary && r.bytes == [0, 1, 2] && r.text.starts_with("00000000  00 01 02");
+            let unchanged = text(app) == CODEC_TXT;
+            app.text_result = None;
+            check(ok && unchanged, format!("result ok {ok}, document unchanged {unchanged}"))
         }));
         s("compare files (streaming diff)", Box::new(|app, c| {
             if c.first() {

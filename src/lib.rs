@@ -3,6 +3,7 @@
 
 pub mod brackets;
 pub mod correlate;
+pub mod codec;
 pub mod csv;
 pub mod csv_chart;
 pub mod csv_check;

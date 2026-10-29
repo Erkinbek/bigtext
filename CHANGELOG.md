@@ -106,6 +106,12 @@ All notable changes to BigText. Each release on
   Cancel and an optional `.bak`. The JSON formatter now works a piece at a time, and the
   command line runs the same code: `bigtext-cli transform --op upper|lower|trim|tabs|untabs`
   and `bigtext-cli format FILE --json pretty|minify`.
+- **Edit → Text decodes and encodes**: Base64 (standard or URL-safe, padded or not), URL
+  `%xx` (`+` as a space in `a=b&c=d` forms), hex (spaces, `:` and `0x` allowed), HTML entities
+  (numeric and the common named ones) and JSON string escapes (surrogate pairs included), on the
+  selection or, with nothing selected, the word at the caret. Decoding a JWT shows its header and
+  payload pretty-printed; bytes that are not text (as a hex dump) and characters the document's
+  encoding lacks open in a result window with Copy and Open in a new tab instead of being put in.
 
 ### Command line
 

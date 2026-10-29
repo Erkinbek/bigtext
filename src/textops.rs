@@ -27,10 +27,20 @@ pub enum Op {
     SpacesToTabs,
     JsonPretty,
     JsonMinify,
+    B64Decode,
+    B64Encode,
+    UrlDecode,
+    UrlEncode,
+    HexDecode,
+    HexEncode,
+    HtmlUnescape,
+    HtmlEscape,
+    JsonUnescape,
+    JsonEscape,
 }
 
 impl Op {
-    pub const ALL: [Op; 12] = [
+    pub const ALL: [Op; 22] = [
         Op::SortAsc,
         Op::SortDesc,
         Op::SortNumeric,
@@ -43,6 +53,16 @@ impl Op {
         Op::SpacesToTabs,
         Op::JsonPretty,
         Op::JsonMinify,
+        Op::B64Decode,
+        Op::B64Encode,
+        Op::UrlDecode,
+        Op::UrlEncode,
+        Op::HexDecode,
+        Op::HexEncode,
+        Op::HtmlUnescape,
+        Op::HtmlEscape,
+        Op::JsonUnescape,
+        Op::JsonEscape,
     ];
 
     pub fn name(self) -> &'static str {
@@ -59,7 +79,26 @@ impl Op {
             Op::SpacesToTabs => "Indentation spaces to tabs",
             Op::JsonPretty => "Format JSON (pretty)",
             Op::JsonMinify => "Minify JSON",
+            Op::B64Decode => "Base64 decode",
+            Op::B64Encode => "Base64 encode",
+            Op::UrlDecode => "URL decode",
+            Op::UrlEncode => "URL encode",
+            Op::HexDecode => "Hex decode",
+            Op::HexEncode => "Hex encode",
+            Op::HtmlUnescape => "HTML unescape",
+            Op::HtmlEscape => "HTML escape",
+            Op::JsonUnescape => "JSON string unescape",
+            Op::JsonEscape => "JSON string escape",
         }
+    }
+
+    /// Decoding or encoding (Base64, URL, hex, HTML, JSON strings): with nothing selected,
+    /// they work on the word at the caret.
+    pub fn is_codec_op(self) -> bool {
+        matches!(
+            self,
+            Op::B64Decode | Op::B64Encode | Op::UrlDecode | Op::UrlEncode | Op::HexDecode | Op::HexEncode | Op::HtmlUnescape | Op::HtmlEscape | Op::JsonUnescape | Op::JsonEscape
+        )
     }
 
     /// Operations that work line by line (separators between groups in menus).
@@ -167,6 +206,25 @@ pub fn apply(op: Op, text: &str, tab_width: usize) -> Result<String, String> {
         }
         Op::JsonPretty => json_format(text, Some("  "), eol)?,
         Op::JsonMinify => json_format(text, None, eol)?,
+        _ => String::from_utf8(codec_apply(op, text)?).map_err(|_| "The result is not text.".to_string())?,
+    })
+}
+
+/// A decoding or encoding of `text`: the bytes it gives (decoded bytes need not be text).
+pub fn codec_apply(op: Op, text: &str) -> Result<Vec<u8>, String> {
+    use crate::codec;
+    Ok(match op {
+        Op::B64Decode => codec::b64_decode(text.trim())?,
+        Op::B64Encode => codec::b64_encode(text.as_bytes()).into_bytes(),
+        Op::UrlDecode => codec::url_decode(text.trim())?,
+        Op::UrlEncode => codec::url_encode(text).into_bytes(),
+        Op::HexDecode => codec::hex_decode(text)?,
+        Op::HexEncode => codec::hex_encode(text.as_bytes()).into_bytes(),
+        Op::HtmlUnescape => codec::html_unescape(text).into_bytes(),
+        Op::HtmlEscape => codec::html_escape(text).into_bytes(),
+        Op::JsonUnescape => codec::json_unescape(text)?.into_bytes(),
+        Op::JsonEscape => codec::json_escape(text).into_bytes(),
+        _ => return Err("not a decoding".into()),
     })
 }
 

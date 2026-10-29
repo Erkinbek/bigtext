@@ -130,6 +130,10 @@ Single self-contained binary, no runtime dependencies.
   Runs on a worker and is one undo step. Above 64 MB, case, trimming, tabs and JSON formatting
   stream through the whole file instead and replace it on disk (optional `.bak`); the same code
   runs as `bigtext-cli transform --op upper|lower|trim|tabs|untabs` and `format --json`.
+- **Decode and encode** (Edit → Text): Base64 (either alphabet; a JWT shows its header and payload),
+  URL `%xx`, hex, HTML entities and JSON string escapes, on the selection or the word at the
+  caret. A result that is not text for the document (bytes, characters its encoding lacks) opens
+  in a window with Copy and Open in a new tab instead of replacing anything.
 - **Font** (View → Font…): the monospaced fonts installed on the system (Consolas, Cascadia,
   JetBrains Mono, DejaVu Sans Mono, Menlo, …) or any `.ttf`/`.otf`/`.ttc` file, with a preview
   and a warning for fonts that are not monospaced; the built-in font stays as the fallback

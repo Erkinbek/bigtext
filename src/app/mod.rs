@@ -290,6 +290,7 @@ pub struct BigTextApp {
     pub unpack_dir_open: bool,
     pub properties: Option<properties::PropertiesUi>,
     pub recovery: recovery::RecoveryState,
+    pub text_result: Option<text_tools::TextResult>,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -499,6 +500,7 @@ impl BigTextApp {
             unpack_dir_open: false,
             properties: None,
             recovery: recovery::RecoveryState::new(),
+            text_result: None,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1850,6 +1852,7 @@ impl eframe::App for BigTextApp {
         self.unpack_dir_window(&ctx);
         self.properties_window(&ctx);
         self.recovery_window(&ctx);
+        self.text_result_window(&ctx);
         self.pivot_window(&ctx);
         self.derive_window(&ctx);
         self.json_fields_window(&ctx);
