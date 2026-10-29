@@ -21,7 +21,7 @@ DOCS = ROOT / "docs"
 BASE = "https://erkinbek.github.io/bigtext/"
 REPO = "https://github.com/Erkinbek/bigtext"
 RELEASES = REPO + "/releases/latest"
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 UPDATED = "2026-10-24"
 LANGS = ["en", "ru", "uz"]
 LOCALE = {"en": "en_US", "ru": "ru_RU", "uz": "uz_UZ"}
@@ -100,6 +100,14 @@ T = {
             ("CSV tables", "CSV and TSV files open as a table that scrolls as fast as text. Sort by a column, get column statistics, filter by a column, and rename, move, export or delete columns."),
             ("Text tools", "Sort, de-duplicate and reverse lines, change case, trim whitespace, pretty-print or minify JSON, and edit many lines at once with an Alt+drag column selection."),
             ("Your way", "A command palette (Ctrl+Shift+P), shortcuts you can change, any monospaced font, and an interface in English, Russian or Uzbek."),
+            ("Log analysis", "A level bar with ERROR, WARN, INFO and DEBUG filters and F8 to the next error, a time histogram, log fields, message patterns, top values, time gaps, and the lines around each match or with the same request id."),
+            ("Logs side by side in time", "Merge several logs by timestamp into one coloured view, or line up the open logs and scroll them together by time, with a clock skew you can set. Following survives log rotation."),
+            ("JSON and XML", "A structure panel, the JSON path of the caret in the status bar, folding, JSON Lines as a table with queries, a strict check that points at the error, conversion between JSON, JSON Lines and logfmt, and a structural diff."),
+            ("Tables that calculate", "Group by with sums, pivot tables, a join of two files by a key, computed columns, column charts, frozen and hidden columns, row checks, and export to JSON, Markdown or Excel."),
+            ("Compare your way", "Side by side or as a unified diff, next and previous difference, ignore white space, case or timestamps, lines found in only one file, CSV compared by key, and patches applied."),
+            ("Archives and big edits", "Files inside zip and tar archives, .xz and .bz2 files shown while they unpack, saving straight to .gz or .zst, multiple cursors, a column editor, and sort, de-duplicate or run any command on a file of any size."),
+            ("Find in files and scripts", "Search a whole folder with file:line results, and use bigtext-cli for count, head, tail, slice, replace, CSV tools and JSON output in scripts. Sessions, portable mode, and a second launch opens in the running window."),
+            ("Comfortable for everyone", "High-contrast and colour-blind-safe themes, interface scaling, screen reader support, zen mode, wrapping at a column with a ruler, a clickable status bar, and settings remembered for each file."),
         ],
         "gallery_h2": "Screenshots",
         "gallery": {
@@ -140,10 +148,10 @@ T = {
         "dl": [
             ("Windows 10 / 11", "Installer with “Open with” and Explorer context-menu integration, or a portable build.",
              [("Installer (.exe)", "bigtext-setup-windows-x64.exe"), ("Portable (.zip)", "bigtext-windows-x64.zip")]),
-            ("Linux x64", "Portable .tar.gz for X11 and Wayland desktops.",
-             [("Download .tar.gz", "bigtext-linux-x64.tar.gz")]),
-            ("macOS", "Builds for Apple Silicon and Intel. The app is not signed: right-click → Open on first launch.",
-             [("Apple Silicon", "bigtext-macos-arm64.tar.gz"), ("Intel", "bigtext-macos-x64.tar.gz")]),
+            ("Linux x64", "An AppImage that runs on most distributions, a .deb package for Debian and Ubuntu, or a portable .tar.gz.",
+             [("AppImage", "bigtext-linux-x64.AppImage"), (".deb", "bigtext-linux-x64.deb"), (".tar.gz", "bigtext-linux-x64.tar.gz")]),
+            ("macOS", "BigText.app for Apple Silicon and Intel. The app is not signed: right-click → Open on first launch.",
+             [("Apple Silicon", "bigtext-macos-arm64.app.zip"), ("Intel", "bigtext-macos-x64.app.zip")]),
         ],
         "dl_all": "All releases and release notes",
         "dl_source": "Install with Cargo",
@@ -237,6 +245,14 @@ T = {
             ("Таблицы CSV", "CSV и TSV открываются таблицей, которая прокручивается так же быстро, как текст. Сортировка по столбцу, статистика столбца, фильтр по столбцу, переименование, перемещение, экспорт и удаление столбцов."),
             ("Инструменты для текста", "Сортировка, удаление повторов и разворот строк, смена регистра, удаление пробелов, форматирование и сжатие JSON, правка многих строк сразу выделением столбцом (Alt+перетаскивание)."),
             ("Как вам удобно", "Палитра команд (Ctrl+Shift+P), настраиваемые сочетания клавиш, любой моноширинный шрифт и интерфейс на английском, русском или узбекском."),
+            ("Анализ логов", "Панель уровней с фильтрами ERROR, WARN, INFO и DEBUG и F8 к следующей ошибке, гистограмма по времени, поля логов, шаблоны сообщений, частые значения, разрывы во времени, а также строки вокруг каждого совпадения или с тем же id запроса."),
+            ("Логи бок о бок во времени", "Объединяйте несколько логов по времени в один цветной вид или выравнивайте открытые логи и прокручивайте их вместе по времени с настраиваемым сдвигом часов. Слежение переживает ротацию логов."),
+            ("JSON и XML", "Панель структуры, JSON-путь курсора в строке состояния, сворачивание, JSON Lines в виде таблицы с запросами, строгая проверка с указанием места ошибки, преобразование между JSON, JSON Lines и logfmt и структурное сравнение."),
+            ("Таблицы с расчётами", "Группировка с суммами, сводные таблицы, объединение двух файлов по ключу, вычисляемые столбцы, диаграммы по столбцам, закреплённые и скрытые столбцы, проверка строк и экспорт в JSON, Markdown или Excel."),
+            ("Сравнение как вам нужно", "Бок о бок или в виде unified diff, следующее и предыдущее отличие, без учёта пробелов, регистра или меток времени, строки только из одного файла, сравнение CSV по ключу и применение патчей."),
+            ("Архивы и большие правки", "Файлы внутри архивов zip и tar, файлы .xz и .bz2, видимые ещё во время распаковки, сохранение сразу в .gz или .zst, несколько курсоров, редактор столбцов, сортировка, удаление повторов и любая команда над файлом любого размера."),
+            ("Поиск в файлах и скрипты", "Поиск по всей папке с результатами file:line и bigtext-cli для count, head, tail, slice, replace, работы с CSV и вывода JSON в скриптах. Сеансы, портативный режим, а повторный запуск открывает файл в уже запущенном окне."),
+            ("Удобно каждому", "Высококонтрастные темы и темы для людей с нарушением цветового зрения, масштаб интерфейса, поддержка экранного диктора, режим дзен, перенос по столбцу с линейкой, кликабельная строка состояния и настройки, запоминаемые для каждого файла."),
         ],
         "gallery_h2": "Скриншоты",
         "gallery": {
@@ -277,10 +293,10 @@ T = {
         "dl": [
             ("Windows 10 / 11", "Установщик с пунктом «Открыть с помощью» и контекстным меню Проводника или портативная версия.",
              [("Установщик (.exe)", "bigtext-setup-windows-x64.exe"), ("Портативная (.zip)", "bigtext-windows-x64.zip")]),
-            ("Linux x64", "Портативный архив .tar.gz для X11 и Wayland.",
-             [("Скачать .tar.gz", "bigtext-linux-x64.tar.gz")]),
-            ("macOS", "Сборки для Apple Silicon и Intel. Приложение не подписано: при первом запуске — правый щелчок → Открыть.",
-             [("Apple Silicon", "bigtext-macos-arm64.tar.gz"), ("Intel", "bigtext-macos-x64.tar.gz")]),
+            ("Linux x64", "AppImage для большинства дистрибутивов, пакет .deb для Debian и Ubuntu или портативный архив .tar.gz.",
+             [("AppImage", "bigtext-linux-x64.AppImage"), (".deb", "bigtext-linux-x64.deb"), (".tar.gz", "bigtext-linux-x64.tar.gz")]),
+            ("macOS", "BigText.app для Apple Silicon и Intel. Приложение не подписано: при первом запуске — правый щелчок → Открыть.",
+             [("Apple Silicon", "bigtext-macos-arm64.app.zip"), ("Intel", "bigtext-macos-x64.app.zip")]),
         ],
         "dl_all": "Все релизы и примечания к ним",
         "dl_source": "Установка через Cargo",
@@ -374,6 +390,14 @@ T = {
             ("CSV jadvallar", "CSV va TSV fayllar matn kabi tez aylanadigan jadval bo'lib ochiladi. Ustun bo'yicha saralash, ustun statistikasi, ustun bo'yicha filtr, ustunlarni qayta nomlash, surish, eksport qilish va o'chirish."),
             ("Matn vositalari", "Satrlarni saralash, takrorlarini olib tashlash va teskari tartiblash, harf registrini o'zgartirish, bo'shliqlarni tozalash, JSON ni formatlash va ixchamlash, Alt+sudrash bilan ustunli belgilab ko'p satrni birdaniga tahrirlash."),
             ("O'zingizga qulay", "Buyruqlar palitrasi (Ctrl+Shift+P), o'zgartiriladigan tezkor tugmalar, istalgan bir xil kenglikdagi shrift va ingliz, rus yoki o'zbek tilidagi interfeys."),
+            ("Loglarni tahlil qilish", "ERROR, WARN, INFO va DEBUG filtrli darajalar paneli va F8 bilan keyingi xatoga o'tish, vaqt gistogrammasi, log maydonlari, xabar shablonlari, eng ko'p uchraydigan qiymatlar, vaqtdagi uzilishlar, har bir moslik atrofidagi yoki bir xil so'rov id'li satrlar."),
+            ("Loglar vaqt bo'yicha yonma-yon", "Bir nechta logni vaqt bo'yicha bitta rangli ko'rinishga birlashtiring yoki ochiq loglarni vaqt bo'yicha tekislab, soatlar farqini sozlagan holda birga aylantiring. Kuzatish rejimi log rotatsiyasidan keyin ham davom etadi."),
+            ("JSON va XML", "Tuzilma paneli, holat qatorida kursordagi JSON yo'li, yig'ish, so'rovlar bilan jadval ko'rinishidagi JSON Lines, xato joyini ko'rsatadigan qat'iy tekshiruv, JSON, JSON Lines va logfmt orasida konvertatsiya hamda tuzilmaviy taqqoslash."),
+            ("Hisoblaydigan jadvallar", "Yig'indilar bilan guruhlash, pivot jadvallar, ikki faylni kalit bo'yicha birlashtirish, hisoblanadigan ustunlar, ustun diagrammalari, qotirilgan va yashirin ustunlar, qatorlarni tekshirish hamda JSON, Markdown yoki Excel'ga eksport."),
+            ("Qulay taqqoslash", "Yonma-yon yoki unified diff ko'rinishida, keyingi va oldingi farq, bo'shliqlar, harf registri yoki vaqt belgilarini hisobga olmaslik, faqat bitta faylda bor satrlar, CSV'ni kalit bo'yicha taqqoslash va patch qo'llash."),
+            ("Arxivlar va katta tahrirlar", "zip va tar arxivlari ichidagi fayllar, ochilayotgan paytdayoq ko'rinadigan .xz va .bz2 fayllar, to'g'ridan-to'g'ri .gz yoki .zst'ga saqlash, bir nechta kursor, ustun muharriri, istalgan hajmdagi faylda saralash, takrorlarni olib tashlash yoki istalgan buyruqni bajarish."),
+            ("Fayllar ichida qidiruv va skriptlar", "Butun papka bo'ylab file:line natijali qidiruv va skriptlar uchun bigtext-cli: count, head, tail, slice, replace, CSV vositalari va JSON chiqishi. Seanslar, portativ rejim, ikkinchi ishga tushirish esa faylni ochiq oynada ochadi."),
+            ("Hamma uchun qulay", "Yuqori kontrastli va ranglarni ajratishda qiynaladiganlar uchun mavzular, interfeys masshtabi, ekran o'quvchi qo'llab-quvvatlashi, zen rejimi, belgilangan ustunda o'rash va chizg'ich, bosiladigan holat qatori va har bir fayl uchun eslab qolinadigan sozlamalar."),
         ],
         "gallery_h2": "Skrinshotlar",
         "gallery": {
@@ -414,10 +438,10 @@ T = {
         "dl": [
             ("Windows 10 / 11", "«Open with» va Explorer kontekst menyusi bilan o'rnatuvchi yoki portativ versiya.",
              [("O'rnatuvchi (.exe)", "bigtext-setup-windows-x64.exe"), ("Portativ (.zip)", "bigtext-windows-x64.zip")]),
-            ("Linux x64", "X11 va Wayland uchun portativ .tar.gz arxiv.",
-             [(".tar.gz yuklab olish", "bigtext-linux-x64.tar.gz")]),
-            ("macOS", "Apple Silicon va Intel uchun yig'malar. Ilova imzolanmagan: birinchi ishga tushirishda o'ng tugma → Open.",
-             [("Apple Silicon", "bigtext-macos-arm64.tar.gz"), ("Intel", "bigtext-macos-x64.tar.gz")]),
+            ("Linux x64", "Ko'pchilik distributivlarda ishlaydigan AppImage, Debian va Ubuntu uchun .deb paket yoki portativ .tar.gz arxiv.",
+             [("AppImage", "bigtext-linux-x64.AppImage"), (".deb", "bigtext-linux-x64.deb"), (".tar.gz", "bigtext-linux-x64.tar.gz")]),
+            ("macOS", "Apple Silicon va Intel uchun BigText.app. Ilova imzolanmagan: birinchi ishga tushirishda o'ng tugma → Open.",
+             [("Apple Silicon", "bigtext-macos-arm64.app.zip"), ("Intel", "bigtext-macos-x64.app.zip")]),
         ],
         "dl_all": "Barcha relizlar va ular haqida",
         "dl_source": "Cargo orqali o'rnatish",

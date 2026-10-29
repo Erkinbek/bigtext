@@ -9,7 +9,7 @@
 ; The command-line tools, built next to bigtext.exe.
 #define CliExe AddBackslash(ExtractFileDir(SourceExe)) + "bigtext-cli.exe"
 #define AppName "BigText"
-#define AppVersion "0.3.0"
+#define AppVersion "0.4.0"
 
 [Setup]
 AppId={{7B0C2A51-3E2B-4C55-9C3A-6B3F8E1D2B10}

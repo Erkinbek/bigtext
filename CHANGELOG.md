@@ -3,274 +3,7 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
-## Unreleased
-
-### Interface
-
-- **Wrap at a column, ruler**: **View → Wrap at ▸** the window width, 80, 120, 160 or any column
-  (4 and up), so wrapped rows stay put when a panel or the split view changes the width; a column
-  wider than the pane scrolls sideways. **View → Ruler at column** draws a faint guide line.
-  Wrapped rows get a dim mark in the gutter, apart from the ↪ of a huge line's 64 KB pieces. Both
-  are kept with the settings; Ctrl+D and the benchmarks now wrap exactly as the view does.
-- **Full screen, zen mode, line numbers**: **View → Full screen** (F11) and **View → Zen mode**
-  (Ctrl+Shift+F11), which hides the menu, tab, level and status bars for the text alone; the menu
-  bar floats in while the pointer is at the top edge, and Esc (with nothing selected) or the same
-  key leaves. **View → Line numbers** hides the gutter of the text and table views (kept with the
-  settings). Zen mode and full screen are not kept across starts.
-- **Screen reader support (AccessKit)**: menus, dialogs, the search bar, result lists and the
-  command palette are exposed to screen readers, and the text view is a multi-line text field
-  whose rows on screen are text runs, with the caret, the selection and "Ln N, Col M"; its
-  scrollbar reports its position, and table headers their column names. A file opened, a save
-  or another task finished, a Find All's match count and "No matches" are announced through a
-  polite live region. Confirmation dialogs put the keyboard on Cancel. Nothing is built until an
-  assistive technology asks.
-- **High-contrast and colour-blind-safe themes**: View → Theme ▸ Dark, Light, High contrast dark
-  or High contrast light (pure black or white, 1.5 px outlines, an opaque selection, a bright
-  focus colour), and **Colour-blind-safe colours** (Okabe-Ito) for syntax and log levels (ERROR
-  vermillion, WARN yellow, INFO blue, so they differ in lightness too), highlight marks, merged
-  logs, scrollbar marks, search and bracket fills, diff colours, the histogram and the status
-  bar. With high contrast, painted colours move away from the background and fills are stronger.
-  **View → Interface scale ▸ 100–200 %** enlarges menus and dialogs while the text keeps its own
-  size. All three are kept with the settings and exported with them; View → Dark theme still
-  flips between dark and light, and every theme is in the command palette.
-- **The status bar is clickable**: Ln/Col opens Go to line, the offset Go to byte offset, the
-  encoding a Reopen with encoding list (with Auto-detect), LF / CRLF a menu of the line ending to
-  save with (shown as `CRLF → LF` while a conversion is set), READ-ONLY turns it off (not for a
-  merged log), and the file path, when shown, copies itself. Right-click the bar, or click **…**
-  at its end, to choose the fields: byte offset, selection size, time since the previous line,
-  the merged log's files (otherwise "3 files" with the colours on hover), file access, indexing
-  time and the file path. The choice is kept and exported with the settings; file access and
-  indexing time are now off by default.
-
-### Compare
-
-- **F7 / Shift+F7** (Search → Next / Previous difference) step the caret through the differences
-  of a comparison, around the ends, with "Difference 12 of 340"; the compare panel has the same
-  as ◀ ▶ buttons and **Swap A↔B** to compare the other way round. **File → Compare with tab ▸**
-  lists the other open files, so a comparison takes one click.
-- The compare panel can ignore **white space**, **case**, the **timestamp** at the start of
-  each line, and whatever a **mask** regular expression matches (`req=[0-9a-f]+`, durations), so
-  two runs of the same job compare by what they did, not when; the header says what is ignored.
-  On the command line, `bigtext diff A B [-w] [-i] [-t] [--mask RE]` prints `@@ -12,2 +12,3 @@`
-  hunks and exits 0 when the files are the same, 1 when they differ.
-- **File → Compare with the saved file** shows exactly what you changed before Ctrl+S, and
-  **Compare with the backup (.bak)** what the last save changed (with Keep backup on). Every
-  comparison now reads the document as you see it, unsaved edits included, so the scrollbar
-  marks and jumps are right on edited files; the panel says "(outdated, run again)" after
-  further edits, and a save closes a comparison that holds the file open.
-- **View → Compare side by side** (or **Side by side** in the compare panel) opens the other file
-  read-only beside the document: removed lines tinted red with a − in the gutter, added lines
-  green with a +, the changed middle of a changed line brighter, and a line where the other side
-  has extra lines. The panes keep corresponding lines at the top as you scroll either one; the
-  difference list stays below for jumping.
-- **Save as .diff…** in the compare panel writes a unified diff (`diff -u`, 3 lines of context)
-  of files of any size, streamed from both sides, that GNU patch and git apply accept; for the
-  saved file and the backup it records what was changed. **File → Apply patch…** applies a
-  .diff/.patch to the document in one pass as a single undo step: each hunk where it says, or
-  up to 4,096 lines away when it matches one place only; the hunks it cannot place are listed.
-- `bigtext diff A B` now prints a unified diff with context (`-U N`, default 3), `-q` only says
-  whether the files differ, `-o OUT` writes it to a file.
-- **Search → Lines only in this file…** lists the lines of one open file that occur nowhere in
-  another, in the file's order whatever the other's, with how many are in both; white space,
-  case, timestamps and a mask can be ignored as in Compare. The list jumps to each line, and
-  Save lines… / Copy lines write them out. Any size: past 25 million distinct lines the
-  comparison splits both files by hash into partitions on disk. On the command line:
-  `bigtext only-in A B [-w] [-i] [-t] [--mask RE] [--count] [-o OUT]`.
-- **Compare table by this column…** (a column header's menu) pairs each row with the other open
-  table's row with the same key, whatever the order (the n-th duplicate with the n-th), and
-  opens the rows changed, removed and added as a new read-only table: status, key, the changed
-  columns, and the values with `old → new` where they changed. Columns pair up by header name,
-  encodings and line endings may differ; tables of any size are split by key hash into 64
-  buckets on disk. On the command line: `bigtext diff-table A B --key COL [--key-b COL] [--all]`.
-- Fixed: a comparison where one file's last line lost its line break ("b\n" against "b")
-  reported a difference in the middle of the line.
-
-### Follow
-
-- **Follow mode survives log rotation**, like `tail -F`: when the followed file is truncated and
-  written again (copytruncate) or renamed away and created again, BigText reopens it and goes on
-  from its end, with a banner offering to open the rotated file (`app.log.1`) and FOLLOW ×n in
-  the status bar. The file is told apart by its identity (volume and file number), not its
-  creation time, and a path that vanishes for a moment is not taken as deleted.
-- A followed file is read in chunks instead of mapped, so the writer can truncate it on Windows
-  and a shrinking file cannot crash BigText with SIGBUS on Linux and macOS.
-
-### Windows
-
-- **Files open in the running window**: a second `bigtext app.log:120` (Explorer's Open with, a
-  grep result, a script) hands its files, lines, search and follow flag to the BigText already
-  running, which opens them as tabs and comes to the front, so sessions, Copy file:line and
-  the settings stay in one place. The running window listens on a loopback port named, with a
-  random token, in a lock file next to the settings; `--new-window` opts out, and standard
-  input always opens its own window.
-- **Show in folder**, **Open terminal here** and **Open with the default app** in the File
-  menu and a tab's right-click menu: the file selected in Explorer (Finder; the folder in a
-  Linux file manager), a terminal in its folder, or the program the system opens it with —
-  for an unpacked copy, the compressed file or archive it came from. The notice after Save
-  lines, an export or a split gets a Show in folder link, and Open on an exported `.xlsx` opens
-  the spreadsheet app instead of BigText.
-- **Edit → Paste from history…** (Ctrl+Shift+V) lists the last 30 texts copied in BigText —
-  their first line and how many lines — to copy and paste again with ↑ ↓ and Enter (copied
-  only, in a read-only document). Texts over 1 MB are not kept, and they stay out of the
-  settings file unless *Keep across restarts* is ticked.
-- **Edit → Copy as ▸ Markdown / HTML**: the selection (up to 4 MB) as a fenced code block —
-  with the language tag (` ```log `, ` ```json `…) and a `file:line` caption, the fence longer
-  than any backticks inside — or as HTML in the theme's syntax colours, put on the clipboard
-  as HTML with the plain text beside it, so it keeps its colours when pasted into mail, wikis
-  and documents (plain text where the system clipboard takes no HTML).
-
-### Files
-
-- **Compressed files open while they unpack**: a `.gz`, `.zst`, `.xz` or `.bz2` file opens as
-  soon as the first megabyte of its temporary copy is written, instead of after the whole file;
-  the rest arrives the way a followed log grows (line index kept), with "Unpacking 37%" and
-  **Cancel** in the status bar, which stops unpacking and keeps what is there. The copy stays
-  read-only until it is whole, and a damaged file shows its error with the part that unpacked.
-- **BigText remembers each file's choices**: the encoding picked with File → Reopen with
-  encoding (a remembered one opens the file in one pass; a byte order mark the file has since
-  gained wins), Highlight as, table, hex, follow, read-only and word wrap, and for tables the
-  delimiter, the header switch, dragged column widths and the horizontal scroll. They come back
-  from session restore, Open recent, a saved session or the command line; a table whose first
-  line changed starts with a fresh layout. **Reopen with encoding → Auto-detect (forget)** goes
-  back to detecting. Up to 200 files are remembered in `state.txt`.
-- **Archives open**: a `.zip`, `.tar`, `.tar.gz` / `.tgz`, `.tar.zst`, `.tar.xz` or `.tar.bz2`
-  lists its files in a picker (name, size, date; type to filter, arrows and Enter to open), and
-  the file picked is unpacked into a temporary read-only copy like a `.gz`, titled
-  `bundle.zip › app.log`. A compressed file inside the archive is unpacked as well, an archive
-  with a single file skips the picker, and sessions reopen the same file of the archive. A
-  `.tgz` used to open as one unpacked `.tar`; it now lists its files.
-- **`.xz` and `.bz2`** files open directly (pure-Rust decoders; several streams back to back,
-  as `xz` and `bzip2` write them, are read as one). Zip members compressed with Deflate64,
-  bzip2, LZMA or xz can be read too.
-- **Saving compressed**: when the name of a Save lines…, Export lines…, Save selection as…,
-  table, diff or value export ends in `.gz`, `.zst`, `.xz` or `.bz2`, the file is compressed on
-  the way out, with the same progress and Cancel, and the notice gives the compressed size.
-  Split file… has *Compress the parts* (`app.part001.log.gz`, …). On the command line every
-  `-o OUT` with such a name is compressed, and `split` takes `--gz`, `--zst`, `--xz`, `--bz2`.
-- **Free space is checked first**: before a compressed file or an archive member is unpacked
-  (its size estimated from the gzip or zstd header, the archive's listing, or 12× the packed
-  size) and before a save writes its copy, BigText compares the size with the free space on
-  that drive and asks *Continue* / *Choose folder…* / *Cancel* instead of failing halfway with
-  "disk full". **Help → Unpacked copies folder…** puts unpacked copies (and other temporary
-  files) on another drive; the setting is kept, and leftovers in both folders are cleaned up.
-- **File → Properties…** (Ctrl+I) shows the size, how the file is read (mapped or in chunks),
-  the encoding, whether and why it is read-only, where an unpacked copy came from and when the
-  file changed, and fills in from one background pass: the exact line count, LF / CRLF / CR
-  counts, the longest line, NUL bytes and bytes that are not UTF-8 (each with Go to), whether
-  it ends with a line break, and the first and last time. The SHA-256 is computed on request,
-  with a Copy button. `bigtext-cli stats` prints the new figures too.
-- **Recovery journal for unsaved edits**: a couple of seconds after a pause in editing (or
-  every 30 s of typing) a modified document's piece list and the bytes typed into it are
-  journaled next to the settings — a few KB for a thousand edits to a 50 GB file, written on a
-  worker. After a crash or a power cut the next start lists the documents with Restore (once
-  the file's size and time show it unchanged), Save text as… and Discard. Each running BigText
-  holds a lock so another one's journals are left alone; journals go when the edits are saved,
-  undone or discarded and on a clean exit. File → Keep a recovery journal of unsaved edits
-  turns it off.
-- **Delete these** and **Keep only these** in the filter panel change the open document instead
-  of writing a copy — drop every DEBUG line, or keep only the errors, a level-bar filter
-  included. Up to 50,000 runs of lines are one undoable edit; beyond that the document is
-  rewritten on disk (temp file, atomic swap, optional `.bak`) like Replace All. They are off
-  while the filter shows lines around matches, a column or a time range.
-- **Text operations on files of any size**: UPPERCASE, lowercase, trimming trailing white
-  space, tabs ↔ spaces and Format / Minify JSON no longer stop at 64 MB. A larger document or
-  selection streams through them — whole lines at a time, each piece checked to survive its
-  encoding — into a new file that replaces the document on disk, after asking, with progress,
-  Cancel and an optional `.bak`. The JSON formatter now works a piece at a time, and the
-  command line runs the same code: `bigtext-cli transform --op upper|lower|trim|tabs|untabs`
-  and `bigtext-cli format FILE --json pretty|minify`.
-- **Edit → Text decodes and encodes**: Base64 (standard or URL-safe, padded or not), URL
-  `%xx` (`+` as a space in `a=b&c=d` forms), hex (spaces, `:` and `0x` allowed), HTML entities
-  (numeric and the common named ones) and JSON string escapes (surrogate pairs included), on the
-  selection or, with nothing selected, the word at the caret. Decoding a JWT shows its header and
-  payload pretty-printed; bytes that are not text (as a hex dump) and characters the document's
-  encoding lacks open in a result window with Copy and Open in a new tab instead of being put in.
-- **Column blocks from the keyboard**: Shift+Alt+arrows (Home, End, PageUp, PageDown;
-  Ctrl+Shift+Alt+Home/End to the first and last row) make and grow a column block from the
-  caret, as Alt+drag does. **Edit → Column editor…** fills the block's column with a number
-  sequence (first number, step, at least N digits, hexadecimal) or the same text on every row
-  — on the block's rows as one undo step, or on every line from there to the end of a file of
-  any size, streamed into a new file that replaces it (optional `.bak`).
-- **Sorting without a size limit**: Sort lines (A → Z, Z → A, by number) and Remove duplicate
-  lines on a whole document over 64 MB now sort it through temporary runs of 64 MB and a k-way
-  merge (two levels past 256 runs) and replace it on disk, after asking, with an optional
-  `.bak`. **Edit → Text → Count duplicate lines…** opens each line with how often it occurs,
-  most frequent first, as a new table, for files of any size. On the command line:
-  `bigtext-cli sort [-r] [-n] [-i] [-u] FILE` and `bigtext-cli uniq [-c] FILE`.
-
-### Command line
-
-- **`bigtext-cli csv FILE …`** runs the table view's column tools in scripts: `cut COLS` and
-  `drop COLS`, `sort --by COL [--desc]` (files up to 1 GB, as in the app), `where COND...`
-  (`col=v`, `col!=v`, `col~v`, `col>n`, `col<n`, or in words `col eq|ne|has|gt|lt v`, `col empty`,
-  for cmd.exe), `stats COL` (also `--json`) and `group COL [--sum COL]`; columns by header name or
-  1-based number (a wrong name lists the columns), the dialect detected as the app does, with
-  `--delimiter`, `--no-header`, `--skip` and `--quote`.
-- **`--json`** on `filter`, `levels`, `grep`, `count`, `stats`, `replace` and `saved` prints one
-  JSON record per line — `{file, line, offset, text, context}` with exact line numbers for kept
-  lines — and errors as `{"error": …}` with exit code 2.
-- **`bigtext-cli replace [-i] [-w] [-E] PATTERN REPLACEMENT FILE`** streams Replace All (`$1`,
-  `${name}` with `-E`) to stdout or `-o OUT`, or `--in-place [--bak]` swaps the file atomically,
-  keeping its encoding and line breaks; exit code 1 when nothing matched.
-- **Saved searches on the command line**: `bigtext-cli saved` lists the searches saved in the app,
-  and `filter`, `count` and `grep --saved NAME` run one, from the app's settings or an exported
-  settings file (`--settings FILE`, so a team can keep its searches in a repository).
-- **Many files at once**: `filter`, `count` and `levels` take several files, `*.log` patterns
-  (expanded by BigText, since Windows shells do not) and `-r DIR --names '*.log;*.gz'`, put the
-  file name before each output line (count: each file's count and a total), or write one
-  `name.filtered.ext` per input with `--out-dir DIR`; the exit code is 2 if a file failed, else 0
-  if any matched. **`bigtext-cli grep PATTERN FILES... | -r DIR`** is Find in files without a
-  window (`file:line:text`). Every command now reads `.gz`, `.zst`, `.xz` and `.bz2` inputs,
-  unpacking them on the way.
-- `bigtext-cli head -n N` and `tail -n N` read only that end of the file (tail scans backwards),
-  and `bigtext-cli slice FILE --lines A-B | --bytes A-B | --from TIME --to TIME` cuts out a part
-  — bytes widened to whole lines, times found by binary search in a time-ordered log, a `--to`
-  without a date taken on `--from`'s day — with `--header` to put line 1 first (CSV samples).
-  On the console the text is decoded to UTF-8; `-o` writes it as it is, with its byte order
-  mark. **File → Export lines…** has a *Between times* mode.
-- **Script commands without a window**, in the new console program **`bigtext-cli`** (also
-  `bigtext --filter …`): `filter` (grep-like, `-v -i -w -E`, to a file in the original
-  encoding with `-o` or to the console), `levels ERROR,WARN`, `count`, `split --size 100MB` /
-  `--lines N`, `stats` (size, lines, encoding, line endings, first and last time), `merge` (logs
-  in time order) and `convert --to json|jsonl|md|xlsx|csv`. Exit codes: 0 done, 1 nothing
-  matched, 2 error. They stream like the editor, so they work on files of any size.
-  `bigtext-cli.exe` comes with the Windows zip and installer, since `bigtext.exe` is a windowed
-  program that consoles do not wait for.
-
-### Packages
-
-- **Linux**: a `.deb` package (`bigtext`, `bigtext-cli`, a menu entry and the icon) and an
-  **AppImage**; the tarball now has `bigtext.desktop` and the icon too. The window identifies
-  itself as `bigtext`, so desktops show its icon.
-- **macOS**: `BigText.app` (zipped, for the Applications folder) next to the plain binaries.
-- **Homebrew**: a cask (the app) and a formula (built from source, Linux and macOS) ready for a
-  tap; see `packaging/README.md`.
-- Releases carry `SHA256SUMS.txt`.
-
-### Tabs
-
-- **Keyboard-only moving around**: **Ctrl+1 … Ctrl+8** go to that tab and **Ctrl+9** to the last,
-  **Ctrl+PageDown / Ctrl+PageUp** step through the tabs in bar order, and **F4 / Shift+F4** go to
-  the next / previous entry of the list under the text — Find All (with "Match 3 of 41"), the
-  filter's matches or Find in files — around the ends. All can be rebound.
-- **Ctrl+Tab** shows the tabs in most-recently-used order: hold Ctrl, press Tab (Shift+Tab back)
-  to step, release Ctrl to switch, so a quick Ctrl+Tab goes back to the previous tab.
-- **Pinned tabs** (right-click a tab → Pin tab, or File → Pin / unpin tab) stay first, have no
-  close button and are kept by **Close other tabs** and **Close tabs to the right** (also in the
-  tab's right-click menu, which can copy the file's path too). Tabs with unsaved changes are
-  never closed by these. Pinned tabs are restored as pinned.
-- **Drag a tab** to move it.
-- **File → Sessions**: save the open files with their positions, bookmarks, pins and filters,
-  and the highlights, under a name ("Incident 2026-10-28"), and open them again later in one
-  click. Sessions are small text files next to BigText's settings.
-- **Portable mode** (Help → Portable mode…): with a `BigText-data` folder next to `bigtext.exe`,
-  the settings, recent files and sessions are kept there, so BigText runs from a USB stick with
-  its settings. The button creates the folder and moves the settings and sessions in.
-- **Help → Export settings… / Import settings…**: highlights, key bindings, saved searches,
-  theme, font, language and view options in one file, to take to another computer (no file
-  names or tabs). Importing adds highlights and saved searches and replaces the rest.
-- **Edit → Copy file:line** (Ctrl+Shift+C) copies `C:\logs\app.log:1234` for the caret's line, to
-  send to a colleague: `bigtext C:\logs\app.log:1234` opens it right there.
+## 0.4.0 — 2026-10-29
 
 ### Logs
 
@@ -361,6 +94,64 @@ All notable changes to BigText. Each release on
   as a date and time (UTC).
 - Files without a telling extension (`syslog`, `stdin`, `app.txt`) are recognised as logs when
   their lines start with a time, and as JSON or XML by their first line.
+
+### Follow
+
+- **Follow mode survives log rotation**, like `tail -F`: when the followed file is truncated and
+  written again (copytruncate) or renamed away and created again, BigText reopens it and goes on
+  from its end, with a banner offering to open the rotated file (`app.log.1`) and FOLLOW ×n in
+  the status bar. The file is told apart by its identity (volume and file number), not its
+  creation time, and a path that vanishes for a moment is not taken as deleted.
+- A followed file is read in chunks instead of mapped, so the writer can truncate it on Windows
+  and a shrinking file cannot crash BigText with SIGBUS on Linux and macOS.
+
+### Search
+
+- **Top values… and Save matches…** in the Find All results: count the different matched texts —
+  or one capture group of a regular expression, picked by number or name — into a table, most
+  frequent first (`grep -o | sort | uniq -c` in one pass; 100,000 different values at most), or
+  save only the matched texts, one per line. `bigtext-cli extract [-g N] [--count] PATTERN FILE`
+  does the same.
+- **Back and forward** (Search → Back / Forward, **Alt+Left** / **Alt+Right**, or the mouse's
+  side buttons): back to where the caret was before a jump — Go to, F3, F8, a bookmark, a
+  bracket jump, a click in the filter, Find All, histogram, gaps, JSON or Find-in-files lists —
+  or to the tab left, across tabs; the last 100 places are kept. In a text field Alt+arrows still
+  move by words.
+- **Go to** (Ctrl+G / Ctrl+Shift+G) also takes `50%` (a share of the file), `+1000` / `-250`
+  (lines from the caret), `$` and `$-100` (from the last line); in byte-offset mode the same
+  with bytes (`+0x100`, `$-4096`). Dragging the scrollbar shows `~Ln 45,357,933 · 48 %` next to
+  the pointer.
+- **Saved searches**: the ★ menu of the search bar keeps a pattern with its options, the **!**
+  switch and the table column under a name ("Timeouts", "5xx responses"); one click applies it
+  as a filter. They are kept across sessions.
+
+### Editing
+
+- **Run a command on the text**: **Edit → Run command on selection…** (Ctrl+Shift+R) sends the
+  selection or the whole document (as UTF-8) to a shell command's standard input and takes its
+  standard output: it replaces the text (one undo step; over 64 MB it opens in a new tab), opens
+  in a new tab, or only the exit code is shown. Input, output and errors are pumped on their own
+  threads and the output goes through a temporary file, so huge selections do not sit in memory
+  and chatty commands do not hang; Cancel in the status bar stops the whole pipeline. A non-zero
+  exit changes nothing and shows the end of its error output. The shell is `cmd /C`, Git Bash or
+  WSL on Windows, the login shell on macOS and `/bin/sh` elsewhere; Up and Down recall earlier
+  commands. **Save as external tool** adds a command to **Edit → External tools**, which fills in
+  `{file}`, `{dir}`, `{line}`, `{col}` and `{selection}` (`code -g "{file}:{line}"`).
+- **Multiple cursors.** **Ctrl+D** selects the word at the caret, and each further press adds
+  the next occurrence of the selection as another cursor (searched in the background, so it
+  never blocks on a large file). **Alt+click** adds a cursor where you click. Typing, pasting
+  (one line per cursor when the counts match), Backspace, Delete, Enter and Tab change the text
+  at every cursor as one undoable edit; Left/Right/Home/End move them all; copy joins their
+  selections line by line; **Esc** goes back to one cursor. The status bar shows the count.
+- **Duplicate line** moves to **Ctrl+Shift+D**, and can now be rebound.
+- **Matching brackets and tags**: the `()`, `[]`, `{}` pair next to the caret is highlighted, and
+  in XML / HTML the opening and closing tag names. **Ctrl+]** (Search → Go to matching bracket)
+  jumps to the partner, or, away from a bracket, to the bracket around the caret. Brackets
+  inside double-quoted strings do not count; the jump searches the whole file in the
+  background, so it works from the first `[` of a gigabyte-long JSON array too.
+- **View → Show whitespace and line breaks**: spaces as `·`, tabs as `→`, and each line's break
+  as `↓` (LF), `↵` (CRLF) or `←` (CR), dimmed — to see which lines have tabs or mixed line
+  endings.
 
 ### JSON
 
@@ -482,53 +273,262 @@ All notable changes to BigText. Each release on
   table, or an **Excel workbook (.xlsx)** with numbers as numbers (`007` stays text). Streamed,
   so large tables export in the background; Excel's 1,048,576-row limit is reported.
 
-### Search
+### Compare
 
-- **Top values… and Save matches…** in the Find All results: count the different matched texts —
-  or one capture group of a regular expression, picked by number or name — into a table, most
-  frequent first (`grep -o | sort | uniq -c` in one pass; 100,000 different values at most), or
-  save only the matched texts, one per line. `bigtext-cli extract [-g N] [--count] PATTERN FILE`
-  does the same.
-- **Back and forward** (Search → Back / Forward, **Alt+Left** / **Alt+Right**, or the mouse's
-  side buttons): back to where the caret was before a jump — Go to, F3, F8, a bookmark, a
-  bracket jump, a click in the filter, Find All, histogram, gaps, JSON or Find-in-files lists —
-  or to the tab left, across tabs; the last 100 places are kept. In a text field Alt+arrows still
-  move by words.
-- **Go to** (Ctrl+G / Ctrl+Shift+G) also takes `50%` (a share of the file), `+1000` / `-250`
-  (lines from the caret), `$` and `$-100` (from the last line); in byte-offset mode the same
-  with bytes (`+0x100`, `$-4096`). Dragging the scrollbar shows `~Ln 45,357,933 · 48 %` next to
-  the pointer.
-- **Saved searches**: the ★ menu of the search bar keeps a pattern with its options, the **!**
-  switch and the table column under a name ("Timeouts", "5xx responses"); one click applies it
-  as a filter. They are kept across sessions.
+- **F7 / Shift+F7** (Search → Next / Previous difference) step the caret through the differences
+  of a comparison, around the ends, with "Difference 12 of 340"; the compare panel has the same
+  as ◀ ▶ buttons and **Swap A↔B** to compare the other way round. **File → Compare with tab ▸**
+  lists the other open files, so a comparison takes one click.
+- The compare panel can ignore **white space**, **case**, the **timestamp** at the start of
+  each line, and whatever a **mask** regular expression matches (`req=[0-9a-f]+`, durations), so
+  two runs of the same job compare by what they did, not when; the header says what is ignored.
+  On the command line, `bigtext diff A B [-w] [-i] [-t] [--mask RE]` prints `@@ -12,2 +12,3 @@`
+  hunks and exits 0 when the files are the same, 1 when they differ.
+- **File → Compare with the saved file** shows exactly what you changed before Ctrl+S, and
+  **Compare with the backup (.bak)** what the last save changed (with Keep backup on). Every
+  comparison now reads the document as you see it, unsaved edits included, so the scrollbar
+  marks and jumps are right on edited files; the panel says "(outdated, run again)" after
+  further edits, and a save closes a comparison that holds the file open.
+- **View → Compare side by side** (or **Side by side** in the compare panel) opens the other file
+  read-only beside the document: removed lines tinted red with a − in the gutter, added lines
+  green with a +, the changed middle of a changed line brighter, and a line where the other side
+  has extra lines. The panes keep corresponding lines at the top as you scroll either one; the
+  difference list stays below for jumping.
+- **Save as .diff…** in the compare panel writes a unified diff (`diff -u`, 3 lines of context)
+  of files of any size, streamed from both sides, that GNU patch and git apply accept; for the
+  saved file and the backup it records what was changed. **File → Apply patch…** applies a
+  .diff/.patch to the document in one pass as a single undo step: each hunk where it says, or
+  up to 4,096 lines away when it matches one place only; the hunks it cannot place are listed.
+- `bigtext diff A B` now prints a unified diff with context (`-U N`, default 3), `-q` only says
+  whether the files differ, `-o OUT` writes it to a file.
+- **Search → Lines only in this file…** lists the lines of one open file that occur nowhere in
+  another, in the file's order whatever the other's, with how many are in both; white space,
+  case, timestamps and a mask can be ignored as in Compare. The list jumps to each line, and
+  Save lines… / Copy lines write them out. Any size: past 25 million distinct lines the
+  comparison splits both files by hash into partitions on disk. On the command line:
+  `bigtext only-in A B [-w] [-i] [-t] [--mask RE] [--count] [-o OUT]`.
+- **Compare table by this column…** (a column header's menu) pairs each row with the other open
+  table's row with the same key, whatever the order (the n-th duplicate with the n-th), and
+  opens the rows changed, removed and added as a new read-only table: status, key, the changed
+  columns, and the values with `old → new` where they changed. Columns pair up by header name,
+  encodings and line endings may differ; tables of any size are split by key hash into 64
+  buckets on disk. On the command line: `bigtext diff-table A B --key COL [--key-b COL] [--all]`.
+- Fixed: a comparison where one file's last line lost its line break ("b\n" against "b")
+  reported a difference in the middle of the line.
 
-### Editing
+### Files
 
-- **Run a command on the text**: **Edit → Run command on selection…** (Ctrl+Shift+R) sends the
-  selection or the whole document (as UTF-8) to a shell command's standard input and takes its
-  standard output: it replaces the text (one undo step; over 64 MB it opens in a new tab), opens
-  in a new tab, or only the exit code is shown. Input, output and errors are pumped on their own
-  threads and the output goes through a temporary file, so huge selections do not sit in memory
-  and chatty commands do not hang; Cancel in the status bar stops the whole pipeline. A non-zero
-  exit changes nothing and shows the end of its error output. The shell is `cmd /C`, Git Bash or
-  WSL on Windows, the login shell on macOS and `/bin/sh` elsewhere; Up and Down recall earlier
-  commands. **Save as external tool** adds a command to **Edit → External tools**, which fills in
-  `{file}`, `{dir}`, `{line}`, `{col}` and `{selection}` (`code -g "{file}:{line}"`).
-- **Multiple cursors.** **Ctrl+D** selects the word at the caret, and each further press adds
-  the next occurrence of the selection as another cursor (searched in the background, so it
-  never blocks on a large file). **Alt+click** adds a cursor where you click. Typing, pasting
-  (one line per cursor when the counts match), Backspace, Delete, Enter and Tab change the text
-  at every cursor as one undoable edit; Left/Right/Home/End move them all; copy joins their
-  selections line by line; **Esc** goes back to one cursor. The status bar shows the count.
-- **Duplicate line** moves to **Ctrl+Shift+D**, and can now be rebound.
-- **Matching brackets and tags**: the `()`, `[]`, `{}` pair next to the caret is highlighted, and
-  in XML / HTML the opening and closing tag names. **Ctrl+]** (Search → Go to matching bracket)
-  jumps to the partner, or, away from a bracket, to the bracket around the caret. Brackets
-  inside double-quoted strings do not count; the jump searches the whole file in the
-  background, so it works from the first `[` of a gigabyte-long JSON array too.
-- **View → Show whitespace and line breaks**: spaces as `·`, tabs as `→`, and each line's break
-  as `↓` (LF), `↵` (CRLF) or `←` (CR), dimmed — to see which lines have tabs or mixed line
-  endings.
+- **Compressed files open while they unpack**: a `.gz`, `.zst`, `.xz` or `.bz2` file opens as
+  soon as the first megabyte of its temporary copy is written, instead of after the whole file;
+  the rest arrives the way a followed log grows (line index kept), with "Unpacking 37%" and
+  **Cancel** in the status bar, which stops unpacking and keeps what is there. The copy stays
+  read-only until it is whole, and a damaged file shows its error with the part that unpacked.
+- **BigText remembers each file's choices**: the encoding picked with File → Reopen with
+  encoding (a remembered one opens the file in one pass; a byte order mark the file has since
+  gained wins), Highlight as, table, hex, follow, read-only and word wrap, and for tables the
+  delimiter, the header switch, dragged column widths and the horizontal scroll. They come back
+  from session restore, Open recent, a saved session or the command line; a table whose first
+  line changed starts with a fresh layout. **Reopen with encoding → Auto-detect (forget)** goes
+  back to detecting. Up to 200 files are remembered in `state.txt`.
+- **Archives open**: a `.zip`, `.tar`, `.tar.gz` / `.tgz`, `.tar.zst`, `.tar.xz` or `.tar.bz2`
+  lists its files in a picker (name, size, date; type to filter, arrows and Enter to open), and
+  the file picked is unpacked into a temporary read-only copy like a `.gz`, titled
+  `bundle.zip › app.log`. A compressed file inside the archive is unpacked as well, an archive
+  with a single file skips the picker, and sessions reopen the same file of the archive. A
+  `.tgz` used to open as one unpacked `.tar`; it now lists its files.
+- **`.xz` and `.bz2`** files open directly (pure-Rust decoders; several streams back to back,
+  as `xz` and `bzip2` write them, are read as one). Zip members compressed with Deflate64,
+  bzip2, LZMA or xz can be read too.
+- **Saving compressed**: when the name of a Save lines…, Export lines…, Save selection as…,
+  table, diff or value export ends in `.gz`, `.zst`, `.xz` or `.bz2`, the file is compressed on
+  the way out, with the same progress and Cancel, and the notice gives the compressed size.
+  Split file… has *Compress the parts* (`app.part001.log.gz`, …). On the command line every
+  `-o OUT` with such a name is compressed, and `split` takes `--gz`, `--zst`, `--xz`, `--bz2`.
+- **Free space is checked first**: before a compressed file or an archive member is unpacked
+  (its size estimated from the gzip or zstd header, the archive's listing, or 12× the packed
+  size) and before a save writes its copy, BigText compares the size with the free space on
+  that drive and asks *Continue* / *Choose folder…* / *Cancel* instead of failing halfway with
+  "disk full". **Help → Unpacked copies folder…** puts unpacked copies (and other temporary
+  files) on another drive; the setting is kept, and leftovers in both folders are cleaned up.
+- **File → Properties…** (Ctrl+I) shows the size, how the file is read (mapped or in chunks),
+  the encoding, whether and why it is read-only, where an unpacked copy came from and when the
+  file changed, and fills in from one background pass: the exact line count, LF / CRLF / CR
+  counts, the longest line, NUL bytes and bytes that are not UTF-8 (each with Go to), whether
+  it ends with a line break, and the first and last time. The SHA-256 is computed on request,
+  with a Copy button. `bigtext-cli stats` prints the new figures too.
+- **Recovery journal for unsaved edits**: a couple of seconds after a pause in editing (or
+  every 30 s of typing) a modified document's piece list and the bytes typed into it are
+  journaled next to the settings — a few KB for a thousand edits to a 50 GB file, written on a
+  worker. After a crash or a power cut the next start lists the documents with Restore (once
+  the file's size and time show it unchanged), Save text as… and Discard. Each running BigText
+  holds a lock so another one's journals are left alone; journals go when the edits are saved,
+  undone or discarded and on a clean exit. File → Keep a recovery journal of unsaved edits
+  turns it off.
+- **Delete these** and **Keep only these** in the filter panel change the open document instead
+  of writing a copy — drop every DEBUG line, or keep only the errors, a level-bar filter
+  included. Up to 50,000 runs of lines are one undoable edit; beyond that the document is
+  rewritten on disk (temp file, atomic swap, optional `.bak`) like Replace All. They are off
+  while the filter shows lines around matches, a column or a time range.
+- **Text operations on files of any size**: UPPERCASE, lowercase, trimming trailing white
+  space, tabs ↔ spaces and Format / Minify JSON no longer stop at 64 MB. A larger document or
+  selection streams through them — whole lines at a time, each piece checked to survive its
+  encoding — into a new file that replaces the document on disk, after asking, with progress,
+  Cancel and an optional `.bak`. The JSON formatter now works a piece at a time, and the
+  command line runs the same code: `bigtext-cli transform --op upper|lower|trim|tabs|untabs`
+  and `bigtext-cli format FILE --json pretty|minify`.
+- **Edit → Text decodes and encodes**: Base64 (standard or URL-safe, padded or not), URL
+  `%xx` (`+` as a space in `a=b&c=d` forms), hex (spaces, `:` and `0x` allowed), HTML entities
+  (numeric and the common named ones) and JSON string escapes (surrogate pairs included), on the
+  selection or, with nothing selected, the word at the caret. Decoding a JWT shows its header and
+  payload pretty-printed; bytes that are not text (as a hex dump) and characters the document's
+  encoding lacks open in a result window with Copy and Open in a new tab instead of being put in.
+- **Column blocks from the keyboard**: Shift+Alt+arrows (Home, End, PageUp, PageDown;
+  Ctrl+Shift+Alt+Home/End to the first and last row) make and grow a column block from the
+  caret, as Alt+drag does. **Edit → Column editor…** fills the block's column with a number
+  sequence (first number, step, at least N digits, hexadecimal) or the same text on every row
+  — on the block's rows as one undo step, or on every line from there to the end of a file of
+  any size, streamed into a new file that replaces it (optional `.bak`).
+- **Sorting without a size limit**: Sort lines (A → Z, Z → A, by number) and Remove duplicate
+  lines on a whole document over 64 MB now sort it through temporary runs of 64 MB and a k-way
+  merge (two levels past 256 runs) and replace it on disk, after asking, with an optional
+  `.bak`. **Edit → Text → Count duplicate lines…** opens each line with how often it occurs,
+  most frequent first, as a new table, for files of any size. On the command line:
+  `bigtext-cli sort [-r] [-n] [-i] [-u] FILE` and `bigtext-cli uniq [-c] FILE`.
+
+### Tabs
+
+- **Keyboard-only moving around**: **Ctrl+1 … Ctrl+8** go to that tab and **Ctrl+9** to the last,
+  **Ctrl+PageDown / Ctrl+PageUp** step through the tabs in bar order, and **F4 / Shift+F4** go to
+  the next / previous entry of the list under the text — Find All (with "Match 3 of 41"), the
+  filter's matches or Find in files — around the ends. All can be rebound.
+- **Ctrl+Tab** shows the tabs in most-recently-used order: hold Ctrl, press Tab (Shift+Tab back)
+  to step, release Ctrl to switch, so a quick Ctrl+Tab goes back to the previous tab.
+- **Pinned tabs** (right-click a tab → Pin tab, or File → Pin / unpin tab) stay first, have no
+  close button and are kept by **Close other tabs** and **Close tabs to the right** (also in the
+  tab's right-click menu, which can copy the file's path too). Tabs with unsaved changes are
+  never closed by these. Pinned tabs are restored as pinned.
+- **Drag a tab** to move it.
+- **File → Sessions**: save the open files with their positions, bookmarks, pins and filters,
+  and the highlights, under a name ("Incident 2026-10-28"), and open them again later in one
+  click. Sessions are small text files next to BigText's settings.
+- **Portable mode** (Help → Portable mode…): with a `BigText-data` folder next to `bigtext.exe`,
+  the settings, recent files and sessions are kept there, so BigText runs from a USB stick with
+  its settings. The button creates the folder and moves the settings and sessions in.
+- **Help → Export settings… / Import settings…**: highlights, key bindings, saved searches,
+  theme, font, language and view options in one file, to take to another computer (no file
+  names or tabs). Importing adds highlights and saved searches and replaces the rest.
+- **Edit → Copy file:line** (Ctrl+Shift+C) copies `C:\logs\app.log:1234` for the caret's line, to
+  send to a colleague: `bigtext C:\logs\app.log:1234` opens it right there.
+
+### Desktop
+
+- **Files open in the running window**: a second `bigtext app.log:120` (Explorer's Open with, a
+  grep result, a script) hands its files, lines, search and follow flag to the BigText already
+  running, which opens them as tabs and comes to the front, so sessions, Copy file:line and
+  the settings stay in one place. The running window listens on a loopback port named, with a
+  random token, in a lock file next to the settings; `--new-window` opts out, and standard
+  input always opens its own window.
+- **Show in folder**, **Open terminal here** and **Open with the default app** in the File
+  menu and a tab's right-click menu: the file selected in Explorer (Finder; the folder in a
+  Linux file manager), a terminal in its folder, or the program the system opens it with —
+  for an unpacked copy, the compressed file or archive it came from. The notice after Save
+  lines, an export or a split gets a Show in folder link, and Open on an exported `.xlsx` opens
+  the spreadsheet app instead of BigText.
+- **Edit → Paste from history…** (Ctrl+Shift+V) lists the last 30 texts copied in BigText —
+  their first line and how many lines — to copy and paste again with ↑ ↓ and Enter (copied
+  only, in a read-only document). Texts over 1 MB are not kept, and they stay out of the
+  settings file unless *Keep across restarts* is ticked.
+- **Edit → Copy as ▸ Markdown / HTML**: the selection (up to 4 MB) as a fenced code block —
+  with the language tag (` ```log `, ` ```json `…) and a `file:line` caption, the fence longer
+  than any backticks inside — or as HTML in the theme's syntax colours, put on the clipboard
+  as HTML with the plain text beside it, so it keeps its colours when pasted into mail, wikis
+  and documents (plain text where the system clipboard takes no HTML).
+
+### Interface
+
+- **Wrap at a column, ruler**: **View → Wrap at ▸** the window width, 80, 120, 160 or any column
+  (4 and up), so wrapped rows stay put when a panel or the split view changes the width; a column
+  wider than the pane scrolls sideways. **View → Ruler at column** draws a faint guide line.
+  Wrapped rows get a dim mark in the gutter, apart from the ↪ of a huge line's 64 KB pieces. Both
+  are kept with the settings; Ctrl+D and the benchmarks now wrap exactly as the view does.
+- **Full screen, zen mode, line numbers**: **View → Full screen** (F11) and **View → Zen mode**
+  (Ctrl+Shift+F11), which hides the menu, tab, level and status bars for the text alone; the menu
+  bar floats in while the pointer is at the top edge, and Esc (with nothing selected) or the same
+  key leaves. **View → Line numbers** hides the gutter of the text and table views (kept with the
+  settings). Zen mode and full screen are not kept across starts.
+- **Screen reader support (AccessKit)**: menus, dialogs, the search bar, result lists and the
+  command palette are exposed to screen readers, and the text view is a multi-line text field
+  whose rows on screen are text runs, with the caret, the selection and "Ln N, Col M"; its
+  scrollbar reports its position, and table headers their column names. A file opened, a save
+  or another task finished, a Find All's match count and "No matches" are announced through a
+  polite live region. Confirmation dialogs put the keyboard on Cancel. Nothing is built until an
+  assistive technology asks.
+- **High-contrast and colour-blind-safe themes**: View → Theme ▸ Dark, Light, High contrast dark
+  or High contrast light (pure black or white, 1.5 px outlines, an opaque selection, a bright
+  focus colour), and **Colour-blind-safe colours** (Okabe-Ito) for syntax and log levels (ERROR
+  vermillion, WARN yellow, INFO blue, so they differ in lightness too), highlight marks, merged
+  logs, scrollbar marks, search and bracket fills, diff colours, the histogram and the status
+  bar. With high contrast, painted colours move away from the background and fills are stronger.
+  **View → Interface scale ▸ 100–200 %** enlarges menus and dialogs while the text keeps its own
+  size. All three are kept with the settings and exported with them; View → Dark theme still
+  flips between dark and light, and every theme is in the command palette.
+- **The status bar is clickable**: Ln/Col opens Go to line, the offset Go to byte offset, the
+  encoding a Reopen with encoding list (with Auto-detect), LF / CRLF a menu of the line ending to
+  save with (shown as `CRLF → LF` while a conversion is set), READ-ONLY turns it off (not for a
+  merged log), and the file path, when shown, copies itself. Right-click the bar, or click **…**
+  at its end, to choose the fields: byte offset, selection size, time since the previous line,
+  the merged log's files (otherwise "3 files" with the colours on hover), file access, indexing
+  time and the file path. The choice is kept and exported with the settings; file access and
+  indexing time are now off by default.
+
+### Command line
+
+- **`bigtext-cli csv FILE …`** runs the table view's column tools in scripts: `cut COLS` and
+  `drop COLS`, `sort --by COL [--desc]` (files up to 1 GB, as in the app), `where COND...`
+  (`col=v`, `col!=v`, `col~v`, `col>n`, `col<n`, or in words `col eq|ne|has|gt|lt v`, `col empty`,
+  for cmd.exe), `stats COL` (also `--json`) and `group COL [--sum COL]`; columns by header name or
+  1-based number (a wrong name lists the columns), the dialect detected as the app does, with
+  `--delimiter`, `--no-header`, `--skip` and `--quote`.
+- **`--json`** on `filter`, `levels`, `grep`, `count`, `stats`, `replace` and `saved` prints one
+  JSON record per line — `{file, line, offset, text, context}` with exact line numbers for kept
+  lines — and errors as `{"error": …}` with exit code 2.
+- **`bigtext-cli replace [-i] [-w] [-E] PATTERN REPLACEMENT FILE`** streams Replace All (`$1`,
+  `${name}` with `-E`) to stdout or `-o OUT`, or `--in-place [--bak]` swaps the file atomically,
+  keeping its encoding and line breaks; exit code 1 when nothing matched.
+- **Saved searches on the command line**: `bigtext-cli saved` lists the searches saved in the app,
+  and `filter`, `count` and `grep --saved NAME` run one, from the app's settings or an exported
+  settings file (`--settings FILE`, so a team can keep its searches in a repository).
+- **Many files at once**: `filter`, `count` and `levels` take several files, `*.log` patterns
+  (expanded by BigText, since Windows shells do not) and `-r DIR --names '*.log;*.gz'`, put the
+  file name before each output line (count: each file's count and a total), or write one
+  `name.filtered.ext` per input with `--out-dir DIR`; the exit code is 2 if a file failed, else 0
+  if any matched. **`bigtext-cli grep PATTERN FILES... | -r DIR`** is Find in files without a
+  window (`file:line:text`). Every command now reads `.gz`, `.zst`, `.xz` and `.bz2` inputs,
+  unpacking them on the way.
+- `bigtext-cli head -n N` and `tail -n N` read only that end of the file (tail scans backwards),
+  and `bigtext-cli slice FILE --lines A-B | --bytes A-B | --from TIME --to TIME` cuts out a part
+  — bytes widened to whole lines, times found by binary search in a time-ordered log, a `--to`
+  without a date taken on `--from`'s day — with `--header` to put line 1 first (CSV samples).
+  On the console the text is decoded to UTF-8; `-o` writes it as it is, with its byte order
+  mark. **File → Export lines…** has a *Between times* mode.
+- **Script commands without a window**, in the new console program **`bigtext-cli`** (also
+  `bigtext --filter …`): `filter` (grep-like, `-v -i -w -E`, to a file in the original
+  encoding with `-o` or to the console), `levels ERROR,WARN`, `count`, `split --size 100MB` /
+  `--lines N`, `stats` (size, lines, encoding, line endings, first and last time), `merge` (logs
+  in time order) and `convert --to json|jsonl|md|xlsx|csv`. Exit codes: 0 done, 1 nothing
+  matched, 2 error. They stream like the editor, so they work on files of any size.
+  `bigtext-cli.exe` comes with the Windows zip and installer, since `bigtext.exe` is a windowed
+  program that consoles do not wait for.
+
+### Packages
+
+- **Linux**: a `.deb` package (`bigtext`, `bigtext-cli`, a menu entry and the icon) and an
+  **AppImage**; the tarball now has `bigtext.desktop` and the icon too. The window identifies
+  itself as `bigtext`, so desktops show its icon.
+- **macOS**: `BigText.app` (zipped, for the Applications folder) next to the plain binaries.
+- **Homebrew**: a cask (the app) and a formula (built from source, Linux and macOS) ready for a
+  tap; see `packaging/README.md`.
+- Releases carry `SHA256SUMS.txt`.
 
 ## 0.3.0 — 2026-10-28
 
