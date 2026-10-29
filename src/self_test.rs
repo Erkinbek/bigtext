@@ -1817,6 +1817,24 @@ impl SelfTest {
             app.json_open = false;
             Step::Next
         }));
+        s("compare JSON by structure: one changed value, key order ignored", Box::new(|app, c| {
+            if c.first() {
+                let other = c.file("outline2.json");
+                let _ = std::fs::write(&other, "{\n  \"items\": [{\"id\": 10}, {\"id\": 11}, {\"id\": 13}],\n  \"name\": \"demo\"\n}\n");
+                app.compare_json_with(other);
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).json_diff.as_ref() else { return Step::Fail("no comparison".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let got: Vec<(String, Option<String>, Option<String>)> = g.changes.iter().map(|c| (c.path.clone(), c.old.clone(), c.new.clone())).collect();
+            let err = g.error.clone();
+            drop(g);
+            app.json_diff.open = false;
+            check(got == [("$.items[2].id".to_string(), Some("12".to_string()), Some("13".to_string()))], format!("{got:?} {err:?}"))
+        }));
         s("open catalog.xml", open_step("catalog.xml"));
         s("XML structure: elements in the side panel, a path, the path at the caret", Box::new(|app, c| {
             let at = |s: &str| CATALOG_XML.find(s).unwrap() as u64;

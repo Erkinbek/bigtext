@@ -35,6 +35,7 @@ pub enum Cmd {
     Compare,
     MergeLogs,
     JoinTables,
+    CompareJson,
     ArrayToLines,
     LinesToArray,
     LogfmtTable,
@@ -114,7 +115,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 84] = [
+    pub const ALL: [Cmd; 85] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -133,6 +134,7 @@ impl Cmd {
         Cmd::Compare,
         Cmd::MergeLogs,
         Cmd::JoinTables,
+        Cmd::CompareJson,
         Cmd::ArrayToLines,
         Cmd::LinesToArray,
         Cmd::LogfmtTable,
@@ -250,6 +252,7 @@ impl Cmd {
             Cmd::Compare => "Compare with…",
             Cmd::MergeLogs => "Merge logs by time…",
             Cmd::JoinTables => "Join tables…",
+            Cmd::CompareJson => "Compare JSON with…",
             Cmd::ArrayToLines => "JSON array → JSON Lines…",
             Cmd::LinesToArray => "JSON Lines → JSON array…",
             Cmd::LogfmtTable => "Open logfmt as table",
@@ -323,7 +326,7 @@ impl Cmd {
     /// Menu the command lives in (shown in the palette).
     pub fn group(self) -> &'static str {
         match self {
-            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::MergeLogs | Cmd::JoinTables | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable => "File",
+            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::MergeLogs | Cmd::JoinTables | Cmd::CompareJson | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable => "File",
             Cmd::Undo
             | Cmd::Redo
             | Cmd::SelectAll
@@ -552,6 +555,7 @@ impl BigTextApp {
             Cmd::Compare => self.compare_dialog(),
             Cmd::MergeLogs => self.open_merge(),
             Cmd::JoinTables => self.open_join(),
+            Cmd::CompareJson => self.compare_json_dialog(),
             Cmd::ArrayToLines => self.array_to_lines(),
             Cmd::LinesToArray => self.lines_to_array(),
             Cmd::LogfmtTable => self.open_logfmt_table(),
@@ -792,7 +796,7 @@ impl BigTextApp {
                     });
                 });
                 ui.separator();
-                for c in [Cmd::ExportLines, Cmd::SaveSelection, Cmd::SplitFile, Cmd::Compare, Cmd::MergeLogs, Cmd::JoinTables, Cmd::ArrayToLines, Cmd::LinesToArray, Cmd::LogfmtTable] {
+                for c in [Cmd::ExportLines, Cmd::SaveSelection, Cmd::SplitFile, Cmd::Compare, Cmd::CompareJson, Cmd::MergeLogs, Cmd::JoinTables, Cmd::ArrayToLines, Cmd::LinesToArray, Cmd::LogfmtTable] {
                     run = run.or(self.item(ui, c));
                 }
                 let table = self.docs.get(self.active).is_some_and(|d| d.table && d.is_ready() && d.table_state.dialect.is_some());

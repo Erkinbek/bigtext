@@ -19,6 +19,7 @@ pub mod goto;
 pub mod i18n;
 mod i18n_texts;
 pub mod join_tables;
+pub mod json_diff_panel;
 pub mod json_fields_window;
 pub mod json_panel;
 pub mod json_validate;
@@ -255,6 +256,7 @@ pub struct BigTextApp {
     pub chart: column_chart::ChartUi,
     pub json_check: json_validate::JsonCheckUi,
     pub json_fields: json_fields_window::JsonFieldsUi,
+    pub json_diff: json_diff_panel::JsonDiffUi,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -392,6 +394,7 @@ impl BigTextApp {
             chart: column_chart::ChartUi::default(),
             json_check: json_validate::JsonCheckUi::default(),
             json_fields: json_fields_window::JsonFieldsUi::default(),
+            json_diff: json_diff_panel::JsonDiffUi::default(),
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1389,6 +1392,9 @@ impl eframe::App for BigTextApp {
         if self.timeline.open && self.docs.get(self.active).is_some_and(|d| d.timeline.is_some()) {
             egui::Panel::bottom("timeline").resizable(true).default_size(170.0).show(ui, |ui| self.timeline_panel(ui));
         }
+        if self.json_diff.open && self.docs.get(self.active).is_some_and(|d| d.json_diff.is_some()) {
+            egui::Panel::bottom("json-diff").resizable(true).default_size(180.0).show(ui, |ui| self.json_diff_panel(ui));
+        }
         if self.json_check.open && self.docs.get(self.active).is_some_and(|d| d.json_check.is_some()) {
             egui::Panel::bottom("json-check").resizable(true).default_size(160.0).show(ui, |ui| self.json_check_panel(ui));
         }
@@ -1522,6 +1528,7 @@ impl eframe::App for BigTextApp {
                 || d.problems.as_ref().is_some_and(|p| p.is_running())
                 || d.chart.as_ref().is_some_and(|c| c.is_running())
                 || d.json_check.as_ref().is_some_and(|j| j.is_running())
+                || d.json_diff.as_ref().is_some_and(|j| j.is_running())
         }) || !self.tasks.is_empty()
             || self.files.is_running();
         if busy {

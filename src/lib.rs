@@ -24,6 +24,7 @@ pub mod index;
 pub mod jobs;
 pub mod json;
 pub mod json_check;
+pub mod json_diff;
 pub mod json_fields;
 pub mod jsonq;
 pub mod lines;

@@ -87,7 +87,7 @@ impl BigTextApp {
         }
     }
 
-    fn ensure_json_tree(&mut self) {
+    pub(crate) fn ensure_json_tree(&mut self) {
         let Some(d) = self.docs.get_mut(self.active) else { return };
         if !d.is_ready() || d.json.as_ref().is_some_and(|t| t.version == d.version) {
             return;

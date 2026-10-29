@@ -195,6 +195,7 @@ pub struct Document {
     pub problems: Option<super::problems_panel::ProblemsResults>,
     pub chart: Option<super::column_chart::ChartResults>,
     pub json_check: Option<super::json_validate::JsonCheckResults>,
+    pub json_diff: Option<super::json_diff_panel::JsonDiffResults>,
     /// Outline for View → JSON structure.
     pub json: Option<super::json_panel::JsonTree>,
     /// Pinned tabs stay first and are not closed by "Close other tabs".
@@ -301,6 +302,7 @@ impl Document {
             problems: None,
             chart: None,
             json_check: None,
+            json_diff: None,
             json: None,
             pinned: false,
             pending_filter: None,
@@ -405,6 +407,9 @@ impl Document {
             c.cancel.cancel();
         }
         if let Some(j) = &self.json_check {
+            j.cancel.cancel();
+        }
+        if let Some(j) = &self.json_diff {
             j.cancel.cancel();
         }
         if let Some((_, c)) = &self.unpacking {

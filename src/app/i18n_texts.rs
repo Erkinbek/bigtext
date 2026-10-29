@@ -915,4 +915,11 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Saved {n} fields to {file}.", "Сохранено полей: {n} в {file}.", "{n} ta maydon {file} ga saqlandi."],
     ["Fields…", "Поля…", "Maydonlar…"],
     ["Every key path of the records with its types and values", "Все пути ключей записей с их типами и значениями", "Yozuvlardagi har bir kalit yo'li, turlari va qiymatlari bilan"],
+    // Comparing JSON.
+    ["Compare JSON with", "Сравнить JSON с", "JSON ni solishtirish"],
+    ["Compare JSON with…", "Сравнить JSON с…", "JSON ni solishtirish…"],
+    ["Same JSON as {other}", "Тот же JSON, что и {other}", "{other} bilan bir xil JSON"],
+    ["{n} JSON differences with {other}", "Отличий JSON от {other}: {n}", "{other} bilan {n} ta JSON farqi"],
+    ["added", "добавлено", "qo'shilgan"],
+    ["removed", "удалено", "olib tashlangan"],
 ];

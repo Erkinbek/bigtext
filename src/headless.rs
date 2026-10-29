@@ -68,6 +68,10 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         JSON Lines that meet a field query (.level == error and .ms > 500;
         ==, !=, <, >, <=, >=, contains, ~ regex, exists, missing), as they
         are, only some fields (--fields), or as CSV; --count prints how many.
+  jsondiff A B
+        Two JSON files compared by structure, whatever the key order and the
+        formatting: path: old -> new, path: added, path: removed. Exit code 0
+        when they are the same, 1 when they differ.
   derive FILE --name NAME --expr EXPR [-o OUT]
         The table with a new last column computed per row, like {price} * {qty},
         substr({ts}, 0, 10) or if({status} = \"ok\", 1, 0).
@@ -98,7 +102,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 16] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl"];
+const COMMANDS: [&str; 17] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -730,6 +734,42 @@ fn cmd_jsonl(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(if n > 0 { 0 } else { 1 })
 }
 
+fn cmd_jsondiff(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &[], &[])?;
+    let [fa, fb] = &a.rest[..] else { return fail("needs A and B") };
+    let (ba, _) = open(Path::new(fa))?;
+    let (bb, _) = open(Path::new(fb))?;
+    let cancel = CancelToken::new();
+    let pa = crate::json_diff::flatten_to_temp(&ba, "a.flat", &cancel, None).map_err(Fail)?.ok_or_else(|| Fail("cancelled".into()))?;
+    let pb = match crate::json_diff::flatten_to_temp(&bb, "b.flat", &cancel, None) {
+        Ok(Some(p)) => p,
+        r => {
+            crate::decompress::remove_temp(&pa);
+            return Err(Fail(r.err().unwrap_or_else(|| "cancelled".into())));
+        }
+    };
+    let mut err = None;
+    let r = crate::json_diff::changes(&pa, &pb, &cancel, None, |ch| {
+        let line = match (&ch.old, &ch.new) {
+            (Some(o), Some(n)) => format!("{}: {o} -> {n}", ch.path),
+            (None, Some(n)) => format!("{}: added {n}", ch.path),
+            (Some(o), None) => format!("{}: removed {o}", ch.path),
+            (None, None) => return true,
+        };
+        if let Err(e) = writeln!(out, "{line}") {
+            err = Some(e);
+            return false;
+        }
+        true
+    });
+    crate::decompress::remove_temp(&pa);
+    crate::decompress::remove_temp(&pb);
+    if let Some(e) = err {
+        return Err(e.into());
+    }
+    Ok(if r.map_err(Fail)?.unwrap_or(false) { 1 } else { 0 })
+}
+
 fn cmd_derive(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &["--no-header", "--header"], &["--name", "--expr", "-o", "--output", "--skip", "--quote"])?;
     let [file] = &a.rest[..] else { return fail("needs FILE") };
@@ -929,6 +969,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "pivot" => cmd_pivot(rest, out),
         "derive" => cmd_derive(rest, out),
         "jsonl" => cmd_jsonl(rest, out),
+        "jsondiff" => cmd_jsondiff(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
             return 0;
@@ -1064,6 +1105,16 @@ mod tests {
         assert_eq!(run_args(&["join", &o, &u, "--left-on", "user", "--right-on", "id"]).1, "order,user,name\n1,u1,Ann\n2,u3,\n");
         assert_eq!(run_args(&["join", &o, &u, "--left-on", "2", "--right-on", "1", "--inner"]).1, "order,user,name\n1,u1,Ann\n");
         assert_eq!(run_args(&["join", &o, &u, "--on", "nope"]).0, 2);
+    }
+
+    #[test]
+    fn json_diff() {
+        let d = tempfile::tempdir().unwrap();
+        let a = file(&d, "a.json", b"{\"x\": 1, \"y\": [1, 2]}");
+        let b = file(&d, "b.json", b"{\n  \"y\": [1, 3],\n  \"x\": 1\n}");
+        assert_eq!(run_args(&["jsondiff", &a, &b]), (1, "$.y[1]: 2 -> 3\n".into(), String::new()));
+        let c = file(&d, "c.json", b"{\"y\":[1,2],\"x\":1}");
+        assert_eq!(run_args(&["jsondiff", &a, &c]).0, 0);
     }
 
     #[test]

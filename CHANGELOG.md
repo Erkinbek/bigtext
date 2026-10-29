@@ -136,6 +136,12 @@ All notable changes to BigText. Each release on
 
 ### JSON
 
+- **File → Compare JSON with…** compares the JSON document with another JSON file by structure:
+  `$.items[1234].price: 10 → 12`, `$.users[7].name: added "x"`, `$.gone: removed true` — key
+  order and formatting do not count. Both are flattened into sorted `$.path = value` lines on
+  disk and compared with the streaming line diff, so memory stays bounded; click a change to
+  select it in the document. `bigtext-cli jsondiff A B` prints the changes (exit code 1 when the
+  files differ).
 - **View → JSON fields…** (also **Fields…** in the structure panel): reads a JSON Lines file —
   or the items of a JSON array — once and lists every key path to three levels
   (`user.address.city`, array items as `tags[]`) with its types, how often it appears, nulls, the
