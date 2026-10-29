@@ -158,6 +158,10 @@ All notable changes to BigText. Each release on
 
 ### Search
 
+- **Go to** (Ctrl+G / Ctrl+Shift+G) also takes `50%` (a share of the file), `+1000` / `-250`
+  (lines from the caret), `$` and `$-100` (from the last line); in byte-offset mode the same
+  with bytes (`+0x100`, `$-4096`). Dragging the scrollbar shows `~Ln 45,357,933 · 48 %` next to
+  the pointer.
 - **Saved searches**: the ★ menu of the search bar keeps a pattern with its options, the **!**
   switch and the table column under a name ("Timeouts", "5xx responses"); one click applies it
   as a filter. They are kept across sessions.

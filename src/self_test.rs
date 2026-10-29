@@ -785,6 +785,25 @@ impl SelfTest {
             let caret = doc(app).view.caret;
             check(caret == 16, format!("goto offset 0x10 caret {caret}"))
         }));
+        s("go to: lines from the caret, from the end, and a share of the file", Box::new(|app, _c| {
+            use crate::app::goto::parse;
+            let d = doc(app);
+            let mut at = |t: &str, offset: bool| {
+                d.goto_target(parse(t, offset).expect("parses"));
+                (d.buf.line_of(d.view.caret).0, d.view.caret)
+            };
+            at("2", false);
+            let plus = at("+2", false).0;
+            let minus = at("-1", false).0;
+            let last = at("$", false).0;
+            let before = at("$-1", false).0;
+            let (_, half) = at("50%", false);
+            let len = d.buf.len();
+            let (count, _) = d.buf.line_count();
+            let line_start = half == 0 || d.buf.read(half - 1..half).is_some_and(|b| b[0] == b'\n');
+            let ok = plus == 3 && minus == 2 && last == count - 1 && before == count - 2 && line_start && half <= len / 2 + 1;
+            check(ok, format!("+2 → {plus}, -1 → {minus}, $ → {last}, $-1 → {before} of {count}, 50% → {half} of {len}"))
+        }));
         s("save (Ctrl+S) writes the file atomically", Box::new(|app, c| {
             if c.first() {
                 c.key(Key::End, CTRL);

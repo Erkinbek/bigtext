@@ -732,4 +732,6 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Export CSV", "Экспорт в CSV", "CSV ga eksport"],
     ["Saved {n} templates to {file}.", "Сохранено шаблонов: {n} в {file}.", "{n} ta shablon {file} ga saqlandi."],
     ["Click: show only these lines; right-click: more", "Щелчок: показать только эти строки; правый щелчок: ещё", "Bosish: faqat shu satrlar; o'ng tugma: boshqa amallar"],
+    // Go to.
+    ["+N / -N: from the caret; $-N: from the end; 50%: a share of the file.", "+N / -N: от курсора; $-N: от конца; 50%: доля файла.", "+N / -N: kursordan; $-N: oxiridan; 50%: faylning ulushi."],
 ];

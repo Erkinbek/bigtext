@@ -12,6 +12,7 @@ pub mod find_in_files;
 pub mod follow_id;
 pub mod gaps_panel;
 pub mod fonts;
+pub mod goto;
 pub mod i18n;
 mod i18n_texts;
 pub mod json_panel;
@@ -900,7 +901,11 @@ impl BigTextApp {
                         ui.radio_value(&mut g.mode, GotoMode::Offset, i18n::tr("Byte offset (dec or 0x hex)"));
                         ui.radio_value(&mut g.mode, GotoMode::Time, i18n::tr("Time"));
                     });
-                    let hint = if g.mode == GotoMode::Time { "14:32:05 · 2024-05-01 14:32:05" } else { "" };
+                    let hint = match g.mode {
+                        GotoMode::Time => "14:32:05 · 2024-05-01 14:32:05",
+                        GotoMode::Line => "1234 · 50% · +100 · -100 · $-100",
+                        GotoMode::Offset => "4096 · 0x1F00 · 50% · +0x100 · $-4096",
+                    };
                     let r = ui.add(egui::TextEdit::singleline(&mut g.text).hint_text(hint));
                     if g.focus {
                         r.request_focus();
@@ -911,6 +916,8 @@ impl BigTextApp {
                     }
                     if g.mode == GotoMode::Time {
                         ui.weak(i18n::tr("Jumps to the first line at or after this time (the log must be in time order)."));
+                    } else {
+                        ui.weak(i18n::tr("+N / -N: from the caret; $-N: from the end; 50%: a share of the file."));
                     }
                     if let Some(e) = &g.error {
                         ui.colored_label(ui.visuals().error_fg_color, e);
@@ -946,21 +953,10 @@ impl BigTextApp {
                     None => g.error = Some(i18n::tr("Enter a time like 14:32:05 or 2024-05-01 14:32:05").into()),
                 }
             } else if submit && g.busy.is_none() {
-                let t = g.text.trim().replace(['_', ','], "");
-                let parsed = if let Some(h) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
-                    u64::from_str_radix(h, 16).ok()
-                } else {
-                    t.parse::<u64>().ok()
-                };
-                match parsed {
-                    Some(v) => {
-                        let by_offset = g.mode == GotoMode::Offset;
+                match goto::parse(&g.text, g.mode == GotoMode::Offset) {
+                    Some(t) => {
                         if let Some(d) = self.docs.get_mut(self.active) {
-                            if by_offset {
-                                d.goto_offset(v);
-                            } else {
-                                d.goto_line(v);
-                            }
+                            d.goto_target(t);
                         }
                         self.goto = None;
                     }

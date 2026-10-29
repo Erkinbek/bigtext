@@ -455,6 +455,14 @@ pub(crate) fn vertical_scrollbar(ui: &mut Ui, doc: &mut Document, id: egui::Id, 
             if let Ok(row) = rows::row_at(&doc.buf, target.min(doc.buf.len()), wrap) {
                 doc.view.top = row.start;
             }
+            // Where the drag is: "~Ln 45,357,933 · 48 %" next to the pointer.
+            let (line, exact) = doc.buf.line_of(doc.view.top);
+            let text = format!("{}Ln {} · {:.0} %", if exact { "" } else { "~" }, crate::app::filter_panel::fmt_count(line + 1), doc.view.top as f64 * 100.0 / len as f64);
+            let tip = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, id.with("vbar-tip")));
+            let galley = tip.layout_no_wrap(text, egui::FontId::proportional(13.0), v.text_color());
+            let at = pos2(bar.left() - 12.0 - galley.size().x, p.y - galley.size().y / 2.0);
+            tip.rect_filled(Rect::from_min_size(at, galley.size()).expand(4.0), 4.0, v.window_fill());
+            tip.galley(at, galley, v.text_color());
         }
     }
 }
