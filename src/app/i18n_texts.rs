@@ -737,4 +737,24 @@ pub static TEXTS: &[[&str; 3]] = &[
     // Back and forward.
     ["Back", "Назад", "Orqaga"],
     ["Forward", "Вперёд", "Oldinga"],
+    // Matched values.
+    ["Save matches…", "Сохранить совпадения…", "Mosliklarni saqlash…"],
+    ["Save only the matched text (or a group of it), one per line", "Сохранить только найденный текст (или его группу), по одному в строке", "Faqat topilgan matnni (yoki uning guruhini) har satrga bittadan saqlash"],
+    ["Top values…", "Частые значения…", "Ko'p uchraydigan qiymatlar…"],
+    ["Count the different matched texts (or a group of them), most frequent first", "Подсчитать разные найденные тексты (или их группу), сначала частые", "Turli topilgan matnlarni (yoki guruhini) sanash, avval ko'p uchraydiganlari"],
+    ["Save matches", "Сохранить совпадения", "Mosliklarni saqlash"],
+    ["Top values", "Частые значения", "Ko'p uchraydigan qiymatlar"],
+    ["The whole match", "Всё совпадение", "Butun moslik"],
+    ["Group {n}", "Группа {n}", "{n}-guruh"],
+    ["Group {n} ({name})", "Группа {n} ({name})", "{n}-guruh ({name})"],
+    ["Of", "Из", "Nimadan"],
+    ["Saving matches", "Сохранение совпадений", "Mosliklar saqlanmoqda"],
+    ["Saved {n} matches to {file}.", "Сохранено совпадений: {n} в {file}.", "{n} ta moslik {file} ga saqlandi."],
+    ["Values of “{pattern}” ({name})", "Значения «{pattern}» ({name})", "“{pattern}” qiymatlari ({name})"],
+    ["{n} different values in {matches} matches.", "{n} разных значений в {matches} совпадениях.", "{matches} ta moslikda {n} ta turli qiymat."],
+    [
+        "Only the first {max} different values are listed; {n} matches have others.",
+        "Показаны только первые {max} разных значений; у {n} совпадений другие.",
+        "Faqat dastlabki {max} ta turli qiymat ko'rsatildi; {n} ta moslikda boshqalari bor.",
+    ],
 ];

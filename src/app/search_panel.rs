@@ -497,6 +497,7 @@ impl BigTextApp {
         let mut close = false;
         let mut jump = None;
         let mut lines_action: Option<bool> = None;
+        let mut values_action: Option<bool> = None;
         ui.horizontal(|ui| {
             let mut s = trf("{n} matches", &[("n", &super::filter_panel::fmt_count(n as u64))]);
             if capped {
@@ -523,6 +524,12 @@ impl BigTextApp {
                 }
                 if ui.add_enabled(done && r.version == d.version && n > 0, egui::Button::new(tr("Copy lines")).small()).on_hover_text(tr("Copy every line with a match to the clipboard")).clicked() {
                     lines_action = Some(false);
+                }
+                if ui.add_enabled(done && r.version == d.version && n > 0, egui::Button::new(tr("Save matches…")).small()).on_hover_text(tr("Save only the matched text (or a group of it), one per line")).clicked() {
+                    values_action = Some(true);
+                }
+                if ui.add_enabled(done && r.version == d.version && n > 0, egui::Button::new(tr("Top values…")).small()).on_hover_text(tr("Count the different matched texts (or a group of them), most frequent first")).clicked() {
+                    values_action = Some(false);
                 }
             });
         });
@@ -556,6 +563,9 @@ impl BigTextApp {
                 r.cancel.cancel();
             }
             self.search.show_results = false;
+        }
+        if let Some(save) = values_action {
+            self.open_values(save);
         }
         if let Some(save) = lines_action {
             let Some(d) = self.docs.get(self.active) else { return };

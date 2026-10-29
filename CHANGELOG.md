@@ -158,6 +158,11 @@ All notable changes to BigText. Each release on
 
 ### Search
 
+- **Top values… and Save matches…** in the Find All results: count the different matched texts —
+  or one capture group of a regular expression, picked by number or name — into a table, most
+  frequent first (`grep -o | sort | uniq -c` in one pass; 100,000 different values at most), or
+  save only the matched texts, one per line. `bigtext-cli extract [-g N] [--count] PATTERN FILE`
+  does the same.
 - **Back and forward** (Search → Back / Forward, **Alt+Left** / **Alt+Right**, or the mouse's
   side buttons): back to where the caret was before a jump — Go to, F3, F8, a bookmark, a
   bracket jump, a click in the filter, Find All, histogram, gaps, JSON or Find-in-files lists —

@@ -48,7 +48,9 @@ Single self-contained binary, no runtime dependencies.
 - **Search** (Ctrl+F): plain text or regex (linear-time `regex-automata`), case sensitive,
   whole word, multiline (dot matches newline), search in selection. Streams over the mmap on a
   worker with a live counter and cancel; F3 / Shift+F3 work before any full search finishes;
-  "Find All" results in a virtualized list (capped at 1,000,000 with a "more exist" note);
+  "Find All" results in a virtualized list (capped at 1,000,000 with a "more exist" note), with
+  **Top values…** (the different matched texts or a capture group counted, most frequent first,
+  like `grep -o | sort | uniq -c`) and **Save matches…** (only the matched texts);
   matches highlighted in the viewport only. Non-UTF-8 files are searched by transcoding the
   pattern (literal) or decoding windows (regex) with exact byte mapping. Matches spanning
   chunk or piece boundaries are found.
@@ -249,6 +251,7 @@ same streaming code without a window:
 bigtext-cli filter [-v] [-i] [-w] [-E] PATTERN FILE [-o OUT]   lines with (-v: without) a match
 bigtext-cli levels ERROR,WARN FILE [-o OUT]                    lines of these log levels
 bigtext-cli count [-v] [-i] [-w] [-E] PATTERN FILE             number of matching lines
+bigtext-cli extract [-E] [-g N] [--count] PATTERN FILE          only the matched texts (or counts)
 bigtext-cli split (--size 100MB | --lines N) FILE [--out-dir DIR]
 bigtext-cli stats FILE...                                      size, lines, encoding, first/last time
 bigtext-cli merge FILE FILE... [-o OUT]                        logs merged by time

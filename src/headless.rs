@@ -39,6 +39,9 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         numbers (\"12:\" a match, \"13-\" context); \"--\" between groups;
         --from TIME / --to TIME only the lines between those times (\"14:30\",
         \"2024-05-01 14:30:00\"; --to includes its second).
+  extract [-i] [-w] [-E] [-g N] [--count] PATTERN FILE [-o OUT]
+        Only the matched texts (or capture group N), one per line; with
+        --count, each different one with how often it matched, most first.
   count [-v] [-i] [-w] [-E] PATTERN FILE
         The number of lines with a match.
   split (--size 100MB | --lines 1000000) FILE [--out-dir DIR]
@@ -66,7 +69,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 10] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns"];
+const COMMANDS: [&str; 11] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -524,6 +527,32 @@ fn cmd_values(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(if c.lines > 0 { 0 } else { 1 })
 }
 
+fn cmd_extract(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["-i", "--ignore-case", "-w", "--word", "-E", "--regex", "--count"], &["-g", "--group", "-o", "--output"])?;
+    let [pattern, file] = &a.rest[..] else { return fail("needs PATTERN and FILE") };
+    let group = a.opt(&["-g", "--group"]).map(|g| g.parse::<usize>().map_err(|_| Fail(format!("not a group number: {g}")))).transpose()?.unwrap_or(0);
+    let (buf, _) = open(Path::new(file))?;
+    let m = Matcher::new(&query(&a, pattern), buf.codec).map_err(Fail)?;
+    if group > crate::search::group_names(&m).len() {
+        return fail(format!("the pattern has no group {group}"));
+    }
+    let cancel = CancelToken::new();
+    let mut n = 0;
+    with_output(a.opt(&["-o", "--output"]), out, |w| {
+        if a.flag(&["--count"]) {
+            let t = crate::extract::count(&buf, &m, group, 0..buf.len(), &cancel, None)?.unwrap_or_default();
+            for (v, c) in &t.values {
+                writeln!(w, "{c}\t{v}")?;
+            }
+            n = t.matches;
+        } else {
+            n = crate::extract::write_values_to(&buf, &m, group, 0..buf.len(), &mut &mut *w, &cancel, None)?.unwrap_or(0);
+        }
+        Ok(())
+    })?;
+    Ok(if n > 0 { 0 } else { 1 })
+}
+
 fn cmd_patterns(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &["--rare"], &["--top", "-o", "--output"])?;
     let [file] = &a.rest[..] else { return fail("needs FILE") };
@@ -582,6 +611,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "values" => cmd_values(rest, out),
         "gaps" => cmd_gaps(rest, out),
         "patterns" => cmd_patterns(rest, out),
+        "extract" => cmd_extract(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
             return 0;
@@ -653,6 +683,16 @@ mod tests {
         run_args(&["filter", "-n", "-A", "1", "ERROR", &log, "-o", &o.to_string_lossy()]);
         assert_eq!(std::fs::read_to_string(&o).unwrap(), "2:2024-05-01 10:00:01 ERROR b\n3-\tat x.Y(Y.java:1)\n--\n6:2024-05-01 10:00:04 ERROR e\n");
         assert_eq!(run_args(&["filter", "-A", "x", "ERROR", &log]).0, 2);
+    }
+
+    #[test]
+    fn extract_matches() {
+        let d = tempfile::tempdir().unwrap();
+        let log = file(&d, "a.log", b"GET /a 200\nGET /b 404\nPOST /a 200\n");
+        assert_eq!(run_args(&["extract", "-E", "[0-9]{3}", &log]).1, "200\n404\n200\n");
+        assert_eq!(run_args(&["extract", "-E", "--count", "-g", "1", r"(GET|POST) /", &log]).1, "2\tGET\n1\tPOST\n");
+        assert_eq!(run_args(&["extract", "-E", "-g", "2", "(x)", &log]).0, 2);
+        assert_eq!(run_args(&["extract", "nope", &log]).0, 1);
     }
 
     #[test]

@@ -19,6 +19,7 @@ pub mod json_panel;
 pub mod levels;
 pub mod marks;
 pub mod match_bracket;
+pub mod match_values;
 pub mod merge_logs;
 pub mod multi_cursor;
 pub mod nav;
@@ -237,6 +238,7 @@ pub struct BigTextApp {
     pub range: time_range::TimeRangeUi,
     pub patterns: patterns_window::PatternsUi,
     pub nav: nav::NavHistory,
+    pub values: Option<match_values::ValuesDialog>,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -366,6 +368,7 @@ impl BigTextApp {
             range: time_range::TimeRangeUi::default(),
             patterns: patterns_window::PatternsUi::default(),
             nav: nav::NavHistory::default(),
+            values: None,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1457,6 +1460,7 @@ impl eframe::App for BigTextApp {
         self.id_patterns_window(&ctx);
         self.time_range_window(&ctx);
         self.patterns_window(&ctx);
+        self.values_window(&ctx);
         self.palette_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);

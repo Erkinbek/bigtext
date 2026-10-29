@@ -1400,6 +1400,51 @@ impl SelfTest {
             app.patterns.open = false;
             check(lines == vec![line(2), line(6)], format!("lines {lines:?}"))
         }));
+        s("Find All → Top values of a capture group, as a table", Box::new(|app, c| {
+            if c.first() {
+                app.search.query = bigtext::search::Query { pattern: "request_id=(?P<rid>r-[0-9])".into(), regex: true, case_sensitive: true, whole_word: false, dot_all: false };
+                app.find_all();
+                return Step::Wait;
+            }
+            match c.mark {
+                0 => {
+                    let done = doc(app).results.as_ref().is_some_and(|r| !r.is_running());
+                    if !done {
+                        return Step::Wait;
+                    }
+                    app.open_values(false);
+                    if app.values.is_none() {
+                        return Step::Fail("no group dialog for a pattern with a group".into());
+                    }
+                    app.values = None;
+                    app.run_values(false, 1);
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    let d = doc(app);
+                    if !d.title.starts_with("Values of") || !d.is_ready() {
+                        return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("active tab {:?}", d.title)) } else { Step::Wait };
+                    }
+                    let t = text(app);
+                    if t != "value,matches,percent\nr-2,3,60.00\nr-1,2,40.00\n" {
+                        return Step::Fail(format!("text {t:?}"));
+                    }
+                    c.copied = vec![doc(app).path.clone().unwrap_or_default().to_string_lossy().into_owned()];
+                    c.key(Key::W, CTRL);
+                    c.mark = 2;
+                    Step::Wait
+                }
+                _ => {
+                    if PathBuf::from(&c.copied[0]).exists() {
+                        return if c.waited() > Duration::from_secs(5) { Step::Fail("the temporary table was not removed".into()) } else { Step::Wait };
+                    }
+                    c.copied.clear();
+                    c.mark = 0;
+                    Step::Next
+                }
+            }
+        }));
         s("journal: log highlighting and level bar", Box::new(|app, _c| {
             let d = doc(app);
             check(d.effective_lang() == crate::view::highlight::Lang::Log && app.level_bar_visible(), format!("lang {:?}", doc(app).effective_lang()))

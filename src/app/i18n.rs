@@ -126,6 +126,7 @@ mod tests {
         "app" / "levels.rs",
         "app" / "marks.rs",
         "app" / "match_bracket.rs",
+        "app" / "match_values.rs",
         "app" / "merge_logs.rs",
         "app" / "multi_cursor.rs",
         "app" / "nav.rs",

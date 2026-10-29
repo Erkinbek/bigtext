@@ -451,6 +451,21 @@ pub fn matches_in_view(buf: &TextBuf, m: &Matcher, range: Range<u64>, cap: usize
 }
 
 /// Captures for the match starting exactly at `start` (regex queries; used by replace).
+/// The text of capture group `g` (0: the whole match) of the match `start..end`, if the group
+/// took part in it.
+pub fn group_text(buf: &TextBuf, m: &Matcher, start: u64, end: u64, g: usize) -> Option<String> {
+    let (hay, caps, _) = captures_at(buf, m, start, end)?;
+    let span = caps.get_group(g)?;
+    let b = &hay[span.range()];
+    Some(if m.decoded { String::from_utf8_lossy(b).into_owned() } else { m.codec.decode_lossy(b) })
+}
+
+/// The names of the capture groups of a regular expression ("" for unnamed ones), from group 1.
+pub fn group_names(m: &Matcher) -> Vec<String> {
+    let Some(re) = m.regex() else { return Vec::new() };
+    re.group_info().pattern_names(regex_automata::PatternID::ZERO).skip(1).map(|n| n.unwrap_or("").to_string()).collect()
+}
+
 pub fn captures_at(buf: &TextBuf, m: &Matcher, start: u64, end: u64) -> Option<(Vec<u8>, Captures, usize)> {
     let re = m.regex()?;
     let len = buf.len();
