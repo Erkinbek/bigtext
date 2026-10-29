@@ -156,6 +156,7 @@ mod tests {
         "app" / "table_compare.rs",
         "app" / "sessions.rs",
         "app" / "shell.rs",
+        "app" / "status_bar.rs",
         "app" / "tabs.rs",
         "app" / "tasks.rs",
         "app" / "text_tools.rs",

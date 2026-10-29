@@ -49,6 +49,7 @@ pub mod search_panel;
 pub mod table_compare;
 pub mod sessions;
 pub mod shell;
+pub mod status_bar;
 pub mod tabs;
 pub mod tasks;
 pub mod text_tools;
@@ -62,7 +63,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use egui::{Align, Color32, Key, Layout, RichText};
+use egui::Key;
 
 use bigtext::encoding::{self, Detected, Encoding};
 use bigtext::file::{self, OpenMode, Source};
@@ -156,6 +157,8 @@ pub struct Settings {
     pub filter_entries: bool,
     /// Keys whose values are ids (None: the defaults).
     pub id_keys: Option<Vec<String>>,
+    /// The fields the status bar shows.
+    pub status: status_bar::StatusFields,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -460,7 +463,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None },
+            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None, status: Default::default() },
             goto: None,
             confirm: None,
             error: None,
@@ -543,6 +546,7 @@ impl BigTextApp {
             app.settings.level_bar = state.level_bar.unwrap_or(true);
             app.settings.saved = std::mem::take(&mut state.saved);
             app.file_opts = std::mem::take(&mut state.file_opts);
+            app.settings.status = state.status.unwrap_or_default();
             app.settings.show_ws = state.show_ws.unwrap_or(false);
             app.recovery.enabled = state.recovery.unwrap_or(true);
             app.settings.id_keys = state.id_keys.take();
@@ -1062,124 +1066,6 @@ impl BigTextApp {
         d.forced_enc = enc;
         let id = d.id;
         self.spawn_open(id, path, enc);
-    }
-
-    fn status_bar(&mut self, ui: &mut egui::Ui) {
-        let ids = self.caret_ids();
-        let delta = self.caret_time_delta();
-        let mut follow = None;
-        ui.horizontal(|ui| {
-            let Some(d) = self.docs.get(self.active) else { return };
-            if d.is_ready() {
-                let caret = d.view.caret;
-                let (line, exact) = d.buf.line_of(caret);
-                let col = match d.buf.line_start(line) {
-                    Some((ls, true)) if caret >= ls && caret - ls <= 128 * 1024 => {
-                        let b = d.buf.read(ls..caret);
-                        b.map(|b| format!("{}", bigtext::text::rows::cell_width(&d.buf.codec, &b, ls) + 1)).unwrap_or_else(|| "…".into())
-                    }
-                    Some((ls, _)) if caret >= ls => format!("~{}", caret - ls + 1),
-                    _ => "?".into(),
-                };
-                ui.label(i18n::trf("Ln {line}, Col {col}", &[("line", &format!("{}{}", if exact { "" } else { "~" }, line + 1)), ("col", &col)]));
-                if let Some(ms) = delta {
-                    ui.separator();
-                    ui.label(format!("Δ {}", bigtext::timestamp::format_delta(ms))).on_hover_text(i18n::tr("Time since the previous line with a timestamp"));
-                }
-                if !d.view.extra.is_empty() {
-                    ui.separator();
-                    ui.label(i18n::trf("{n} cursors", &[("n", &(d.view.extra.len() + 1).to_string())])).on_hover_text(i18n::tr("Esc: back to one cursor"));
-                }
-                ui.separator();
-                ui.label(i18n::trf("Offset {n}", &[("n", &format!("{caret} (0x{caret:X})"))]));
-                if let Some((lines, exact, chars, bytes)) = d.selection_stats() {
-                    ui.separator();
-                    let n = |x: u64| filter_panel::fmt_count(x);
-                    let lines = format!("{}{}", if exact { "" } else { "~" }, n(lines));
-                    let text = match chars {
-                        Some(c) => i18n::trf("Sel: {lines} lines, {chars} chars, {bytes} bytes", &[("lines", &lines), ("chars", &n(c)), ("bytes", &n(bytes))]),
-                        None => i18n::trf("Sel: {lines} lines, {bytes} bytes", &[("lines", &lines), ("bytes", &n(bytes))]),
-                    };
-                    ui.label(text);
-                    if let Some(ms) = d.selection_time_delta() {
-                        ui.separator();
-                        ui.label(format!("Δt {}", bigtext::timestamp::format_delta(ms))).on_hover_text(i18n::tr("Time between the timestamps of the first and last selected lines"));
-                    }
-                }
-                if let Some(b) = d.view.block {
-                    let (lo, hi) = b.cells();
-                    ui.separator();
-                    ui.label(i18n::trf("Block: {cols} columns wide", &[("cols", &(hi - lo).to_string())]));
-                }
-                let (lines, lexact) = d.buf.line_count();
-                ui.separator();
-                ui.label(i18n::trf("{n} lines", &[("n", &format!("{}{}", if lexact { "" } else { "~" }, lines))]));
-                if !ids.is_empty() {
-                    ui.separator();
-                    follow = follow_id::id_chips(ui, &ids);
-                }
-                // The colours of a merged log's files.
-                if let Some(t) = &d.merged {
-                    ui.separator();
-                    let dark = ui.visuals().dark_mode;
-                    for (i, l) in t.labels.iter().enumerate() {
-                        ui.label(RichText::new(l).background_color(marks::fill(i, dark)));
-                    }
-                }
-            }
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                self.tasks_status(ui);
-                let Some(d) = self.docs.get(self.active) else { return };
-                if let Some(j) = &d.save_job {
-                    if ui.small_button(i18n::tr("Cancel")).clicked() {
-                        j.cancel.cancel();
-                    }
-                    ui.add(egui::ProgressBar::new(j.progress.fraction()).desired_width(160.0).text(format!("{} {:.0}%", j.label, j.progress.fraction() * 100.0)));
-                    ui.separator();
-                }
-                if d.follow {
-                    let label = if d.rotations > 0 { format!("{} ×{}", i18n::tr("FOLLOW"), d.rotations + 1) } else { i18n::tr("FOLLOW").to_string() };
-                    ui.label(RichText::new(label).color(Color32::from_rgb(90, 180, 90)))
-                        .on_hover_text(i18n::trf("Following the file; it was rotated {n} times so far", &[("n", &d.rotations.to_string())]));
-                    ui.separator();
-                }
-                if d.table && !d.hex {
-                    let delim = d.table_state.dialect.map(|x| i18n::tr(x.name())).unwrap_or("…");
-                    ui.label(RichText::new(format!("{} · {delim}", i18n::tr("TABLE"))).color(Color32::from_rgb(90, 160, 220)));
-                    ui.separator();
-                }
-                if let Some(r) = d.results.as_ref().filter(|r| r.is_running()) {
-                    ui.add(egui::ProgressBar::new(r.progress.fraction()).desired_width(140.0).text(format!("{} {:.0}%", i18n::tr("Searching"), r.progress.fraction() * 100.0)));
-                    ui.separator();
-                } else if d.find_job.is_some() {
-                    ui.label(i18n::tr("Searching…"));
-                    ui.separator();
-                }
-                if d.read_only {
-                    ui.label(RichText::new(i18n::tr("READ-ONLY")).color(Color32::from_rgb(220, 150, 60)));
-                    ui.separator();
-                }
-                ui.label(d.buf.source.kind_name());
-                ui.separator();
-                ui.label(human_bytes(d.buf.len()));
-                ui.separator();
-                ui.label(d.line_ending.name());
-                ui.separator();
-                ui.label(d.buf.codec.enc.name());
-                if d.is_ready() && !d.buf.index.is_done() && !d.buf.is_empty() {
-                    ui.separator();
-                    ui.add(egui::ProgressBar::new(d.buf.index.progress()).desired_width(120.0).text(format!("{} {:.0}%", i18n::tr("Indexing"), d.buf.index.progress() * 100.0)));
-                } else if let Some(t) = d.buf.index.finished_after() {
-                    if t > Duration::ZERO {
-                        ui.separator();
-                        ui.label(i18n::trf("Indexed in {t}s", &[("t", &format!("{:.2}", t.as_secs_f32()))]));
-                    }
-                }
-            });
-        });
-        if let Some(id) = follow {
-            self.follow_id(&id);
-        }
     }
 
     fn banner(&mut self, ui: &mut egui::Ui) {
@@ -1707,6 +1593,10 @@ impl BigTextApp {
     }
     pub(crate) fn test_close(&mut self, id: u64) {
         self.close_tab(id, true);
+    }
+    /// The settings as the next start reads them back.
+    pub(crate) fn test_state_round_trip(&self) -> extras::Persisted {
+        extras::parse(&extras::serialize(&self.persisted()))
     }
     pub(crate) fn test_reopen_with(&mut self, enc: Option<Encoding>) {
         self.reopen_with(enc);

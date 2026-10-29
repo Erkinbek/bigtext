@@ -39,6 +39,7 @@ fn shareable(p: &Persisted) -> Persisted {
         level_bar: p.level_bar,
         saved: p.saved.clone(),
         show_ws: p.show_ws,
+        status: p.status,
         ..Default::default()
     }
 }
@@ -69,6 +70,9 @@ impl BigTextApp {
         }
         if let Some(v) = p.show_ws {
             s.show_ws = v;
+        }
+        if let Some(v) = p.status {
+            s.status = v;
         }
         for m in p.marks {
             if !s.marks.iter().any(|x| x.query == m.query) {

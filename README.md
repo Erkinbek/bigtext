@@ -52,6 +52,9 @@ Single self-contained binary, no runtime dependencies.
   **hex view**.
 - **Line endings**: LF / CRLF / CR / Mixed detection in the status bar, optional conversion on
   save.
+- **Status bar you can click**: Ln/Col goes to a line, the offset to a byte offset, the encoding
+  reopens in another one, the line ending picks the one to save with, READ-ONLY turns it off;
+  right-click the bar (or …) to choose its fields, kept with the settings.
 - **Huge lines**: a single 2 GB line, minified JSON, base64 — lines longer than 64 KB are
   soft-broken (`↪` in the gutter) so every row computation is bounded; horizontal
   virtualization renders only the visible slice.

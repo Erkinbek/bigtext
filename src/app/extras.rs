@@ -71,6 +71,8 @@ pub struct Persisted {
     pub id_keys: Option<Vec<String>>,
     /// What was chosen for each file, most recently used first.
     pub file_opts: Vec<FileOpts>,
+    /// The fields the status bar shows.
+    pub status: Option<super::status_bar::StatusFields>,
 }
 
 /// What BigText remembers about a file, put back when it opens again.
@@ -291,6 +293,7 @@ pub(super) fn parse(text: &str) -> Persisted {
             "key" => p.keys.extend(v.split_once('=').map(|(a, b)| (a.to_string(), b.to_string()))),
             "tab" => p.tabs.extend(parse_tab(v)),
             "fileopt" => p.file_opts.extend(parse_file_opts(v)),
+            "status" => p.status = Some(super::status_bar::StatusFields::from_line(v)),
             _ => {}
         }
     }
@@ -323,6 +326,9 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(d) = p.level_bar {
         s.push_str(&format!("level_bar={}\n", b(d)));
+    }
+    if let Some(f) = p.status {
+        s.push_str(&format!("status={}\n", f.to_line()));
     }
     if let Some(d) = p.update_check {
         s.push_str(&format!("update_check={}\n", b(d)));
@@ -695,6 +701,7 @@ impl BigTextApp {
             recovery: Some(self.recovery.enabled),
             clips: if self.clips.keep { self.clips.items.iter().cloned().collect() } else { Vec::new() },
             level_bar: Some(self.settings.level_bar),
+            status: Some(self.settings.status),
             saved: self.settings.saved.clone(),
             show_ws: Some(self.settings.show_ws),
             filter_ctx: Some((self.settings.filter_context, self.settings.filter_entries)),
@@ -1327,6 +1334,7 @@ mod tests {
             recovery: Some(false),
             clips: vec!["two\nlines".into(), "a=b\\c".into()],
             level_bar: Some(false),
+            status: Some(super::super::status_bar::StatusFields { path: true, legend: false, ..Default::default() }),
             show_ws: Some(true),
             filter_ctx: Some((3, true)),
             id_keys: Some(vec!["rid".into(), "trace_id".into()]),
@@ -1360,6 +1368,7 @@ mod tests {
         };
         assert_eq!(parse(&serialize(&p)).saved, p.saved);
         assert_eq!(parse(&serialize(&p)).file_opts, p.file_opts);
+        assert_eq!(parse(&serialize(&p)).status, p.status);
         assert_eq!(parse(&serialize(&p)).show_ws, Some(true));
         assert_eq!(parse(&serialize(&p)).filter_ctx, Some((3, true)));
         assert_eq!(parse(&serialize(&p)).id_keys, p.id_keys);

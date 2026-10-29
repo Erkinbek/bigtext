@@ -1185,4 +1185,17 @@ pub static TEXTS: &[[&str; 3]] = &[
     // Per-file settings.
     ["Auto-detect (forget)", "Определить автоматически (забыть)", "Avtomatik aniqlash (unutish)"],
     ["Detect the encoding again and stop remembering the one chosen for this file", "Определить кодировку заново и больше не запоминать выбранную для этого файла", "Kodirovkani qayta aniqlash va bu fayl uchun tanlanganini endi eslab qolmaslik"],
+    // Status bar.
+    ["Byte offset", "Смещение в байтах", "Bayt siljishi"],
+    ["Choose the fields of the status bar", "Выбрать поля строки состояния", "Holat qatori maydonlarini tanlash"],
+    ["Click to allow editing", "Щёлкните, чтобы разрешить правку", "Tahrirlashga ruxsat berish uchun bosing"],
+    ["Click to copy the path", "Щёлкните, чтобы скопировать путь", "Yo'lni nusxalash uchun bosing"],
+    ["File access (mapped or chunked)", "Доступ к файлу (отображение или частями)", "Faylga kirish (xaritalangan yoki bo'laklab)"],
+    ["File path", "Путь к файлу", "Fayl yo'li"],
+    ["Indexing time", "Время индексации", "Indekslash vaqti"],
+    ["Merged log's files", "Файлы объединённого лога", "Birlashtirilgan log fayllari"],
+    ["Selection size", "Размер выделения", "Belgilangan qism hajmi"],
+    ["Show in the status bar", "Показывать в строке состояния", "Holat qatorida ko'rsatish"],
+    ["Time since the previous line", "Время от предыдущей строки", "Oldingi qatordan beri o'tgan vaqt"],
+    ["{n} files", "Файлов: {n}", "{n} ta fayl"],
 ];

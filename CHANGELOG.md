@@ -5,6 +5,17 @@ All notable changes to BigText. Each release on
 
 ## Unreleased
 
+### Interface
+
+- **The status bar is clickable**: Ln/Col opens Go to line, the offset Go to byte offset, the
+  encoding a Reopen with encoding list (with Auto-detect), LF / CRLF a menu of the line ending to
+  save with (shown as `CRLF → LF` while a conversion is set), READ-ONLY turns it off (not for a
+  merged log), and the file path, when shown, copies itself. Right-click the bar, or click **…**
+  at its end, to choose the fields: byte offset, selection size, time since the previous line,
+  the merged log's files (otherwise "3 files" with the colours on hover), file access, indexing
+  time and the file path. The choice is kept and exported with the settings; file access and
+  indexing time are now off by default.
+
 ### Compare
 
 - **F7 / Shift+F7** (Search → Next / Previous difference) step the caret through the differences

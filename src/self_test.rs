@@ -3723,6 +3723,32 @@ impl SelfTest {
                 }
             }
         }));
+        s("status bar: fields are chosen and kept in the settings; a click sets the line ending", Box::new(|app, c| {
+            use crate::app::status_bar::{StatusAct, StatusFields};
+            use bigtext::encoding::LineEnding;
+            if c.first() {
+                app.open_path(c.file("ws.txt"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) {
+                return Step::Wait;
+            }
+            let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+            // Every field on for a frame, so all of them are drawn.
+            let flipped = StatusFields { offset: false, kind: true, index_time: true, path: true, ..StatusFields::default() };
+            if c.mark == 0 {
+                app.status_act(&ctx, StatusAct::Fields(flipped));
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let back = app.test_state_round_trip().status;
+            app.status_act(&ctx, StatusAct::Eol(Some(LineEnding::Lf)));
+            let eol = doc(app).eol_on_save;
+            app.status_act(&ctx, StatusAct::Eol(None));
+            app.settings.status = StatusFields::default();
+            c.mark = 0;
+            check(back == Some(flipped) && eol == Some(LineEnding::Lf), format!("read back {back:?}, line ending on save {eol:?}"))
+        }));
         s("typing into an empty file", Box::new(|app, c| {
             if c.first() {
                 app.open_path(c.file("empty.txt"));
