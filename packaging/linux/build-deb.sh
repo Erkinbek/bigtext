@@ -32,4 +32,5 @@ Description: Text editor for huge files
  replace and atomic saves, log tools (levels, time histogram, merging logs),
  CSV tables and JSON tools. Includes bigtext-cli for scripts.
 EOF
-dpkg-deb --root-owner-group --build "$root" "$out"
+# xz rather than the default zstd, so dpkg on Debian 11 and Ubuntu 20.04 can open it.
+dpkg-deb --root-owner-group -Zxz --build "$root" "$out"
