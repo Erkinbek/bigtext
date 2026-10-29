@@ -604,24 +604,51 @@ pub fn resolve(buf: &TextBuf, path: &[Step], cancel: &CancelToken) -> Result<(u6
 
 /// The path of the value at `off` (reading the text up to it once).
 pub fn path_at(buf: &TextBuf, off: u64, cancel: &CancelToken) -> Result<Vec<Step>, String> {
-    struct Frame {
-        object: bool,
-        key: Option<String>,
-        index: usize,
-        expect_key: bool,
-    }
-    let mut stack: Vec<Frame> = Vec::new();
-    let mut r = Reader::new(buf, buf.codec.bom_len as u64, cancel);
+    let start = Checkpoint { pos: buf.codec.bom_len as u64, stack: Vec::new() };
+    Ok(path_at_from(buf, &start, off, cancel)?.into_iter().map(|x| x.0).collect())
+}
+
+/// An open object or array met by the scan.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Frame {
+    object: bool,
+    /// The key being read or last read (objects).
+    key: Option<String>,
+    /// The element being read (arrays).
+    index: usize,
+    expect_key: bool,
+    /// Where the current key or element starts.
+    child_at: u64,
+    /// After `[` or `,`: the next value is a new element.
+    elem_pending: bool,
+}
+
+/// The scan's state between two tokens: where it is and the containers open there.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Checkpoint {
+    pub pos: u64,
+    pub stack: Vec<Frame>,
+}
+
+/// The containers open at `off`, scanning from `r` with `stack` open; `mark` is called between
+/// tokens (with the position) and may record checkpoints.
+fn scan(r: &mut Reader, stack: &mut Vec<Frame>, off: u64, mut mark: impl FnMut(u64, &[Frame])) -> Result<(), String> {
     loop {
         r.skip_ws()?;
         let Some(b) = r.peek()? else { break };
-        if r.pos() > off {
+        let pos = r.pos();
+        if pos > off {
             break;
+        }
+        mark(pos, stack);
+        if let Some(f) = stack.last_mut().filter(|f| !f.object && f.elem_pending && !matches!(b, b']' | b',')) {
+            f.child_at = pos;
+            f.elem_pending = false;
         }
         match b {
             b'{' | b'[' => {
                 r.bump();
-                stack.push(Frame { object: b == b'{', key: None, index: 0, expect_key: b == b'{' });
+                stack.push(Frame { object: b == b'{', key: None, index: 0, expect_key: b == b'{', child_at: pos, elem_pending: b == b'[' });
             }
             b'}' | b']' => {
                 r.bump();
@@ -637,6 +664,7 @@ pub fn path_at(buf: &TextBuf, off: u64, cancel: &CancelToken) -> Result<Vec<Step
                         f.expect_key = true;
                     } else {
                         f.index += 1;
+                        f.elem_pending = true;
                     }
                 }
             }
@@ -650,6 +678,7 @@ pub fn path_at(buf: &TextBuf, off: u64, cancel: &CancelToken) -> Result<Vec<Step
                 let k = r.string()?;
                 if let Some(f) = stack.last_mut() {
                     f.key = Some(k);
+                    f.child_at = pos;
                 }
             }
             _ => {
@@ -659,7 +688,49 @@ pub fn path_at(buf: &TextBuf, off: u64, cancel: &CancelToken) -> Result<Vec<Step
             }
         }
     }
-    Ok(stack.into_iter().filter_map(|f| if f.object { f.key.map(Step::Key) } else { Some(Step::Index(f.index)) }).collect())
+    Ok(())
+}
+
+/// The path at `off`, scanning from checkpoint `from` (at or before `off`): each step with where
+/// its key or element starts, so a breadcrumb can jump to any parent.
+pub fn path_at_from(buf: &TextBuf, from: &Checkpoint, off: u64, cancel: &CancelToken) -> Result<Vec<(Step, u64)>, String> {
+    let mut stack = from.stack.clone();
+    let mut r = Reader::new(buf, from.pos, cancel);
+    scan(&mut r, &mut stack, off, |_, _| ())?;
+    Ok(stack.into_iter().filter_map(|f| if f.object { f.key.map(|k| (Step::Key(k), f.child_at)) } else { Some((Step::Index(f.index), f.child_at)) }).collect())
+}
+
+/// Checkpoints about every `every` bytes through the whole document, so the path at any offset
+/// is found by scanning from the one before it rather than from the start.
+pub fn checkpoints(buf: &TextBuf, every: u64, cancel: &CancelToken, progress: Option<&Progress>) -> Result<Vec<Checkpoint>, String> {
+    let start = buf.codec.bom_len as u64;
+    let mut out = vec![Checkpoint { pos: start, stack: Vec::new() }];
+    let mut next = start + every;
+    let mut stack = Vec::new();
+    let mut r = Reader::new(buf, start, cancel);
+    if let Some(p) = progress {
+        p.set_total(buf.len());
+    }
+    let scanned = scan(&mut r, &mut stack, u64::MAX, |pos, stack| {
+        if pos >= next {
+            out.push(Checkpoint { pos, stack: stack.to_vec() });
+            next = pos + every;
+            if let Some(p) = progress {
+                p.set_done(pos);
+            }
+        }
+    });
+    // Broken JSON further on leaves the checkpoints before it good.
+    match scanned {
+        Err(e) if e == CANCELLED => Err(e),
+        _ => Ok(out),
+    }
+}
+
+/// The last checkpoint at or before `off`.
+pub fn checkpoint_before(points: &[Checkpoint], off: u64) -> Option<&Checkpoint> {
+    let i = points.partition_point(|c| c.pos <= off);
+    i.checked_sub(1).map(|i| &points[i])
 }
 
 /// The keys and value ranges of a JSON object held in `b` (one line of JSON Lines).
@@ -933,6 +1004,32 @@ mod tests {
         let off = DOC.find("\"a b\"").unwrap() as u64 + 2;
         assert_eq!(format_path(&path_at(&b, off, &c).unwrap()), "$[\"a b\"]");
         assert_eq!(format_path(&path_at(&b, DOC.find("2}").unwrap() as u64, &c).unwrap()), "$.items[1].id");
+    }
+
+    #[test]
+    fn checkpoints_give_the_same_paths() {
+        // Nested objects and arrays, with strings holding brackets, over a few hundred bytes.
+        let mut text = String::from("{\"items\": [");
+        for i in 0..40 {
+            text.push_str(&format!("{}{{\"id\": {i}, \"tags\": [\"a]\", \"b{{\"], \"sub\": {{\"k\": [1, [2, 3]]}}}}", if i > 0 { ", " } else { "" }));
+        }
+        text.push_str("], \"end\": true}");
+        let (_d, b) = buf(&text);
+        let c = CancelToken::new();
+        let points = checkpoints(&b, 64, &c, None).unwrap();
+        assert!(points.len() > 20, "{} checkpoints", points.len());
+        for off in (0..text.len() as u64).step_by(7) {
+            let plain = path_at(&b, off, &c).unwrap();
+            let from = checkpoint_before(&points, off).unwrap();
+            let fast: Vec<Step> = path_at_from(&b, from, off, &c).unwrap().into_iter().map(|x| x.0).collect();
+            assert_eq!(fast, plain, "at {off}");
+        }
+        // Each step knows where its key or element starts.
+        let off = text.find("[2, 3]").unwrap() as u64 + 4;
+        let steps = path_at_from(&b, &points[0], off, &c).unwrap();
+        assert_eq!(format_path(&steps.iter().map(|x| x.0.clone()).collect::<Vec<_>>()), "$.items[0].sub.k[1][1]");
+        let at: Vec<&str> = steps.iter().map(|x| &text[x.1 as usize..x.1 as usize + 3]).collect();
+        assert_eq!(at, ["\"it", "{\"i", "\"su", "\"k\"", "[2,", "3]]"]);
     }
 
     #[test]

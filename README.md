@@ -266,6 +266,9 @@ Single self-contained binary, no runtime dependencies.
   root array of millions of items, or an XML element tree), jumping to a path like `$.items[1234].id`
   (or `/catalog/item[1234]/price`) and copying the
   path at the caret; **View → Open JSON Lines as table**.
+- **JSON path in the status bar**: `$ › items › [1234] › city` for the value at the caret, live
+  as it moves; a part jumps to that parent, a right-click copies the path. Deep in multi-GB files
+  it is found from checkpoints one background pass records every 8 MB.
 - **Field queries over JSON Lines** (the search bar's **{}**): `.level == "error" and
   .duration > 500` in the filter view (`bigtext-cli jsonl -q`).
 - **Convert**: a JSON array to JSON Lines and back, and logfmt (`key=value`) logs to a table

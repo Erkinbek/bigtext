@@ -227,6 +227,8 @@ pub struct Document {
     pub restore: Option<Restore>,
     /// What was remembered for the file, put back once it has opened.
     pub pending_opts: Option<super::extras::FileOpts>,
+    /// The JSON path at the caret (status bar).
+    pub json_crumb: Option<super::json_crumb::JsonCrumb>,
     /// View → Link scrolling: the tab that follows this one.
     pub link: Option<super::time_link::Link>,
     /// The line Go to this time in all tabs moved to (with the version it is for).
@@ -369,6 +371,7 @@ impl Document {
             pending_opts: None,
             link: None,
             time_mark: None,
+            json_crumb: None,
             forced_enc: None,
             file_read_only: false,
             last_indexed: 0,

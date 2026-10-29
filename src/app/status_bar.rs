@@ -90,6 +90,44 @@ pub(crate) enum StatusAct {
     Fields(StatusFields),
     /// The skew of a link by time, in milliseconds.
     Skew(i64),
+    /// A part of the JSON path: go to it (when the text is still that version).
+    JsonGoto { version: u64, off: u64 },
+    CopyText(String),
+}
+
+/// The JSON path, `$ › items › [3] › city` (the last four parts): a click goes to that part, a
+/// right-click copies the whole path. Greyed while it is for an older caret or version.
+fn crumb(ui: &mut egui::Ui, c: &super::json_crumb::JsonCrumb, stale: bool, acts: &mut Vec<StatusAct>) {
+    let path = c.path();
+    let tip = format!("{path}\n{}", tr("Click a part to go to it; right-click copies the path"));
+    let short = |s: String| if s.chars().count() > 24 { s.chars().take(23).chain(['…']).collect() } else { s };
+    let parts: Vec<String> = c.steps.iter().map(|(s, _)| short(match s {
+        bigtext::json::Step::Key(k) => k.clone(),
+        bigtext::json::Step::Index(i) => format!("[{i}]"),
+    })).collect();
+    let skip = parts.len().saturating_sub(4);
+    ui.spacing_mut().item_spacing.x = 3.0;
+    let mut part = |ui: &mut egui::Ui, text: String, off: u64| {
+        let text = if stale { RichText::new(text).weak() } else { RichText::new(text) };
+        let r = ui.add(egui::Link::new(text)).on_hover_text(&tip);
+        if r.clicked() {
+            acts.push(StatusAct::JsonGoto { version: c.version, off });
+        }
+        if r.secondary_clicked() {
+            acts.push(StatusAct::CopyText(path.clone()));
+        }
+    };
+    part(ui, "$".into(), 0);
+    if skip > 0 {
+        ui.weak("› …").on_hover_text(&tip);
+    }
+    for (i, p) in parts.into_iter().enumerate().skip(skip) {
+        ui.weak("›");
+        part(ui, p, c.steps[i].1);
+    }
+    if let Some((_, _, p)) = &c.building {
+        ui.add(egui::ProgressBar::new(p.fraction()).desired_width(60.0)).on_hover_text(tr("Reading the JSON's structure"));
+    }
 }
 
 /// A field that does something when clicked.
@@ -108,6 +146,7 @@ impl BigTextApp {
         let ids = self.caret_ids();
         let delta = self.caret_time_delta();
         let fields = self.settings.status;
+        let json_crumb = self.settings.json_crumb;
         // The command a field runs, with its shortcut.
         let tip = |cmd: Cmd| match self.keymap.get(cmd) {
             Some(k) => format!("{} ({})", tr(cmd.label()), super::commands::key_text(k)),
@@ -147,6 +186,10 @@ impl BigTextApp {
                         if field(ui, trf("Offset {n}", &[("n", &format!("{caret} (0x{caret:X})"))]), &offset_tip).clicked() {
                             acts.push(StatusAct::GotoOffset);
                         }
+                    }
+                    if let Some(c) = d.json_crumb.as_ref().filter(|c| json_crumb && !c.steps.is_empty() && c.version != u64::MAX) {
+                        ui.separator();
+                        crumb(ui, c, c.version != d.version || c.caret != d.view.caret || c.error, &mut acts);
                     }
                     if let Some((lines, exact, chars, bytes)) = d.selection_stats().filter(|_| fields.sel) {
                         ui.separator();
@@ -369,6 +412,15 @@ impl BigTextApp {
                 if let Some(p) = self.docs.get(self.active).and_then(|d| d.unpacked_from.as_deref().or(d.path.as_deref())) {
                     ctx.copy_text(file::display_path(p));
                 }
+            }
+            StatusAct::JsonGoto { version, off } => {
+                if let Some(d) = self.docs.get_mut(self.active).filter(|d| d.version == version) {
+                    d.goto_offset(off);
+                }
+            }
+            StatusAct::CopyText(t) => {
+                ctx.copy_text(t);
+                self.announce(tr("Copied"));
             }
             StatusAct::Skew(ms) => {
                 if let Some(l) = self.docs.get_mut(self.active).and_then(|d| d.link.as_mut()) {

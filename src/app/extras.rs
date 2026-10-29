@@ -85,6 +85,8 @@ pub struct Persisted {
     pub wrap_column: Option<Option<u16>>,
     /// View → Ruler at column (`Some(None)`: off).
     pub ruler: Option<Option<u16>>,
+    /// The JSON path at the caret in the status bar.
+    pub json_crumb: Option<bool>,
 }
 
 /// What BigText remembers about a file, put back when it opens again.
@@ -313,6 +315,7 @@ pub(super) fn parse(text: &str) -> Persisted {
             // 0: the window's width, or no ruler.
             "wrap_column" => p.wrap_column = v.parse::<u16>().ok().map(|c| (c > 0).then_some(c.max(super::WRAP_MIN))),
             "ruler" => p.ruler = v.parse::<u16>().ok().map(|c| (c > 0).then_some(c)),
+            "json_crumb" => p.json_crumb = Some(v == "1"),
             _ => {}
         }
     }
@@ -366,6 +369,9 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(c) = p.ruler {
         s.push_str(&format!("ruler={}\n", c.unwrap_or(0)));
+    }
+    if let Some(j) = p.json_crumb {
+        s.push_str(&format!("json_crumb={}\n", b(j)));
     }
     if let Some(d) = p.update_check {
         s.push_str(&format!("update_check={}\n", b(d)));
@@ -745,6 +751,7 @@ impl BigTextApp {
             gutter: Some(self.settings.show_gutter),
             wrap_column: Some(self.settings.wrap_column),
             ruler: Some(self.settings.ruler),
+            json_crumb: Some(self.settings.json_crumb),
             saved: self.settings.saved.clone(),
             show_ws: Some(self.settings.show_ws),
             filter_ctx: Some((self.settings.filter_context, self.settings.filter_entries)),
@@ -1401,6 +1408,7 @@ mod tests {
             gutter: Some(false),
             wrap_column: Some(Some(100)),
             ruler: Some(None),
+            json_crumb: Some(false),
             show_ws: Some(true),
             filter_ctx: Some((3, true)),
             id_keys: Some(vec!["rid".into(), "trace_id".into()]),
@@ -1437,7 +1445,7 @@ mod tests {
         assert_eq!(parse(&serialize(&p)).file_opts, p.file_opts);
         assert_eq!(parse(&serialize(&p)).status, p.status);
         assert_eq!(parse(&serialize(&p)).gutter, Some(false));
-        assert_eq!((q0.wrap_column, q0.ruler), (Some(Some(100)), Some(None)));
+        assert_eq!((q0.wrap_column, q0.ruler, q0.json_crumb), (Some(Some(100)), Some(None), Some(false)));
         assert_eq!((q0.theme, q0.cvd, q0.scale, q0.dark), (p.theme, Some(true), Some(150), Some(false)));
         assert_eq!(parse(&serialize(&p)).show_ws, Some(true));
         assert_eq!(parse(&serialize(&p)).filter_ctx, Some((3, true)));

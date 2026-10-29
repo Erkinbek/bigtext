@@ -1235,4 +1235,9 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["No other text tabs are open.", "Других текстовых вкладок нет.", "Boshqa matn tablari ochiq emas."],
     ["Skew", "Сдвиг", "Siljish"],
     ["Unlink", "Отвязать", "Bog'lashni bekor qilish"],
+    // JSON path in the status bar.
+    ["Click a part to go to it; right-click copies the path", "Щёлкните часть, чтобы перейти к ней; правый щелчок копирует путь", "Qismga o'tish uchun bosing; o'ng tugma yo'lni nusxalaydi"],
+    ["Copied", "Скопировано", "Nusxalandi"],
+    ["JSON path in the status bar", "Путь JSON в строке состояния", "Holat qatorida JSON yo'li"],
+    ["Reading the JSON's structure", "Чтение структуры JSON", "JSON tuzilmasi o'qilmoqda"],
 ];

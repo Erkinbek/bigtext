@@ -359,6 +359,12 @@ All notable changes to BigText. Each release on
 
 ### JSON
 
+- **A live JSON path in the status bar**: `$ › items › [1234] › address › city` for the value at
+  the caret (the last four parts; the whole path on hover), updated once the caret rests. Each
+  part goes to that parent, a right-click copies the path. In files over 8 MB one background pass
+  records the scanner's state every 8 MB (greyed old path and a small progress bar meanwhile), so
+  the path deep in a multi-GB file is read from the checkpoint before it; JSON Lines are read
+  from the caret's line. **View → JSON path in the status bar** turns it off.
 - **File → Compare JSON with…** compares the JSON document with another JSON file by structure:
   `$.items[1234].price: 10 → 12`, `$.users[7].name: added "x"`, `$.gone: removed true` — key
   order and formatting do not count. Both are flattened into sorted `$.path = value` lines on

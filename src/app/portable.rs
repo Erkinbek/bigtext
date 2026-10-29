@@ -46,6 +46,7 @@ fn shareable(p: &Persisted) -> Persisted {
         gutter: p.gutter,
         wrap_column: p.wrap_column,
         ruler: p.ruler,
+        json_crumb: p.json_crumb,
         ..Default::default()
     }
 }
@@ -92,6 +93,9 @@ impl BigTextApp {
         }
         if let Some(v) = p.ruler {
             s.ruler = v;
+        }
+        if let Some(v) = p.json_crumb {
+            s.json_crumb = v;
         }
         for m in p.marks {
             if !s.marks.iter().any(|x| x.query == m.query) {

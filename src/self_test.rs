@@ -175,6 +175,9 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("excel.csv"), "sep=;\n# exported\nname;qty\nann;1\nbob;2\n")?;
     std::fs::write(dir.join("numbers.csv"), "1,2\n3,4\n5,6\n")?;
     std::fs::write(dir.join("semi.txt"), "id;note\n1;a,b\n2;c,d\n")?;
+    // Past the 8 MB a JSON path needs checkpoints for.
+    let rows: Vec<String> = (0..120_000).map(|i| format!("{{\"id\": {i}, \"name\": \"row {i:06}\", \"tags\": [\"alpha\", \"beta\"]}}")).collect();
+    std::fs::write(dir.join("big.json"), format!("{{\"rows\": [\n{}\n]}}\n", rows.join(",\n")))?;
     // Two logs a line a second, the second one starting 90 s later.
     for (name, start) in [("step-a.log", 0), ("step-b.log", 90)] {
         let text: String = (0..300).map(|i| { let t = 36_000 + start + i; format!("2024-05-01 {:02}:{:02}:{:02} INFO line {i}\n", t / 3600, t / 60 % 60, t % 60) }).collect();
@@ -3932,6 +3935,66 @@ impl SelfTest {
                     c.mark = 0;
                     check(got == want, format!("by time with skew: b's top {got} instead of {want}"))
                 }
+            }
+        }));
+        s("JSON path at the caret in the status bar; a part jumps to its parent", Box::new(|app, c| {
+            use crate::app::status_bar::StatusAct;
+            let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+            if c.first() {
+                app.open_path(c.file("outline.json"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) {
+                return Step::Wait;
+            }
+            let path = |app: &mut BigTextApp| {
+                let d = doc(app);
+                d.json_crumb.as_ref().filter(|j| j.caret == d.view.caret && !j.steps.is_empty()).map(|j| (j.path(), j.version, j.steps.first().map(|x| x.1)))
+            };
+            match c.mark {
+                0 => {
+                    let at = OUTLINE_JSON.find("12").unwrap() as u64;
+                    doc(app).set_caret(at, false);
+                    c.mark = 1;
+                    Step::Wait
+                }
+                _ => {
+                    let Some((p, version, items)) = path(app) else {
+                        return if c.waited() > Duration::from_secs(3) { Step::Fail("no path".into()) } else { Step::Wait };
+                    };
+                    app.status_act(&ctx, StatusAct::JsonGoto { version, off: items.unwrap_or(0) });
+                    let caret = doc(app).view.caret;
+                    c.mark = 0;
+                    check(p == "$.items[2].id" && caret == OUTLINE_JSON.find("\"items\"").unwrap() as u64, format!("path {p}, caret {caret}"))
+                }
+            }
+        }));
+        s("JSON path deep in a 9 MB file, from checkpoints", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("big.json"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) {
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let d = doc(app);
+                let len = d.buf.len();
+                d.set_caret(len - 40, false);
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let d = doc(app);
+            let got = d.json_crumb.as_ref().filter(|j| j.caret == d.view.caret && !j.steps.is_empty()).map(|j| j.path());
+            match got {
+                Some(p) => {
+                    let id = d.id;
+                    app.test_close(id);
+                    c.mark = 0;
+                    check(p == "$.rows[119999].name", p)
+                }
+                None if c.waited() > Duration::from_secs(10) => Step::Fail("no path".into()),
+                None => Step::Wait,
             }
         }));
         s("typing into an empty file", Box::new(|app, c| {

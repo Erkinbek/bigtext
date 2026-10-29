@@ -23,6 +23,7 @@ pub mod goto;
 pub mod i18n;
 mod i18n_texts;
 pub mod join_tables;
+pub mod json_crumb;
 pub mod json_diff_panel;
 pub mod json_fields_window;
 pub mod json_panel;
@@ -130,6 +131,7 @@ pub enum Msg {
     CsvRewritten(Box<csv_tools::CsvRewritten>),
     TimeFound { doc: u64, version: u64, result: Result<u64, bigtext::timestamp::TimeError> },
     Aligned(Box<time_link::Aligned>),
+    JsonCrumb(Box<json_crumb::CrumbMsg>),
     LevelFound(Box<levels::LevelFound>),
     CursorFound(Box<multi_cursor::CursorFound>),
     BracketJump(Box<match_bracket::BracketJump>),
@@ -174,6 +176,8 @@ pub struct Settings {
     pub wrap_column: Option<u16>,
     /// View → Ruler at column.
     pub ruler: Option<u16>,
+    /// The JSON path at the caret in the status bar.
+    pub json_crumb: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -494,7 +498,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None, status: Default::default(), zen: false, show_gutter: true, wrap_column: None, ruler: None },
+            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None, status: Default::default(), zen: false, show_gutter: true, wrap_column: None, ruler: None, json_crumb: true },
             goto: None,
             confirm: None,
             error: None,
@@ -588,6 +592,7 @@ impl BigTextApp {
             app.settings.show_gutter = state.gutter.unwrap_or(true);
             app.settings.wrap_column = state.wrap_column.flatten();
             app.settings.ruler = state.ruler.flatten();
+            app.settings.json_crumb = state.json_crumb.unwrap_or(true);
             app.settings.show_ws = state.show_ws.unwrap_or(false);
             app.recovery.enabled = state.recovery.unwrap_or(true);
             app.settings.id_keys = state.id_keys.take();
@@ -1011,6 +1016,7 @@ impl BigTextApp {
                 Msg::CsvRewritten(c) => self.on_csv_rewritten(*c),
                 Msg::TimeFound { doc, version, result } => self.on_time_found(doc, version, result),
                 Msg::Aligned(a) => self.on_aligned(*a),
+                Msg::JsonCrumb(m) => self.on_json_crumb(*m),
                 Msg::LevelFound(f) => self.on_level_found(*f),
                 Msg::CursorFound(f) => self.on_cursor_found(*f),
                 Msg::BracketJump(j) => self.on_bracket_jump(*j),
@@ -1732,6 +1738,7 @@ impl eframe::App for BigTextApp {
         self.run_pending_find();
         self.run_pending_filters();
         self.announce_results();
+        self.json_crumb_tick(&ctx);
         self.sync_diff_marks();
 
         self.fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));

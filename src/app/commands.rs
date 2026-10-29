@@ -123,6 +123,7 @@ pub enum Cmd {
     Zen,
     LineNumbers,
     TimeAllTabs,
+    JsonCrumb,
     Theme(super::theme::Theme),
     ColourBlind,
     /// Interface scale, per cent.
@@ -139,7 +140,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 106] = [
+    pub const ALL: [Cmd; 107] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -231,6 +232,7 @@ impl Cmd {
         Cmd::Zen,
         Cmd::LineNumbers,
         Cmd::TimeAllTabs,
+        Cmd::JsonCrumb,
         Cmd::Highlights,
         Cmd::LevelBar,
         Cmd::ZoomIn,
@@ -355,6 +357,7 @@ impl Cmd {
             Cmd::GotoOffset => "Go to byte offset…",
             Cmd::GotoTime => "Go to time…",
             Cmd::TimeAllTabs => "Go to this time in all tabs",
+            Cmd::JsonCrumb => "JSON path in the status bar",
             Cmd::Timeline => "Time histogram",
             Cmd::TimeGaps => "Find time gaps…",
             Cmd::Patterns => "Message patterns…",
@@ -726,6 +729,10 @@ impl BigTextApp {
             Cmd::GotoOffset => self.goto = GotoDialog::new(GotoMode::Offset),
             Cmd::GotoTime => self.goto = GotoDialog::new(GotoMode::Time),
             Cmd::TimeAllTabs => self.time_all_tabs(),
+            Cmd::JsonCrumb => {
+                self.settings.json_crumb = !self.settings.json_crumb;
+                self.persist_state();
+            }
             Cmd::MatchBracket => self.goto_matching_bracket(),
             Cmd::TimeGaps => self.open_gaps(),
             Cmd::Patterns => self.open_patterns(),
@@ -852,6 +859,7 @@ impl BigTextApp {
             Cmd::ColourBlind => self.settings.cvd,
             Cmd::Fullscreen => self.fullscreen,
             Cmd::Zen => self.settings.zen,
+            Cmd::JsonCrumb => self.settings.json_crumb,
             Cmd::LineNumbers => self.settings.show_gutter,
             Cmd::Scale(s) => self.settings.scale == s,
             Cmd::PerfOverlay => self.settings.show_perf,
@@ -908,7 +916,7 @@ impl BigTextApp {
     }
 
     fn is_toggle(cmd: Cmd) -> bool {
-        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::ColourBlind | Cmd::Fullscreen | Cmd::Zen | Cmd::LineNumbers | Cmd::Theme(_) | Cmd::Scale(_) | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
+        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::ColourBlind | Cmd::Fullscreen | Cmd::Zen | Cmd::LineNumbers | Cmd::JsonCrumb | Cmd::Theme(_) | Cmd::Scale(_) | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
     }
 
     fn enabled(&self, cmd: Cmd) -> bool {
@@ -1127,7 +1135,7 @@ impl BigTextApp {
                 }
                 self.link_menu(ui);
                 ui.separator();
-                for c in [Cmd::Syntax, Cmd::ShowWhitespace] {
+                for c in [Cmd::Syntax, Cmd::ShowWhitespace, Cmd::JsonCrumb] {
                     run = run.or(self.item(ui, c));
                 }
                 let mut lang_changed = false;
