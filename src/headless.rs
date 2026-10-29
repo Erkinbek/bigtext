@@ -26,12 +26,15 @@ use crate::timestamp;
 pub const USAGE: &str = "\
 bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 
-  filter [-v] [-i] [-w] [-E] PATTERN FILE [-o OUT]
+  filter [-v] [-i] [-w] [-E] [CONTEXT] PATTERN FILE [-o OUT]
         Lines with a match (-v: without one; -i: ignore case; -w: whole words;
         -E: regular expression). To OUT in the file's encoding, or to the
         console. Exit code 1 when no line matched.
-  levels ERROR,WARN,INFO,DEBUG FILE [-o OUT]
+  levels ERROR,WARN,INFO,DEBUG [CONTEXT] FILE [-o OUT]
         Lines of these log levels.
+        CONTEXT: -A N / -B N / -C N lines after / before / around each line,
+        --entries the whole log entry (a stack trace under the line), -n line
+        numbers (\"12:\" a match, \"13-\" context); \"--\" between groups.
   count [-v] [-i] [-w] [-E] PATTERN FILE
         The number of lines with a match.
   split (--size 100MB | --lines 1000000) FILE [--out-dir DIR]
@@ -171,20 +174,58 @@ fn query(a: &Args, pattern: &str) -> Query {
     Query { pattern: pattern.to_string(), regex: a.flag(&["-E", "--regex"]), case_sensitive: !a.flag(&["-i", "--ignore-case"]), whole_word: a.flag(&["-w", "--word"]), dot_all: false }
 }
 
-/// Writes the kept lines: in the file's encoding to a file, as UTF-8 to the console.
-fn write_kept(buf: &TextBuf, m: &Matcher, spec: FilterSpec, target: Option<&str>, out: &mut dyn Write) -> Res<u64> {
+/// Writes the kept lines: in the file's encoding to a file, as UTF-8 to the console. With
+/// `numbers`, each line starts with its line number ("12:" a match, "13-" context, like grep).
+fn write_kept(buf: &TextBuf, m: &Matcher, spec: FilterSpec, numbers: bool, target: Option<&str>, out: &mut dyn Write) -> Res<u64> {
     let cancel = CancelToken::new();
     let mut kept = 0;
     with_output(target, out, |w| {
-        if target.is_some() {
+        let to_file = target.is_some();
+        if to_file && !numbers {
             kept = filter::write_lines_to(buf, m, spec, &mut &mut *w, &cancel, None)?.map(|n| n.lines).unwrap_or(0);
             return Ok(());
         }
-        let mut err = None;
-        filter::filter_lines(buf, m, spec, &cancel, None, |ls, le| {
-            let line = buf.read(ls.max(buf.codec.bom_len as u64)..le).map(|b| buf.codec.decode_lossy(&b));
-            let text = line.as_deref().unwrap_or("").trim_end_matches(['\n', '\r']).to_string();
-            if let Err(e) = writeln!(w, "{text}") {
+        let codec = buf.codec;
+        let bom = codec.bom_len as u64;
+        if to_file && bom > 0 {
+            w.write_all(&buf.read(0..bom).ok_or_else(|| Fail("could not read the file".into()))?)?;
+        }
+        let mut err: Option<io::Error> = None;
+        let mut prev: Option<u64> = None;
+        // Line breaks counted up to an offset: (offset, breaks before it).
+        let mut counted = (0u64, 0u64);
+        let end = filter::filter_lines(buf, m, spec, &cancel, None, |ls, le, kind| {
+            let r = (|| -> io::Result<()> {
+                if let Some(pe) = prev.filter(|&pe| spec.has_context() && ls > pe) {
+                    if to_file {
+                        w.write_all(&codec.encode("--"))?;
+                        w.write_all(&filter::line_break_before(buf, pe))?;
+                    } else {
+                        writeln!(w, "--")?;
+                    }
+                }
+                prev = Some(le);
+                let mut prefix = String::new();
+                if numbers {
+                    let mut n = counted.1;
+                    buf.for_each_chunk(counted.0..ls, |base, c| {
+                        n += codec.count_nl(c, base);
+                        true
+                    })
+                    .ok_or_else(|| io::Error::other("could not read the file"))?;
+                    counted = (ls, n);
+                    prefix = format!("{}{}", n + 1, if kind == filter::LineKind::Hit { ':' } else { '-' });
+                }
+                let bytes = buf.read(ls.max(bom)..le).ok_or_else(|| io::Error::other("could not read the file"))?;
+                if to_file {
+                    w.write_all(&codec.encode(&prefix))?;
+                    w.write_all(&bytes)
+                } else {
+                    let text = codec.decode_lossy(&bytes);
+                    writeln!(w, "{prefix}{}", text.trim_end_matches(['\n', '\r']))
+                }
+            })();
+            if let Err(e) = r {
                 err = Some(e);
                 return false;
             }
@@ -193,34 +234,53 @@ fn write_kept(buf: &TextBuf, m: &Matcher, spec: FilterSpec, target: Option<&str>
         });
         match err {
             Some(e) => Err(e.into()),
+            None if end == crate::search::SearchEnd::Unavailable => fail("could not read the file"),
             None => Ok(()),
         }
     })?;
     Ok(kept)
 }
 
+/// Flags of the context options (-A/-B/-C take a value).
+const CONTEXT_FLAGS: [&str; 3] = ["--entries", "-n", "--line-numbers"];
+const CONTEXT_OPTS: [&str; 6] = ["-A", "--after", "-B", "--before", "-C", "--context"];
+
+/// The filter with the context options.
+fn spec_from(a: &Args, invert: bool) -> Res<FilterSpec> {
+    let num = |names: &[&str]| -> Res<Option<u32>> {
+        a.opt(names)
+            .map(|v| v.parse::<u32>().ok().filter(|&n| n <= filter::CONTEXT_MAX).ok_or_else(|| Fail(format!("not a line count (0-{}): {v}", filter::CONTEXT_MAX))))
+            .transpose()
+    };
+    let around = num(&["-C", "--context"])?;
+    let before = num(&["-B", "--before"])?.or(around).unwrap_or(0);
+    let after = num(&["-A", "--after"])?.or(around).unwrap_or(0);
+    Ok(FilterSpec { invert, column: None, before, after, entries: a.flag(&["--entries"]) })
+}
+
 fn cmd_filter(args: &[String], out: &mut dyn Write, count_only: bool) -> Res<i32> {
-    let a = Args::parse(args, &["-v", "--invert", "-i", "--ignore-case", "-w", "--word", "-E", "--regex"], &["-o", "--output"])?;
+    let flags = [&["-v", "--invert", "-i", "--ignore-case", "-w", "--word", "-E", "--regex"][..], &CONTEXT_FLAGS].concat();
+    let a = Args::parse(args, &flags, &[&["-o", "--output"][..], &CONTEXT_OPTS].concat())?;
     let [pattern, file] = &a.rest[..] else { return fail("needs PATTERN and FILE") };
     let (buf, _) = open(Path::new(file))?;
     let m = Matcher::new(&query(&a, pattern), buf.codec).map_err(Fail)?;
-    let spec = FilterSpec { invert: a.flag(&["-v", "--invert"]), column: None };
+    let spec = spec_from(&a, a.flag(&["-v", "--invert"]))?;
     let n = if count_only {
         let mut n = 0u64;
-        filter::filter_lines(&buf, &m, spec, &CancelToken::new(), None, |_, _| {
+        filter::filter_lines(&buf, &m, FilterSpec { invert: spec.invert, ..Default::default() }, &CancelToken::new(), None, |_, _, _| {
             n += 1;
             true
         });
         writeln!(out, "{n}")?;
         n
     } else {
-        write_kept(&buf, &m, spec, a.opt(&["-o", "--output"]), out)?
+        write_kept(&buf, &m, spec, a.flag(&["-n", "--line-numbers"]), a.opt(&["-o", "--output"]), out)?
     };
     Ok(if n > 0 { 0 } else { 1 })
 }
 
 fn cmd_levels(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &[], &["-o", "--output"])?;
+    let a = Args::parse(args, &CONTEXT_FLAGS, &[&["-o", "--output"][..], &CONTEXT_OPTS].concat())?;
     let [names, file] = &a.rest[..] else { return fail("needs LEVELS and FILE") };
     let mut levels = Levels::default();
     for n in names.split(',').map(str::trim).filter(|n| !n.is_empty()) {
@@ -234,7 +294,7 @@ fn cmd_levels(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let q = loglevel::query(levels).ok_or_else(|| Fail("no levels".into()))?;
     let (buf, _) = open(Path::new(file))?;
     let m = Matcher::new(&q, buf.codec).map_err(Fail)?;
-    let n = write_kept(&buf, &m, FilterSpec::default(), a.opt(&["-o", "--output"]), out)?;
+    let n = write_kept(&buf, &m, spec_from(&a, false)?, a.flag(&["-n", "--line-numbers"]), a.opt(&["-o", "--output"]), out)?;
     Ok(if n > 0 { 0 } else { 1 })
 }
 
@@ -453,6 +513,22 @@ mod tests {
         assert_eq!(run_args(&["frobnicate"]).0, 2);
         assert_eq!(run_args(&["filter", "-E", "(", &log]).0, 2);
         assert!(is_command("--stats") && is_command("merge") && !is_command("--follow"));
+    }
+
+    #[test]
+    fn context_options() {
+        let d = tempfile::tempdir().unwrap();
+        let log = file(&d, "app.log", b"2024-05-01 10:00:00 INFO a\n2024-05-01 10:00:01 ERROR b\n\tat x.Y(Y.java:1)\n2024-05-01 10:00:02 INFO c\n2024-05-01 10:00:03 INFO d\n2024-05-01 10:00:04 ERROR e\n");
+        let (code, out, _) = run_args(&["filter", "-n", "-B", "1", "ERROR", &log]);
+        assert_eq!(code, 0);
+        assert_eq!(out, "1-2024-05-01 10:00:00 INFO a\n2:2024-05-01 10:00:01 ERROR b\n--\n5-2024-05-01 10:00:03 INFO d\n6:2024-05-01 10:00:04 ERROR e\n");
+        assert_eq!(run_args(&["levels", "--entries", "error", &log]).1, "2024-05-01 10:00:01 ERROR b\n\tat x.Y(Y.java:1)\n--\n2024-05-01 10:00:04 ERROR e\n");
+        assert_eq!(run_args(&["filter", "-C", "1", "c$", &log, "-E"]).1.lines().count(), 3);
+        assert_eq!(run_args(&["count", "-C", "3", "ERROR", &log]).1, "2\n");
+        let o = d.path().join("o.log");
+        run_args(&["filter", "-n", "-A", "1", "ERROR", &log, "-o", &o.to_string_lossy()]);
+        assert_eq!(std::fs::read_to_string(&o).unwrap(), "2:2024-05-01 10:00:01 ERROR b\n3-\tat x.Y(Y.java:1)\n--\n6:2024-05-01 10:00:04 ERROR e\n");
+        assert_eq!(run_args(&["filter", "-A", "x", "ERROR", &log]).0, 2);
     }
 
     #[test]

@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use egui::text::{LayoutJob, TextFormat};
 use egui::{Color32, FontId};
 
-use bigtext::filter::{self, FilterSpec};
+use bigtext::filter::{self, FilterSpec, LineKind};
 use bigtext::jobs::{self, human_bytes, CancelToken, Progress, Throttle};
 use bigtext::loglevel::Levels;
 use bigtext::search::{Matcher, Query, SearchEnd};
@@ -24,14 +24,30 @@ pub const COPY_MAX: u64 = 100 * 1024 * 1024;
 /// Bytes of a line shown in the list.
 const SHOW_MAX: u64 = 4096;
 
+/// A listed line is context, not a match ([`FilterData::kinds`]).
+const KIND_CONTEXT: u8 = 1;
+/// Lines were left out before a listed line.
+const KIND_GAP: u8 = 2;
+
 #[derive(Default)]
 pub struct FilterData {
     /// Start offsets of the kept lines.
     pub lines: Vec<u64>,
+    /// With context: KIND_* bits of each line (empty without context).
+    pub kinds: Vec<u8>,
+    /// Lines with a match (without the context lines).
+    pub hits: usize,
     pub capped: bool,
     pub done: bool,
     pub end: Option<SearchEnd>,
     pub elapsed: Option<Duration>,
+}
+
+impl FilterData {
+    /// Whether listed line `i` is context around a match.
+    pub fn is_context(&self, i: usize) -> bool {
+        self.kinds.get(i).is_some_and(|k| k & KIND_CONTEXT != 0)
+    }
 }
 
 pub struct FilterResults {
@@ -71,9 +87,28 @@ impl BigTextApp {
             }
         };
         let column = self.search.filter_column.and_then(|c| Some((d.table_state.dialect?, c))).filter(|_| d.table);
-        let spec = FilterSpec { invert: self.search.invert, column };
+        let spec = self.with_context(FilterSpec { invert: self.search.invert, column, ..Default::default() });
         self.search.remember();
         self.run_filter(self.search.query.clone(), m, spec, None);
+    }
+
+    /// `spec` with the context lines and whole entries chosen in the filter panel.
+    pub(crate) fn with_context(&self, spec: FilterSpec) -> FilterSpec {
+        let n = self.settings.filter_context.min(filter::CONTEXT_MAX);
+        FilterSpec { before: n, after: n, entries: self.settings.filter_entries, ..spec }
+    }
+
+    /// Runs the active document's filter again (after an edit or a change of its options).
+    pub(crate) fn rerun_filter(&mut self) {
+        let Some(r) = self.docs.get(self.active).and_then(|d| d.filter.as_ref()) else { return };
+        let (query, invert, levels) = (r.query.clone(), r.spec.invert, r.levels);
+        if let Some(lv) = levels {
+            self.filter_levels(lv);
+        } else {
+            self.search.query = query;
+            self.search.invert = invert;
+            self.start_filter();
+        }
     }
 
     /// Filters the active document with `m` in the background, replacing its previous filter.
@@ -101,24 +136,39 @@ impl BigTextApp {
         jobs::spawn("filter", move || {
             let started = Instant::now();
             let mut batch: Vec<u64> = Vec::with_capacity(4096);
-            let mut count = 0usize;
+            let mut kinds: Vec<u8> = Vec::new();
+            let with_kinds = spec.has_context();
+            let mut prev_end = None;
+            let (mut count, mut hits) = (0usize, 0usize);
             let mut capped = false;
             let mut throttle = Throttle::new(Duration::from_millis(50));
-            let end = filter::filter_lines(&snap, &m, spec, &cancel, Some(&progress), |ls, _| {
+            let end = filter::filter_lines(&snap, &m, spec, &cancel, Some(&progress), |ls, le, kind| {
                 if count >= FILTER_CAP {
                     capped = true;
                     return false;
                 }
                 batch.push(ls);
+                if with_kinds {
+                    let gap = if prev_end.is_some_and(|p| ls > p) { KIND_GAP } else { 0 };
+                    kinds.push(gap | if kind == LineKind::Context { KIND_CONTEXT } else { 0 });
+                    prev_end = Some(le);
+                }
                 count += 1;
+                hits += usize::from(kind == LineKind::Hit);
                 if batch.len() >= 4096 || throttle.ready() {
-                    data.lock().unwrap().lines.append(&mut batch);
+                    let mut g = data.lock().unwrap();
+                    g.lines.append(&mut batch);
+                    g.kinds.append(&mut kinds);
+                    g.hits = hits;
+                    drop(g);
                     waker();
                 }
                 true
             });
             let mut g = data.lock().unwrap();
             g.lines.append(&mut batch);
+            g.kinds.append(&mut kinds);
+            g.hits = hits;
             g.capped = capped;
             g.done = true;
             g.end = Some(end);
@@ -195,24 +245,34 @@ impl BigTextApp {
         let mut copy = false;
         let mut rerun = false;
         let mut jump = None;
+        let (mut context, mut entries) = (self.settings.filter_context, self.settings.filter_entries);
         {
             let Some(d) = self.docs.get_mut(self.active) else { return };
             let Some(r) = &d.filter else { return };
-            let (n, capped, done, elapsed, end) = {
+            let (n, hits, capped, done, elapsed, end) = {
                 let g = r.data.lock().unwrap();
-                (g.lines.len(), g.capped, g.done, g.elapsed, g.end)
+                (g.lines.len(), g.hits, g.capped, g.done, g.elapsed, g.end)
             };
             let stale = r.version != d.version;
             ui.horizontal(|ui| {
                 match r.levels {
-                    Some(lv) => ui.strong(trf("{n} lines of level {levels}", &[("n", &fmt_count(n as u64)), ("levels", &lv.names())])),
+                    Some(lv) => ui.strong(trf("{n} lines of level {levels}", &[("n", &fmt_count(hits as u64)), ("levels", &lv.names())])),
                     None => {
                         let what = if r.spec.invert { tr("lines without") } else { tr("lines with") };
-                        ui.strong(format!("{} {what} “{}”", fmt_count(n as u64), r.query.pattern))
+                        ui.strong(format!("{} {what} “{}”", fmt_count(hits as u64), r.query.pattern))
                     }
                 };
+                if n > hits {
+                    ui.label(trf("(+{n} around them)", &[("n", &fmt_count((n - hits) as u64))]));
+                }
                 if let Some((_, c)) = r.spec.column {
                     ui.label(trf("in column {n}", &[("n", &(c + 1).to_string())]));
+                }
+                if !r.spec.invert {
+                    ui.separator();
+                    ui.add(egui::DragValue::new(&mut context).range(0..=filter::CONTEXT_MAX).prefix("± "))
+                        .on_hover_text(tr("Lines shown before and after each line with a match"));
+                    ui.checkbox(&mut entries, tr("Whole entry")).on_hover_text(tr("Keep each log entry together: the stack trace under a line, or the entry's first line above it"));
                 }
                 if capped {
                     ui.label(trf("(list capped at {n}; Save lines writes all)", &[("n", &fmt_count(FILTER_CAP as u64))]));
@@ -253,13 +313,19 @@ impl BigTextApp {
             let caret_line = d.line_bounds(d.view.caret, 64 * 1024).map(|b| b.0);
             egui::ScrollArea::both().auto_shrink([false, false]).show_rows(ui, row_h, n, |ui, range| {
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                let lines: Vec<u64> = {
+                let (lines, kinds): (Vec<u64>, Vec<u8>) = {
                     let g = data.lock().unwrap();
-                    g.lines[range.start.min(g.lines.len())..range.end.min(g.lines.len())].to_vec()
+                    let (a, b) = (range.start.min(g.lines.len()), range.end.min(g.lines.len()));
+                    (g.lines[a..b].to_vec(), (a..b).map(|i| g.kinds.get(i).copied().unwrap_or(0)).collect())
                 };
-                for ls in lines {
-                    let job = line_job(buf, ls, &m, &font, ui.visuals(), stale);
-                    if ui.selectable_label(caret_line == Some(ls) && !stale, job).clicked() {
+                for (i, (ls, k)) in lines.into_iter().zip(kinds).enumerate() {
+                    let job = line_job(buf, ls, &m, &font, ui.visuals(), stale, k & KIND_CONTEXT != 0);
+                    let resp = ui.selectable_label(caret_line == Some(ls) && !stale, job);
+                    if k & KIND_GAP != 0 && range.start + i > 0 {
+                        let y = resp.rect.top() - 1.0;
+                        ui.painter().hline(resp.rect.x_range(), y, egui::Stroke::new(1.0, ui.visuals().weak_text_color()));
+                    }
+                    if resp.clicked() {
                         jump = Some(ls);
                     }
                 }
@@ -277,16 +343,14 @@ impl BigTextApp {
         if close {
             self.search.show_filter = false;
         }
+        if (context, entries) != (self.settings.filter_context, self.settings.filter_entries) {
+            self.settings.filter_context = context;
+            self.settings.filter_entries = entries;
+            self.persist_state();
+            rerun = true;
+        }
         if rerun {
-            if let Some(q) = self.docs.get(self.active).and_then(|d| d.filter.as_ref()).map(|r| (r.query.clone(), r.spec.invert, r.levels)) {
-                if let Some(lv) = q.2 {
-                    self.filter_levels(lv);
-                } else {
-                    self.search.query = q.0;
-                    self.search.invert = q.1;
-                    self.start_filter();
-                }
-            }
+            self.rerun_filter();
         }
         if export {
             self.export_filter();
@@ -338,12 +402,13 @@ impl std::io::Write for CappedVec<'_> {
     }
 }
 
-/// One list row: line number and the line's text with its matches highlighted. When the first
-/// match is far to the right, the text starts a little before it.
-fn line_job(buf: &TextBuf, ls: u64, m: &Matcher, font: &FontId, v: &egui::Visuals, stale: bool) -> LayoutJob {
+/// One list row: line number and the line's text with its matches highlighted (context lines
+/// dimmed, without highlights). When the first match is far to the right, the text starts a
+/// little before it.
+fn line_job(buf: &TextBuf, ls: u64, m: &Matcher, font: &FontId, v: &egui::Visuals, stale: bool, context: bool) -> LayoutJob {
     let mut job = LayoutJob::default();
     let weak = TextFormat { font_id: font.clone(), color: v.weak_text_color(), ..Default::default() };
-    let normal = TextFormat { font_id: font.clone(), color: if stale { v.weak_text_color() } else { v.text_color() }, ..Default::default() };
+    let normal = TextFormat { font_id: font.clone(), color: if stale || context { v.weak_text_color() } else { v.text_color() }, ..Default::default() };
     let hl = TextFormat { font_id: font.clone(), color: v.strong_text_color(), background: v.selection.bg_fill, ..Default::default() };
     let (line, exact) = buf.line_of(ls.min(buf.len()));
     job.append(&format!("{}{:>8}  ", if exact { " " } else { "~" }, line + 1), 0.0, weak.clone());
@@ -361,7 +426,7 @@ fn line_job(buf: &TextBuf, ls: u64, m: &Matcher, font: &FontId, v: &egui::Visual
         raw = &raw[..raw.len() - cr.len()];
     }
     let end = start + raw.len() as u64;
-    let hits = bigtext::search::matches_in_view(buf, m, start..end, 64);
+    let hits = if context { Vec::new() } else { bigtext::search::matches_in_view(buf, m, start..end, 64) };
     let mut from = start;
     if let Some(&(s, _)) = hits.first() {
         if s > start + 160 {

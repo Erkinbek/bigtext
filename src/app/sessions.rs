@@ -198,7 +198,7 @@ impl BigTextApp {
             Some(lv) => self.filter_levels(lv),
             None => {
                 if let Ok(m) = bigtext::search::Matcher::new(&f.query, self.docs[i].buf.codec) {
-                    let spec = bigtext::filter::FilterSpec { invert: f.invert, column: None };
+                    let spec = self.with_context(bigtext::filter::FilterSpec { invert: f.invert, ..Default::default() });
                     self.run_filter(f.query, std::sync::Arc::new(m), spec, None);
                 }
             }

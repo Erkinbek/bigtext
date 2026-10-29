@@ -55,6 +55,8 @@ pub struct Persisted {
     pub show_ws: Option<bool>,
     /// Paths of pinned tabs.
     pub pinned: Vec<PathBuf>,
+    /// Filter view: context lines and whole entries.
+    pub filter_ctx: Option<(u32, bool)>,
 }
 
 pub(super) fn query_flags(q: &bigtext::search::Query) -> String {
@@ -153,6 +155,7 @@ pub(super) fn parse(text: &str) -> Persisted {
             "syntax" => p.syntax = Some(v == "1"),
             "level_bar" => p.level_bar = Some(v == "1"),
             "show_ws" => p.show_ws = Some(v == "1"),
+            "filter_ctx" => p.filter_ctx = v.split_once('|').and_then(|(n, e)| Some((n.parse().ok()?, e == "1"))),
             "update_check" => p.update_check = Some(v == "1"),
             "skip_version" => p.skip_version = Some(v.to_string()),
             "update_checked" => p.update_checked = v.parse().ok(),
@@ -184,6 +187,9 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(d) = p.syntax {
         s.push_str(&format!("syntax={}\n", b(d)));
+    }
+    if let Some((n, e)) = p.filter_ctx {
+        s.push_str(&format!("filter_ctx={n}|{}\n", b(e)));
     }
     if let Some(d) = p.show_ws {
         s.push_str(&format!("show_ws={}\n", b(d)));
@@ -323,6 +329,7 @@ impl BigTextApp {
             level_bar: Some(self.settings.level_bar),
             saved: self.settings.saved.clone(),
             show_ws: Some(self.settings.show_ws),
+            filter_ctx: Some((self.settings.filter_context, self.settings.filter_entries)),
             pinned: self.docs.iter().filter(|d| d.pinned).filter_map(|d| Some(PathBuf::from(file::display_path(d.unpacked_from.as_deref().or(d.path.as_deref())?)))).collect(),
             keys: self.keymap.changed.iter().map(|(c, k)| (c.id(), super::commands::key_to_string(*k))).collect(),
         }
@@ -592,6 +599,7 @@ mod tests {
             font: Some(PathBuf::from(r"C:\Windows\Fonts\consola.ttf")),
             level_bar: Some(false),
             show_ws: Some(true),
+            filter_ctx: Some((3, true)),
             pinned: vec![PathBuf::from(r"D:\big file.txt")],
             saved: vec![
                 super::super::saved_searches::SavedSearch {
@@ -610,6 +618,7 @@ mod tests {
         };
         assert_eq!(parse(&serialize(&p)).saved, p.saved);
         assert_eq!(parse(&serialize(&p)).show_ws, Some(true));
+        assert_eq!(parse(&serialize(&p)).filter_ctx, Some((3, true)));
         assert_eq!(parse(&serialize(&p)).pinned, p.pinned);
         assert_eq!(parse(&serialize(&p)).font, p.font);
         assert_eq!(parse(&serialize(&p)).level_bar, Some(false));

@@ -57,7 +57,7 @@ impl BigTextApp {
             return;
         };
         match Matcher::new(&query, d.buf.codec) {
-            Ok(m) => self.run_filter(query, std::sync::Arc::new(m), FilterSpec::default(), Some(levels)),
+            Ok(m) => self.run_filter(query, std::sync::Arc::new(m), self.with_context(FilterSpec::default()), Some(levels)),
             Err(e) => self.error = Some(e),
         }
     }

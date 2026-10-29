@@ -49,6 +49,13 @@ All notable changes to BigText. Each release on
 
 ### Logs
 
+- **Context around filter matches**: **±N** in the filter view's header shows N lines before
+  and after each match, dimmed, with a rule between groups (like `grep -C`), and **Whole entry**
+  keeps each log entry together — the stack trace under an ERROR line, or, for a match inside a
+  trace, the entry's first line above it. The level bar, **Save lines…** and **Copy lines** use
+  the same lines (files get `--` between groups); the header counts the matches and the lines
+  around them; scrollbar marks stay on the matches. `bigtext-cli filter` and `levels` take
+  `-A` / `-B` / `-C N`, `--entries` and `-n` (line numbers, `12:` a match, `13-` context).
 - **Level bar** above log files: **ERROR**, **WARN**, **INFO** and **DEBUG** buttons list only the
   lines of those levels in the filter view (click several to combine them). **F8** / **Shift+F8**
   jump to the next / previous error line, or to the next line of the levels shown. Upper-case

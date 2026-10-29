@@ -516,8 +516,11 @@ fn paint_marks(painter: &egui::Painter, doc: &mut Document, bar: Rect, dark: boo
     }
     if let Some(r) = filter {
         let g = r.data.lock().unwrap();
-        for &s in &g.lines[m.filter_done.min(g.lines.len())..] {
-            m.rows[row(s)] |= MARK_FILTER;
+        let from = m.filter_done.min(g.lines.len());
+        for (i, &s) in g.lines[from..].iter().enumerate() {
+            if !g.is_context(from + i) {
+                m.rows[row(s)] |= MARK_FILTER;
+            }
         }
         m.filter_done = g.lines.len();
     }

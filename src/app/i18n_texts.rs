@@ -614,4 +614,13 @@ pub static TEXTS: &[[&str; 3]] = &[
         "Пропущено значений ключей, впервые встреченных после строки {lines}: {n}.",
         "{lines}-satrdan keyin birinchi uchragan kalitlarning {n} ta qiymati tashlab ketildi.",
     ],
+    // Filter context.
+    ["(+{n} around them)", "(+{n} вокруг них)", "(+ atrofida {n} ta)"],
+    ["Lines shown before and after each line with a match", "Строки до и после каждой строки с совпадением", "Har bir mos satrdan oldin va keyin ko'rsatiladigan satrlar"],
+    ["Whole entry", "Запись целиком", "Butun yozuv"],
+    [
+        "Keep each log entry together: the stack trace under a line, or the entry's first line above it",
+        "Не разрывать записи лога: стек вызовов под строкой или первая строка записи над ней",
+        "Log yozuvini bo'lmaslik: satr ostidagi stack trace yoki yozuvning yuqoridagi birinchi satri",
+    ],
 ];

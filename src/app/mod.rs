@@ -107,6 +107,9 @@ pub struct Settings {
     pub saved: Vec<saved_searches::SavedSearch>,
     /// View → Show whitespace and line breaks.
     pub show_ws: bool,
+    /// Filter view: lines shown before and after each match, and whole log entries.
+    pub filter_context: u32,
+    pub filter_entries: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -308,7 +311,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, level_bar: true, saved: Vec::new(), show_ws: false },
+            settings: Settings { font_size: 14.0, dark: true, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false },
             goto: None,
             confirm: None,
             error: None,
@@ -361,6 +364,14 @@ impl BigTextApp {
             app.settings.level_bar = state.level_bar.unwrap_or(true);
             app.settings.saved = std::mem::take(&mut state.saved);
             app.settings.show_ws = state.show_ws.unwrap_or(false);
+            if let Some((n, e)) = state.filter_ctx {
+                app.settings.filter_context = n.min(bigtext::filter::CONTEXT_MAX);
+                app.settings.filter_entries = e;
+            }
+            if let Some((n, e)) = state.filter_ctx {
+                app.settings.filter_context = n.min(bigtext::filter::CONTEXT_MAX);
+                app.settings.filter_entries = e;
+            }
             // A font that is gone or broken is forgotten; the built-in one is used.
             if let Some(p) = state.font.take() {
                 if fonts::apply_font(&cc.egui_ctx, Some(&p)).is_ok() {

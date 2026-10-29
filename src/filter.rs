@@ -1,7 +1,8 @@
 //! Line filter ("grep"): the lines of a document that contain a match — or, inverted, the lines
 //! that do not. It streams over the document like search, so memory stays bounded and any file
 //! size works. A filter can be limited to one CSV column: a line then counts only when a match
-//! lies inside that field.
+//! lies inside that field. Lines around each kept line (context, or the rest of a log entry such
+//! as a stack trace) can be kept with it.
 
 use std::io::{self, Write};
 use std::ops::Range;
@@ -10,11 +11,20 @@ use crate::csv::{self, Dialect};
 use crate::jobs::{CancelToken, Progress};
 use crate::search::{self, Matcher, SearchEnd};
 use crate::text::TextBuf;
+use crate::timestamp;
 
 /// Lines are scanned in steps of this size when their ends lie outside the search window.
 const SCAN: u64 = 1 << 20;
 /// A CSV line longer than this is not split into fields (it never matches a column filter).
 const FIELD_LINE_MAX: u64 = 4 << 20;
+/// Most lines of context before or after a kept line.
+pub const CONTEXT_MAX: u32 = 999;
+/// Most lines a whole entry adds after a kept line, and looks back for the entry's first line.
+pub const ENTRY_MAX: u32 = 2000;
+/// Bytes looked back for the first line of an entry.
+const ENTRY_BACK: u64 = 256 * 1024;
+/// Bytes read at once when stepping over the lines around a kept line.
+const NEAR: u64 = 4096;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FilterSpec {
@@ -22,6 +32,29 @@ pub struct FilterSpec {
     pub invert: bool,
     /// Only matches inside this field (0-based) of a CSV line count.
     pub column: Option<(Dialect, usize)>,
+    /// Lines kept before and after each line with a match (not when inverted).
+    pub before: u32,
+    pub after: u32,
+    /// Keep whole log entries (not when inverted): a kept line with a timestamp brings the
+    /// untimed lines under it (a stack trace), and a kept line without one brings the lines
+    /// back to its entry's first line.
+    pub entries: bool,
+}
+
+impl FilterSpec {
+    /// Whether lines around the kept lines are kept too.
+    pub fn has_context(&self) -> bool {
+        !self.invert && (self.before > 0 || self.after > 0 || self.entries)
+    }
+}
+
+/// What a kept line is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LineKind {
+    /// The line has a match (or, inverted, has none).
+    Hit,
+    /// A line around a hit: context or the rest of its log entry.
+    Context,
 }
 
 /// Start of the line containing `off` (blocking snapshot reads).
@@ -95,9 +128,209 @@ fn field_range(buf: &TextBuf, d: Dialect, col: usize, ls: u64, le: u64, fields: 
     fields.get(col).map(|r| ls + r.start as u64..ls + r.end as u64)
 }
 
-/// Streams over the document and calls `on_line(start, end)` for each kept line, in order
-/// (`end` includes the line break). Stops when `on_line` returns false.
+/// Streams over the document and calls `on_line(start, end, kind)` for each kept line, in order
+/// and each line once (`end` includes the line break). Stops when `on_line` returns false.
 pub fn filter_lines(
+    buf: &TextBuf,
+    m: &Matcher,
+    spec: FilterSpec,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut on_line: impl FnMut(u64, u64, LineKind) -> bool,
+) -> SearchEnd {
+    let mut spec = spec;
+    // A document without timestamps has no entries to keep together.
+    spec.entries = spec.entries && !spec.invert && looks_timed(buf);
+    if !spec.has_context() {
+        return hit_lines(buf, m, spec, cancel, progress, |ls, le| on_line(ls, le, LineKind::Hit));
+    }
+    let mut around = Around { buf, spec, done: 0, pending: None, stamped: false, failed: false };
+    let end = hit_lines(buf, m, spec, cancel, progress, |ls, le| around.hit(ls, le, &mut on_line));
+    if around.failed {
+        return SearchEnd::Unavailable;
+    }
+    if end != SearchEnd::Completed {
+        return end;
+    }
+    if !around.flush(buf.len(), &mut on_line) {
+        return if around.failed { SearchEnd::Unavailable } else { SearchEnd::Stopped };
+    }
+    SearchEnd::Completed
+}
+
+/// Adds the lines around the hits. A hit's after-context is passed on only when the next hit
+/// (or the end) is known, so a hit is never passed on as another hit's context.
+struct Around<'a> {
+    buf: &'a TextBuf,
+    spec: FilterSpec,
+    /// End of the last line passed on.
+    done: u64,
+    /// End of the last hit, while its after-context is not passed on yet.
+    pending: Option<u64>,
+    /// Whether the last hit's entry starts with a timestamp (only then its untimed lines follow).
+    stamped: bool,
+    failed: bool,
+}
+
+impl Around<'_> {
+    fn hit(&mut self, ls: u64, le: u64, on_line: &mut impl FnMut(u64, u64, LineKind) -> bool) -> bool {
+        if !self.flush(ls, on_line) {
+            return false;
+        }
+        let mut from = ls;
+        for _ in 0..self.spec.before {
+            if from <= self.done {
+                break;
+            }
+            match prev_line_start(self.buf, from) {
+                Some(s) => from = s.max(self.done),
+                None => return self.fail(),
+            }
+        }
+        if self.spec.entries {
+            if timestamp::stamp_at(self.buf, ls).is_some() {
+                self.stamped = true;
+            } else {
+                match self.entry_head(ls) {
+                    Some(Head::Found(h)) => {
+                        from = from.min(h);
+                        self.stamped = true;
+                    }
+                    // The lines up to the hit continue the entry already passed on.
+                    Some(Head::Reached) => {}
+                    Some(Head::Missing) => self.stamped = false,
+                    None => return self.fail(),
+                }
+            }
+        }
+        while from < ls {
+            let Some(e) = line_end_near(self.buf, from) else { return self.fail() };
+            let e = e.min(ls);
+            if !on_line(from, e, LineKind::Context) {
+                return false;
+            }
+            from = e;
+        }
+        if !on_line(ls, le, LineKind::Hit) {
+            return false;
+        }
+        self.done = le;
+        self.pending = Some(le);
+        true
+    }
+
+    /// Passes on the after-context of the last hit, up to `limit` (the next hit's start).
+    fn flush(&mut self, limit: u64, on_line: &mut impl FnMut(u64, u64, LineKind) -> bool) -> bool {
+        let Some(mut ls) = self.pending.take() else { return true };
+        let limit = limit.min(self.buf.len());
+        if self.spec.entries && self.stamped {
+            for _ in 0..ENTRY_MAX {
+                if ls >= limit || timestamp::stamp_at(self.buf, ls).is_some() {
+                    break;
+                }
+                let Some(le) = line_end_near(self.buf, ls) else { return self.fail() };
+                self.done = le;
+                if !on_line(ls, le, LineKind::Context) {
+                    return false;
+                }
+                ls = le;
+            }
+        }
+        for _ in 0..self.spec.after {
+            if ls >= limit {
+                break;
+            }
+            let Some(le) = line_end_near(self.buf, ls) else { return self.fail() };
+            self.done = le;
+            if !on_line(ls, le, LineKind::Context) {
+                return false;
+            }
+            ls = le;
+        }
+        true
+    }
+
+    /// The first line of the entry an untimed line at `ls` belongs to: the nearest line above
+    /// with a timestamp, looking back no further than the lines already passed on.
+    fn entry_head(&self, ls: u64) -> Option<Head> {
+        let mut s = ls;
+        for _ in 0..ENTRY_MAX {
+            if s <= self.done {
+                return Some(Head::Reached);
+            }
+            if ls - s > ENTRY_BACK {
+                break;
+            }
+            s = prev_line_start(self.buf, s)?;
+            if s < self.done {
+                return Some(Head::Reached);
+            }
+            if timestamp::stamp_at(self.buf, s).is_some() {
+                return Some(Head::Found(s));
+            }
+        }
+        Some(Head::Missing)
+    }
+
+    fn fail(&mut self) -> bool {
+        self.failed = true;
+        false
+    }
+}
+
+enum Head {
+    Found(u64),
+    /// Reached the lines already passed on.
+    Reached,
+    Missing,
+}
+
+/// Whether one of the first lines of the document has a timestamp.
+fn looks_timed(buf: &TextBuf) -> bool {
+    let mut ls = 0;
+    for _ in 0..200 {
+        if ls >= buf.len() {
+            break;
+        }
+        if timestamp::stamp_at(buf, ls).is_some() {
+            return true;
+        }
+        match line_end_near(buf, ls) {
+            Some(e) => ls = e,
+            None => break,
+        }
+    }
+    false
+}
+
+/// Start of the line before the one starting at `ls` (> 0).
+fn prev_line_start(buf: &TextBuf, ls: u64) -> Option<u64> {
+    let unit = buf.codec.unit() as u64;
+    let nl = ls.saturating_sub(unit);
+    let lo = nl.saturating_sub(NEAR);
+    let lo = lo - lo % unit;
+    let b = buf.read(lo..nl)?;
+    match buf.codec.rfind_nl(&b, lo) {
+        Some(i) => Some(lo + i as u64 + unit),
+        None if lo == 0 => Some(0),
+        None => line_start_at(buf, nl),
+    }
+}
+
+/// End of the line starting at `ls`, including its line break.
+fn line_end_near(buf: &TextBuf, ls: u64) -> Option<u64> {
+    let len = buf.len();
+    let hi = (ls + NEAR).min(len);
+    let b = buf.read(ls..hi)?;
+    match buf.codec.find_nl(&b, ls) {
+        Some(i) => Some(ls + (i + buf.codec.unit()) as u64),
+        None if hi == len => Some(len),
+        None => line_end_at(buf, ls),
+    }
+}
+
+/// The lines with a match (or, inverted, without one), without context.
+fn hit_lines(
     buf: &TextBuf,
     m: &Matcher,
     spec: FilterSpec,
@@ -217,7 +450,8 @@ pub struct Written {
     pub bytes: u64,
 }
 
-/// Writes the kept lines to `out` (with the document's byte order mark, if it has one).
+/// Writes the kept lines to `out` (with the document's byte order mark, if it has one). With
+/// context, a "--" line separates groups of lines that are not next to each other, like grep.
 /// Returns `None` when cancelled.
 pub fn write_lines_to<W: Write>(buf: &TextBuf, m: &Matcher, spec: FilterSpec, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<Written>> {
     let bom = buf.codec.bom_len as u64;
@@ -228,7 +462,18 @@ pub fn write_lines_to<W: Write>(buf: &TextBuf, m: &Matcher, spec: FilterSpec, ou
         w.bytes += bom;
     }
     let mut err: Option<io::Error> = None;
-    let end = filter_lines(buf, m, spec, cancel, progress, |ls, le| {
+    let mut prev: Option<u64> = None;
+    let end = filter_lines(buf, m, spec, cancel, progress, |ls, le, _| {
+        if let Some(pe) = prev.filter(|&pe| spec.has_context() && ls > pe) {
+            let mut sep = buf.codec.encode("--");
+            sep.extend(line_break_before(buf, pe));
+            if let Err(e) = out.write_all(&sep) {
+                err = Some(e);
+                return false;
+            }
+            w.bytes += sep.len() as u64;
+        }
+        prev = Some(le);
         let r = buf.for_each_chunk(ls.max(bom)..le, |_, b| match out.write_all(b) {
             Ok(()) => true,
             Err(e) => {
@@ -251,6 +496,21 @@ pub fn write_lines_to<W: Write>(buf: &TextBuf, m: &Matcher, spec: FilterSpec, ou
         SearchEnd::Cancelled => Ok(None),
         _ => Err(io::Error::other("Could not read the document")),
     }
+}
+
+/// The line break that ends at `end` (CR LF, or the document's single line break).
+pub fn line_break_before(buf: &TextBuf, end: u64) -> Vec<u8> {
+    let c = &buf.codec;
+    let (nl, cr) = (c.nl_unit(), c.cr_unit());
+    let two = (nl.len() + cr.len()) as u64;
+    if c.nl == crate::encoding::NlByte::Lf && end >= two {
+        if let Some(b) = buf.read(end - two..end) {
+            if b.starts_with(cr) && b.ends_with(nl) {
+                return b.to_vec();
+            }
+        }
+    }
+    nl.to_vec()
 }
 
 /// Copies the byte range `range` of the document to `out`, cancellably.
@@ -307,7 +567,7 @@ mod tests {
         let q = Query { pattern: pat.into(), regex, case_sensitive: true, ..Default::default() };
         let m = Matcher::new(&q, buf.codec).unwrap();
         let mut v = Vec::new();
-        let end = filter_lines(buf, &m, spec, &CancelToken::new(), None, |s, e| {
+        let end = filter_lines(buf, &m, spec, &CancelToken::new(), None, |s, e, _| {
             v.push(buf.codec.decode_lossy(&buf.read(s..e).unwrap()));
             true
         });
@@ -341,7 +601,7 @@ mod tests {
     #[test]
     fn csv_column() {
         let (_f, t) = buf_with(b"id,name,city\n1,Ann,Paris\n2,Paris,Rome\n3,\"Bob, Paris\",Oslo\n", Codec::utf8());
-        let col = |c, invert| FilterSpec { invert, column: Some((Dialect::new(b','), c)) };
+        let col = |c, invert| FilterSpec { invert, column: Some((Dialect::new(b','), c)), ..Default::default() };
         assert_eq!(lines(&t, "Paris", false, col(2, false)), vec!["1,Ann,Paris\n"]);
         assert_eq!(lines(&t, "Paris", false, col(1, false)), vec!["2,Paris,Rome\n", "3,\"Bob, Paris\",Oslo\n"]);
         assert_eq!(lines(&t, "Paris", false, col(1, true)), vec!["id,name,city\n", "1,Ann,Paris\n"]);
@@ -373,11 +633,106 @@ mod tests {
         let q = Query { pattern: "NEEDLE".into(), case_sensitive: true, ..Default::default() };
         let m = Matcher::new(&q, Codec::utf8()).unwrap();
         let mut got = Vec::new();
-        filter_lines(&t, &m, FilterSpec::default(), &CancelToken::new(), None, |s, e| {
+        filter_lines(&t, &m, FilterSpec::default(), &CancelToken::new(), None, |s, e, _| {
             got.push((s, e));
             true
         });
         assert_eq!(got, vec![(6, data.len() as u64 - 5)]);
+    }
+
+    /// Kept lines as "H:text" / "C:text" (without line breaks).
+    fn kinds(buf: &TextBuf, pat: &str, spec: FilterSpec) -> Vec<String> {
+        let q = Query { pattern: pat.into(), regex: true, case_sensitive: true, ..Default::default() };
+        let m = Matcher::new(&q, buf.codec).unwrap();
+        let mut v = Vec::new();
+        let mut prev = 0;
+        let end = filter_lines(buf, &m, spec, &CancelToken::new(), None, |s, e, k| {
+            assert!(s >= prev, "lines out of order or repeated");
+            prev = e;
+            let t = buf.codec.decode_lossy(&buf.read(s..e).unwrap());
+            v.push(format!("{}:{}", if k == LineKind::Hit { 'H' } else { 'C' }, t.trim_end_matches(['\r', '\n'])));
+            true
+        });
+        assert_eq!(end, SearchEnd::Completed);
+        v
+    }
+
+    fn ctx(before: u32, after: u32) -> FilterSpec {
+        FilterSpec { before, after, ..Default::default() }
+    }
+
+    #[test]
+    fn context_lines() {
+        let (_f, t) = buf_with(b"1\n2\n3 X\n4\n5\n6\n7 X\n8\n9 X\n10\n", Codec::utf8());
+        assert_eq!(kinds(&t, "X", ctx(1, 1)), ["C:2", "H:3 X", "C:4", "C:6", "H:7 X", "C:8", "H:9 X", "C:10"]);
+        // A hit inside another hit's after-context stays a hit.
+        assert_eq!(kinds(&t, "X", ctx(0, 3)), ["H:3 X", "C:4", "C:5", "C:6", "H:7 X", "C:8", "H:9 X", "C:10"]);
+        assert_eq!(kinds(&t, "X", ctx(5, 0)), ["C:1", "C:2", "H:3 X", "C:4", "C:5", "C:6", "H:7 X", "C:8", "H:9 X"]);
+        assert_eq!(kinds(&t, "^1$", ctx(2, 1)), ["H:1", "C:2"]);
+        assert_eq!(kinds(&t, "10", ctx(1, 2)), ["C:9 X", "H:10"]);
+        // Inverted filters keep no context.
+        let inv = FilterSpec { invert: true, before: 1, after: 1, ..Default::default() };
+        assert_eq!(kinds(&t, "[0-9]", inv), Vec::<String>::new());
+    }
+
+    #[test]
+    fn separators_crlf_and_last_line() {
+        let (_f, t) = buf_with(b"a\r\nb X\r\nc\r\nd", Codec::utf8());
+        assert_eq!(kinds(&t, "X", ctx(1, 5)), ["C:a", "H:b X", "C:c", "C:d"]);
+        let q = Query { pattern: "[ad]".into(), regex: true, case_sensitive: true, ..Default::default() };
+        let m = Matcher::new(&q, t.codec).unwrap();
+        let mut out = Vec::new();
+        write_lines_to(&t, &m, ctx(0, 0), &mut out, &CancelToken::new(), None).unwrap();
+        assert_eq!(out, b"a\r\nd");
+        out.clear();
+        let w = write_lines_to(&t, &m, FilterSpec { entries: true, ..Default::default() }, &mut out, &CancelToken::new(), None).unwrap().unwrap();
+        assert_eq!(out, b"a\r\n--\r\nd");
+        assert_eq!(w.lines, 2);
+        out.clear();
+        write_lines_to(&t, &m, ctx(1, 0), &mut out, &CancelToken::new(), None).unwrap();
+        assert_eq!(out, b"a\r\n--\r\nc\r\nd");
+    }
+
+    const TRACE: &[u8] = b"2024-05-01 10:00:00 INFO start\n2024-05-01 10:00:01 ERROR boom\njava.lang.IllegalStateException: x\n\tat a.B.c(B.java:1)\n\tat a.B.d(B.java:2)\n2024-05-01 10:00:02 INFO next\n2024-05-01 10:00:03 WARN slow\n";
+
+    #[test]
+    fn whole_entries() {
+        let (_f, t) = buf_with(TRACE, Codec::utf8());
+        let entries = FilterSpec { entries: true, ..Default::default() };
+        let got = kinds(&t, "ERROR", entries);
+        assert_eq!(got.len(), 4, "{got:?}");
+        assert!(got[0].starts_with("H:") && got[1].starts_with("C:java") && got[3].starts_with("C:\tat a.B.d"), "{got:?}");
+        // A hit inside a stack trace brings the entry's first line and the rest of the trace.
+        let got = kinds(&t, "B.java:1", entries);
+        assert_eq!(got.len(), 4, "{got:?}");
+        assert!(got[0].starts_with("C:2024-05-01 10:00:01 ERROR") && got[2].starts_with("H:\tat a.B.c"), "{got:?}");
+        // Two hits in one entry: each line once.
+        let got = kinds(&t, "ERROR|B.java:2", entries);
+        assert_eq!(got.len(), 4, "{got:?}");
+        assert!(got[3].starts_with("H:\tat a.B.d"), "{got:?}");
+        // The lines of an untimed document do not pull the rest of the file.
+        let (_g, u) = buf_with(b"a\nb X\nc\nd\n", Codec::utf8());
+        assert_eq!(kinds(&u, "X", entries), ["H:b X"]);
+        // Entries and after-context add up.
+        let got = kinds(&t, "ERROR", FilterSpec { entries: true, after: 1, ..Default::default() });
+        assert_eq!(got.len(), 5, "{got:?}");
+        assert!(got[4].starts_with("C:2024-05-01 10:00:02 INFO next"), "{got:?}");
+    }
+
+    #[test]
+    fn context_in_utf16() {
+        let codec = Codec::new(Encoding::Utf16Le, NlByte::Lf, 2);
+        let mut data = vec![0xFF, 0xFE];
+        data.extend(codec.encode("one\ntwo X\nthree\nfour X\n"));
+        let (_f, t) = buf_with(&data, codec);
+        assert_eq!(kinds(&t, "X", ctx(1, 0)), ["C:\u{feff}one", "H:two X", "C:three", "H:four X"]);
+        let q = Query { pattern: "one|four".into(), regex: true, case_sensitive: true, ..Default::default() };
+        let m = Matcher::new(&q, codec).unwrap();
+        let mut out = Vec::new();
+        write_lines_to(&t, &m, FilterSpec { entries: true, ..Default::default() }, &mut out, &CancelToken::new(), None).unwrap();
+        let mut want = vec![0xFF, 0xFE];
+        want.extend(codec.encode("one\n--\nfour X\n"));
+        assert_eq!(out, want);
     }
 
     #[test]

@@ -1202,6 +1202,27 @@ impl SelfTest {
             c.key(Key::F8, if c.mark == 4 { SHIFT } else { NONE });
             Step::Wait
         }));
+        s("filter with ±1 context line: hits and dimmed lines around them", Box::new(|app, c| {
+            use bigtext::loglevel::{Level, Levels};
+            let line = |n: usize| LEVELS_LOG.split_inclusive('\n').take(n).map(str::len).sum::<usize>() as u64;
+            if c.first() {
+                app.settings.filter_context = 1;
+                app.filter_levels(Levels::only(Level::Error));
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).filter.as_ref() else { return Step::Fail("no filter".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let kinds: Vec<bool> = (0..g.lines.len()).map(|i| g.is_context(i)).collect();
+            let ok = g.lines == vec![line(2), line(3), line(4), line(5)] && kinds == [true, false, true, false] && g.hits == 2 && r.spec.before == 1;
+            let got = format!("lines {:?} context {kinds:?} hits {}", g.lines, g.hits);
+            drop(g);
+            app.settings.filter_context = 0;
+            app.filter_levels(Levels::default());
+            check(ok, got)
+        }));
         s("a log without an extension is recognised by its timestamps", open_step("journal"));
         s("journal: log highlighting and level bar", Box::new(|app, _c| {
             let d = doc(app);

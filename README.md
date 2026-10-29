@@ -54,7 +54,10 @@ Single self-contained binary, no runtime dependencies.
   chunk or piece boundaries are found.
 - **Filter view** (Ctrl+Shift+F, or **Filter** in the search bar): only the lines with a match
   — or, with **!**, the lines without one — in a virtualized list under the text, like `grep`
-  over the whole file. Click a line to jump to it. **Save lines…** streams every kept line to a
+  over the whole file. **±N** in its header adds N dimmed lines before and after each match
+  (`grep -C`), and **Whole entry** keeps a log entry together: the stack trace under an ERROR
+  line, or the entry's first line above a match inside a trace. Click a line to jump to it.
+  **Save lines…** streams every kept line to a
   new file (no limit); **Copy lines** puts them on the clipboard (up to 100 MB). Find All
   results offer the same two buttons.
 - **Highlights** (View → Highlights…, or **Mark** in the search bar): patterns painted in their
@@ -232,7 +235,9 @@ bigtext-cli merge FILE FILE... [-o OUT]                        logs merged by ti
 bigtext-cli convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]  tables (and JSON Lines → CSV)
 ```
 
-Exit codes: 0 done, 1 nothing matched, 2 error.
+`filter` and `levels` take `-A N` / `-B N` / `-C N` (lines after / before / around each match),
+`--entries` (whole log entries) and `-n` (line numbers, `12:` a match and `13-` context), with
+`--` between groups like grep. Exit codes: 0 done, 1 nothing matched, 2 error.
 
 | Shortcut | Action |
 |---|---|
