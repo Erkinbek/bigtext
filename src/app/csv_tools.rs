@@ -128,7 +128,12 @@ impl BigTextApp {
 
     /// The column names of the active table (from its header, or "Column N").
     fn column_names(&self) -> Vec<String> {
-        let Some(d) = self.docs.get(self.active) else { return Vec::new() };
+        self.column_names_of(self.active)
+    }
+
+    /// The column names of tab `i`'s table.
+    pub(crate) fn column_names_of(&self, i: usize) -> Vec<String> {
+        let Some(d) = self.docs.get(i) else { return Vec::new() };
         let Some(dialect) = d.table_state.dialect else { return Vec::new() };
         let start = dialect.first(&d.buf).max(d.min_caret());
         let Some(b) = d.buf.read(start..(start + 64 * 1024).min(d.buf.len())) else { return Vec::new() };

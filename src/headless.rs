@@ -58,6 +58,10 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         The log's message templates (numbers, ids, IPs and paths replaced by
         <n>, <hex>, <ip>, <path>) with how many lines each has, as CSV, most
         lines first (--rare: fewest first).
+  join LEFT RIGHT (--on COL | --left-on COL --right-on COL) [--inner] [-o OUT]
+        Each row of the LEFT table with the other columns of the RIGHT table's
+        rows with the same key (COL: a header name or a 1-based number), as
+        CSV; rows without a match get empty fields, or are left out (--inner).
   validate FILE [--no-header] [--numeric 3,5]
         Checks a CSV / TSV table: rows with another field count, stray or
         unclosed quotes, control characters, and (--numeric) text in number
@@ -75,7 +79,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 12] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate"];
+const COMMANDS: [&str; 13] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -561,6 +565,38 @@ fn table_of(buf: &TextBuf, file: &str, a: &Args) -> Res<csv::TableGuess> {
     Ok(g)
 }
 
+/// A column given as a header name or a 1-based number.
+fn column_index(buf: &TextBuf, g: &csv::TableGuess, col: &str) -> Res<usize> {
+    if let Ok(n) = col.parse::<usize>() {
+        return if n > 0 { Ok(n - 1) } else { fail("columns count from 1") };
+    }
+    let mut names = Vec::new();
+    csv::for_each_record(buf, g.dialect, &CancelToken::new(), None, |r| {
+        names = r.fields.iter().filter_map(|f| buf.read(f.clone()).map(|b| csv::field_value(&buf.codec, g.dialect, &b))).collect();
+        false
+    });
+    names.iter().position(|n| n.trim() == col.trim()).ok_or_else(|| Fail(format!("no column named {col}")))
+}
+
+fn cmd_join(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["--inner", "--no-header", "--header"], &["--on", "--left-on", "--right-on", "-o", "--output", "--skip", "--quote"])?;
+    let [lf, rf] = &a.rest[..] else { return fail("needs LEFT and RIGHT") };
+    let (left, _) = open(Path::new(lf))?;
+    let (right, _) = open(Path::new(rf))?;
+    let (lg, rg) = (table_of(&left, lf, &a)?, table_of(&right, rf, &a)?);
+    let (lc, rc) = match (a.opt(&["--on"]), a.opt(&["--left-on"]), a.opt(&["--right-on"])) {
+        (Some(c), None, None) => (c, c),
+        (None, Some(l), Some(r)) => (l, r),
+        _ => return fail("give --on COL, or --left-on COL and --right-on COL"),
+    };
+    let spec = crate::csv_join::JoinSpec { left_key: column_index(&left, &lg, lc)?, right_key: column_index(&right, &rg, rc)?, inner: a.flag(&["--inner"]), header: lg.header && rg.header };
+    with_output(a.opt(&["-o", "--output"]), out, |w| {
+        crate::csv_join::join_to(&left, lg.dialect, &right, rg.dialect, spec, &mut &mut *w, &CancelToken::new(), None)?;
+        Ok(())
+    })?;
+    Ok(0)
+}
+
 fn cmd_validate(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &["--no-header", "--header"], &["--numeric", "--skip", "--quote"])?;
     let [file] = &a.rest[..] else { return fail("needs FILE") };
@@ -681,6 +717,7 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "patterns" => cmd_patterns(rest, out),
         "extract" => cmd_extract(rest, out),
         "validate" => cmd_validate(rest, out),
+        "join" => cmd_join(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
             return 0;
@@ -764,6 +801,16 @@ mod tests {
         assert_eq!(run_args(&["convert", &n, "--to", "jsonl", "--header"]).1.lines().next(), Some("{\"1\": \"3\", \"2\": \"4\"}"));
         let q = file(&d, "q.csv", b"a,b\n'x,y',2\n");
         assert_eq!(run_args(&["convert", &q, "--to", "jsonl", "--quote", "'"]).1, "{\"a\": \"x,y\", \"b\": \"2\"}\n");
+    }
+
+    #[test]
+    fn join_tables() {
+        let d = tempfile::tempdir().unwrap();
+        let o = file(&d, "o.csv", b"order,user\n1,u1\n2,u3\n");
+        let u = file(&d, "u.csv", b"id,name\nu1,Ann\nu2,Bob\n");
+        assert_eq!(run_args(&["join", &o, &u, "--left-on", "user", "--right-on", "id"]).1, "order,user,name\n1,u1,Ann\n2,u3,\n");
+        assert_eq!(run_args(&["join", &o, &u, "--left-on", "2", "--right-on", "1", "--inner"]).1, "order,user,name\n1,u1,Ann\n");
+        assert_eq!(run_args(&["join", &o, &u, "--on", "nope"]).0, 2);
     }
 
     #[test]

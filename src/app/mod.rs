@@ -15,6 +15,7 @@ pub mod fonts;
 pub mod goto;
 pub mod i18n;
 mod i18n_texts;
+pub mod join_tables;
 pub mod json_panel;
 pub mod keynav;
 pub mod levels;
@@ -242,6 +243,7 @@ pub struct BigTextApp {
     pub nav: nav::NavHistory,
     pub values: Option<match_values::ValuesDialog>,
     pub problems: problems_panel::ProblemsUi,
+    pub join: Option<join_tables::JoinDialog>,
     pub files: find_in_files::FilesUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
@@ -373,6 +375,7 @@ impl BigTextApp {
             nav: nav::NavHistory::default(),
             values: None,
             problems: problems_panel::ProblemsUi::default(),
+            join: None,
             files: find_in_files::FilesUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1468,6 +1471,7 @@ impl eframe::App for BigTextApp {
         self.time_range_window(&ctx);
         self.patterns_window(&ctx);
         self.values_window(&ctx);
+        self.join_window(&ctx);
         self.palette_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);

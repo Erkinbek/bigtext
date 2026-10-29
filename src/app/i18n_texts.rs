@@ -800,4 +800,19 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Hide from the view", "Скрыть из вида", "Ko'rinishdan yashirish"],
     ["{n} hidden · Show all", "Скрыто: {n} · Показать все", "{n} ta yashirin · Hammasini ko'rsatish"],
     ["Show the columns hidden from the view", "Показать скрытые столбцы", "Yashirilgan ustunlarni ko'rsatish"],
+    // Joining tables.
+    ["Join tables…", "Объединить таблицы…", "Jadvallarni birlashtirish…"],
+    ["Join tables", "Объединить таблицы", "Jadvallarni birlashtirish"],
+    ["Open two tables (CSV / TSV in the table view) to join them.", "Откройте две таблицы (CSV / TSV в виде таблицы), чтобы объединить их.", "Birlashtirish uchun ikkita jadvalni (jadval ko'rinishidagi CSV / TSV) oching."],
+    [
+        "Adds the other columns of the lookup table's rows with the same key to each row of the first table.",
+        "Добавляет к каждой строке первой таблицы остальные столбцы строк справочной таблицы с тем же ключом.",
+        "Birinchi jadvalning har bir qatoriga ma'lumotnoma jadvalidagi shu kalitli qatorlarning boshqa ustunlarini qo'shadi.",
+    ],
+    ["Table", "Таблица", "Jadval"],
+    ["Lookup table", "Справочная таблица", "Ma'lumotnoma jadvali"],
+    ["Only the rows with a match (inner join)", "Только строки с совпадением (inner join)", "Faqat mos keladigan qatorlar (inner join)"],
+    ["Join", "Объединить", "Birlashtirish"],
+    ["Joining tables", "Объединение таблиц", "Jadvallar birlashtirilmoqda"],
+    ["{matched} of {rows} rows had a match; {out} rows.", "Совпадение у {matched} из {rows} строк; всего {out} строк.", "{rows} ta qatordan {matched} tasi mos keldi; jami {out} ta qator."],
 ];

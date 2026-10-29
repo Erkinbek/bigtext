@@ -34,6 +34,7 @@ pub enum Cmd {
     SplitFile,
     Compare,
     MergeLogs,
+    JoinTables,
     Undo,
     Redo,
     SelectAll,
@@ -108,7 +109,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 78] = [
+    pub const ALL: [Cmd; 79] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -126,6 +127,7 @@ impl Cmd {
         Cmd::SplitFile,
         Cmd::Compare,
         Cmd::MergeLogs,
+        Cmd::JoinTables,
         Cmd::Undo,
         Cmd::Redo,
         Cmd::SelectAll,
@@ -237,6 +239,7 @@ impl Cmd {
             Cmd::SplitFile => "Split file…",
             Cmd::Compare => "Compare with…",
             Cmd::MergeLogs => "Merge logs by time…",
+            Cmd::JoinTables => "Join tables…",
             Cmd::Undo => "Undo",
             Cmd::Redo => "Redo",
             Cmd::SelectAll => "Select all",
@@ -305,7 +308,7 @@ impl Cmd {
     /// Menu the command lives in (shown in the palette).
     pub fn group(self) -> &'static str {
         match self {
-            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::MergeLogs => "File",
+            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::MergeLogs | Cmd::JoinTables => "File",
             Cmd::Undo
             | Cmd::Redo
             | Cmd::SelectAll
@@ -533,6 +536,7 @@ impl BigTextApp {
             Cmd::SplitFile => self.open_split(),
             Cmd::Compare => self.compare_dialog(),
             Cmd::MergeLogs => self.open_merge(),
+            Cmd::JoinTables => self.open_join(),
             Cmd::Undo => doc(self).into_iter().for_each(|d| d.undo()),
             Cmd::Redo => doc(self).into_iter().for_each(|d| d.redo()),
             Cmd::SelectAll => {
@@ -768,7 +772,7 @@ impl BigTextApp {
                     });
                 });
                 ui.separator();
-                for c in [Cmd::ExportLines, Cmd::SaveSelection, Cmd::SplitFile, Cmd::Compare, Cmd::MergeLogs] {
+                for c in [Cmd::ExportLines, Cmd::SaveSelection, Cmd::SplitFile, Cmd::Compare, Cmd::MergeLogs, Cmd::JoinTables] {
                     run = run.or(self.item(ui, c));
                 }
                 let table = self.docs.get(self.active).is_some_and(|d| d.table && d.is_ready() && d.table_state.dialect.is_some());

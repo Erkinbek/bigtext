@@ -122,6 +122,7 @@ mod tests {
         "app" / "follow_id.rs",
         "app" / "gaps_panel.rs",
         "app" / "fonts.rs",
+        "app" / "join_tables.rs",
         "app" / "json_panel.rs",
         "app" / "keynav.rs",
         "app" / "levels.rs",

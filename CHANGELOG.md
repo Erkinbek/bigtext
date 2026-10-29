@@ -149,6 +149,12 @@ All notable changes to BigText. Each release on
 
 ### CSV tables
 
+- **File → Join tables…**: picks two open tables and a key column of each, and opens a new
+  read-only table with each row of the first followed by the other columns of the lookup table's
+  rows with the same key (all of them when there are several; empty fields, or with **Only the
+  rows with a match** none, when there is none). The lookup table is held in memory (up to
+  256 MB of values), the first one streams, so it can be of any size. `bigtext-cli join LEFT
+  RIGHT --on COL` (or `--left-on` / `--right-on`, `--inner`) does the same.
 - **Freeze and hide columns** (a column header's right-click menu): **Freeze columns up to here**
   keeps those columns on the left while the others scroll; **Hide from the view** leaves columns
   out of the table without touching the file, and the toolbar's "3 hidden · Show all" brings them

@@ -167,6 +167,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     }
     std::fs::write(dir.join("sales.csv"), "city,qty\nTashkent,3\nBukhara,5\nTashkent,7\n")?;
     std::fs::write(dir.join("broken.csv"), "id,qty\n1,2\n2\n3,x\n")?;
+    std::fs::write(dir.join("cities.csv"), "city,country\nTashkent,UZ\nBukhara,UZ\n")?;
     std::fs::write(dir.join("excel.csv"), "sep=;\n# exported\nname;qty\nann;1\nbob;2\n")?;
     std::fs::write(dir.join("numbers.csv"), "1,2\n3,4\n5,6\n")?;
     std::fs::write(dir.join("outline.json"), OUTLINE_JSON)?;
@@ -1980,6 +1981,48 @@ impl SelfTest {
             let ok = got == vec![("Tashkent".to_string(), 2, 10.0), ("Bukhara".to_string(), 1, 5.0)];
             app.csv.groups = None;
             check(ok, format!("groups {got:?}"))
+        }));
+        s("open cities.csv", open_step("cities.csv"));
+        s("join two tables by a key into a new table", Box::new(|app, c| {
+            let id_of = |app: &BigTextApp, name: &str| app.docs.iter().find(|d| d.title == name).map(|d| d.id);
+            if c.first() {
+                return Step::Wait;
+            }
+            match c.mark {
+                0 => {
+                    let ready = app.docs.iter().filter(|d| (d.title == "sales.csv" || d.title == "cities.csv") && d.table_state.dialect.is_some()).count() == 2;
+                    if !ready {
+                        return if c.waited() > Duration::from_secs(3) { Step::Fail("the tables are not ready".into()) } else { Step::Wait };
+                    }
+                    let (Some(left), Some(right)) = (id_of(app, "sales.csv"), id_of(app, "cities.csv")) else { return Step::Fail("no tabs".into()) };
+                    app.start_join(crate::app::join_tables::JoinDialog { left, right, left_key: 0, right_key: 0, inner: false });
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    let d = doc(app);
+                    if !d.title.starts_with("sales.csv + cities.csv") || !d.is_ready() {
+                        return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("active tab {:?}", d.title)) } else { Step::Wait };
+                    }
+                    let t = text(app);
+                    if t != "city,qty,country\nTashkent,3,UZ\nBukhara,5,UZ\nTashkent,7,UZ\n" {
+                        return Step::Fail(format!("text {t:?}"));
+                    }
+                    c.key(Key::W, CTRL);
+                    c.mark = 2;
+                    Step::Wait
+                }
+                _ => {
+                    if app.docs.iter().any(|d| d.title.starts_with("sales.csv + ")) {
+                        return Step::Wait;
+                    }
+                    if let Some(i) = app.docs.iter().position(|d| d.title == "sales.csv") {
+                        app.active = i;
+                    }
+                    c.mark = 0;
+                    Step::Next
+                }
+            }
         }));
         s("CSV: export the table as Markdown and as an Excel workbook", Box::new(|app, c| {
             use bigtext::table_export::Format;
