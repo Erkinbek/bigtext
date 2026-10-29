@@ -118,6 +118,12 @@ All notable changes to BigText. Each release on
   sequence (first number, step, at least N digits, hexadecimal) or the same text on every row
   — on the block's rows as one undo step, or on every line from there to the end of a file of
   any size, streamed into a new file that replaces it (optional `.bak`).
+- **Sorting without a size limit**: Sort lines (A → Z, Z → A, by number) and Remove duplicate
+  lines on a whole document over 64 MB now sort it through temporary runs of 64 MB and a k-way
+  merge (two levels past 256 runs) and replace it on disk, after asking, with an optional
+  `.bak`. **Edit → Text → Count duplicate lines…** opens each line with how often it occurs,
+  most frequent first, as a new table, for files of any size. On the command line:
+  `bigtext-cli sort [-r] [-n] [-i] [-u] FILE` and `bigtext-cli uniq [-c] FILE`.
 
 ### Command line
 

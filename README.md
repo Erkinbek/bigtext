@@ -132,6 +132,10 @@ Single self-contained binary, no runtime dependencies.
   Runs on a worker and is one undo step. Above 64 MB, case, trimming, tabs and JSON formatting
   stream through the whole file instead and replace it on disk (optional `.bak`); the same code
   runs as `bigtext-cli transform --op upper|lower|trim|tabs|untabs` and `format --json`.
+- **Sorting files of any size**: with nothing selected, Sort lines and Remove duplicate lines on a
+  document over 64 MB sort it through temporary runs and a k-way merge and replace it on disk;
+  **Count duplicate lines…** opens each line with its count, most frequent first, as a table.
+  `bigtext-cli sort [-r] [-n] [-i] [-u]` and `uniq [-c]` do the same.
 - **Decode and encode** (Edit → Text): Base64 (either alphabet; a JWT shows its header and payload),
   URL `%xx`, hex, HTML entities and JSON string escapes, on the selection or the word at the
   caret. A result that is not text for the document (bytes, characters its encoding lacks) opens

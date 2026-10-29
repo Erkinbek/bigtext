@@ -192,6 +192,7 @@ enum ConfirmAction {
     LinesOnDisk { doc: u64, sel: Arc<lines_edit::LineSel>, keep: bool },
     TextOpOnDisk { doc: u64, op: bigtext::textops::Op, range: std::ops::Range<u64> },
     ColumnEditOnDisk { doc: u64, from: u64, cells: (u32, u32), gen: bigtext::column_edit::ColumnGen },
+    SortOnDisk { doc: u64, spec: bigtext::extsort::SortSpec, eol: Vec<u8> },
 }
 
 #[derive(Default)]
@@ -1298,6 +1299,7 @@ impl BigTextApp {
                         ConfirmAction::LinesOnDisk { .. } => "Delete on disk",
                         ConfirmAction::TextOpOnDisk { .. } => "Change on disk",
                         ConfirmAction::ColumnEditOnDisk { .. } => "Fill on disk",
+                        ConfirmAction::SortOnDisk { .. } => "Sort on disk",
                     };
                     if ui.button(i18n::tr(primary)).clicked() {
                         decision = Some(1);
@@ -1391,6 +1393,11 @@ impl BigTextApp {
             (1, ConfirmAction::LowSpace(l)) => self.resume(l.resume, false),
             (1, ConfirmAction::LinesOnDisk { doc, sel, keep }) => self.lines_on_disk(doc, sel, keep, checked),
             (1, ConfirmAction::ColumnEditOnDisk { doc, from, cells, gen }) => self.column_edit_on_disk(doc, from, cells, gen, checked),
+            (1, ConfirmAction::SortOnDisk { doc, spec, eol }) => {
+                if let Some(path) = self.docs.iter().find(|d| d.id == doc).and_then(|d| d.path.clone()) {
+                    self.start_write(doc, path, ops::WriteSpec::Sort { spec, eol }, checked);
+                }
+            }
             (1, ConfirmAction::TextOpOnDisk { doc, op, range }) => {
                 if let Some(path) = self.docs.iter().find(|d| d.id == doc).and_then(|d| d.path.clone()) {
                     self.start_write(doc, path, ops::WriteSpec::TextOp { op, range }, checked);

@@ -1135,4 +1135,17 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Fill on disk", "Заполнить на диске", "Diskda to'ldirish"],
     ["Filling the column on disk…", "Заполнение столбца на диске…", "Ustun diskda to'ldirilmoqda…"],
     ["Filled the column on {n} lines in {secs}s.", "Столбец заполнен в {n} строках за {secs} с.", "Ustun {n} ta qatorda {secs} soniyada to'ldirildi."],
+    // External sort.
+    ["Count duplicate lines…", "Подсчитать повторяющиеся строки…", "Takrorlanuvchi qatorlarni sanash…"],
+    ["Line counts of {name}", "Повторы строк в {name}", "{name} qatorlari soni"],
+    ["Counting duplicate lines", "Подсчёт повторяющихся строк", "Takrorlanuvchi qatorlar sanalmoqda"],
+    ["{n} different lines, most frequent first.", "Различных строк: {n}, сначала самые частые.", "{n} ta har xil qator, eng ko'pi birinchi."],
+    ["The lines are sorted and each kept once", "Строки сортируются, и каждая остаётся один раз", "Qatorlar saralanadi va har biri bir martadan qoladi"],
+    ["The lines are sorted", "Строки сортируются", "Qatorlar saralanadi"],
+    ["{what} through temporary files ({size}); the result atomically replaces “{file}” and undo will not be available.", "{what} через временные файлы ({size}); результат атомарно заменит «{file}», отмена будет недоступна.", "{what} vaqtinchalik fayllar orqali ({size}); natija «{file}» ni atomar almashtiradi, bekor qilib bo'lmaydi."],
+    ["Sorting a selection works on up to {size}; with nothing selected the whole document is sorted on disk.", "Сортировка выделения работает максимум на {size}; без выделения весь документ сортируется на диске.", "Tanlangan qismni saralash {size} gacha ishlaydi; hech narsa tanlanmasa butun hujjat diskda saralanadi."],
+    ["Sort on disk", "Сортировать на диске", "Diskda saralash"],
+    ["Sorting", "Сортировка", "Saralash"],
+    ["Sorting on disk…", "Сортировка на диске…", "Diskda saralanmoqda…"],
+    ["Sorted into {n} lines; wrote {size} in {secs}s.", "Отсортировано, строк: {n}; записано {size} за {secs} с.", "{n} ta qatorga saralandi; {size} {secs} soniyada yozildi."],
 ];

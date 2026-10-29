@@ -46,6 +46,8 @@ pub enum WriteSpec {
     TextOp { op: bigtext::textops::Op, range: std::ops::Range<u64> },
     /// A column filled from a line to the end of the file.
     ColumnEdit { from: u64, cells: (u32, u32), gen: bigtext::column_edit::ColumnGen },
+    /// The lines sorted on disk.
+    Sort { spec: bigtext::extsort::SortSpec, eol: Vec<u8> },
 }
 
 /// What a write to disk does, for its progress label and the message when it is done.
@@ -63,6 +65,7 @@ pub enum WriteKind {
     Lines,
     TextOp(bigtext::textops::Op),
     ColumnEdit,
+    Sort,
 }
 
 pub struct TempWritten {
@@ -155,6 +158,7 @@ impl BigTextApp {
             WriteSpec::Lines { .. } => WriteKind::Lines,
             WriteSpec::TextOp { op, .. } => WriteKind::TextOp(*op),
             WriteSpec::ColumnEdit { .. } => WriteKind::ColumnEdit,
+            WriteSpec::Sort { .. } => WriteKind::Sort,
             WriteSpec::Identity | WriteSpec::Eol(_) => WriteKind::Save,
         };
         let cancel = CancelToken::new();
@@ -167,6 +171,7 @@ impl BigTextApp {
             WriteKind::Lines => "Deleting lines",
             WriteKind::TextOp(op) => op.name(),
             WriteKind::ColumnEdit => "Column editor",
+            WriteKind::Sort => "Sorting",
         };
         d.save_job = Some(SaveJob { cancel: cancel.clone(), progress: progress.clone(), label: super::i18n::tr(label).into() });
         let snap = d.buf.snapshot();
@@ -200,6 +205,7 @@ impl BigTextApp {
                 WriteSpec::Lines { sel, keep } => Transform::Lines { keep: &|l: &[u8]| sel.shows(l) == *keep },
                 WriteSpec::TextOp { op, range } => Transform::TextOp { op: *op, range: range.clone() },
                 WriteSpec::ColumnEdit { from, cells, gen } => Transform::ColumnEdit { from: *from, cells: *cells, gen },
+                WriteSpec::Sort { spec, eol } => Transform::Sort { spec: *spec, eol },
             };
             let r = save::write_temp(&snap, &target, transform, &cancel, &progress);
             drop(snap);
@@ -233,6 +239,7 @@ impl BigTextApp {
             WriteKind::Lines => tr("Deleting lines on disk…").into(),
             WriteKind::TextOp(op) => trf("{op} on disk…", &[("op", tr(op.name()))]),
             WriteKind::ColumnEdit => tr("Filling the column on disk…").into(),
+            WriteKind::Sort => tr("Sorting on disk…").into(),
         });
         let original = d.path.clone();
         jobs::spawn("finalize", move || {
@@ -300,6 +307,7 @@ impl BigTextApp {
                         d.table_state.columns_deleted(cols);
                         trf("Deleted {cols} from all {n} lines; wrote {size} in {secs}s.", &[("cols", &super::columns::count_label(cols.len())), ("n", &f.stats.count.to_string()), ("size", &human_bytes(f.stats.bytes_out)), ("secs", &format!("{secs:.2}"))])
                     }
+                    WriteKind::Sort => trf("Sorted into {n} lines; wrote {size} in {secs}s.", &[("n", &f.stats.count.to_string()), ("size", &human_bytes(d.buf.len())), ("secs", &format!("{secs:.2}"))]),
                     WriteKind::ColumnEdit => trf("Filled the column on {n} lines in {secs}s.", &[("n", &f.stats.count.to_string()), ("secs", &format!("{secs:.2}"))]),
                     WriteKind::TextOp(op) => trf("{op}: wrote {size} in {secs}s.", &[("op", tr(op.name())), ("size", &human_bytes(f.stats.bytes_out)), ("secs", &format!("{secs:.2}"))]),
                     WriteKind::Lines => trf("Kept {n} lines; wrote {size} in {secs}s.", &[("n", &f.stats.count.to_string()), ("size", &human_bytes(f.stats.bytes_out)), ("secs", &format!("{secs:.2}"))]),

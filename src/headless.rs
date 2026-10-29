@@ -90,6 +90,12 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         changed columns, and A's columns with \"old → new\" where a value
         changed. Columns pair up by header name. Exit code 0 when they are the
         same, 1 when they differ.
+  sort [-r] [-n] [-i] [-u] FILE [-o OUT]
+        The lines sorted (-r reversed, -n by the number at their start, -i
+        ignoring case, -u each once), of a file of any size (temporary runs
+        and a merge).
+  uniq [-c] FILE [-o OUT]
+        Each line once, sorted; with -c, count<TAB>line, most frequent first.
   transform --op upper|lower|trim|tabs|untabs FILE [-o OUT]
         The file in UPPERCASE or lowercase, with trailing white space trimmed,
         tabs as spaces or leading spaces as tabs (width 4), streamed.
@@ -129,7 +135,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 22] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format"];
+const COMMANDS: [&str; 24] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format", "sort", "uniq"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -696,6 +702,26 @@ fn cmd_join(args: &[String], out: &mut dyn Write) -> Res<i32> {
     Ok(0)
 }
 
+fn cmd_sort(args: &[String], out: &mut dyn Write, uniq: bool) -> Res<i32> {
+    use crate::extsort::{SortMode, SortSpec};
+    let a = Args::parse(args, &["-r", "-n", "-i", "-u", "-c"], &["-o", "--output"])?;
+    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let mode = match (uniq, a.flag(&["-c"]), a.flag(&["-u"])) {
+        (true, true, _) => SortMode::Count,
+        (true, false, _) | (false, _, true) => SortMode::Unique,
+        _ => SortMode::Sort,
+    };
+    let spec = SortSpec { reverse: a.flag(&["-r"]), numeric: a.flag(&["-n"]), ignore_case: a.flag(&["-i"]), mode, counts_csv: false };
+    let (buf, det) = open(Path::new(file))?;
+    let snap = buf.snapshot();
+    let eol = snap.codec.encode(if det.line_ending == crate::encoding::LineEnding::CrLf { "\r\n" } else { "\n" });
+    with_output(a.opt(&["-o", "--output"]), out, |w| {
+        crate::extsort::sort_to(&snap, spec, &eol, w, &CancelToken::new(), None)?;
+        Ok(())
+    })?;
+    Ok(0)
+}
+
 /// Streams the whole file through a text operation.
 fn text_op(file: &str, op: crate::textops::Op, to: Option<&str>, out: &mut dyn Write) -> Res<i32> {
     let (buf, _) = open(Path::new(file))?;
@@ -1118,6 +1144,8 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         "only-in" => cmd_only_in(rest, out),
         "diff-table" => cmd_diff_table(rest, out),
         "transform" => cmd_transform(rest, out),
+        "sort" => cmd_sort(rest, out, false),
+        "uniq" => cmd_sort(rest, out, true),
         "format" => cmd_format(rest, out),
         "help" | "h" => {
             let _ = write!(out, "{USAGE}");
@@ -1301,6 +1329,16 @@ mod tests {
         assert_eq!(run_args(&["diff-table", &a, &b, "--key", "1", "--key-b", "3", "--all"]).1.lines().nth(2), Some("same,2,,banana,7"));
         assert_eq!(run_args(&["diff-table", &a, &a, "--key", "id"]).0, 0);
         assert_eq!(run_args(&["diff-table", &a, &b]).0, 2);
+    }
+
+    #[test]
+    fn sort_and_uniq() {
+        let d = tempfile::tempdir().unwrap();
+        let f = file(&d, "s.txt", b"pear\napple\n10\n9\napple\n");
+        assert_eq!(run_args(&["sort", &f]).1, "10\n9\napple\napple\npear\n");
+        assert_eq!(run_args(&["sort", "-n", "-r", &f]).1.lines().next(), Some("10"));
+        assert_eq!(run_args(&["sort", "-u", &f]).1, "10\n9\napple\npear\n");
+        assert_eq!(run_args(&["uniq", "-c", &f]).1, "2\tapple\n1\t10\n1\t9\n1\tpear\n");
     }
 
     #[test]

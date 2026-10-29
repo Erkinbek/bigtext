@@ -27,6 +27,8 @@ pub enum Op {
     SpacesToTabs,
     JsonPretty,
     JsonMinify,
+    /// Each line once with how many times it occurs, most frequent first (opens a new table).
+    CountDuplicates,
     B64Decode,
     B64Encode,
     UrlDecode,
@@ -40,12 +42,13 @@ pub enum Op {
 }
 
 impl Op {
-    pub const ALL: [Op; 22] = [
+    pub const ALL: [Op; 23] = [
         Op::SortAsc,
         Op::SortDesc,
         Op::SortNumeric,
         Op::Reverse,
         Op::Unique,
+        Op::CountDuplicates,
         Op::Upper,
         Op::Lower,
         Op::TrimTrailing,
@@ -72,6 +75,7 @@ impl Op {
             Op::SortNumeric => "Sort lines by number",
             Op::Reverse => "Reverse line order",
             Op::Unique => "Remove duplicate lines",
+            Op::CountDuplicates => "Count duplicate lines…",
             Op::Upper => "UPPERCASE",
             Op::Lower => "lowercase",
             Op::TrimTrailing => "Trim trailing whitespace",
@@ -103,7 +107,7 @@ impl Op {
 
     /// Operations that work line by line (separators between groups in menus).
     pub fn is_line_op(self) -> bool {
-        matches!(self, Op::SortAsc | Op::SortDesc | Op::SortNumeric | Op::Reverse | Op::Unique)
+        matches!(self, Op::SortAsc | Op::SortDesc | Op::SortNumeric | Op::Reverse | Op::Unique | Op::CountDuplicates)
     }
 }
 
@@ -169,6 +173,21 @@ pub fn apply(op: Op, text: &str, tab_width: usize) -> Result<String, String> {
             let mut seen = HashSet::new();
             let v: Vec<&str> = lines.into_iter().filter(|l| seen.insert(*l)).collect();
             join(&v, eol, trailing)
+        }
+        Op::CountDuplicates => {
+            let mut counts: Vec<(&str, usize)> = Vec::new();
+            let mut at: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+            for l in lines {
+                match at.get(l) {
+                    Some(&i) => counts[i].1 += 1,
+                    None => {
+                        at.insert(l, counts.len());
+                        counts.push((l, 1));
+                    }
+                }
+            }
+            counts.sort_by_key(|c| std::cmp::Reverse(c.1));
+            join(&counts.iter().map(|(l, n)| format!("{n}\t{l}")).collect::<Vec<_>>(), eol, trailing)
         }
         Op::Upper => text.to_uppercase(),
         Op::Lower => text.to_lowercase(),

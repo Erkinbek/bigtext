@@ -40,6 +40,8 @@ pub enum Transform<'a> {
     TextOp { op: crate::textops::Op, range: std::ops::Range<u64> },
     /// A column of cells filled from the line at `from` to the end.
     ColumnEdit { from: u64, cells: (u32, u32), gen: &'a crate::column_edit::ColumnGen },
+    /// The lines sorted (or unique) through temporary runs, each ending with `eol`.
+    Sort { spec: crate::extsort::SortSpec, eol: &'a [u8] },
 }
 
 const TRANSCODE_STEP: u64 = 4 * 1024 * 1024;
@@ -291,6 +293,10 @@ pub fn write_temp(buf: &TextBuf, target: &Path, transform: Transform, cancel: &C
                 // The text's own problem (not JSON, not valid in its encoding), said as it is.
                 Err(e) if e.kind() == io::ErrorKind::InvalidData => return Err(SaveError::Io(e.to_string())),
                 Err(e) => return Err(io(e)),
+            },
+            Transform::Sort { spec, eol } => match crate::extsort::sort_to(buf, spec, eol, &mut w, cancel, Some(progress)).map_err(io)? {
+                Some(n) => ReplaceStats { count: n, bytes_in: len, bytes_out: 0 },
+                None => return Err(SaveError::Cancelled),
             },
             Transform::ColumnEdit { from, cells, gen } => match crate::column_edit::column_edit_to(buf, from, cells, gen, &mut w, cancel, Some(progress)).map_err(io)? {
                 Some(n) => ReplaceStats { count: n, bytes_in: len, bytes_out: 0 },

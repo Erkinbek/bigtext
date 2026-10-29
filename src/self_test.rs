@@ -219,6 +219,9 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("patch-me.txt"), &base)?;
+    std::fs::write(dir.join("dups.txt"), "apple\npear\napple\nfig\napple\npear\n")?;
+    let block: String = (0..10_000).map(|i| format!("k{:04}\n", (i * 7919) % 10_000)).collect();
+    std::fs::write(dir.join("sort-big.txt"), block.repeat(1150))?;
     std::fs::write(dir.join("cols.txt"), "aaaa\nbbbb\ncccc\ndddd\n")?;
     std::fs::write(dir.join("codec.txt"), CODEC_TXT)?;
     std::fs::write(dir.join("big-case.txt"), b"abc def\n".repeat(9_000_000))?;
@@ -1545,6 +1548,62 @@ impl SelfTest {
                         return if waited { Step::Fail(format!("disk {disk:?}")) } else { Step::Wait };
                     }
                     Step::Next
+                }
+            }
+        }));
+        s("Count duplicate lines opens a table, most frequent first", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("dups.txt"));
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if !wait_ready(app) {
+                    return Step::Wait;
+                }
+                app.text_op(bigtext::textops::Op::CountDuplicates);
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let Some(i) = app.docs.iter().position(|d| d.title == "Line counts of dups.txt" && d.is_ready()) else {
+                return if c.waited() > Duration::from_secs(8) { Step::Fail("no counts table".into()) } else { Step::Wait };
+            };
+            app.active = i;
+            let t = text(app);
+            check(t == "count,line\n3,apple\n2,pear\n1,fig\n" && doc(app).table, format!("{t:?}"))
+        }));
+        s("Remove duplicate lines on 69 MB: sorted on disk through temporary runs", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("sort-big.txt"));
+                return Step::Wait;
+            }
+            let waited = c.waited() > Duration::from_secs(60);
+            match c.mark {
+                0 => {
+                    if !wait_ready(app) {
+                        return Step::Wait;
+                    }
+                    app.text_op(bigtext::textops::Op::Unique);
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    if !app.test_has_confirm() {
+                        return if waited { Step::Fail("no question before sorting on disk".into()) } else { Step::Wait };
+                    }
+                    app.test_accept_confirm();
+                    c.mark = 2;
+                    Step::Wait
+                }
+                _ => {
+                    let d = doc(app);
+                    if d.save_job.is_some() || !d.is_ready() || d.buf.len() != 60_000 {
+                        return if waited { Step::Fail(format!("{} bytes", doc(app).buf.len())) } else { Step::Wait };
+                    }
+                    let disk = std::fs::read_to_string(c.file("sort-big.txt")).unwrap_or_default();
+                    let want: String = (0..10_000).map(|i| format!("k{i:04}\n")).collect();
+                    let id = d.id;
+                    app.test_close(id);
+                    check(disk == want, format!("{} bytes on disk", disk.len()))
                 }
             }
         }));

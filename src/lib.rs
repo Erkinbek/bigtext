@@ -16,6 +16,7 @@ pub mod decompress;
 pub mod diff;
 pub mod encoding;
 pub mod extract;
+pub mod extsort;
 pub mod fields;
 pub mod file;
 pub mod gaps;

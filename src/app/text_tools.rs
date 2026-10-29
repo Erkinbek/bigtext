@@ -92,6 +92,10 @@ impl BigTextApp {
             return;
         }
         let (s, e) = d.selection();
+        if op == Op::CountDuplicates {
+            self.count_duplicates();
+            return;
+        }
         let range = match (s == e, op.is_codec_op()) {
             (false, _) => s..e,
             (true, false) => d.min_caret()..d.buf.len(),
@@ -105,8 +109,33 @@ impl BigTextApp {
             },
         };
         if range.end - range.start > TEXT_OP_MAX {
+            let whole = range.start <= d.min_caret() && range.end == d.buf.len();
+            if matches!(op, Op::SortAsc | Op::SortDesc | Op::SortNumeric | Op::Unique) && whole && d.path.is_some() {
+                // Sorted on disk through temporary runs.
+                let spec = bigtext::extsort::SortSpec {
+                    reverse: op == Op::SortDesc,
+                    numeric: op == Op::SortNumeric,
+                    mode: if op == Op::Unique { bigtext::extsort::SortMode::Unique } else { bigtext::extsort::SortMode::Sort },
+                    ..Default::default()
+                };
+                let what = if op == Op::Unique { tr("The lines are sorted and each kept once") } else { tr("The lines are sorted") };
+                let message = format!(
+                    "{}{}",
+                    trf("{what} through temporary files ({size}); the result atomically replaces “{file}” and undo will not be available.", &[("what", what), ("size", &human_bytes(range.end - range.start)), ("file", &d.title)]),
+                    if d.is_modified() { tr(" Your unsaved edits are included.") } else { "" }
+                );
+                let eol = d.buf.codec.encode(if d.line_ending == bigtext::encoding::LineEnding::CrLf { "\r\n" } else if d.buf.codec.nl == bigtext::encoding::NlByte::Cr { "\r" } else { "\n" });
+                let doc = d.id;
+                self.confirm = Some(super::Confirm {
+                    title: tr(op.name()).into(),
+                    message,
+                    action: super::ConfirmAction::SortOnDisk { doc, spec, eol },
+                    checkbox: Some((tr("Keep a backup (.bak)").into(), true)),
+                });
+                return;
+            }
             if !op.streams() {
-                self.error = Some(trf("Sorting and removing duplicates work on up to {size}. Select a smaller part.", &[("size", &human_bytes(TEXT_OP_MAX))]));
+                self.error = Some(trf("Sorting a selection works on up to {size}; with nothing selected the whole document is sorted on disk.", &[("size", &human_bytes(TEXT_OP_MAX))]));
             } else if d.path.is_none() {
                 self.error = Some(trf("Text over {size} is changed on disk: save the document to a file first.", &[("size", &human_bytes(TEXT_OP_MAX))]));
             } else {
@@ -236,5 +265,45 @@ impl BigTextApp {
         if !open {
             self.text_result = None;
         }
+    }
+}
+
+impl BigTextApp {
+    /// Edit → Text → Count duplicate lines…: each line once with its count, most frequent first,
+    /// as a new table (any size).
+    pub(crate) fn count_duplicates(&mut self) {
+        let Some(d) = self.docs.get(self.active) else { return };
+        if !d.is_ready() {
+            return;
+        }
+        let (snap, title) = (d.buf.snapshot(), trf("Line counts of {name}", &[("name", &d.title)]));
+        let target = bigtext::decompress::temp_file("line-counts.csv");
+        self.spawn_task(tr("Counting duplicate lines").into(), move |progress, cancel| {
+            let res = (|| {
+                if let Some(dir) = target.parent() {
+                    std::fs::create_dir_all(dir)?;
+                }
+                let mut w = std::io::BufWriter::with_capacity(8 << 20, std::fs::File::create(&target)?);
+                let spec = bigtext::extsort::SortSpec { mode: bigtext::extsort::SortMode::Count, counts_csv: true, ..Default::default() };
+                let n = bigtext::extsort::sort_to(&snap, spec, b"\n", &mut w, cancel, Some(progress))?;
+                std::io::Write::flush(&mut w)?;
+                Ok::<_, std::io::Error>(n)
+            })();
+            match res {
+                Ok(Some(n)) => super::tasks::TaskOutcome::TempTable(Box::new(super::tasks::TempTable {
+                    path: target,
+                    title,
+                    message: trf("{n} different lines, most frequent first.", &[("n", &super::filter_panel::fmt_count(n))]),
+                })),
+                Ok(None) => {
+                    bigtext::decompress::remove_temp(&target);
+                    super::tasks::TaskOutcome::Cancelled
+                }
+                Err(e) => {
+                    bigtext::decompress::remove_temp(&target);
+                    super::tasks::TaskOutcome::Failed(e.to_string())
+                }
+            }
+        });
     }
 }
