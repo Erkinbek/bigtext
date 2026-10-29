@@ -88,6 +88,8 @@ pub(crate) enum StatusAct {
     ToggleReadOnly,
     CopyPath,
     Fields(StatusFields),
+    /// The skew of a link by time, in milliseconds.
+    Skew(i64),
 }
 
 /// A field that does something when clicked.
@@ -208,6 +210,15 @@ impl BigTextApp {
                     if d.follow {
                         let label = if d.rotations > 0 { format!("{} ×{}", tr("FOLLOW"), d.rotations + 1) } else { tr("FOLLOW").to_string() };
                         ui.label(RichText::new(label).color(super::theme::ok_text(ui))).on_hover_text(trf("Following the file; it was rotated {n} times so far", &[("n", &d.rotations.to_string())]));
+                        ui.separator();
+                    }
+                    if let Some(l) = d.link.as_ref().filter(|l| l.mode == super::time_link::LinkMode::Time) {
+                        let mut secs = l.skew_ms as f64 / 1000.0;
+                        let r = ui.add(egui::DragValue::new(&mut secs).speed(0.1).suffix(" s").max_decimals(3));
+                        if r.on_hover_text(tr("Added to this log's times before they are looked up in the linked one")).changed() {
+                            acts.push(StatusAct::Skew((secs * 1000.0).round() as i64));
+                        }
+                        ui.label(tr("Skew"));
                         ui.separator();
                     }
                     if d.table && !d.hex {
@@ -357,6 +368,12 @@ impl BigTextApp {
             StatusAct::CopyPath => {
                 if let Some(p) = self.docs.get(self.active).and_then(|d| d.unpacked_from.as_deref().or(d.path.as_deref())) {
                     ctx.copy_text(file::display_path(p));
+                }
+            }
+            StatusAct::Skew(ms) => {
+                if let Some(l) = self.docs.get_mut(self.active).and_then(|d| d.link.as_mut()) {
+                    l.skew_ms = ms;
+                    l.synced = None;
                 }
             }
             StatusAct::Fields(f) => {

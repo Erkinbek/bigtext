@@ -269,6 +269,13 @@ All notable changes to BigText. Each release on
 
 ### Logs
 
+- **Logs in step**: **Search → Go to this time in all tabs** (Ctrl+Alt+T) moves every other open
+  text tab to the first line at or after the caret line's time, marked ◆ in the gutter; when
+  both logs give UTC offsets the time is converted. **View → Link scrolling with ▸** (or a tab's
+  menu) shows the active log and another one side by side, the second following the first while
+  you scroll or step (F8) **by time**, **by line number** or **by position in the file**; by time,
+  a **Skew** in the status bar shifts the lookup for clocks that disagree. Lookups run on a worker,
+  the latest one winning.
 - **Context around filter matches**: **±N** in the filter view's header shows N lines before
   and after each match, dimmed, with a rule between groups (like `grep -C`), and **Whole entry**
   keeps each log entry together — the stack trace under an ERROR line, or, for a match inside a

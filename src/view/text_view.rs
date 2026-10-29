@@ -421,6 +421,12 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             let glyph = if env.diff.as_ref().is_some_and(|o| o.added) { "+" } else { "−" };
             painter.text(pos2(gutter_rect.left() + 2.0, y), Align2::LEFT_TOP, glyph, font.clone(), diff_color.to_opaque());
         }
+        if starts_line && doc.time_mark == Some((doc.version, row.start)) {
+            // ◆: where Go to this time in all tabs put this tab.
+            let (c, r) = (pos2(gutter_rect.left() + 5.5, y + m.rh * 0.5), (m.rh * 0.32).max(3.0));
+            let points = vec![pos2(c.x, c.y - r), pos2(c.x + r, c.y), pos2(c.x, c.y + r), pos2(c.x - r, c.y)];
+            painter.add(egui::Shape::convex_polygon(points, role(Color32::from_rgb(230, 180, 30), Tone::Found, visuals.dark_mode), egui::Stroke::NONE));
+        }
         if starts_line && doc.bookmarks.binary_search(&row.start).is_ok() {
             let r = Rect::from_min_size(pos2(gutter_rect.left() + 3.0, y + m.rh * 0.2), egui::vec2(5.0, m.rh * 0.6));
             painter.rect_filled(r, 2.0, visuals.selection.stroke.color);

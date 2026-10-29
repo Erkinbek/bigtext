@@ -53,6 +53,7 @@ pub mod status_bar;
 pub mod tabs;
 pub mod tasks;
 pub mod theme;
+pub mod time_link;
 pub mod text_tools;
 pub mod time_range;
 pub mod timeline;
@@ -128,6 +129,7 @@ pub enum Msg {
     TextOp(Box<text_tools::TextOpDone>),
     CsvRewritten(Box<csv_tools::CsvRewritten>),
     TimeFound { doc: u64, version: u64, result: Result<u64, bigtext::timestamp::TimeError> },
+    Aligned(Box<time_link::Aligned>),
     LevelFound(Box<levels::LevelFound>),
     CursorFound(Box<multi_cursor::CursorFound>),
     BracketJump(Box<match_bracket::BracketJump>),
@@ -339,6 +341,13 @@ pub struct BigTextApp {
     results_running: bool,
     /// The window is full screen (as the system reported it this frame).
     pub fullscreen: bool,
+    /// The latest Go to this time in all tabs (older answers are dropped).
+    align_seq: u64,
+    /// The latest time lookup of a linked view, and the job doing it.
+    link_seq: u64,
+    link_job: Option<(CancelToken, Instant)>,
+    /// The mode View → Link scrolling links with.
+    pub link_mode: time_link::LinkMode,
 }
 
 /// The narrowest View → Wrap at column.
@@ -559,6 +568,10 @@ impl BigTextApp {
             announcement: None,
             results_running: false,
             fullscreen: false,
+            align_seq: 0,
+            link_seq: 0,
+            link_job: None,
+            link_mode: Default::default(),
         };
         app.search.query.case_sensitive = true;
         if persist {
@@ -997,6 +1010,7 @@ impl BigTextApp {
                 Msg::TextOp(r) => self.on_text_op(*r),
                 Msg::CsvRewritten(c) => self.on_csv_rewritten(*c),
                 Msg::TimeFound { doc, version, result } => self.on_time_found(doc, version, result),
+                Msg::Aligned(a) => self.on_aligned(*a),
                 Msg::LevelFound(f) => self.on_level_found(*f),
                 Msg::CursorFound(f) => self.on_cursor_found(*f),
                 Msg::BracketJump(j) => self.on_bracket_jump(*j),
@@ -1784,12 +1798,28 @@ impl eframe::App for BigTextApp {
         let mut actions = Vec::new();
         let mut table_actions = Vec::new();
         let hl = self.view_highlights(ui.visuals().dark_mode);
+        let link_partner = self.linked_partner();
         let font_size = &mut self.settings.font_size;
         let syntax = self.settings.syntax;
         let show_ws = self.settings.show_ws;
         let show_gutter = self.settings.show_gutter;
         let (wrap_column, ruler) = (self.settings.wrap_column.map(usize::from), self.settings.ruler.map(usize::from));
         egui::CentralPanel::no_frame().show(ui, |ui| {
+            // Two linked logs side by side; the right one follows and takes no keys.
+            if let Some(pi) = link_partner {
+                let (a, b) = time_link::pair_mut(&mut self.docs, self.active, pi);
+                let full = ui.available_rect_before_wrap();
+                let mid = full.center().x.round();
+                let left = egui::Rect::from_min_max(full.min, egui::pos2(mid - 2.0, full.bottom()));
+                let right = egui::Rect::from_min_max(egui::pos2(mid + 2.0, full.top()), full.max);
+                ui.painter().vline(mid, full.y_range(), ui.visuals().widgets.noninteractive.bg_stroke);
+                for (d, rect, focus) in [(a, left, !modal_open), (b, right, false)] {
+                    let lang = if syntax { d.effective_lang() } else { crate::view::highlight::Lang::Plain };
+                    let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus, lang, pane: 0, show_ws, show_gutter, wrap_column, ruler, diff: None };
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| text_view::show(ui, d, &mut env));
+                }
+                return;
+            }
             if let Some(d) = self.docs.get_mut(self.active) {
                 if d.hex && d.is_ready() {
                     hex_view::show(ui, d, *font_size, !modal_open);
@@ -1838,6 +1868,7 @@ impl eframe::App for BigTextApp {
         for a in table_actions {
             self.on_table_action(a);
         }
+        self.sync_link(&ctx);
         if self.docs.get_mut(self.active).is_some_and(|d| std::mem::take(&mut d.table_state.layout_changed)) {
             self.persist_state();
         }

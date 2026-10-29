@@ -85,6 +85,10 @@ Single self-contained binary, no runtime dependencies.
 - **Scrollbar marks**: Find All matches, filter lines, bookmarks and the differences from
   File → Compare are marked on the vertical scrollbar, so you see where they cluster in a 50 GB
   file at a glance.
+- **Logs in step**: **Search → Go to this time in all tabs** (Ctrl+Alt+T) moves every other open
+  log to the caret line's time (marked ◆; UTC offsets are converted when both logs give them), and
+  **View → Link scrolling with ▸** shows two logs side by side, the second following the first
+  by time (with a skew in the status bar), line number or position in the file.
 - **Go to time** (Ctrl+Shift+T): type `14:32:05` or `2024-05-01 14:32:05` to jump to the first
   log line at or after that time. A binary search over byte offsets reads only a few hundred
   KB, so it is instant even before indexing finishes. Recognises ISO 8601, `DD.MM.YYYY`,
@@ -426,6 +430,7 @@ times). Exit codes: 0 done, 1 nothing matched, 2 error.
 | Alt+Left / Alt+Right | Back to where the caret jumped from / forward again (also the mouse's side buttons) |
 | Ctrl+G / Ctrl+Shift+G | Go to line / go to byte offset (decimal or `0x` hex; also `50%`, `+100` / `-100` from the caret, `$-100` from the end) |
 | Ctrl+Shift+T | Go to time (first log line at or after a timestamp) |
+| Ctrl+Alt+T | Go to this time in all tabs |
 | Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) | Undo / redo |
 | Ctrl+X / Ctrl+C / Ctrl+V | Cut / copy / paste |
 | Ctrl+A | Select all |

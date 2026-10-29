@@ -501,6 +501,17 @@ pub fn find_time(buf: &TextBuf, target: Stamp, cancel: &CancelToken) -> Result<u
     Ok(len)
 }
 
+/// [`find_time`] for a time taken from another file: when both give their UTC offset, `target` is
+/// moved into this file's offset first.
+pub fn find_time_utc(buf: &TextBuf, target: Stamp, cancel: &CancelToken) -> Result<u64, TimeError> {
+    let here = stamped_line(buf, 0, buf.len(), cancel).and_then(|x| x.2.tz);
+    let target = match (target.tz, here) {
+        (Some(_), Some(tz)) => Stamp { ms: target.utc_ms() + tz as i64 * 60_000, tz: Some(tz), ..target },
+        _ => target,
+    };
+    find_time(buf, target, cancel)
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -649,5 +660,25 @@ mod tests {
         let mut t = TextBuf::new(src, idx, Codec::utf8());
         t.blocking = true;
         assert_eq!(find_time(&t, parse("10:00:00").unwrap(), &CancelToken::new()), Err(TimeError::NoTimestamps));
+    }
+
+    #[test]
+    fn times_from_another_zone_are_converted() {
+        let codec = Codec::utf8();
+        let text = "2024-05-01T10:00:00+05:00 a\n2024-05-01T10:30:00+05:00 b\n2024-05-01T11:00:00+05:00 c\n";
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(text.as_bytes()).unwrap();
+        f.flush().unwrap();
+        let src = Arc::new(Source::open(f.path(), OpenMode::Auto).unwrap());
+        let idx = index::build_blocking(&src, codec);
+        let mut buf = TextBuf::new(src, idx, codec);
+        buf.blocking = true;
+        let cancel = CancelToken::new();
+        // 05:30 UTC is 10:30 in this file.
+        let utc = parse("2024-05-01T05:30:00Z x").unwrap();
+        assert_eq!(find_time_utc(&buf, utc, &cancel), Ok(28));
+        // Without a zone on one side, the time is taken as written.
+        let plain = parse("2024-05-01 11:00:00 x").unwrap();
+        assert_eq!(find_time_utc(&buf, plain, &cancel), Ok(56));
     }
 }

@@ -227,6 +227,10 @@ pub struct Document {
     pub restore: Option<Restore>,
     /// What was remembered for the file, put back once it has opened.
     pub pending_opts: Option<super::extras::FileOpts>,
+    /// View → Link scrolling: the tab that follows this one.
+    pub link: Option<super::time_link::Link>,
+    /// The line Go to this time in all tabs moved to (with the version it is for).
+    pub time_mark: Option<(u64, u64)>,
     /// The encoding chosen with File → Reopen with encoding (`None`: detected).
     pub forced_enc: Option<bigtext::encoding::Encoding>,
     /// Read-only because of the file (its attribute, an unpacked copy), not by choice.
@@ -363,6 +367,8 @@ impl Document {
             table_state: Default::default(),
             restore: None,
             pending_opts: None,
+            link: None,
+            time_mark: None,
             forced_enc: None,
             file_read_only: false,
             last_indexed: 0,

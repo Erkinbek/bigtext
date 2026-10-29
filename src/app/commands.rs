@@ -122,6 +122,7 @@ pub enum Cmd {
     Fullscreen,
     Zen,
     LineNumbers,
+    TimeAllTabs,
     Theme(super::theme::Theme),
     ColourBlind,
     /// Interface scale, per cent.
@@ -138,7 +139,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 105] = [
+    pub const ALL: [Cmd; 106] = [
         Cmd::New,
         Cmd::Open,
         Cmd::Save,
@@ -229,6 +230,7 @@ impl Cmd {
         Cmd::Fullscreen,
         Cmd::Zen,
         Cmd::LineNumbers,
+        Cmd::TimeAllTabs,
         Cmd::Highlights,
         Cmd::LevelBar,
         Cmd::ZoomIn,
@@ -352,6 +354,7 @@ impl Cmd {
             Cmd::GotoLine => "Go to line…",
             Cmd::GotoOffset => "Go to byte offset…",
             Cmd::GotoTime => "Go to time…",
+            Cmd::TimeAllTabs => "Go to this time in all tabs",
             Cmd::Timeline => "Time histogram",
             Cmd::TimeGaps => "Find time gaps…",
             Cmd::Patterns => "Message patterns…",
@@ -422,7 +425,7 @@ impl Cmd {
             | Cmd::CopyHtml
             | Cmd::ReadOnly
             | Cmd::Text(_) => "Edit",
-            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::NextDiff | Cmd::PrevDiff | Cmd::OnlyIn | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::CheckJson | Cmd::MatchBracket => "Search",
+            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::NextDiff | Cmd::PrevDiff | Cmd::OnlyIn | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::TimeAllTabs | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::CheckJson | Cmd::MatchBracket => "Search",
             Cmd::Palette | Cmd::Shortcuts | Cmd::ExportSettings | Cmd::ImportSettings | Cmd::Portable | Cmd::UnpackDir | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
@@ -472,6 +475,7 @@ impl Cmd {
             Cmd::GotoLine => key(CTRL, Key::G),
             Cmd::GotoOffset => key(CTRL_SHIFT, Key::G),
             Cmd::GotoTime => key(CTRL_SHIFT, Key::T),
+            Cmd::TimeAllTabs => key(CTRL_ALT, Key::T),
             Cmd::Timeline => key(CTRL_SHIFT, Key::H),
             Cmd::MatchBracket => key(CTRL, Key::CloseBracket),
             Cmd::WordWrap => key(Modifiers::ALT, Key::Z),
@@ -721,6 +725,7 @@ impl BigTextApp {
             Cmd::GotoLine => self.goto = GotoDialog::new(GotoMode::Line),
             Cmd::GotoOffset => self.goto = GotoDialog::new(GotoMode::Offset),
             Cmd::GotoTime => self.goto = GotoDialog::new(GotoMode::Time),
+            Cmd::TimeAllTabs => self.time_all_tabs(),
             Cmd::MatchBracket => self.goto_matching_bracket(),
             Cmd::TimeGaps => self.open_gaps(),
             Cmd::Patterns => self.open_patterns(),
@@ -1110,7 +1115,7 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                for c in [Cmd::NextDiff, Cmd::PrevDiff, Cmd::OnlyIn, Cmd::NavBack, Cmd::NavForward, Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::MatchBracket, Cmd::Timeline, Cmd::TimeGaps, Cmd::Patterns, Cmd::CheckJson] {
+                for c in [Cmd::NextDiff, Cmd::PrevDiff, Cmd::OnlyIn, Cmd::NavBack, Cmd::NavForward, Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::TimeAllTabs, Cmd::MatchBracket, Cmd::Timeline, Cmd::TimeGaps, Cmd::Patterns, Cmd::CheckJson] {
                     run = run.or(self.item(ui, c));
                 }
             });
@@ -1120,6 +1125,7 @@ impl BigTextApp {
                 for c in [Cmd::HexView, Cmd::TableView, Cmd::CheckRows, Cmd::JsonStructure, Cmd::JsonFields, Cmd::LogFields, Cmd::JsonlTable, Cmd::Follow, Cmd::SplitView, Cmd::CompareSideBySide] {
                     run = run.or(self.item(ui, c));
                 }
+                self.link_menu(ui);
                 ui.separator();
                 for c in [Cmd::Syntax, Cmd::ShowWhitespace] {
                     run = run.or(self.item(ui, c));

@@ -175,6 +175,11 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("excel.csv"), "sep=;\n# exported\nname;qty\nann;1\nbob;2\n")?;
     std::fs::write(dir.join("numbers.csv"), "1,2\n3,4\n5,6\n")?;
     std::fs::write(dir.join("semi.txt"), "id;note\n1;a,b\n2;c,d\n")?;
+    // Two logs a line a second, the second one starting 90 s later.
+    for (name, start) in [("step-a.log", 0), ("step-b.log", 90)] {
+        let text: String = (0..300).map(|i| { let t = 36_000 + start + i; format!("2024-05-01 {:02}:{:02}:{:02} INFO line {i}\n", t / 3600, t / 60 % 60, t % 60) }).collect();
+        std::fs::write(dir.join(name), text)?;
+    }
     std::fs::write(dir.join("wide.txt"), "0123456789".repeat(30) + "\n" + &"abcdefghij".repeat(30) + "\n")?;
     std::fs::write(dir.join("outline.json"), OUTLINE_JSON)?;
     std::fs::write(dir.join("catalog.xml"), CATALOG_XML)?;
@@ -3861,6 +3866,74 @@ impl SelfTest {
                 }
             }
         }));
+        s("logs in step: go to this time in all tabs, then link by line and by time with a skew", Box::new(|app, c| {
+            use crate::app::status_bar::StatusAct;
+            use crate::app::time_link::LinkMode;
+            let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+            if c.first() {
+                app.open_path(c.file("step-b.log"));
+                app.open_path(c.file("step-a.log"));
+                return Step::Wait;
+            }
+            let pos = |app: &BigTextApp, name: &str| app.docs.iter().position(|d| d.title == name);
+            let (Some(ia), Some(ib)) = (pos(app, "step-a.log"), pos(app, "step-b.log")) else { return Step::Fail("logs not open".into()) };
+            if !app.docs[ia].is_ready() || !app.docs[ib].is_ready() || !app.docs[ia].buf.index.is_done() || !app.docs[ib].buf.index.is_done() {
+                return Step::Wait;
+            }
+            let start = |app: &BigTextApp, i: usize, line: u64| app.docs[i].buf.line_start(line).map(|x| x.0).unwrap_or(u64::MAX);
+            let b_id = app.docs[ib].id;
+            match c.mark {
+                0 => {
+                    // a's line 150 is 10:02:30, which is b's line 60.
+                    app.active = ia;
+                    let at = start(app, ia, 150);
+                    app.docs[ia].set_caret(at, false);
+                    app.time_all_tabs();
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    let want = start(app, ib, 60);
+                    if app.docs[ib].view.caret != want {
+                        return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("b's caret {} instead of {want}", app.docs[ib].view.caret)) } else { Step::Wait };
+                    }
+                    if app.docs[ib].time_mark.map(|m| m.1) != Some(want) {
+                        return Step::Fail("no ◆ mark".into());
+                    }
+                    app.link_with(b_id, LinkMode::Line);
+                    let top = start(app, ia, 100);
+                    app.docs[ia].view.top = top;
+                    c.mark = 2;
+                    Step::Wait
+                }
+                2 => {
+                    let want = start(app, ib, 100);
+                    if app.docs[ib].view.top != want {
+                        return if c.waited() > Duration::from_secs(3) { Step::Fail(format!("by line: b's top {} instead of {want}", app.docs[ib].view.top)) } else { Step::Wait };
+                    }
+                    // a's line 200 is 10:03:20, b's line 110; ten seconds of skew make it 120.
+                    app.link_with(b_id, LinkMode::Time);
+                    app.status_act(&ctx, StatusAct::Skew(10_000));
+                    let top = start(app, ia, 200);
+                    app.docs[ia].view.top = top;
+                    c.mark = 3;
+                    Step::Wait
+                }
+                _ => {
+                    let want = start(app, ib, 120);
+                    let got = app.docs[ib].view.top;
+                    if got != want && c.waited() < Duration::from_secs(3) {
+                        return Step::Wait;
+                    }
+                    app.unlink();
+                    let (a_id, b_id) = (app.docs[ia].id, app.docs[ib].id);
+                    app.test_close(a_id);
+                    app.test_close(b_id);
+                    c.mark = 0;
+                    check(got == want, format!("by time with skew: b's top {got} instead of {want}"))
+                }
+            }
+        }));
         s("typing into an empty file", Box::new(|app, c| {
             if c.first() {
                 app.open_path(c.file("empty.txt"));
@@ -4091,6 +4164,37 @@ impl SelfTest {
             Step::Next
         }));
         s("shot json.png", shot_step("json.png"));
+        s("two logs linked by time", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("server-b.log"));
+                app.open_path(c.file("server-a.log"));
+                return Step::Wait;
+            }
+            let pos = |app: &BigTextApp, name: &str| app.docs.iter().position(|d| d.title == name);
+            let (Some(ia), Some(ib)) = (pos(app, "server-a.log"), pos(app, "server-b.log")) else { return Step::Wait };
+            if !app.docs[ia].is_ready() || !app.docs[ib].is_ready() {
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                app.active = ia;
+                let b = app.docs[ib].id;
+                app.link_with(b, crate::app::time_link::LinkMode::Time);
+                let d = &mut app.docs[ia];
+                d.lang = Some(Lang::Log);
+                app.docs[ib].lang = Some(Lang::Log);
+                c.mark = 1;
+                return Step::Wait;
+            }
+            if c.waited() < Duration::from_millis(600) {
+                return Step::Wait;
+            }
+            Step::Next
+        }));
+        s("shot linked.png", shot_step("linked.png"));
+        s("unlink", Box::new(|app, _| {
+            app.unlink();
+            Step::Next
+        }));
         s("the log in high contrast with colour-blind-safe colours", Box::new(|app, c| {
             if c.first() {
                 app.settings.cvd = true;

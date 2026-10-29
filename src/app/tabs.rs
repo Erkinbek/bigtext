@@ -181,6 +181,8 @@ impl BigTextApp {
         let mut activate = None;
         let mut moved = None;
         let mut menu: Option<(u64, &'static str)> = None;
+        let active_id = self.docs.get(self.active).map(|d| d.id);
+        let active_link = self.docs.get(self.active).and_then(|d| d.link.as_ref()).map(|l| l.partner);
         egui::ScrollArea::horizontal().show(ui, |ui| {
             ui.horizontal(|ui| {
                 for (i, d) in self.docs.iter().enumerate() {
@@ -204,6 +206,8 @@ impl BigTextApp {
                         close = Some(d.id);
                     }
                     let r = r.on_hover_text(d.path.as_deref().map(file::display_path).unwrap_or_default());
+                    let link_here = active_id != Some(d.id) && d.is_ready() && !d.hex && !d.table;
+                    let linked_here = active_link == Some(d.id);
                     r.context_menu(|ui| {
                         let id = d.id;
                         let mut item = |ui: &mut egui::Ui, label: &'static str| {
@@ -213,6 +217,11 @@ impl BigTextApp {
                             }
                         };
                         item(ui, if d.pinned { "Unpin tab" } else { "Pin tab" });
+                        if linked_here {
+                            item(ui, "Unlink");
+                        } else if link_here {
+                            item(ui, "Link scrolling with this tab");
+                        }
                         ui.separator();
                         item(ui, "Close");
                         item(ui, "Close other tabs");
@@ -244,6 +253,8 @@ impl BigTextApp {
         if let Some((id, what)) = menu {
             match what {
                 "Pin tab" | "Unpin tab" => self.toggle_pin(id),
+                "Link scrolling with this tab" => self.link_with(id, self.link_mode),
+                "Unlink" => self.unlink(),
                 "Close" => self.close_tab(id, false),
                 "Close other tabs" => self.close_others(id),
                 "Close tabs to the right" => self.close_to_right(id),

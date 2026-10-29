@@ -1223,4 +1223,16 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Ruler at column", "Линейка на столбце", "Ustundagi chizg'ich"],
     ["Window width", "Ширина окна", "Oyna kengligi"],
     ["Wrap at", "Переносить на", "Qayerda o'rash"],
+    // Logs in step.
+    ["Added to this log's times before they are looked up in the linked one", "Прибавляется ко времени этого лога перед поиском в связанном", "Bog'langan logda qidirishdan oldin bu log vaqtlariga qo'shiladi"],
+    ["By line number", "По номеру строки", "Qator raqami bo'yicha"],
+    ["By position in the file", "По положению в файле", "Fayldagi o'rni bo'yicha"],
+    ["By time", "По времени", "Vaqt bo'yicha"],
+    ["Go to this time in all tabs", "Перейти к этому времени во всех вкладках", "Barcha tablarda shu vaqtga o'tish"],
+    ["Link scrolling with", "Связать прокрутку с", "Aylantirishni bog'lash"],
+    ["Link scrolling with this tab", "Связать прокрутку с этой вкладкой", "Aylantirishni shu tab bilan bog'lash"],
+    ["Moving {n} other tabs to {time}.", "Другие вкладки ({n}) переходят к {time}.", "Boshqa {n} ta tab {time} ga o'tkazilmoqda."],
+    ["No other text tabs are open.", "Других текстовых вкладок нет.", "Boshqa matn tablari ochiq emas."],
+    ["Skew", "Сдвиг", "Siljish"],
+    ["Unlink", "Отвязать", "Bog'lashni bekor qilish"],
 ];
