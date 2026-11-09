@@ -1,0 +1,152 @@
+# Building and contributing
+
+Bug reports and ideas are welcome in the [issue tracker](https://github.com/Erkinbek/bigtext/issues).
+This page explains how BigText is built, how it works inside, and how it is tested and released.
+
+## Building
+
+The workspace builds four binaries: `bigtext` (the editor), `bigtext-cli` (the script
+commands), `bigtext-bench` (core benchmarks) and `gen-testfiles` (test corpus generator).
+`packaging/` has the Linux `.deb` / AppImage and macOS `.app` scripts and Homebrew templates.
+
+### Windows (MSVC)
+
+1. Install [Rust](https://rustup.rs) (`stable-x86_64-pc-windows-msvc`) and the Visual Studio
+   Build Tools with the "Desktop development with C++" workload.
+2. `cargo build --release` → `target\release\bigtext.exe` is the portable executable.
+3. Optional installer: install [Inno Setup 6](https://jrsoftware.org/isinfo.php), then
+   `ISCC.exe /DSourceExe=%CD%\target\release\bigtext.exe installer\bigtext.iss`
+   (adds Start-menu entry, "Open with" registration and an Explorer context-menu item).
+
+### Linux
+
+```
+sudo apt-get install libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev
+cargo build --release
+```
+
+### macOS
+
+Install the Xcode command line tools, then `cargo build --release` (Apple silicon), or
+`rustup target add x86_64-apple-darwin && cargo build --release --target x86_64-apple-darwin`.
+
+### CI
+
+[.github/workflows/build.yml](.github/workflows/build.yml) builds Windows x64, Linux x64 and
+macOS arm64/x64, runs the unit tests and uploads the binaries plus the Windows installer
+(`bigtext-<version>-setup.exe`) as artifacts of every run. The installer was checked with a silent
+per-user install (`/VERYSILENT /CURRENTUSER`): files, "Open with" and Explorer context-menu
+entries and the Start-menu shortcut are created, the installed exe runs, and the uninstaller
+removes all of it.
+
+## Architecture
+
+BigText is written in Rust with a custom virtualized text view on top of `egui`/`eframe` (glow
+renderer).
+
+```
+src/
+  file.rs           Source: cached mmap views + positional reads | chunked (block cache + loader) | empty
+  encoding.rs       Encoding, Codec (newline search/count, decode/encode, char boundaries), detection
+  index.rs          LineIndex: one u64 per 64 KB, background indexer, estimates
+  text/buffer.rs    TextBuf: piece table (original mmap + add buffer), line<->offset mapping, undo swaps
+  text/rows.rs      bounded visual segments (64 KB soft breaks), wrap, cell math
+  search.rs         Matcher (memmem / regex-automata / decoded), windowed streaming search
+  replace.rs        templates, batch edits, streaming replace-all
+  save.rs           temp file + fsync + atomic replace (ReplaceFileW), EOL conversion
+  diff.rs           streaming line diff (chunk compare + hashed re-synchronisation)
+  jobs.rs           cancel tokens, progress, wakers
+  app/              egui shell: tabs, menus, search panel, results list, dialogs, save protocol,
+                    session/recent files, compare panel
+  view/             custom virtualized text view, hex view, syntax highlighting
+  self_test.rs      in-app GUI self-test driven by synthetic input
+  bin/              gen-testfiles, bigtext-bench
+```
+
+Key decisions (details in [PLAN.md](PLAN.md)):
+
+- The view is anchored to a **byte offset**, not a line number, so it never depends on the
+  index. Scrollbars are proportional to bytes.
+- **Rows are bounded**: lines are soft-broken every 64 KB, so finding the row around any offset
+  reads at most 128 KB. Nothing on the UI thread scans unbounded data.
+- **Threading**: the UI thread only reads the visible bytes. Opening + detection, indexing,
+  search, find-next, replace, save, large copies and file watching run on workers that hold
+  cheap `Arc` snapshots of the piece table and report through channels.
+- **Saving on Windows** requires the file to be unmapped before it can be replaced: the worker
+  writes and fsyncs the temp file from a snapshot, the UI then drops its mapping, and a
+  finalize worker waits until no snapshot holds the old file, swaps it in and reopens it. If
+  that fails the original (untouched) file is reopened and the edits are re-attached.
+- Undo history is cleared after a save (the old mapping it refers to is released). Undoing
+  back to the last saved state clears the modified marker.
+
+## Tests and benchmarks
+
+```
+cargo test --lib --bins              # 80 unit tests: index, piece table, rows, search, replace, save,
+                                     # encodings, diff, highlighting, session file, updates, CSV
+cargo test --lib update -- --ignored # downloads and unpacks the latest release (needs the network)
+target/release/bigtext --self-test --report report.txt [--screenshot shots/x.png]
+                                     # 59 GUI checks with synthetic mouse/keyboard/clipboard input
+scripts/gen-testfiles.ps1            # or scripts/gen-testfiles.sh; -SkipBig / --skip-big avoids the 10 GB file
+target/release/bigtext-bench FILE    # core benchmarks (open, first screen, go-to, index, search, replace, memory)
+target/release/bigtext --bench-ui FILE --report out.txt [--screenshot out.png]
+        [--scenario search:TEXT|edit|view|wrap|hex|close-search|close-replace]
+```
+
+The **GUI self-test** drives the real window through `App::raw_input_hook`: clicks, drags,
+double/triple clicks, shift-click, keys and shortcuts, typing, copy/paste, Ctrl+wheel. It checks
+selection, smart Home/End, auto-indent, undo/redo back to the unmodified state, clipboard,
+duplicate/delete line, zoom, find / F3 / Shift+F3 / Find All, replace all + undo, go to line and
+offset, atomic save (no temp files left), the unsaved-changes prompt, wrap/hex/overlay toggles,
+bookmarks, split view, highlighting, file comparison, the CSV table (column selection, delete
+and undo), the About window, and these edge cases:
+read-only files (edits blocked; saving over one fails cleanly and keeps the edits), a file
+appended to while open (banner, then follow mode), a file renamed or deleted while open, a
+path longer than 260 characters (open, edit, save), a Unicode path, the chunked read path
+(forced, and via `\\localhost\E$` UNC), empty / no-trailing-newline / CR-only / BOM-in-the-middle
+/ UTF-16 / Windows-1251 files, a binary file, and a 6 MB copy on a worker. Every run: 56/56
+passed, max UI frame time 3–5 ms. The `close-search` / `close-replace` scenarios close the window
+mid-job: the process exits within a second, no temp file is left and the original file's hash
+is unchanged.
+
+The generator writes `random-lines-1g.txt`, `random-lines-10g.txt`, `single-line-2g.txt`,
+`utf16le.txt`, `cp1251.txt`, `binary.bin`, `mixed-eol.txt`, `short-lines-100m.txt` and small
+edge cases (empty file, no trailing newline, CR-only, BOM in the middle, NUL + invalid UTF-8,
+Unicode path).
+
+## Website
+
+The project website ([erkinbek.github.io/bigtext](https://erkinbek.github.io/bigtext/)) lives in `docs/` and is served by
+GitHub Pages from the `main` branch. It is generated in English, Russian and Uzbek by
+`python scripts/build-site.py` (needs Pillow), which also converts the screenshots in
+`target/shots` to WebP and draws the logo, favicons and the social preview image:
+
+```
+target/release/bigtext --screenshots target/shots testdata/random-lines-10g.txt
+python scripts/build-site.py
+```
+
+## Releasing
+
+1. Bump the version in `Cargo.toml`, `installer/bigtext.iss` and `scripts/build-site.py`, add
+   the release to [CHANGELOG.md](CHANGELOG.md), run `python scripts/build-site.py --no-images`
+   and commit.
+2. Push a tag: `git tag -a v0.1.2 -m "BigText 0.1.2"` and `git push origin v0.1.2`.
+3. CI builds every platform and publishes a GitHub release with version-free asset names
+   (so `releases/latest/download/<file>` links keep working, and the in-app updater finds
+   `bigtext-setup-windows-x64.exe`, `bigtext-windows-x64.zip` and the `.tar.gz` files by these
+   names). Write the changes under a `## What's new in 0.1.2` heading in the release notes: the
+   update dialog shows that section (and the whole notes when there is no such heading). Then:
+   - **crates.io** (`crates-io` job) publishes the crate with
+     [trusted publishing](https://crates.io/docs/trusted-publishing), so no token is stored.
+     It runs when the repository variable `CRATES_IO_PUBLISH` is `true`. One-time setup: the
+     first version is published by hand (`cargo login`, then `cargo publish`); then on crates.io
+     → bigtext → Settings → Trusted Publishing add the repository `Erkinbek/bigtext` with the
+     workflow `build.yml`.
+   - **winget** (`winget` job) opens a pull request with the new version at
+     [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs) through
+     [WinGet Releaser](https://github.com/vedantmgoyal9/winget-releaser). It needs the secret
+     `WINGET_TOKEN` (a classic token with the `public_repo` scope) and a fork of winget-pkgs
+     under the repository owner, and it only updates a package that is already in winget: the
+     first version is submitted by hand from the manifests in `packaging/winget/`, which pass
+     `winget validate`. Until that submission is merged the job skips itself.

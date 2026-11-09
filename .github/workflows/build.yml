@@ -69,7 +69,7 @@ jobs:
           Copy-Item target/${{ matrix.target }}/release/bigtext-cli.exe $out/
           Copy-Item target/${{ matrix.target }}/release/bigtext-bench.exe $out/
           Copy-Item target/${{ matrix.target }}/release/gen-testfiles.exe $out/
-          Copy-Item README.md $out/
+          Copy-Item README.md, FEATURES.md, USAGE.md $out/
 
       - name: Build installer (Windows, optional)
         if: runner.os == 'Windows'
@@ -85,7 +85,7 @@ jobs:
           out="dist/bigtext-${{ matrix.name }}"
           mkdir -p "$out"
           cp target/${{ matrix.target }}/release/bigtext target/${{ matrix.target }}/release/bigtext-cli target/${{ matrix.target }}/release/bigtext-bench \
-             target/${{ matrix.target }}/release/gen-testfiles README.md "$out/"
+             target/${{ matrix.target }}/release/gen-testfiles README.md FEATURES.md USAGE.md "$out/"
           if [ "$RUNNER_OS" = Linux ]; then
             cp packaging/linux/bigtext.desktop assets/icon-256.png "$out/"
           fi
