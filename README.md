@@ -18,6 +18,31 @@ and cancellation.
 Written in Rust with a custom virtualized text view on top of `egui`/`eframe` (glow renderer).
 Single self-contained binary, no runtime dependencies.
 
+## How it compares
+
+Notepad++ and VS Code read the whole file into memory, so a 10 GB log needs at least 10 GB of
+free RAM. The editors built for huge files are paid, Windows-only or read-only: EmEditor runs
+only on Windows and its free edition is for home and school use, UltraEdit is a paid
+subscription, and klogg views and searches files without editing them. BigText opens, searches
+**and edits** files of any size on Windows, Linux and macOS, and it is free and open source.
+
+| Editor | Price | Open source | Platforms | A 10 GB file | Editing huge files |
+| --- | --- | --- | --- | --- | --- |
+| **BigText** | Free | ✅ MIT | Windows, Linux, macOS | ✅ Reads only the part on screen, about 100 MB of RAM | ✅ Streaming replace, atomic save |
+| EmEditor | Paid (free edition for home and school use only) | ❌ | Windows | ✅ | ✅ |
+| UltraEdit | Paid subscription | ❌ | Windows, Linux, macOS | ✅ | ✅ |
+| klogg | Free | ✅ GPL-3.0 | Windows, Linux, macOS | ✅ | ❌ Views and searches only |
+| Notepad++ | Free | ✅ GPL | Windows | ⚠️ Loads the whole file into RAM; the 32-bit build refuses files over 2 GB | ⚠️ Only what fits in RAM |
+| VS Code | Free | ✅ MIT (Code - OSS) | Windows, Linux, macOS | ⚠️ Loads the whole file into RAM | ⚠️ Only what fits in RAM |
+
+<sub>Checked in November 2026 against each project's own pages:
+[EmEditor](https://www.emeditor.com/) and [EmEditor Free](https://www.emeditor.com/text-editor-features/emeditor-free/),
+[UltraEdit large files](https://www.ultraedit.com/support/tutorials-power-tips/ultraedit/large-file-handling/),
+[klogg](https://github.com/variar/klogg),
+[Notepad++ file loading](https://github.com/notepad-plus-plus/notepad-plus-plus/blob/master/PowerEditor/src/ScintillaComponent/Buffer.cpp),
+[VS Code text buffer](https://code.visualstudio.com/blogs/2018/03/23/text-buffer-reimplementation).
+Something out of date? [Open an issue](https://github.com/Erkinbek/bigtext/issues).</sub>
+
 ## Features
 
 - **Open anything**: File → Open, drag & drop, command line (`bigtext file.txt`), Windows
