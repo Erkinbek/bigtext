@@ -826,7 +826,8 @@ impl BigTextApp {
             }
             Cmd::Syntax => self.settings.syntax = !self.settings.syntax,
             Cmd::ShowWhitespace => {
-                self.settings.show_ws = !self.settings.show_ws;
+                let on = if self.code_shown() { &mut self.settings.show_ws_code } else { &mut self.settings.show_ws };
+                *on = !*on;
                 self.persist_state();
             }
             Cmd::DarkTheme => {
@@ -882,6 +883,11 @@ impl BigTextApp {
         }
     }
 
+    /// The active tab shows code (in colour): whitespace is shown or not apart from other text.
+    pub(crate) fn code_shown(&self) -> bool {
+        self.settings.syntax && self.docs.get(self.active).is_some_and(|d| d.effective_lang().is_code())
+    }
+
     /// Whether a toggle command is on (for menu check marks).
     fn is_on(&self, cmd: Cmd) -> bool {
         let d = self.docs.get(self.active);
@@ -896,7 +902,13 @@ impl BigTextApp {
             Cmd::SplitView => d.is_some_and(|d| d.split.is_some()),
             Cmd::CompareSideBySide => self.side_by_side,
             Cmd::Syntax => self.settings.syntax,
-            Cmd::ShowWhitespace => self.settings.show_ws,
+            Cmd::ShowWhitespace => {
+                if self.code_shown() {
+                    self.settings.show_ws_code
+                } else {
+                    self.settings.show_ws
+                }
+            }
             Cmd::DarkTheme => self.settings.theme.is_dark(),
             Cmd::Theme(t) => self.settings.theme == t,
             Cmd::ColourBlind => self.settings.cvd,

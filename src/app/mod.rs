@@ -166,8 +166,9 @@ pub struct Settings {
     pub level_bar: bool,
     /// Saved searches (the ★ menu of the search bar).
     pub saved: Vec<saved_searches::SavedSearch>,
-    /// View → Show whitespace and line breaks.
+    /// View → Show whitespace and line breaks, in text and in code (off: indent guides only).
     pub show_ws: bool,
+    pub show_ws_code: bool,
     /// Filter view: lines shown before and after each match, and whole log entries.
     pub filter_context: u32,
     pub filter_entries: bool,
@@ -569,7 +570,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, filter_context: 0, filter_entries: false, id_keys: None, status: Default::default(), zen: false, show_gutter: true, wrap_column: None, ruler: None, json_crumb: true, tools: Vec::new() },
+            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, show_ws_code: false, filter_context: 0, filter_entries: false, id_keys: None, status: Default::default(), zen: false, show_gutter: true, wrap_column: None, ruler: None, json_crumb: true, tools: Vec::new() },
             goto: None,
             confirm: None,
             error: None,
@@ -670,6 +671,7 @@ impl BigTextApp {
             app.run_cmd.history = std::mem::take(&mut state.commands);
             app.run_cmd.shell = state.shell.as_deref().map(run_command::ShellChoice::from_id).unwrap_or_default();
             app.settings.show_ws = state.show_ws.unwrap_or(false);
+            app.settings.show_ws_code = state.show_ws_code.unwrap_or(false);
             if let Some(root) = state.folder.take() {
                 app.restore_folder(root, state.folder_open.unwrap_or(true), std::mem::take(&mut state.folder_expanded));
             }
@@ -1934,7 +1936,7 @@ impl eframe::App for BigTextApp {
         let link_partner = self.linked_partner();
         let font_size = &mut self.settings.font_size;
         let syntax = self.settings.syntax;
-        let show_ws = self.settings.show_ws;
+        let show_ws = text_view::ShowWs { text: self.settings.show_ws, code: self.settings.show_ws_code };
         let show_gutter = self.settings.show_gutter;
         let (wrap_column, ruler) = (self.settings.wrap_column.map(usize::from), self.settings.ruler.map(usize::from));
         egui::CentralPanel::no_frame().show(ui, |ui| {

@@ -69,6 +69,7 @@ pub struct Persisted {
     /// Saved searches.
     pub saved: Vec<super::saved_searches::SavedSearch>,
     pub show_ws: Option<bool>,
+    pub show_ws_code: Option<bool>,
     /// Paths of pinned tabs.
     pub pinned: Vec<PathBuf>,
     /// Filter view: context lines and whole entries.
@@ -305,6 +306,7 @@ pub(super) fn parse(text: &str) -> Persisted {
             "syntax" => p.syntax = Some(v == "1"),
             "level_bar" => p.level_bar = Some(v == "1"),
             "show_ws" => p.show_ws = Some(v == "1"),
+            "show_ws_code" => p.show_ws_code = Some(v == "1"),
             "id_keys" => p.id_keys = Some(v.split(',').filter(|k| !k.is_empty()).map(String::from).collect()),
             "filter_ctx" => p.filter_ctx = v.split_once('|').and_then(|(n, e)| Some((n.parse().ok()?, e == "1"))),
             "update_check" => p.update_check = Some(v == "1"),
@@ -372,6 +374,9 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(d) = p.show_ws {
         s.push_str(&format!("show_ws={}\n", b(d)));
+    }
+    if let Some(d) = p.show_ws_code {
+        s.push_str(&format!("show_ws_code={}\n", b(d)));
     }
     if let Some(d) = p.level_bar {
         s.push_str(&format!("level_bar={}\n", b(d)));
@@ -794,6 +799,7 @@ impl BigTextApp {
             folder_expanded: self.folder.expanded_to_keep().iter().map(|p| PathBuf::from(file::display_path(p))).collect(),
             saved: self.settings.saved.clone(),
             show_ws: Some(self.settings.show_ws),
+            show_ws_code: Some(self.settings.show_ws_code),
             filter_ctx: Some((self.settings.filter_context, self.settings.filter_entries)),
             id_keys: self.settings.id_keys.clone(),
             pinned: self.docs.iter().filter(|d| d.pinned).filter_map(|d| Some(PathBuf::from(file::display_path(d.unpacked_from.as_deref().or(d.path.as_deref())?)))).collect(),
@@ -1456,6 +1462,7 @@ mod tests {
             folder_open: Some(false),
             folder_expanded: vec![PathBuf::from(r"D:\projects\app\src"), PathBuf::from(r"D:\projects\app\logs|old")],
             show_ws: Some(true),
+            show_ws_code: Some(false),
             filter_ctx: Some((3, true)),
             id_keys: Some(vec!["rid".into(), "trace_id".into()]),
             pinned: vec![PathBuf::from(r"D:\big file.txt")],
@@ -1494,7 +1501,7 @@ mod tests {
         assert_eq!((q0.wrap_column, q0.ruler, q0.json_crumb), (Some(Some(100)), Some(None), Some(false)));
         assert_eq!((&q0.tools, &q0.commands, q0.shell.as_deref()), (&p.tools, &p.commands, Some("git-bash")));
         assert_eq!((q0.theme, q0.cvd, q0.scale, q0.dark), (p.theme, Some(true), Some(150), Some(false)));
-        assert_eq!(parse(&serialize(&p)).show_ws, Some(true));
+        assert_eq!((q0.show_ws, q0.show_ws_code), (Some(true), Some(false)));
         assert_eq!((&q0.folder, q0.folder_open, &q0.folder_expanded), (&p.folder, Some(false), &p.folder_expanded));
         assert_eq!(parse(&serialize(&p)).filter_ctx, Some((3, true)));
         assert_eq!(parse(&serialize(&p)).id_keys, p.id_keys);

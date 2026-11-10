@@ -286,14 +286,21 @@ pub enum Kind {
     Type,
     /// A function being called or defined.
     Function,
+    /// A variable that says it is one: `$name` in PHP and shell scripts.
+    Var,
+    /// `@decorator`, `@Annotation`, `#[attribute]`.
+    Decorator,
 }
 
+/// Colours on dark and light backgrounds. Code takes One Dark's (One Light's darkened to read well
+/// on white): purple keywords, green strings, orange numbers and constants, yellow types, blue
+/// functions, red variables, cyan decorators.
 pub fn color(kind: Kind, dark: bool) -> Color32 {
     let (d, l) = match kind {
         Kind::Keyword => ((198, 120, 221), (152, 24, 160)),
         Kind::Str => ((152, 195, 121), (40, 120, 30)),
         Kind::Number => ((209, 154, 102), (170, 90, 0)),
-        Kind::Comment => ((110, 118, 129), (120, 120, 120)),
+        Kind::Comment => ((127, 132, 142), (120, 120, 120)),
         Kind::Tag => ((86, 156, 214), (20, 70, 180)),
         Kind::Attr => ((156, 220, 254), (150, 60, 30)),
         Kind::Key => ((97, 175, 239), (10, 90, 170)),
@@ -303,8 +310,10 @@ pub fn color(kind: Kind, dark: bool) -> Color32 {
         Kind::Debug => ((128, 128, 128), (130, 130, 130)),
         Kind::Time => ((86, 182, 194), (0, 110, 130)),
         Kind::Punct => ((171, 178, 191), (90, 90, 90)),
-        Kind::Type => ((78, 201, 176), (38, 127, 153)),
-        Kind::Function => ((220, 220, 170), (121, 94, 38)),
+        Kind::Type => ((229, 192, 123), (150, 100, 0)),
+        Kind::Function => ((97, 175, 239), (40, 95, 210)),
+        Kind::Var => ((224, 108, 117), (200, 50, 40)),
+        Kind::Decorator => ((86, 182, 194), (0, 120, 160)),
         Kind::Col(i) => {
             const DARK: [(u8, u8, u8); 6] = [(229, 192, 123), (97, 175, 239), (152, 195, 121), (198, 120, 221), (86, 182, 194), (224, 108, 117)];
             const LIGHT: [(u8, u8, u8); 6] = [(150, 100, 0), (10, 90, 170), (40, 120, 30), (152, 24, 160), (0, 110, 130), (180, 30, 50)];
@@ -789,7 +798,7 @@ mod tests {
         assert_eq!(l[2][0], ("\"\"\"".into(), Kind::Str));
 
         let k = kinds(Lang::Java, "@Override public String toString() { return new StringBuilder().toString(); }");
-        assert_eq!(k[..4], [("@Override".into(), Kind::Attr), ("public".into(), Kind::Keyword), ("String".into(), Kind::Type), ("toString".into(), Kind::Function)]);
+        assert_eq!(k[..4], [("@Override".into(), Kind::Decorator), ("public".into(), Kind::Keyword), ("String".into(), Kind::Type), ("toString".into(), Kind::Function)]);
         assert!(k.contains(&("StringBuilder".into(), Kind::Type)) && k.last() == Some(&("toString".into(), Kind::Function)), "{k:?}");
         let l = lines(Lang::Java, "String s = \"\"\"\n  text \"block\"\n  \"\"\";\n/**\n * Docs.\n */\nclass A {}");
         assert_eq!(l[1], vec![("  text \"block\"".into(), Kind::Str)]);
@@ -804,6 +813,9 @@ mod tests {
             assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
         }
         assert_eq!(k.iter().filter(|s| s.1 == Kind::Str).count(), 1, "{k:?}");
+        // Values among the keywords are constants, `this` a variable.
+        let k = kinds(Lang::JavaScript, "return this.ok ?? null;");
+        assert_eq!(k, vec![("return".into(), Kind::Keyword), ("this".into(), Kind::Var), ("null".into(), Kind::Number)]);
         // A regular expression with a backtick does not open a template literal.
         let k = kinds(Lang::JavaScript, "if (ok) return /`/.test(s);");
         assert!(k.contains(&("/`/".into(), Kind::Str)) && k.contains(&("test".into(), Kind::Function)), "{k:?}");
@@ -813,7 +825,7 @@ mod tests {
         assert_eq!(l[2][0], ("</p>`".into(), Kind::Str));
         assert_eq!(l[3], vec![("interface".into(), Kind::Keyword), ("User".into(), Kind::Type), ("number".into(), Kind::Type)]);
         let k = kinds(Lang::TypeScript, "@Component({}) class A { private x: string = 'a'; }");
-        for want in [("@Component", Kind::Attr), ("private", Kind::Keyword), ("string", Kind::Type), ("'a'", Kind::Str)] {
+        for want in [("@Component", Kind::Decorator), ("private", Kind::Keyword), ("string", Kind::Type), ("'a'", Kind::Str)] {
             assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
         }
         assert_eq!((Lang::from_path(Some(Path::new("a.tsx"))), Lang::from_path(Some(Path::new("b.mjs")))), (Lang::TypeScript, Lang::JavaScript));
@@ -822,7 +834,7 @@ mod tests {
     #[test]
     fn go_rust() {
         let k = kinds(Lang::Go, r#"func (s *Server) Handle(w http.ResponseWriter) error { return fmt.Errorf(`bad "%s"`, nil) }"#);
-        for want in [("func", Kind::Keyword), ("Handle", Kind::Function), ("error", Kind::Type), ("Errorf", Kind::Function), ("`bad \"%s\"`", Kind::Str), ("nil", Kind::Keyword)] {
+        for want in [("func", Kind::Keyword), ("Handle", Kind::Function), ("error", Kind::Type), ("Errorf", Kind::Function), ("`bad \"%s\"`", Kind::Str), ("nil", Kind::Number)] {
             assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
         }
         // Capitalised names are exported, not types, in Go.
@@ -833,7 +845,7 @@ mod tests {
 
         let k = kinds(Lang::Rust, r#"#[derive(Debug)] pub fn get<'a>(s: &'a str) -> Option<i32> { println!("{}", 'x'); Some('\n') }"#);
         for want in [
-            ("#[derive(Debug)]", Kind::Attr),
+            ("#[derive(Debug)]", Kind::Decorator),
             ("fn", Kind::Keyword),
             ("get", Kind::Function),
             ("'a", Kind::Tag),
@@ -859,20 +871,20 @@ mod tests {
         let l = lines_from(Lang::Php, State::start(Lang::Php, true), text);
         assert_eq!(l[0][..3], [("<h1".into(), Kind::Tag), ("class".into(), Kind::Attr), ("\"t\"".into(), Kind::Str)]);
         assert_eq!(l[1], vec![("<?php".into(), Kind::Tag)]);
-        assert_eq!(l[2][..4], [("$name".into(), Kind::Key), ("'Ann'".into(), Kind::Str), ("// greet ".into(), Kind::Comment), ("?>".into(), Kind::Tag)]);
+        assert_eq!(l[2][..4], [("$name".into(), Kind::Var), ("'Ann'".into(), Kind::Str), ("// greet ".into(), Kind::Comment), ("?>".into(), Kind::Tag)]);
         assert!(l[2].contains(&("<b".into(), Kind::Tag)), "{:?}", l[2]);
-        assert_eq!(l[3], vec![("<?=".into(), Kind::Tag), ("strtoupper".into(), Kind::Function), ("$name".into(), Kind::Key), ("?>".into(), Kind::Tag)]);
-        assert_eq!(l[5], vec![("$t".into(), Kind::Key), ("<<<EOT".into(), Kind::Str)]);
+        assert_eq!(l[3], vec![("<?=".into(), Kind::Tag), ("strtoupper".into(), Kind::Function), ("$name".into(), Kind::Var), ("?>".into(), Kind::Tag)]);
+        assert_eq!(l[5], vec![("$t".into(), Kind::Var), ("<<<EOT".into(), Kind::Str)]);
         assert_eq!(l[6], vec![("  Hello $name".into(), Kind::Str)]);
         assert_eq!(l[7], vec![("EOT".into(), Kind::Str)]);
-        assert_eq!(l[8], vec![("echo".into(), Kind::Keyword), ("TRUE".into(), Kind::Keyword), ("#[Route('/')]".into(), Kind::Attr)]);
-        for want in [("function", Kind::Keyword), ("show", Kind::Function), ("int", Kind::Type), ("$id", Kind::Key), ("string", Kind::Type)] {
+        assert_eq!(l[8], vec![("echo".into(), Kind::Keyword), ("TRUE".into(), Kind::Number), ("#[Route('/')]".into(), Kind::Decorator)]);
+        for want in [("function", Kind::Keyword), ("show", Kind::Function), ("int", Kind::Type), ("$id", Kind::Var), ("string", Kind::Type)] {
             assert!(l[9].contains(&(want.0.into(), want.1)), "{want:?} in {:?}", l[9]);
         }
         // <?xml is not PHP; after a jump a PHP file is assumed to be in code.
         let l = lines_from(Lang::Php, State::start(Lang::Php, true), "<?xml version=\"1.0\"?>\n$x");
         assert!(l[1].is_empty(), "{:?}", l[1]);
-        assert_eq!(kinds(Lang::Php, "$x"), vec![("$x".into(), Kind::Key)]);
+        assert_eq!(kinds(Lang::Php, "$x"), vec![("$x".into(), Kind::Var)]);
     }
 
     #[test]
@@ -881,11 +893,11 @@ mod tests {
             Lang::Python,
             "@dataclass\nclass User(Base):\n    \"\"\"A user.\n\n    More text.\n    \"\"\"\n    def greet(self, name: str) -> str:\n        return f\"hi {name}\"  # say hi\nMAX = 3\nx = 'open\ny = 1",
         );
-        assert_eq!(l[0], vec![("@dataclass".into(), Kind::Attr)]);
+        assert_eq!(l[0], vec![("@dataclass".into(), Kind::Decorator)]);
         assert_eq!(l[1], vec![("class".into(), Kind::Keyword), ("User".into(), Kind::Type), ("Base".into(), Kind::Type)]);
         assert_eq!(l[2], vec![("\"\"\"A user.".into(), Kind::Str)]);
         assert_eq!(l[4], vec![("    More text.".into(), Kind::Str)]);
-        assert_eq!(l[6], vec![("def".into(), Kind::Keyword), ("greet".into(), Kind::Function), ("self".into(), Kind::Keyword), ("str".into(), Kind::Type), ("str".into(), Kind::Type)]);
+        assert_eq!(l[6], vec![("def".into(), Kind::Keyword), ("greet".into(), Kind::Function), ("self".into(), Kind::Var), ("str".into(), Kind::Type), ("str".into(), Kind::Type)]);
         assert_eq!(l[7], vec![("return".into(), Kind::Keyword), ("f\"hi {name}\"".into(), Kind::Str), ("# say hi".into(), Kind::Comment)]);
         assert_eq!(l[8], vec![("MAX".into(), Kind::Number), ("3".into(), Kind::Number)]);
         // A '…' string ends with its line.
@@ -896,7 +908,7 @@ mod tests {
             "#!/bin/bash\nNAME=\"world\"  # greet\nif [ -n \"$NAME\" ]; then echo \"hi ${NAME}\"; fi\ncat <<-'EOF' | grep x\n  body $NAME\n\tEOF\necho done a#b $# my-done.sh",
         );
         assert_eq!(l[0], vec![("#!/bin/bash".into(), Kind::Comment)]);
-        assert_eq!(l[1], vec![("NAME".into(), Kind::Key), ("\"world\"".into(), Kind::Str), ("# greet".into(), Kind::Comment)]);
+        assert_eq!(l[1], vec![("NAME".into(), Kind::Var), ("\"world\"".into(), Kind::Str), ("# greet".into(), Kind::Comment)]);
         assert_eq!(
             l[2],
             vec![("if".into(), Kind::Keyword), ("\"$NAME\"".into(), Kind::Str), ("then".into(), Kind::Keyword), ("echo".into(), Kind::Function), ("\"hi ${NAME}\"".into(), Kind::Str), ("fi".into(), Kind::Keyword)]
@@ -904,8 +916,8 @@ mod tests {
         assert_eq!(l[3], vec![("<<-'EOF'".into(), Kind::Str)]);
         assert_eq!(l[4], vec![("  body $NAME".into(), Kind::Str)]);
         assert_eq!(l[5], vec![("EOF".into(), Kind::Str)]);
-        assert_eq!(l[6], vec![("echo".into(), Kind::Function), ("done".into(), Kind::Keyword), ("$#".into(), Kind::Key)]);
-        assert_eq!(kinds(Lang::Shell, "local dir=/tmp"), vec![("local".into(), Kind::Keyword), ("dir".into(), Kind::Key)]);
+        assert_eq!(l[6], vec![("echo".into(), Kind::Function), ("done".into(), Kind::Keyword), ("$#".into(), Kind::Var)]);
+        assert_eq!(kinds(Lang::Shell, "local dir=/tmp"), vec![("local".into(), Kind::Keyword), ("dir".into(), Kind::Var)]);
 
         assert_eq!(Lang::sniff("#!/usr/bin/env python3\nprint(1)\n"), Lang::Python);
         assert_eq!(Lang::sniff("\u{FEFF}#!/bin/bash -e\n"), Lang::Shell);
@@ -922,6 +934,7 @@ mod tests {
             }
         }
         assert!(words::SH_BUILTINS.windows(2).all(|w| w[0] < w[1]));
+        assert!(words::LITERALS.windows(2).all(|w| w[0] < w[1]));
         assert!(Lang::C.sync_line("#include <x>") && Lang::C.sync_line("int main(void)"));
         assert!(!Lang::C.sync_line(" * int") && !Lang::C.sync_line("integer = 1"));
         assert!(Lang::Java.sync_line("@Override") && Lang::Java.sync_line("public class A") && !Lang::Json.sync_line("{"));

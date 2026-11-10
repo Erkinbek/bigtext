@@ -101,6 +101,11 @@ pub struct ViewState {
     pub extra_version: u64,
     /// The selection before an Alt+press, for adding a cursor when it turns out to be a click.
     pub alt_prev: Option<(u64, u64)>,
+    /// The indentation step of code (cells) guessed from the start of the file, and the version
+    /// it was guessed for.
+    pub indent_unit: Option<(u64, u32)>,
+    /// Indent guides painted in the last frame (tests read it).
+    pub guides: usize,
 }
 
 impl ViewState {
@@ -146,6 +151,8 @@ impl Default for ViewState {
             wrap_column: None,
             folds: Vec::new(),
             folds_version: 0,
+            indent_unit: None,
+            guides: 0,
         }
     }
 }

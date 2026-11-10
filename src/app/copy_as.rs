@@ -66,7 +66,14 @@ fn hex(c: egui::Color32) -> String {
 /// `text` as preformatted HTML with each token in its syntax colour; `st` is what the text starts
 /// inside of (a comment opened above the selection).
 pub fn html_block(text: &str, lang: Lang, st: highlight::State, dark: bool, caption: Option<&str>) -> String {
-    let (bg, fg) = if dark { ("#1e1e1e", "#d4d4d4") } else { ("#f6f8fa", "#24292f") };
+    let (bg, fg) = if lang.is_code() {
+        let c = super::theme::code_colors(dark);
+        (hex(c.bg), hex(c.fg))
+    } else if dark {
+        ("#1e1e1e".into(), "#d4d4d4".into())
+    } else {
+        ("#f6f8fa".into(), "#24292f".into())
+    };
     let mut out = String::from("<div>");
     if let Some(c) = caption {
         out.push_str(&format!("<div style=\"font-family:sans-serif;font-size:90%;color:#888\">{}</div>", escape(c)));

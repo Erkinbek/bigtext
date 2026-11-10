@@ -42,7 +42,7 @@ pub struct ViewEnv<'a> {
     /// Which split pane this is (0 = primary).
     pub pane: u8,
     /// Spaces, tabs and line breaks shown as `·`, `→` and `↓` / `↵` / `←`.
-    pub show_ws: bool,
+    pub show_ws: ShowWs,
     /// Line numbers in the gutter.
     pub show_gutter: bool,
     /// View → Wrap at: a fixed column (`None`: the pane's width).
@@ -61,10 +61,63 @@ pub struct DiffOverlay<'a> {
     pub added: bool,
 }
 
+/// View → Show whitespace, kept apart for code (where the indentation shows as guides) and for
+/// other text.
+#[derive(Clone, Copy, Default)]
+pub struct ShowWs {
+    pub text: bool,
+    pub code: bool,
+}
+
+impl ShowWs {
+    pub fn for_lang(self, lang: super::highlight::Lang) -> bool {
+        if lang.is_code() {
+            self.code
+        } else {
+            self.text
+        }
+    }
+}
+
+/// Rows of code are this much taller than the font's line, as in code editors.
+const CODE_LINE_SPACING: f32 = 1.2;
+
 #[derive(Clone, Copy)]
 struct Metrics {
     cw: f32,
     rh: f32,
+    /// Space above the text in a row (rows of code are taller than the text).
+    pad: f32,
+}
+
+/// The colours of the text area: the theme's, or a code editor's for code.
+struct Look {
+    bg: Color32,
+    gutter: Color32,
+    fg: Color32,
+    line_no: Color32,
+    line_no_active: Color32,
+    cur_line: Color32,
+    guide: Color32,
+}
+
+impl Look {
+    fn new(v: &egui::Visuals, code: bool) -> Look {
+        if code && !crate::app::theme::high_contrast_on() {
+            let c = crate::app::theme::code_colors(v.dark_mode);
+            return Look { bg: c.bg, gutter: c.bg, fg: c.fg, line_no: c.line_no, line_no_active: c.line_no_active, cur_line: c.cur_line, guide: c.guide };
+        }
+        let weak = v.weak_text_color();
+        Look {
+            bg: v.extreme_bg_color,
+            gutter: v.faint_bg_color,
+            fg: v.text_color(),
+            line_no: weak,
+            line_no_active: v.text_color(),
+            cur_line: if v.dark_mode { Color32::from_white_alpha(8) } else { Color32::from_black_alpha(10) },
+            guide: weak.gamma_multiply(0.4),
+        }
+    }
 }
 
 /// The width rows wrap at (`None`: not wrapping): the column of View → Wrap at, or the pane's.
@@ -99,9 +152,13 @@ pub(crate) fn digits(n: u64) -> usize {
 }
 
 pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
+    let code = env.lang.is_code();
+    let show_ws = env.show_ws.for_lang(env.lang);
     let font = FontId::monospace(*env.font_size / ui.ctx().zoom_factor());
-    let (cw, rh) = ui.ctx().fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
-    let m = Metrics { cw: cw.max(1.0), rh: rh.max(1.0) };
+    let (cw, fh) = ui.ctx().fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
+    let fh = fh.max(1.0);
+    let rh = if code { (fh * CODE_LINE_SPACING).round() } else { fh };
+    let m = Metrics { cw: cw.max(1.0), rh, pad: ((rh - fh) / 2.0).round() };
 
     let full = ui.available_rect_before_wrap();
     let id = ui.id().with(("textview", doc.id, env.pane));
@@ -196,8 +253,10 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
 
     let painter = ui.painter_at(full);
     let visuals = ui.visuals().clone();
-    painter.rect_filled(full, 0.0, visuals.extreme_bg_color);
-    painter.rect_filled(gutter_rect, 0.0, visuals.faint_bg_color);
+    let look = Look::new(&visuals, code);
+    let unit = if code && doc.is_ready() { indent_unit(doc) } else { 4 };
+    painter.rect_filled(full, 0.0, look.bg);
+    painter.rect_filled(gutter_rect, 0.0, look.gutter);
 
     let rows = if doc.is_ready() {
         match layout_rows_folded(&doc.buf, doc.view.top, doc.view.rows_on_screen + 1, wrap, &doc.view.folds) {
@@ -214,17 +273,30 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         doc.view.top = first.start;
     }
 
-    let text_color = visuals.text_color();
+    let text_color = look.fg;
     let weak = visuals.weak_text_color();
     let sel_color = visuals.selection.bg_fill;
-    let cur_line_bg = if visuals.dark_mode { Color32::from_white_alpha(8) } else { Color32::from_black_alpha(10) };
+    let cur_line_bg = look.cur_line;
 
     let first_cell = (doc.view.scroll_x / m.cw).floor().max(0.0) as u32;
     let vis_cells = doc.view.text_cols as u32 + 2;
     let x_of = |cell: u32| text_rect.left() + cell as f32 * m.cw - doc.view.scroll_x;
     let text_painter = painter.with_clip_rect(text_rect);
+    // Indent guides go under everything else drawn on the text; they are known after the rows.
+    let guide_slot = text_painter.add(egui::Shape::Noop);
+    // The indentation of each row (`None`: blank, or not known), for the guides.
+    let mut indents: Vec<Option<u32>> = Vec::new();
+    let mut line_indent: Option<u32> = None;
     let (sel_s, sel_e) = doc.selection();
     let caret = doc.view.caret;
+    let has_caret = |row: &Row| caret >= row.start && (caret < row.end || (caret == row.end && (row.is_last_in_seg() || row.end == doc.buf.len())));
+    // The row with the caret's line number.
+    let caret_label = rows.iter().position(has_caret).map(|mut k| {
+        while k > 0 && !(rows[k].is_first_in_seg() && rows[k].seg.line_start) {
+            k -= 1;
+        }
+        k
+    });
     let extra = doc.view.extra.clone();
     let highlights = match (rows.first(), rows.last()) {
         (Some(a), Some(b)) => (env.highlight)(&doc.buf, a.start..b.seg.next.max(b.end)),
@@ -279,7 +351,12 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         let mut map: Vec<(usize, usize)> = Vec::new();
         let mut pre = String::new();
         let mut a11y_row = a11y_on.then(|| super::a11y::Row::new(row.start, row.end, Rect::from_min_max(pos2(text_rect.left(), y), pos2(text_rect.right(), y + m.rh))));
+        // The cell the row's text starts in (`None`: blank so far).
+        let mut ink: Option<u32> = None;
         rows::for_each_cell(&codec, &bytes, row.start, |c| {
+            if ink.is_none() && !matches!(c.kind, CellKind::Tab | CellKind::Hidden) && !(c.kind == CellKind::Normal && c.ch == ' ') {
+                ink = Some(c.cell);
+            }
             end_cell = c.cell + c.width;
             if c.cell + c.width <= first_cell {
                 if stateful && c.kind != CellKind::Hidden {
@@ -306,12 +383,12 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                 }
             }
             let (s, sp): (String, bool) = match c.kind {
-                CellKind::Tab if env.show_ws => {
+                CellKind::Tab if show_ws => {
                     let w = (c.cell + c.width - c.cell.max(first_cell)) as usize;
                     (if c.cell >= first_cell { format!("→{}", " ".repeat(w - 1)) } else { " ".repeat(w) }, true)
                 }
                 CellKind::Tab => (" ".repeat((c.cell + c.width - c.cell.max(first_cell)) as usize), false),
-                CellKind::Normal if env.show_ws && c.ch == ' ' => ("·".to_string(), true),
+                CellKind::Normal if show_ws && c.ch == ' ' => ("·".to_string(), true),
                 CellKind::Hidden => (String::new(), false),
                 CellKind::Control => (control_glyph(c.ch).to_string(), true),
                 CellKind::Invalid => ('\u{FFFD}'.to_string(), true),
@@ -332,6 +409,22 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         let st = if pre.is_empty() { st } else { super::highlight::scan(env.lang, st, &pre, false) };
         let text = Shown { run: &run, specials: &specials, src: &src, map: &map };
         build_job(&mut job, &text, env.lang, st, &font, text_color, weak, visuals.dark_mode);
+        if code {
+            // A wrapped row goes on with its line's indentation.
+            let indent = if starts_line {
+                line_indent = match ink {
+                    Some(n) => Some(n),
+                    // The empty row after the last line break ends every block.
+                    None if row.start == doc.buf.len() => Some(0),
+                    None if reached_end => None,
+                    None => Some(first_cell + vis_cells),
+                };
+                line_indent
+            } else {
+                line_indent
+            };
+            indents.push(indent);
+        }
         if let Some(mut r) = a11y_row.take() {
             if reached_end && row.is_last_in_seg() && row.seg.has_nl {
                 r.push('\n', row.end, (end_cell.max(first_cell) - first_cell) as f32 * m.cw, 0.0);
@@ -364,7 +457,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                 }
             }
         };
-        let row_has_caret = caret >= row.start && (caret < row.end || (caret == row.end && (row.is_last_in_seg() || row.end == doc.buf.len())));
+        let row_has_caret = has_caret(row);
         let in_diff = diff_spans.iter().any(|s| s.start <= row.start && row.start < s.end);
         if in_diff {
             text_painter.rect_filled(Rect::from_min_max(pos2(text_rect.left(), y), pos2(text_rect.right(), y + m.rh)), 0.0, diff_color);
@@ -409,10 +502,10 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         }
         if !job.text.is_empty() {
             let galley = ui.ctx().fonts_mut(|f| f.layout_job(job));
-            text_painter.galley(pos2(x_of(first_cell), y), galley, text_color);
+            text_painter.galley(pos2(x_of(first_cell), y + m.pad), galley, text_color);
         }
         // The line break: LF, CRLF or CR.
-        if env.show_ws && reached_end && row.is_last_in_seg() && row.seg.has_nl {
+        if show_ws && reached_end && row.is_last_in_seg() && row.seg.has_nl {
             let glyph = if row.seg.next - row.seg.content_end >= 2 * codec.unit() as u64 {
                 "↵"
             } else if codec.nl == bigtext::encoding::NlByte::Cr {
@@ -420,7 +513,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             } else {
                 "↓"
             };
-            text_painter.text(pos2(x_of(end_cell), y), Align2::LEFT_TOP, glyph, font.clone(), weak);
+            text_painter.text(pos2(x_of(end_cell), y + m.pad), Align2::LEFT_TOP, glyph, font.clone(), weak);
         }
         if row_has_caret {
             let x = x_of(cell_for(caret));
@@ -448,14 +541,15 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             String::new()
         };
         if !label.is_empty() && env.show_gutter {
-            painter.text(pos2(gutter_rect.right() - 8.0, y), Align2::RIGHT_TOP, label, font.clone(), weak);
+            let color = if caret_label == Some(i) { look.line_no_active } else { look.line_no };
+            painter.text(pos2(gutter_rect.right() - 8.0, y + m.pad), Align2::RIGHT_TOP, label, font.clone(), color);
         } else if !row.is_first_in_seg() && env.show_gutter {
             // A wrapped row: a dim mark, so the line numbers stay readable.
-            painter.text(pos2(gutter_rect.right() - 8.0, y), Align2::RIGHT_TOP, "·", font.clone(), weak.gamma_multiply(0.5));
+            painter.text(pos2(gutter_rect.right() - 8.0, y + m.pad), Align2::RIGHT_TOP, "·", font.clone(), look.line_no.gamma_multiply(0.5));
         }
         if in_diff && starts_line && env.show_gutter {
             let glyph = if env.diff.as_ref().is_some_and(|o| o.added) { "+" } else { "−" };
-            painter.text(pos2(gutter_rect.left() + 2.0, y), Align2::LEFT_TOP, glyph, font.clone(), diff_color.to_opaque());
+            painter.text(pos2(gutter_rect.left() + 2.0, y + m.pad), Align2::LEFT_TOP, glyph, font.clone(), diff_color.to_opaque());
         }
         // A folded value: ▸ in the gutter, "… N lines …" after its opening line.
         if let Some(f) = super::folds::starting_at(&doc.view.folds, row.seg.start).filter(|_| row.seg.line_start).copied() {
@@ -489,6 +583,31 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         }
     }
     doc.view.max_cells = max_w;
+    doc.view.guides = 0;
+    if code && !indents.is_empty() {
+        let indents = super::indent::fill_blanks(&indents);
+        let stroke = egui::Stroke::new(1.0, look.guide);
+        let mut lines = Vec::new();
+        // One line per level and run of rows indented deeper than it.
+        for cell in super::indent::guide_cells(indents.iter().copied().max().unwrap_or(0), unit) {
+            // Just inside the cell, so the first level is not cut off at the text's left edge.
+            let x = text_painter.round_to_pixel_center(x_of(cell) + 0.5);
+            if x < text_rect.left() {
+                continue;
+            }
+            let mut from = None;
+            for (i, &n) in indents.iter().chain(std::iter::once(&0)).enumerate() {
+                if n > cell {
+                    from.get_or_insert(i);
+                } else if let Some(s) = from.take() {
+                    let (y0, y1) = (text_rect.top() + s as f32 * m.rh, text_rect.top() + i as f32 * m.rh);
+                    lines.push(egui::Shape::vline(x, y0..=y1, stroke));
+                }
+            }
+        }
+        doc.view.guides = lines.len();
+        text_painter.set(guide_slot, egui::Shape::Vec(lines));
+    }
     if !unfold.is_empty() {
         doc.view.folds.retain(|f| !unfold.contains(&f.start));
     }
@@ -544,6 +663,17 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             horizontal_scrollbar(ui, doc, id, hbar, m, text_rect.width());
         }
     }
+}
+
+/// The indentation step of the document's code, guessed again after each edit.
+fn indent_unit(doc: &mut Document) -> u32 {
+    if let Some((_, unit)) = doc.view.indent_unit.filter(|&(v, _)| v == doc.version) {
+        return unit;
+    }
+    let Some(head) = doc.buf.read(0..doc.buf.len().min(super::indent::GUESS_BYTES)) else { return 4 };
+    let unit = super::indent::guess_unit(&head);
+    doc.view.indent_unit = Some((doc.version, unit));
+    unit
 }
 
 /// The visible text of a row: as painted (`run`, with the byte ranges of placeholder glyphs),

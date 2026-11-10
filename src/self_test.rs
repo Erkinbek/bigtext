@@ -77,7 +77,8 @@ const COMMENT_SQL: &str ="SELECT 1;\n/* the next line\nSELECT 'is a comment';\n*
 const PAGE_PHP: &str = "<!doctype html>\n<title>Demo</title>\n<?php\n$body = <<<HTML\n    <p>inside the heredoc</p>\n    HTML;\necho $body;\n?>\n<footer>after PHP</footer>\n";
 const TOOL_PY: &str = "#!/usr/bin/env python3\ndef main():\n    \"\"\"Print a greeting.\n\n    def inside_the_docstring(): ...\n    \"\"\"\n    print('hi')\n";
 const DEPLOY_SH: &str = "#!/bin/bash\nset -e\ncat > /etc/app.conf <<'EOF'\nport=8080 # not a comment here\nEOF\necho \"deployed\"\n";
-const CSV_WITHOUT_NAME_CITY: &str = "id;age\r\n1;30\r\n2;41\r\n3;25\r\n";
+const SETTINGS_PY: &str = "\"\"\"Settings, read once from the environment.\"\"\"\nimport os\nfrom dataclasses import dataclass\n\nROOT = os.path.dirname(__file__)\n\n\ndef _bool(name: str, default: bool = False) -> bool:\n    v = os.getenv(name)\n    if v is None:\n        return default\n    return v.strip().lower() in (\"1\", \"true\", \"yes\")\n\n\n@dataclass(frozen=True)\nclass Settings:\n    # Network\n    host: str\n    port: int\n\n    @classmethod\n    def load(cls) -> \"Settings\":\n        port = os.getenv(\"PORT\", \"8080\")\n        if not port.isdigit():\n            raise SystemExit(\"PORT must be a number\")\n        return cls(host=os.getenv(\"HOST\", \"127.0.0.1\"), port=int(port))\n";
+const CSV_WITHOUT_NAME_CITY: &str ="id;age\r\n1;30\r\n2;41\r\n3;25\r\n";
 
 fn doc(app: &mut BigTextApp) -> &mut Document {
     app.active_doc().expect("active document")
@@ -249,7 +250,8 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("page.php"), PAGE_PHP)?;
     std::fs::write(dir.join("tool"), TOOL_PY)?;
     std::fs::write(dir.join("deploy.sh"), DEPLOY_SH)?;
-    std::fs::write(dir.join("app.log"), "2026-10-24 10:00:00.000 [ERROR] failed\n2026-10-24 10:00:01.000 [INFO] ok\n")?;
+    std::fs::write(dir.join("settings.py"), SETTINGS_PY)?;
+    std::fs::write(dir.join("app.log"),"2026-10-24 10:00:00.000 [ERROR] failed\n2026-10-24 10:00:01.000 [INFO] ok\n")?;
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
     std::fs::write(dir.join("patch-me.txt"), &base)?;
@@ -1187,6 +1189,30 @@ impl SelfTest {
             let got = (d.effective_lang(), st(line("port=")), st(line("EOF\necho")), st(line("echo")));
             check(got == (crate::view::highlight::Lang::Shell, Some(true), Some(true), Some(false)), format!("{got:?}"))
         }));
+        s("code look: taller rows and indent guides; whitespace marks stay off in code while text shows them", Box::new(|app, c| {
+            use crate::app::commands::Cmd;
+            let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+            if c.first() {
+                app.settings.show_ws = true;
+                app.settings.show_ws_code = false;
+                app.open_path(c.file("settings.py"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) || doc(app).view.guides == 0 && c.waited() < Duration::from_secs(3) {
+                return Step::Wait;
+            }
+            let font = egui::FontId::monospace(app.settings.font_size / ctx.zoom_factor());
+            let line = ctx.fonts_mut(|f| f.row_height(&font));
+            let (row, guides) = (doc(app).view.cell.y, doc(app).view.guides);
+            // In code the menu item switches code's whitespace marks, not text's.
+            app.run(&ctx, Cmd::ShowWhitespace);
+            let toggled = (app.settings.show_ws_code, app.settings.show_ws);
+            app.run(&ctx, Cmd::ShowWhitespace);
+            app.settings.show_ws = false;
+            let ok = row > line + 1.0 && guides > 0 && toggled == (true, true) && !app.settings.show_ws_code;
+            check(ok, format!("row {row} line {line} guides {guides} toggled {toggled:?}"))
+        }));
+        s("screenshot: code", shot_step("selftest-code.png"));
         s("follow reads the file in chunks, not mapped", Box::new(|app, c| {
             if c.first() {
                 app.open_path(c.file("rot.log"));

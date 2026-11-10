@@ -186,6 +186,11 @@ keyboard shortcuts.
   span lines are followed: each row starts in the state the row above left (remembered while
   you scroll), and after a jump the 64 KB above the screen are read to find it, starting at a
   line that begins a declaration.
+- **Code looks like it does in a code editor**: One Dark colours (One Light on the light theme)
+  on a softer background, slightly taller rows, the caret's line number lit, and thin indent
+  guides at each level instead of whitespace marks (the step — 2 or 4 spaces, or tabs — is
+  guessed from the start of the file; blank lines carry the guides of the lines around them).
+  Show whitespace is switched for code apart from other text, so logs can keep showing it.
 - **CSV / TSV table view**: `.csv` and `.tsv` files open as a table (View → Table view or
   Ctrl+T switches any file between table and text). The delimiter (comma, semicolon, tab, pipe)
   is detected from the first lines and can be changed in the toolbar; quoted fields follow
@@ -260,7 +265,8 @@ keyboard shortcuts.
 - **Multiple cursors**: Ctrl+D adds the next occurrence of the selection, Alt+click adds a
   cursor; typing, paste, Backspace, Delete, Enter and Tab change the text at all of them.
 - **Matching brackets and tags** highlighted next to the caret; Ctrl+] jumps to the partner.
-  **View → Show whitespace and line breaks** shows spaces, tabs and LF / CRLF / CR.
+  **View → Show whitespace and line breaks** shows spaces, tabs and LF / CRLF / CR (on or off
+  for code and for other text separately).
 - **JSON and XML**: **View → Structure** (Ctrl+Shift+J), an outline opened node by node (fine for a
   root array of millions of items, or an XML element tree), jumping to a path like `$.items[1234].id`
   (or `/catalog/item[1234]/price`) and copying the

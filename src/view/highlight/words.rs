@@ -239,5 +239,8 @@ const RUST_TYPES: &[&str] = &["bool", "char", "f32", "f64", "i128", "i16", "i32"
 /// After these words a `/` starts a regular expression, not a division.
 pub(super) const JS_BEFORE_REGEX: &[&str] = &["await", "case", "delete", "do", "else", "in", "instanceof", "new", "of", "return", "throw", "typeof", "void", "yield"];
 
+/// Keywords that are values (coloured as constants).
+pub(super) const LITERALS: &[&str] = &["FALSE", "False", "NULL", "None", "TRUE", "True", "false", "iota", "nil", "null", "nullptr", "true", "undefined"];
+
 #[cfg(test)]
-pub(super) const ALL: &[&Spec] = &[&C, &CSHARP, &JAVA, &JS, &TS, &GO, &RUST, &PHP, &PYTHON, &SHELL];
+pub(super) const ALL: &[&Spec] =&[&C, &CSHARP, &JAVA, &JS, &TS, &GO, &RUST, &PHP, &PYTHON, &SHELL];

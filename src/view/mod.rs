@@ -6,6 +6,7 @@ pub mod folds;
 pub mod hex_view;
 pub mod highlight;
 pub mod hl_rows;
+pub mod indent;
 pub mod multi;
 pub mod table_view;
 pub mod text_view;

@@ -212,7 +212,7 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                     e += 1;
                 }
                 let e = super::word_end(t, e);
-                out.push(i, e, Kind::Key);
+                out.push(i, e, Kind::Var);
                 i = e;
                 prev = Prev::Name;
                 continue;
@@ -227,7 +227,7 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                 _ => None,
             };
             if let Some(e) = e {
-                out.push(i, e, Kind::Key);
+                out.push(i, e, Kind::Var);
                 i = e;
                 prev = Prev::Name;
                 continue;
@@ -270,7 +270,7 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                 }
                 e += 1;
             }
-            out.push(i, e, Kind::Attr);
+            out.push(i, e, Kind::Decorator);
             i = e;
             prev = Prev::Punct;
             continue;
@@ -315,7 +315,7 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                 // NAME=value, local name=value
                 let declared = prev == Prev::Name && matches!(&t[last_name.0..last_name.1], b"local" | b"export" | b"readonly" | b"declare" | b"typeset");
                 if t.get(e) == Some(&b'=') && (matches!(prev, Prev::Start | Prev::Punct) || declared) {
-                    out.push(i, e, Kind::Key);
+                    out.push(i, e, Kind::Var);
                     i = e;
                     prev = Prev::Name;
                     continue;
@@ -350,7 +350,13 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                     } else {
                         None
                     };
-                    Some(Kind::Keyword)
+                    Some(if has_word(super::words::LITERALS, w, spec.ci) {
+                        Kind::Number
+                    } else if matches!(w, b"self" | b"this") {
+                        Kind::Var
+                    } else {
+                        Kind::Keyword
+                    })
                 } else if lang == Lang::Shell && has(super::words::SH_BUILTINS, w) {
                     Some(Kind::Function)
                 } else {
@@ -370,7 +376,7 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
             while e < t.len() && (is_ident(t[e]) || t[e] == b'.') {
                 e += 1;
             }
-            out.push(i, e, Kind::Attr);
+            out.push(i, e, Kind::Decorator);
             i = e;
             prev = Prev::Name;
             continue;

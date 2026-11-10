@@ -42,6 +42,7 @@ fn shareable(p: &Persisted) -> Persisted {
         level_bar: p.level_bar,
         saved: p.saved.clone(),
         show_ws: p.show_ws,
+        show_ws_code: p.show_ws_code,
         status: p.status,
         gutter: p.gutter,
         wrap_column: p.wrap_column,
@@ -81,6 +82,9 @@ impl BigTextApp {
         }
         if let Some(v) = p.show_ws {
             s.show_ws = v;
+        }
+        if let Some(v) = p.show_ws_code {
+            s.show_ws_code = v;
         }
         if let Some(v) = p.status {
             s.status = v;

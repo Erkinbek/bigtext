@@ -228,6 +228,28 @@ pub fn mark_alpha(dark: bool) -> u8 {
     fill_alpha(if dark { 95 } else { 110 })
 }
 
+/// The text area of a code file, like a code editor's (One Dark and One Light).
+pub struct CodeColors {
+    pub bg: Color32,
+    /// Text that is not a token with its own colour (names, operators).
+    pub fg: Color32,
+    pub line_no: Color32,
+    /// The caret's line number.
+    pub line_no_active: Color32,
+    /// Behind the caret's line.
+    pub cur_line: Color32,
+    pub guide: Color32,
+}
+
+pub fn code_colors(dark: bool) -> CodeColors {
+    let c = Color32::from_rgb;
+    if dark {
+        CodeColors { bg: c(35, 39, 46), fg: c(171, 178, 191), line_no: c(95, 104, 122), line_no_active: c(200, 205, 215), cur_line: c(44, 49, 60), guide: c(64, 70, 80) }
+    } else {
+        CodeColors { bg: c(250, 250, 250), fg: c(56, 58, 66), line_no: c(157, 157, 159), line_no_active: c(56, 58, 66), cur_line: c(240, 240, 242), guide: c(222, 222, 224) }
+    }
+}
+
 /// Syntax colours with colour-blind-safe colours: levels differ in lightness as well (ERROR
 /// vermillion, WARN yellow, INFO blue).
 pub fn cvd_syntax(kind: crate::view::highlight::Kind, dark: bool) -> (u8, u8, u8) {
@@ -248,6 +270,8 @@ pub fn cvd_syntax(kind: crate::view::highlight::Kind, dark: bool) -> (u8, u8, u8
         Kind::Punct => ((171, 178, 191), (90, 90, 90)),
         Kind::Type => ((86, 180, 233), (0, 100, 170)),
         Kind::Function => ((240, 228, 66), (130, 110, 0)),
+        Kind::Var => ((230, 110, 30), (200, 80, 0)),
+        Kind::Decorator => ((204, 121, 167), (160, 60, 120)),
         Kind::Col(i) => {
             const DARK: [(u8, u8, u8); 6] = [(230, 159, 0), (86, 180, 233), (0, 158, 115), (204, 121, 167), (240, 228, 66), (230, 110, 30)];
             const LIGHT: [(u8, u8, u8); 6] = [(170, 100, 0), (0, 100, 170), (0, 115, 80), (160, 60, 120), (130, 110, 0), (200, 80, 0)];
