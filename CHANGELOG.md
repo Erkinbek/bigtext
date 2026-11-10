@@ -3,6 +3,52 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## 0.6.0 — 2026-11-10
+
+### Fixed: whitespace display
+
+- **Code files are no longer buried under whitespace marks.** With **View → Show whitespace and
+  line breaks** on, a code file was drawn with a `·` for every space, a `→` for every tab and a
+  `↓` at the end of every line, so the indentation of a Python or JavaScript file turned into
+  rows of dots. The setting was one switch for all files: turning it on for a log turned it on
+  for code as well, and it stayed on in the next session. Now spaces and tabs in code are plain
+  space, the indentation is shown by thin guides instead, and **Show whitespace is kept
+  separately for code and for other text**: in code it is off by default, while logs and other
+  text keep whatever you had chosen. The menu item switches the kind of file in the active tab
+  and its check mark shows that kind's setting.
+
+### Code looks like it does in a code editor
+
+- **One palette for code, One Dark** (One Light on the light theme). Before, the colours mixed
+  two palettes. Now keywords are purple, strings green, numbers and constants orange
+  (`true`, `None`, `nil` and `UPPER_CASE` names), types yellow, functions blue, `self`, `this`
+  and `$variables` red, decorators and attributes (`@dataclass`, `#[derive]`) cyan, comments
+  grey.
+- **A softer background and brighter plain text** in code instead of grey on black, **rows a
+  little taller** than the font's line, and the current line's background and **line number lit**.
+  The caret's line number is lit in every file.
+- **Indent guides**: a thin line at each indentation level, carried over blank lines by the lines
+  around them. The step (2 or 4 spaces, or tabs) is guessed from the first 64 KB of the file.
+- **Edit → Copy as ▸ HTML** gives code the same background and text colour. The high-contrast
+  themes keep pure black and white, and the colour-blind-safe colours cover the new kinds.
+
+### Folder side bar
+
+- **File → Open folder…** (Ctrl+Shift+O) shows a folder as a tree on the left, as in Sublime
+  Text: folders first, names in natural order (`file2` before `file10`), file sizes, and the
+  open file marked. A click opens a file or expands a folder; **Filter names** narrows the tree
+  to the folders read so far. **View → Side bar** (Ctrl+Shift+E) shows or hides it and
+  **File → Close folder** closes it.
+- Right-click a folder for **Find in files…** in it, **Open terminal here**, **Show in folder**
+  and **Copy path**; a file adds **Open with the default app**. `.git`, `.svn`, `.hg`,
+  `.DS_Store`, `Thumbs.db` and `desktop.ini` are not shown.
+- A folder is read only when it is expanded, on a worker, and only the rows on screen are drawn,
+  so a folder of a million files or a slow network drive never stops the window. The tree is
+  read again when the window gets the focus back.
+- `bigtext FOLDER`, a folder dropped on the window or passed to a running BigText opens in the
+  side bar instead of failing in an empty tab. The folder, its expanded subfolders and whether
+  the side bar is shown come back with the session, and **Find in files** starts in it.
+
 ## 0.5.0 — 2026-11-10
 
 ### Code highlighting

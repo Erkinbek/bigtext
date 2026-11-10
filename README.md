@@ -33,6 +33,13 @@ self-contained binary with no runtime dependencies, for Windows, Linux and macOS
 - **Code in colour.** Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP and shell
   scripts are highlighted, with comments and strings followed over lines, and only the rows on
   screen are coloured.
+- **Code looks like it does in a code editor.** Code files open in One Dark colours (One Light
+  on the light theme) on a softer background, with roomier rows, the current line number lit
+  and thin indent guides at each level. Spaces and tabs are plain space in code, with no dots
+  or arrows; **View → Show whitespace** is switched for code apart from logs and other text.
+- **Folder side bar.** **File → Open folder…** (Ctrl+Shift+O) shows a folder's files in a tree
+  on the left, as in Sublime Text: a click opens a file, folders are read only when expanded,
+  names can be filtered, and the folder comes back with the session.
 
 Scripts get the same streaming code without a window in `bigtext-cli` (see [USAGE.md](USAGE.md)).
 Every feature is described in [FEATURES.md](FEATURES.md).
