@@ -112,10 +112,26 @@ pub enum Lang {
     C,
     CSharp,
     Java,
+    JavaScript,
+    TypeScript,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 11] = [Lang::Plain, Lang::Log, Lang::Json, Lang::Xml, Lang::Csv(b','), Lang::Csv(b'\t'), Lang::Sql, Lang::Ini, Lang::C, Lang::CSharp, Lang::Java];
+    pub const ALL: [Lang; 13] = [
+        Lang::Plain,
+        Lang::Log,
+        Lang::Json,
+        Lang::Xml,
+        Lang::Csv(b','),
+        Lang::Csv(b'\t'),
+        Lang::Sql,
+        Lang::Ini,
+        Lang::C,
+        Lang::CSharp,
+        Lang::Java,
+        Lang::JavaScript,
+        Lang::TypeScript,
+    ];
 
     pub fn from_path(p: Option<&Path>) -> Lang {
         let ext = p.and_then(|p| p.extension()).map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
@@ -130,6 +146,8 @@ impl Lang {
             "c" | "h" | "cpp" | "cc" | "cxx" | "c++" | "hpp" | "hh" | "hxx" | "h++" | "inl" | "ipp" | "ino" => Lang::C,
             "cs" | "csx" => Lang::CSharp,
             "java" => Lang::Java,
+            "js" | "mjs" | "cjs" | "jsx" => Lang::JavaScript,
+            "ts" | "tsx" | "mts" | "cts" => Lang::TypeScript,
             _ => Lang::Plain,
         }
     }
@@ -180,6 +198,8 @@ impl Lang {
             Lang::C => "C / C++",
             Lang::CSharp => "C#",
             Lang::Java => "Java",
+            Lang::JavaScript => "JavaScript",
+            Lang::TypeScript => "TypeScript",
         }
     }
 }
@@ -309,12 +329,13 @@ fn run(lang: Lang, mut st: State, t: &[u8], ends_line: bool, mut sink: Sink) -> 
     match (lang, sink.0.as_deref_mut()) {
         (Lang::Xml, _) => xml_spans(&mut st, t, &mut sink),
         (Lang::Sql, _) => sql_spans(&mut st, t, &mut sink),
-        (Lang::C | Lang::CSharp | Lang::Java, _) => code::spans(lang, &mut st, t, &mut sink),
-        (_, None) | (Lang::Plain, _) => {}
+        (l, _) if l.is_code() => code::spans(lang, &mut st, t, &mut sink),
         (Lang::Log, Some(out)) => log_spans(t, out),
         (Lang::Json, Some(out)) => json_spans(t, out),
         (Lang::Csv(sep), Some(out)) => csv_spans(t, sep, out),
         (Lang::Ini, Some(out)) => ini_spans(t, out),
+        // Plain text, or only the state wanted of a format without one.
+        _ => {}
     }
     if ends_line {
         st.end_line(t);
@@ -709,6 +730,28 @@ mod tests {
         assert_eq!(l[1], vec![("  text \"block\"".into(), Kind::Str)]);
         assert_eq!(l[4], vec![(" * Docs.".into(), Kind::Comment)]);
         assert_eq!(l[6][..2], [("class".into(), Kind::Keyword), ("A".into(), Kind::Type)]);
+    }
+
+    #[test]
+    fn javascript_typescript() {
+        let k = kinds(Lang::JavaScript, r#"export async function load(url) { const re = /"[a-z/]+"/gi; return x / 2 / y; }"#);
+        for want in [("export", Kind::Keyword), ("async", Kind::Keyword), ("load", Kind::Function), (r#"/"[a-z/]+"/gi"#, Kind::Str), ("2", Kind::Number)] {
+            assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
+        }
+        assert_eq!(k.iter().filter(|s| s.1 == Kind::Str).count(), 1, "{k:?}");
+        // A regular expression with a backtick does not open a template literal.
+        let k = kinds(Lang::JavaScript, "if (ok) return /`/.test(s);");
+        assert!(k.contains(&("/`/".into(), Kind::Str)) && k.contains(&("test".into(), Kind::Function)), "{k:?}");
+        assert_eq!(scan(Lang::JavaScript, State::default(), "if (ok) return /`/.test(s);", true), State::default());
+        let l = lines(Lang::TypeScript, "const html = `<p>\n  ${name}\n</p>`;\ninterface User { id: number }");
+        assert_eq!(l[1], vec![("  ${name}".into(), Kind::Str)]);
+        assert_eq!(l[2][0], ("</p>`".into(), Kind::Str));
+        assert_eq!(l[3], vec![("interface".into(), Kind::Keyword), ("User".into(), Kind::Type), ("number".into(), Kind::Type)]);
+        let k = kinds(Lang::TypeScript, "@Component({}) class A { private x: string = 'a'; }");
+        for want in [("@Component", Kind::Attr), ("private", Kind::Keyword), ("string", Kind::Type), ("'a'", Kind::Str)] {
+            assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
+        }
+        assert_eq!((Lang::from_path(Some(Path::new("a.tsx"))), Lang::from_path(Some(Path::new("b.mjs")))), (Lang::TypeScript, Lang::JavaScript));
     }
 
     #[test]

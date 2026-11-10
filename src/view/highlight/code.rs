@@ -37,6 +37,8 @@ pub(super) fn spec(lang: Lang) -> Option<&'static Spec> {
         Lang::C => &C,
         Lang::CSharp => &CSHARP,
         Lang::Java => &JAVA,
+        Lang::JavaScript => &JS,
+        Lang::TypeScript => &TS,
         _ => return None,
     })
 }
@@ -65,7 +67,37 @@ enum Prev {
     Path,
     Name,
     Value,
+    /// `)` or `]`: what follows is an operator, as after a value.
+    Close,
     Punct,
+}
+
+fn is_js(lang: Lang) -> bool {
+    matches!(lang, Lang::JavaScript | Lang::TypeScript)
+}
+
+/// A JavaScript regular expression at `t[i]` (a `/`, where an operand may start): its end, past
+/// the flags. `None` when the line ends first (then it was a division after all).
+fn regex_end(t: &[u8], i: usize) -> Option<usize> {
+    let mut j = i + 1;
+    let mut class = false;
+    while j < t.len() {
+        match t[j] {
+            b'\\' => j += 1,
+            b'[' => class = true,
+            b']' => class = false,
+            b'/' if !class => {
+                j += 1;
+                while j < t.len() && t[j].is_ascii_alphabetic() {
+                    j += 1;
+                }
+                return Some(j);
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    None
 }
 
 pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
@@ -75,6 +107,8 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
     let mut prev = Prev::Start;
     // The kind of the next name, after `class`, `def` and the like.
     let mut next: Option<Kind> = None;
+    // The last name, for `return /re/`.
+    let mut last_name = (0, 0);
     while i < t.len() {
         // Finish what an earlier row or token left open.
         match st.mode {
@@ -131,6 +165,19 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
             next = None;
             continue;
         }
+        if c == b'/' && is_js(lang) {
+            let operand = match prev {
+                Prev::Start | Prev::Punct => true,
+                Prev::Name => super::words::JS_BEFORE_REGEX.iter().any(|k| k.as_bytes() == &t[last_name.0..last_name.1]),
+                _ => false,
+            };
+            if let Some(e) = regex_end(t, i).filter(|_| operand) {
+                out.push(i, e, Kind::Str);
+                i = e;
+                prev = Prev::Value;
+                continue;
+            }
+        }
         if c.is_ascii_digit() {
             let e = number_end(lang, t, i);
             out.push(i, e, Kind::Number);
@@ -169,6 +216,7 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                     out.push(i, e, k);
                 }
             }
+            last_name = (i, e);
             i = e;
             prev = Prev::Name;
             continue;
@@ -187,6 +235,7 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
             b'.' => Prev::Dot,
             b'>' if i > 0 && t[i - 1] == b'-' => Prev::Dot,
             b':' if i > 0 && t[i - 1] == b':' => Prev::Path,
+            b')' | b']' => Prev::Close,
             _ => Prev::Punct,
         };
         next = None;
@@ -267,6 +316,8 @@ fn open_string(lang: Lang, t: &[u8], i: usize) -> Option<(Mode, usize)> {
     let three = t[i..].starts_with(b"\"\"\"");
     match lang {
         Lang::Java if three => Some((Mode::Str(Str { q: b'"', n: 3, esc: true, ml: true, dbl: false }), i + 3)),
+        // A template literal; what is inside `${}` is coloured as the string.
+        Lang::JavaScript | Lang::TypeScript if c == b'`' => Some((Mode::Str(Str { q: c, n: 1, esc: true, ml: true, dbl: false }), i + 1)),
         Lang::CSharp if c == b'@' || c == b'$' || three => {
             let mut j = i;
             let mut verbatim = false;

@@ -31,6 +31,8 @@ pub fn fence_lang(lang: Lang) -> &'static str {
         Lang::C => "cpp",
         Lang::CSharp => "csharp",
         Lang::Java => "java",
+        Lang::JavaScript => "javascript",
+        Lang::TypeScript => "typescript",
     }
 }
 

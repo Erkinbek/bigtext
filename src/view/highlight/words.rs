@@ -45,6 +45,34 @@ pub(super) const JAVA: Spec = Spec {
     sync: &["@", "abstract", "class", "enum", "final", "import", "interface", "package", "public", "record"],
 };
 
+pub(super) const JS: Spec = Spec {
+    line: &["//"],
+    block: true,
+    nest: false,
+    keywords: JS_KEYWORDS,
+    types: &[],
+    type_kw: &["class", "extends", "new"],
+    fn_kw: &["function"],
+    pascal: true,
+    at_attr: true,
+    sync: JS_SYNC,
+};
+
+pub(super) const TS: Spec = Spec {
+    line: &["//"],
+    block: true,
+    nest: false,
+    keywords: TS_KEYWORDS,
+    types: TS_TYPES,
+    type_kw: &["class", "enum", "extends", "implements", "interface", "namespace", "new", "type"],
+    fn_kw: &["function"],
+    pascal: true,
+    at_attr: true,
+    sync: JS_SYNC,
+};
+
+const JS_SYNC: &[&str] = &["@", "abstract", "async", "class", "const", "declare", "enum", "export", "function", "import", "interface", "let", "namespace", "type", "var"];
+
 const C_KEYWORDS: &[&str] = &[
     "_Alignas", "_Alignof", "_Atomic", "_Generic", "_Noreturn", "_Static_assert", "_Thread_local", "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand",
     "bitor", "break", "case", "catch", "class", "co_await", "co_return", "co_yield", "compl", "concept", "const", "const_cast", "consteval", "constexpr", "constinit",
@@ -76,5 +104,21 @@ const JAVA_KEYWORDS: &[&str] = &[
 ];
 const JAVA_TYPES: &[&str] = &["boolean", "byte", "char", "double", "float", "int", "long", "short", "void"];
 
+const JS_KEYWORDS: &[&str] = &[
+    "Infinity", "NaN", "as", "async", "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "export",
+    "extends", "false", "finally", "for", "from", "function", "if", "import", "in", "instanceof", "let", "new", "null", "of", "return", "static", "super",
+    "switch", "this", "throw", "true", "try", "typeof", "undefined", "var", "void", "while", "with", "yield",
+];
+const TS_KEYWORDS: &[&str] = &[
+    "Infinity", "NaN", "abstract", "as", "asserts", "async", "await", "break", "case", "catch", "class", "const", "continue", "debugger", "declare", "default",
+    "delete", "do", "else", "enum", "export", "extends", "false", "finally", "for", "from", "function", "if", "implements", "import", "in", "infer", "instanceof",
+    "interface", "is", "keyof", "let", "module", "namespace", "new", "null", "of", "override", "private", "protected", "public", "readonly", "return", "satisfies",
+    "static", "super", "switch", "this", "throw", "true", "try", "type", "typeof", "undefined", "unique", "var", "while", "with", "yield",
+];
+const TS_TYPES: &[&str] = &["any", "bigint", "boolean", "never", "number", "object", "string", "symbol", "unknown", "void"];
+
+/// After these words a `/` starts a regular expression, not a division.
+pub(super) const JS_BEFORE_REGEX: &[&str] = &["await", "case", "delete", "do", "else", "in", "instanceof", "new", "of", "return", "throw", "typeof", "void", "yield"];
+
 #[cfg(test)]
-pub(super) const ALL: &[&Spec] = &[&C, &CSHARP, &JAVA];
+pub(super) const ALL: &[&Spec] = &[&C, &CSHARP, &JAVA, &JS, &TS];
