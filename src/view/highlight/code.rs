@@ -252,30 +252,28 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
             prev = Prev::Value;
             continue;
         }
-        if matches!(lang, Lang::Rust | Lang::Php) {
-            if c == b'#' && (t[i + 1..].starts_with(b"[") || t[i + 1..].starts_with(b"![")) {
-                // #[derive(Debug)], #![allow(x)], #[Route('/')]: up to the matching bracket on this row.
-                let mut depth = 0;
-                let mut e = i;
-                while e < t.len() {
-                    match t[e] {
-                        b'[' => depth += 1,
-                        b']' => {
-                            depth -= 1;
-                            if depth == 0 {
-                                e += 1;
-                                break;
-                            }
+        if matches!(lang, Lang::Rust | Lang::Php) && c == b'#' && (t[i + 1..].starts_with(b"[") || t[i + 1..].starts_with(b"![")) {
+            // #[derive(Debug)], #![allow(x)], #[Route('/')]: up to the matching bracket on this row.
+            let mut depth = 0;
+            let mut e = i;
+            while e < t.len() {
+                match t[e] {
+                    b'[' => depth += 1,
+                    b']' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            e += 1;
+                            break;
                         }
-                        _ => {}
                     }
-                    e += 1;
+                    _ => {}
                 }
-                out.push(i, e, Kind::Attr);
-                i = e;
-                prev = Prev::Punct;
-                continue;
+                e += 1;
             }
+            out.push(i, e, Kind::Attr);
+            i = e;
+            prev = Prev::Punct;
+            continue;
         }
         if let Some((open, body)) = open_string(lang, t, i) {
             st.mode = open;
@@ -418,16 +416,18 @@ fn number_end(lang: Lang, t: &[u8], i: usize) -> usize {
     let mut j = i;
     while j < t.len() {
         let b = t[j];
-        if b.is_ascii_alphanumeric() || b == b'_' || (b == b'.' && t.get(j + 1).is_some_and(u8::is_ascii_digit)) {
-            j += 1;
-        } else if (b == b'+' || b == b'-') && !hex && matches!(t[j - 1], b'e' | b'E') {
-            j += 1;
-        } else if b == b'\'' && lang == Lang::C && t.get(j + 1).is_some_and(u8::is_ascii_alphanumeric) {
+        let next = t.get(j + 1);
+        let more = b.is_ascii_alphanumeric()
+            || b == b'_'
+            || (b == b'.' && next.is_some_and(u8::is_ascii_digit))
+            // 1e-5
+            || ((b == b'+' || b == b'-') && !hex && matches!(t[j - 1], b'e' | b'E'))
             // 1'000'000
-            j += 1;
-        } else {
+            || (b == b'\'' && lang == Lang::C && next.is_some_and(u8::is_ascii_alphanumeric));
+        if !more {
             break;
         }
+        j += 1;
     }
     j
 }
