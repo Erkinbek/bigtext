@@ -21,7 +21,7 @@ DOCS = ROOT / "docs"
 BASE = "https://erkinbek.github.io/bigtext/"
 REPO = "https://github.com/Erkinbek/bigtext"
 RELEASES = REPO + "/releases/latest"
-VERSION = "0.4.1"
+VERSION = "0.5.0"
 UPDATED = "2026-10-24"
 LANGS = ["en", "ru", "uz"]
 LOCALE = {"en": "en_US", "ru": "ru_RU", "uz": "uz_UZ"}
@@ -108,6 +108,7 @@ T = {
             ("Archives and big edits", "Files inside zip and tar archives, .xz and .bz2 files shown while they unpack, saving straight to .gz or .zst, multiple cursors, a column editor, and sort, de-duplicate or run any command on a file of any size."),
             ("Find in files and scripts", "Search a whole folder with file:line results, and use bigtext-cli for count, head, tail, slice, replace, CSV tools and JSON output in scripts. Sessions, portable mode, and a second launch opens in the running window."),
             ("Comfortable for everyone", "High-contrast and colour-blind-safe themes, interface scaling, screen reader support, zen mode, wrapping at a column with a ruler, a clickable status bar, and settings remembered for each file."),
+            ("Code in colour", "Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP and shell scripts are highlighted: keywords, strings, comments, types and function calls, with comments and strings followed over lines. Only the rows on screen are coloured, so a huge file opens and scrolls just as fast."),
         ],
         "gallery_h2": "Screenshots",
         "gallery": {
@@ -253,6 +254,7 @@ T = {
             ("Архивы и большие правки", "Файлы внутри архивов zip и tar, файлы .xz и .bz2, видимые ещё во время распаковки, сохранение сразу в .gz или .zst, несколько курсоров, редактор столбцов, сортировка, удаление повторов и любая команда над файлом любого размера."),
             ("Поиск в файлах и скрипты", "Поиск по всей папке с результатами file:line и bigtext-cli для count, head, tail, slice, replace, работы с CSV и вывода JSON в скриптах. Сеансы, портативный режим, а повторный запуск открывает файл в уже запущенном окне."),
             ("Удобно каждому", "Высококонтрастные темы и темы для людей с нарушением цветового зрения, масштаб интерфейса, поддержка экранного диктора, режим дзен, перенос по столбцу с линейкой, кликабельная строка состояния и настройки, запоминаемые для каждого файла."),
+            ("Код в цвете", "Подсветка Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP и shell-скриптов: ключевые слова, строки, комментарии, типы и вызовы функций, а комментарии и строки отслеживаются через несколько строк. Раскрашиваются только строки на экране, поэтому огромный файл открывается и прокручивается так же быстро."),
         ],
         "gallery_h2": "Скриншоты",
         "gallery": {
@@ -398,6 +400,7 @@ T = {
             ("Arxivlar va katta tahrirlar", "zip va tar arxivlari ichidagi fayllar, ochilayotgan paytdayoq ko'rinadigan .xz va .bz2 fayllar, to'g'ridan-to'g'ri .gz yoki .zst'ga saqlash, bir nechta kursor, ustun muharriri, istalgan hajmdagi faylda saralash, takrorlarni olib tashlash yoki istalgan buyruqni bajarish."),
             ("Fayllar ichida qidiruv va skriptlar", "Butun papka bo'ylab file:line natijali qidiruv va skriptlar uchun bigtext-cli: count, head, tail, slice, replace, CSV vositalari va JSON chiqishi. Seanslar, portativ rejim, ikkinchi ishga tushirish esa faylni ochiq oynada ochadi."),
             ("Hamma uchun qulay", "Yuqori kontrastli va ranglarni ajratishda qiynaladiganlar uchun mavzular, interfeys masshtabi, ekran o'quvchi qo'llab-quvvatlashi, zen rejimi, belgilangan ustunda o'rash va chizg'ich, bosiladigan holat qatori va har bir fayl uchun eslab qolinadigan sozlamalar."),
+            ("Rangli kod", "Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP va shell skriptlari rangli ko'rinadi: kalit so'zlar, matnlar, izohlar, turlar va funksiya chaqiruvlari; bir necha satrga cho'zilgan izoh va matnlar ham to'g'ri bo'yaladi. Faqat ekrandagi satrlar bo'yaladi, shuning uchun ulkan fayl ham avvalgidek tez ochiladi va aylantiriladi."),
         ],
         "gallery_h2": "Skrinshotlar",
         "gallery": {

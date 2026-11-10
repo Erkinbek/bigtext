@@ -30,6 +30,9 @@ self-contained binary with no runtime dependencies, for Windows, Linux and macOS
   joins. JSON gets a structure view, folding and queries over JSON Lines.
 - **Compare, hex and archives.** A streaming diff of two huge files, a hex view, and `.gz`,
   `.zst`, `.xz`, `.bz2`, `.zip` and `.tar` files opened without unpacking them by hand.
+- **Code in colour.** Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP and shell
+  scripts are highlighted, with comments and strings followed over lines, and only the rows on
+  screen are coloured.
 
 Scripts get the same streaming code without a window in `bigtext-cli` (see [USAGE.md](USAGE.md)).
 Every feature is described in [FEATURES.md](FEATURES.md).

@@ -3,6 +3,34 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## 0.5.0 — 2026-11-10
+
+### Code highlighting
+
+- **Programming languages are highlighted**: Python, JavaScript, TypeScript, Java, C#, C/C++,
+  Go, Rust, PHP and shell scripts (Bash). The language comes from the extension (`.py`,
+  `.js` / `.mjs` / `.jsx`, `.ts` / `.tsx`, `.java`, `.cs`, `.c` / `.h` / `.cpp` / `.hpp`, `.go`,
+  `.rs`, `.php`, `.sh` / `.bash` / `.zsh`, `.bashrc`, `.profile` …) or, for a script without
+  one, from its `#!` line (`#!/usr/bin/env python3`, `#!/bin/bash`, `node`, `php`). Keywords,
+  strings, numbers, comments, types, function calls, constants, variables, annotations and
+  decorators, attributes and macros, regular expressions, heredocs and preprocessor lines get
+  their own colours; the HTML around PHP's `<?php … ?>` is coloured as HTML. **View →
+  Highlight as** lists the languages under the data formats, and **Edit → Copy as ▸ Markdown**
+  tags the code block with the language.
+- **Comments, strings and tags that span lines** are followed: a `/* … */` block, a Python
+  docstring, a JavaScript template literal, a Java text block, a Rust raw string, a shell or PHP
+  heredoc, and also an XML comment, a CDATA section or a tag whose attributes go over several
+  lines, and a SQL `/* … */` comment. Each row starts in the state the row above left it in,
+  remembered while you scroll; after a jump BigText reads at most 64 KB above the screen
+  (starting at a line that begins a declaration, such as `class` or `#include`), never the file
+  from its start. In a 500 MB Java file a jump takes about 1 ms instead of 0.5 ms; opening and
+  scrolling are as fast as before.
+- Highlighting looks at the characters as they are in the file, so tabs and the dots of
+  **View → Show whitespace** no longer split or join words, and **Copy as ▸ HTML** keeps a
+  comment or string that began above the selection in its colour.
+- Types and function calls have their own colours in every theme, including the high-contrast
+  and colour-blind-safe ones.
+
 ## 0.4.1 — 2026-10-29
 
 0.4.0 was tagged but never released: a test failed on the Windows build. 0.4.1 is that
