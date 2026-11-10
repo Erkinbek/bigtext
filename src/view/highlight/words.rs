@@ -71,7 +71,34 @@ pub(super) const TS: Spec = Spec {
     sync: JS_SYNC,
 };
 
-const JS_SYNC: &[&str] = &["@", "abstract", "async", "class", "const", "declare", "enum", "export", "function", "import", "interface", "let", "namespace", "type", "var"];
+pub(super) const GO: Spec = Spec {
+    line: &["//"],
+    block: true,
+    nest: false,
+    keywords: GO_KEYWORDS,
+    types: GO_TYPES,
+    type_kw: &["type"],
+    fn_kw: &["func"],
+    // Exported functions and variables are capitalised too.
+    pascal: false,
+    at_attr: false,
+    sync: &["const", "func", "import", "package", "type", "var"],
+};
+
+pub(super) const RUST: Spec = Spec {
+    line: &["//"],
+    block: true,
+    nest: true,
+    keywords: RUST_KEYWORDS,
+    types: RUST_TYPES,
+    type_kw: &["enum", "impl", "struct", "trait", "type"],
+    fn_kw: &["fn"],
+    pascal: true,
+    at_attr: false,
+    sync: &["#[", "#![", "async", "const", "enum", "extern", "fn", "impl", "macro_rules!", "mod", "pub", "static", "struct", "trait", "type", "unsafe", "use"],
+};
+
+const JS_SYNC: &[&str] =&["@", "abstract", "async", "class", "const", "declare", "enum", "export", "function", "import", "interface", "let", "namespace", "type", "var"];
 
 const C_KEYWORDS: &[&str] = &[
     "_Alignas", "_Alignof", "_Atomic", "_Generic", "_Noreturn", "_Static_assert", "_Thread_local", "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand",
@@ -117,8 +144,23 @@ const TS_KEYWORDS: &[&str] = &[
 ];
 const TS_TYPES: &[&str] = &["any", "bigint", "boolean", "never", "number", "object", "string", "symbol", "unknown", "void"];
 
+const GO_KEYWORDS: &[&str] = &[
+    "break", "case", "chan", "const", "continue", "default", "defer", "else", "fallthrough", "false", "for", "func", "go", "goto", "if", "import", "interface",
+    "iota", "map", "nil", "package", "range", "return", "select", "struct", "switch", "true", "type", "var",
+];
+const GO_TYPES: &[&str] = &[
+    "any", "bool", "byte", "comparable", "complex128", "complex64", "error", "float32", "float64", "int", "int16", "int32", "int64", "int8", "rune", "string",
+    "uint", "uint16", "uint32", "uint64", "uint8", "uintptr",
+];
+
+const RUST_KEYWORDS: &[&str] = &[
+    "Self", "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in", "let",
+    "loop", "match", "mod", "move", "mut", "pub", "ref", "return", "self", "static", "struct", "super", "trait", "true", "type", "unsafe", "use", "where", "while",
+];
+const RUST_TYPES: &[&str] = &["bool", "char", "f32", "f64", "i128", "i16", "i32", "i64", "i8", "isize", "str", "u128", "u16", "u32", "u64", "u8", "usize"];
+
 /// After these words a `/` starts a regular expression, not a division.
 pub(super) const JS_BEFORE_REGEX: &[&str] = &["await", "case", "delete", "do", "else", "in", "instanceof", "new", "of", "return", "throw", "typeof", "void", "yield"];
 
 #[cfg(test)]
-pub(super) const ALL: &[&Spec] = &[&C, &CSHARP, &JAVA, &JS, &TS];
+pub(super) const ALL: &[&Spec] = &[&C, &CSHARP, &JAVA, &JS, &TS, &GO, &RUST];

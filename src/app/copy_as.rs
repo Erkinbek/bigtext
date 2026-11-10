@@ -33,6 +33,8 @@ pub fn fence_lang(lang: Lang) -> &'static str {
         Lang::Java => "java",
         Lang::JavaScript => "javascript",
         Lang::TypeScript => "typescript",
+        Lang::Go => "go",
+        Lang::Rust => "rust",
     }
 }
 

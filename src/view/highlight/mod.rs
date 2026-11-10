@@ -114,10 +114,12 @@ pub enum Lang {
     Java,
     JavaScript,
     TypeScript,
+    Go,
+    Rust,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 13] = [
+    pub const ALL: [Lang; 15] = [
         Lang::Plain,
         Lang::Log,
         Lang::Json,
@@ -131,6 +133,8 @@ impl Lang {
         Lang::Java,
         Lang::JavaScript,
         Lang::TypeScript,
+        Lang::Go,
+        Lang::Rust,
     ];
 
     pub fn from_path(p: Option<&Path>) -> Lang {
@@ -148,6 +152,8 @@ impl Lang {
             "java" => Lang::Java,
             "js" | "mjs" | "cjs" | "jsx" => Lang::JavaScript,
             "ts" | "tsx" | "mts" | "cts" => Lang::TypeScript,
+            "go" => Lang::Go,
+            "rs" => Lang::Rust,
             _ => Lang::Plain,
         }
     }
@@ -200,6 +206,8 @@ impl Lang {
             Lang::Java => "Java",
             Lang::JavaScript => "JavaScript",
             Lang::TypeScript => "TypeScript",
+            Lang::Go => "Go",
+            Lang::Rust => "Rust",
         }
     }
 }
@@ -755,6 +763,40 @@ mod tests {
     }
 
     #[test]
+    fn go_rust() {
+        let k = kinds(Lang::Go, r#"func (s *Server) Handle(w http.ResponseWriter) error { return fmt.Errorf(`bad "%s"`, nil) }"#);
+        for want in [("func", Kind::Keyword), ("Handle", Kind::Function), ("error", Kind::Type), ("Errorf", Kind::Function), ("`bad \"%s\"`", Kind::Str), ("nil", Kind::Keyword)] {
+            assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
+        }
+        // Capitalised names are exported, not types, in Go.
+        assert!(!k.iter().any(|(s, _)| s == "Server" || s == "ResponseWriter"), "{k:?}");
+        let l = lines(Lang::Go, "q := `SELECT\n  *\nFROM t`\nvar n int");
+        assert_eq!(l[1], vec![("  *".into(), Kind::Str)]);
+        assert_eq!(l[3], vec![("var".into(), Kind::Keyword), ("int".into(), Kind::Type)]);
+
+        let k = kinds(Lang::Rust, r#"#[derive(Debug)] pub fn get<'a>(s: &'a str) -> Option<i32> { println!("{}", 'x'); Some('\n') }"#);
+        for want in [
+            ("#[derive(Debug)]", Kind::Attr),
+            ("fn", Kind::Keyword),
+            ("get", Kind::Function),
+            ("'a", Kind::Tag),
+            ("str", Kind::Type),
+            ("Option", Kind::Type),
+            ("i32", Kind::Type),
+            ("println!", Kind::Function),
+            ("'x'", Kind::Str),
+            ("'\\n'", Kind::Str),
+        ] {
+            assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
+        }
+        let l = lines(Lang::Rust, "let s = r#\"raw \"quoted\"\nstill\"#;\n/* outer /* inner */ still\n*/ let x = 1;\nlet t = \"a\nb\";");
+        assert_eq!(l[1], vec![("still\"#".into(), Kind::Str)]);
+        assert_eq!(l[2], vec![("/* outer /* inner */ still".into(), Kind::Comment)]);
+        assert_eq!(l[3][..2], [("*/".into(), Kind::Comment), ("let".into(), Kind::Keyword)]);
+        assert_eq!(l[5][0], ("b\"".into(), Kind::Str));
+    }
+
+    #[test]
     fn word_lists_are_sorted_and_sync_lines() {
         for s in words::ALL {
             for l in [s.keywords, s.types] {
@@ -769,7 +811,7 @@ mod tests {
     #[test]
     fn never_panics_on_odd_input() {
         for lang in Lang::ALL {
-            for s in ["\"", "<", "<!--", "'", "\"\\", "-", "a,\"", "[", "=", "/*", "R\"", "R\"(", "@\"", "$@", "\"\"\"", "#", "u8'", "/*/", "0x", "1e"] {
+            for s in ["\"", "<", "<!--", "'", "\"\\", "-", "a,\"", "[", "=", "/*", "R\"", "R\"(", "@\"", "$@", "\"\"\"", "#", "u8'", "/*/", "0x", "1e", "r#", "r#\"", "'\\", "#[", "b'", "x!", "'é"] {
                 let mut v = Vec::new();
                 spans(lang, s, &mut v);
                 assert!(v.iter().all(|&(a, b, _)| a <= b && b <= s.len()));

@@ -39,6 +39,8 @@ pub(super) fn spec(lang: Lang) -> Option<&'static Spec> {
         Lang::Java => &JAVA,
         Lang::JavaScript => &JS,
         Lang::TypeScript => &TS,
+        Lang::Go => &GO,
+        Lang::Rust => &RUST,
         _ => return None,
     })
 }
@@ -155,6 +157,36 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
             prev = Prev::Punct;
             continue;
         }
+        if lang == Lang::Rust {
+            if c == b'\'' {
+                i = rust_quote(t, i, out);
+                prev = Prev::Value;
+                continue;
+            }
+            if c == b'#' && (t[i + 1..].starts_with(b"[") || t[i + 1..].starts_with(b"![")) {
+                // #[derive(Debug)], #![allow(x)]: up to the matching bracket on this row.
+                let mut depth = 0;
+                let mut e = i;
+                while e < t.len() {
+                    match t[e] {
+                        b'[' => depth += 1,
+                        b']' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                e += 1;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    e += 1;
+                }
+                out.push(i, e, Kind::Attr);
+                i = e;
+                prev = Prev::Punct;
+                continue;
+            }
+        }
         if let Some((open, body)) = open_string(lang, t, i) {
             st.mode = open;
             i = match open {
@@ -198,6 +230,14 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                 next = None;
                 continue;
             }
+            // A Rust macro: println!(…), vec![…], macro_rules! name.
+            if lang == Lang::Rust && t.get(e) == Some(&b'!') && t.get(e + 1) != Some(&b'=') {
+                out.push(i, e + 1, Kind::Function);
+                i = e + 1;
+                prev = Prev::Name;
+                next = None;
+                continue;
+            }
             if colour {
                 let w = &t[i..e];
                 let kind = if prev != Prev::Dot && has(spec.keywords, w) {
@@ -233,7 +273,8 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
         }
         prev = match c {
             b'.' => Prev::Dot,
-            b'>' if i > 0 && t[i - 1] == b'-' => Prev::Dot,
+            // `->` reaches a member only in C++ (in Rust and TypeScript it comes before a type).
+            b'>' if i > 0 && t[i - 1] == b'-' && lang == Lang::C => Prev::Dot,
             b':' if i > 0 && t[i - 1] == b':' => Prev::Path,
             b')' | b']' => Prev::Close,
             _ => Prev::Punct,
@@ -318,6 +359,9 @@ fn open_string(lang: Lang, t: &[u8], i: usize) -> Option<(Mode, usize)> {
         Lang::Java if three => Some((Mode::Str(Str { q: b'"', n: 3, esc: true, ml: true, dbl: false }), i + 3)),
         // A template literal; what is inside `${}` is coloured as the string.
         Lang::JavaScript | Lang::TypeScript if c == b'`' => Some((Mode::Str(Str { q: c, n: 1, esc: true, ml: true, dbl: false }), i + 1)),
+        // Go's raw strings; Rust's strings may span lines.
+        Lang::Go if c == b'`' => Some((Mode::Str(Str { q: c, n: 1, esc: false, ml: true, dbl: false }), i + 1)),
+        Lang::Rust if c == b'"' => Some((Mode::Str(Str { q: c, n: 1, esc: true, ml: true, dbl: false }), i + 1)),
         Lang::CSharp if c == b'@' || c == b'$' || three => {
             let mut j = i;
             let mut verbatim = false;
@@ -341,13 +385,27 @@ fn open_string(lang: Lang, t: &[u8], i: usize) -> Option<(Mode, usize)> {
     }
 }
 
-/// A string whose prefix is the name `w` (ending at `e`): C's `L"…"`, `u8"…"` and raw `R"x(…)x"`.
+/// A string whose prefix is the name `w` (ending at `e`): C's `L"…"`, `u8"…"` and raw `R"x(…)x"`;
+/// Rust's `b"…"`, `b'x'` and raw `r#"…"#`.
 fn prefixed_string(lang: Lang, st: &mut State, w: &[u8], t: &[u8], e: usize) -> Option<(Mode, usize)> {
     let q = *t.get(e)?;
-    if q != b'"' && q != b'\'' {
+    if q != b'"' && q != b'\'' && !(lang == Lang::Rust && q == b'#') {
         return None;
     }
     match lang {
+        Lang::Rust => match (w, q) {
+            (b"b" | b"c", b'"') => Some((Mode::Str(Str { q, n: 1, esc: true, ml: true, dbl: false }), e + 1)),
+            (b"b", b'\'') => Some((Mode::Str(Str { q, n: 1, esc: true, ml: false, dbl: false }), e + 1)),
+            (b"r" | b"br" | b"cr", _) => {
+                let hashes = t[e..].iter().take_while(|&&b| b == b'#').count();
+                if t.get(e + hashes) != Some(&b'"') || hashes + 1 > DELIM {
+                    return None;
+                }
+                st.set_delim(&[&b"\""[..], &[b'#'; DELIM][..hashes]].concat());
+                Some((Mode::Delim, e + hashes + 1))
+            }
+            _ => None,
+        },
         Lang::C if q == b'"' && matches!(w, b"R" | b"LR" | b"uR" | b"UR" | b"u8R") => {
             // R"delim( … )delim"
             let d = &t[e + 1..];
@@ -361,6 +419,34 @@ fn prefixed_string(lang: Lang, st: &mut State, w: &[u8], t: &[u8], e: usize) -> 
         Lang::C if matches!(w, b"L" | b"u" | b"U" | b"u8") => Some((Mode::Str(Str { q, n: 1, esc: true, ml: false, dbl: false }), e + 1)),
         _ => None,
     }
+}
+
+/// Rust's `'`: a character (`'a'`, `'\n'`, `'é'`) or a lifetime or label (`'a`, `'static`).
+fn rust_quote(t: &[u8], i: usize, out: &mut Sink) -> usize {
+    let rest = &t[i + 1..];
+    if rest.first() == Some(&b'\\') {
+        let e = rest.iter().skip(2).position(|&b| b == b'\'').map_or(t.len(), |p| i + 1 + 2 + p + 1);
+        out.push(i, e, Kind::Str);
+        return e;
+    }
+    if let Some(&b) = rest.first() {
+        let len = match b {
+            0xF0.. => 4,
+            0xE0.. => 3,
+            0xC0.. => 2,
+            _ => 1,
+        };
+        if rest.get(len) == Some(&b'\'') {
+            out.push(i, i + len + 2, Kind::Str);
+            return i + len + 2;
+        }
+        if is_ident(b) {
+            let e = super::word_end(t, i + 1);
+            out.push(i, e, Kind::Tag);
+            return e;
+        }
+    }
+    i + 1
 }
 
 /// A block comment from `from` (the comment's text pushed from `start`); returns where it ends.
