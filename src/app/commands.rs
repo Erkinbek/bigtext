@@ -1188,6 +1188,10 @@ impl BigTextApp {
                             lang_changed = true;
                         }
                         for l in crate::view::highlight::Lang::ALL {
+                            // Data and log formats, then programming languages.
+                            if l == crate::view::highlight::Lang::C {
+                                ui.separator();
+                            }
                             if ui.radio(d.lang == Some(l), l.name()).clicked() {
                                 d.lang = Some(l);
                                 lang_changed = true;

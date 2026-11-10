@@ -87,16 +87,23 @@ fn after_row(buf: &TextBuf, lang: Lang, p: &Row, st: State) -> Result<State, Pen
 }
 
 /// The state at offset `at`, read from at most [`LOOKBACK`] bytes above it (from the file start
-/// when that is closer).
+/// when that is closer). Unless that reaches the file start, reading starts over at the first
+/// line that begins a declaration (`class Foo`, `#include`), which is surely outside comments and
+/// strings, where the 64 KB boundary may not be.
 pub fn state_at(buf: &TextBuf, lang: Lang, at: u64) -> Result<State, Pending> {
     let mut st = State::default();
     if at == 0 || !lang.stateful() {
         return Ok(st);
     }
     let mut seg = rows::seg_containing(buf, at.saturating_sub(LOOKBACK))?;
+    let mut synced = seg.start == 0;
     while seg.start < at {
         let end = seg.content_end.min(at);
         let text = text_of(buf, seg.start, end)?;
+        if !synced && seg.line_start && lang.sync_line(&text) {
+            st = State::default();
+            synced = true;
+        }
         st = highlight::scan(lang, st, &text, end == seg.content_end && seg.has_nl);
         if end < seg.content_end {
             break;

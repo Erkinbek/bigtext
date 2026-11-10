@@ -1,36 +1,90 @@
-//! Simple syntax highlighting for common formats.
+//! Simple syntax highlighting for common formats and programming languages ([`code`]).
 //!
 //! Highlighting runs only on the visible slice of each visible row, so it costs nothing for the
-//! rest of the file. What a row starts inside of — a block comment, an open tag — is a
+//! rest of the file. What a row starts inside of — a block comment, a string, an open tag — is a
 //! [`State`], carried down from the row above (see [`super::hl_rows`]); nothing reads the file
 //! from its start.
+
+mod code;
+mod words;
 
 use std::path::Path;
 
 use egui::Color32;
 
+/// The longest delimiter a raw string can end with (`)delim"`).
+const DELIM: usize = 20;
+
 /// What the text at a point is inside of, for constructs that span lines.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct State {
     mode: Mode,
+    /// Something other than blanks came since the line started (`#include` must come first).
+    inked: bool,
+    /// What closes a [`Mode::Delim`] string.
+    delim: [u8; DELIM],
+    delim_len: u8,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 enum Mode {
     #[default]
     Code,
-    /// A block comment (`/* */`, `<!-- -->`).
-    Comment,
+    /// A block comment (`/* */`, `<!-- -->`), nested this deep.
+    Comment(u8),
+    /// A `//` comment on a line that wraps onto the next row.
+    LineComment,
+    /// A string.
+    Str(Str),
+    /// A raw string closed by `State::delim`.
+    Delim,
     /// An XML tag's attributes.
     Tag,
     /// An XML `<![CDATA[` section.
     CData,
 }
 
+/// How a string ends: `n` quote characters `q` (`"` or `"""`), skipping backslash escapes when
+/// `esc` and doubled quotes when `dbl`; `ml`: it may go on over lines.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct Str {
+    q: u8,
+    n: u8,
+    esc: bool,
+    ml: bool,
+    dbl: bool,
+}
+
 impl State {
     /// Inside a block comment.
     pub fn in_comment(self) -> bool {
-        self.mode == Mode::Comment
+        matches!(self.mode, Mode::Comment(_))
+    }
+
+    /// Inside a string.
+    pub fn in_string(self) -> bool {
+        matches!(self.mode, Mode::Str(_) | Mode::Delim)
+    }
+
+    fn set_delim(&mut self, d: &[u8]) {
+        let n = d.len().min(DELIM);
+        self.delim[..n].copy_from_slice(&d[..n]);
+        self.delim_len = n as u8;
+    }
+
+    fn delim(&self) -> &[u8] {
+        &self.delim[..self.delim_len as usize]
+    }
+
+    /// At a line break: line comments and single-line strings end (unless the line ends with a
+    /// backslash, which continues a C string).
+    fn end_line(&mut self, t: &[u8]) {
+        self.inked = false;
+        match self.mode {
+            Mode::LineComment => self.mode = Mode::Code,
+            Mode::Str(s) if !s.ml && !t.ends_with(b"\\") => self.mode = Mode::Code,
+            _ => {}
+        }
     }
 }
 
@@ -54,10 +108,14 @@ pub enum Lang {
     Csv(u8),
     Sql,
     Ini,
+    /// C and C++.
+    C,
+    CSharp,
+    Java,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 8] = [Lang::Plain, Lang::Log, Lang::Json, Lang::Xml, Lang::Csv(b','), Lang::Csv(b'\t'), Lang::Sql, Lang::Ini];
+    pub const ALL: [Lang; 11] = [Lang::Plain, Lang::Log, Lang::Json, Lang::Xml, Lang::Csv(b','), Lang::Csv(b'\t'), Lang::Sql, Lang::Ini, Lang::C, Lang::CSharp, Lang::Java];
 
     pub fn from_path(p: Option<&Path>) -> Lang {
         let ext = p.and_then(|p| p.extension()).map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
@@ -69,6 +127,9 @@ impl Lang {
             "tsv" | "tab" => Lang::Csv(b'\t'),
             "sql" | "ddl" | "dml" => Lang::Sql,
             "ini" | "toml" | "cfg" | "conf" | "yaml" | "yml" | "properties" | "env" | "inf" => Lang::Ini,
+            "c" | "h" | "cpp" | "cc" | "cxx" | "c++" | "hpp" | "hh" | "hxx" | "h++" | "inl" | "ipp" | "ino" => Lang::C,
+            "cs" | "csx" => Lang::CSharp,
+            "java" => Lang::Java,
             _ => Lang::Plain,
         }
     }
@@ -92,7 +153,18 @@ impl Lang {
 
     /// True if a row's colours depend on the rows above it (block comments, tags over lines).
     pub fn stateful(self) -> bool {
-        matches!(self, Lang::Xml | Lang::Sql)
+        matches!(self, Lang::Xml | Lang::Sql) || self.is_code()
+    }
+
+    /// A programming language (not a data or log format).
+    pub fn is_code(self) -> bool {
+        code::spec(self).is_some()
+    }
+
+    /// True if `line`, at the start of a line, almost surely begins outside any comment or string
+    /// (`class Foo`, `#include`): highlighting after a jump starts there.
+    pub fn sync_line(self, line: &str) -> bool {
+        code::sync_line(self, line)
     }
 
     pub fn name(self) -> &'static str {
@@ -105,6 +177,9 @@ impl Lang {
             Lang::Csv(_) => "CSV",
             Lang::Sql => "SQL",
             Lang::Ini => "INI / TOML / YAML",
+            Lang::C => "C / C++",
+            Lang::CSharp => "C#",
+            Lang::Java => "Java",
         }
     }
 }
@@ -125,6 +200,10 @@ pub enum Kind {
     Time,
     Punct,
     Col(u8),
+    /// A type name (`int`, `String`, `class Foo`).
+    Type,
+    /// A function being called or defined.
+    Function,
 }
 
 pub fn color(kind: Kind, dark: bool) -> Color32 {
@@ -142,6 +221,8 @@ pub fn color(kind: Kind, dark: bool) -> Color32 {
         Kind::Debug => ((128, 128, 128), (130, 130, 130)),
         Kind::Time => ((86, 182, 194), (0, 110, 130)),
         Kind::Punct => ((171, 178, 191), (90, 90, 90)),
+        Kind::Type => ((78, 201, 176), (38, 127, 153)),
+        Kind::Function => ((220, 220, 170), (121, 94, 38)),
         Kind::Col(i) => {
             const DARK: [(u8, u8, u8); 6] = [(229, 192, 123), (97, 175, 239), (152, 195, 121), (198, 120, 221), (86, 182, 194), (224, 108, 117)];
             const LIGHT: [(u8, u8, u8); 6] = [(150, 100, 0), (10, 90, 170), (40, 120, 30), (152, 24, 160), (0, 110, 130), (180, 30, 50)];
@@ -224,15 +305,19 @@ pub fn scan(lang: Lang, st: State, text: &str, ends_line: bool) -> State {
     run(lang, st, text.as_bytes(), ends_line, Sink(None))
 }
 
-fn run(lang: Lang, mut st: State, t: &[u8], _ends_line: bool, mut sink: Sink) -> State {
+fn run(lang: Lang, mut st: State, t: &[u8], ends_line: bool, mut sink: Sink) -> State {
     match (lang, sink.0.as_deref_mut()) {
         (Lang::Xml, _) => xml_spans(&mut st, t, &mut sink),
         (Lang::Sql, _) => sql_spans(&mut st, t, &mut sink),
+        (Lang::C | Lang::CSharp | Lang::Java, _) => code::spans(lang, &mut st, t, &mut sink),
         (_, None) | (Lang::Plain, _) => {}
         (Lang::Log, Some(out)) => log_spans(t, out),
         (Lang::Json, Some(out)) => json_spans(t, out),
         (Lang::Csv(sep), Some(out)) => csv_spans(t, sep, out),
         (Lang::Ini, Some(out)) => ini_spans(t, out),
+    }
+    if ends_line {
+        st.end_line(t);
     }
     st
 }
@@ -325,8 +410,8 @@ fn xml_spans(st: &mut State, t: &[u8], out: &mut Sink) {
     let mut i = 0;
     while i < t.len() {
         match st.mode {
-            Mode::Comment | Mode::CData => {
-                let (kind, pat) = if st.mode == Mode::Comment { (Kind::Comment, &b"-->"[..]) } else { (Kind::Str, &b"]]>"[..]) };
+            Mode::Comment(_) | Mode::CData => {
+                let (kind, pat) = if st.mode == Mode::CData { (Kind::Str, &b"]]>"[..]) } else { (Kind::Comment, &b"-->"[..]) };
                 let (e, closed) = close(t, i, pat);
                 out.push(i, e, kind);
                 if closed {
@@ -334,12 +419,12 @@ fn xml_spans(st: &mut State, t: &[u8], out: &mut Sink) {
                 }
                 i = e;
             }
-            Mode::Code => {
+            Mode::Code | Mode::LineComment | Mode::Str(_) | Mode::Delim => {
                 if t[i..].starts_with(b"<!--") {
                     let (e, closed) = close(t, i + 4, b"-->");
                     out.push(i, e, Kind::Comment);
                     if !closed {
-                        st.mode = Mode::Comment;
+                        st.mode = Mode::Comment(1);
                     }
                     i = e;
                 } else if t[i..].starts_with(b"<![CDATA[") {
@@ -425,7 +510,7 @@ fn csv_spans(t: &[u8], sep: u8, out: &mut Vec<(usize, usize, Kind)>) {
 
 fn sql_spans(st: &mut State, t: &[u8], out: &mut Sink) {
     let mut i = 0;
-    if st.mode == Mode::Comment {
+    if st.in_comment() {
         let (e, closed) = close(t, 0, b"*/");
         out.push(0, e, Kind::Comment);
         if !closed {
@@ -445,7 +530,7 @@ fn sql_spans(st: &mut State, t: &[u8], out: &mut Sink) {
             let (e, closed) = close(t, i + 2, b"*/");
             out.push(i, e, Kind::Comment);
             if !closed {
-                st.mode = Mode::Comment;
+                st.mode = Mode::Comment(1);
             }
             i = e;
         } else if c == b'\'' || c == b'"' || c == b'`' {
@@ -589,9 +674,59 @@ mod tests {
     }
 
     #[test]
+    fn c_cpp_csharp_java() {
+        let k = kinds(Lang::C, "#include <stdio.h>");
+        assert_eq!(k, vec![("#include".into(), Kind::Keyword), ("<stdio.h>".into(), Kind::Str)]);
+        let k = kinds(Lang::C, "static int count(const char *s) { return MAX_LEN + 1'000; } // done");
+        for want in [("static", Kind::Keyword), ("int", Kind::Type), ("count", Kind::Function), ("char", Kind::Type), ("MAX_LEN", Kind::Number), ("1'000", Kind::Number), ("// done", Kind::Comment)] {
+            assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
+        }
+        assert!(!k.iter().any(|(s, _)| s == "s"));
+        let k = kinds(Lang::C, r#"auto s = R"x(a "quoted" )x" + L"wide";"#);
+        assert!(k.contains(&(r#"R"x(a "quoted" )x""#.into(), Kind::Str)) && k.contains(&("L\"wide\"".into(), Kind::Str)), "{k:?}");
+        let l = lines(Lang::C, "a /* one\ntwo */ b\nstd::string s = R\"(raw\nstill)\";");
+        assert_eq!(l[1][0], ("two */".into(), Kind::Comment));
+        assert!(l[2].contains(&("string".into(), Kind::Type)));
+        assert_eq!(l[3], vec![("still)\"".into(), Kind::Str)]);
+        // A line comment goes on over a wrapped row, and ends with the line.
+        let st = scan(Lang::C, State::default(), "x // comment", false);
+        let mut v = Vec::new();
+        let after = spans_from(Lang::C, st, "goes on", true, &mut v);
+        assert_eq!((v, after), (vec![(0, 7, Kind::Comment)], State::default()));
+
+        let k = kinds(Lang::CSharp, r#"var p = @"C:\dir\"; var s = $"{x}\n"; public class Foo : IBar { }"#);
+        for want in [("var", Kind::Keyword), (r#"@"C:\dir\""#, Kind::Str), (r#"$"{x}\n""#, Kind::Str), ("Foo", Kind::Type), ("IBar", Kind::Type)] {
+            assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
+        }
+        let l = lines(Lang::CSharp, "var q = \"\"\"\nraw \" text\n\"\"\";");
+        assert_eq!(l[1], vec![("raw \" text".into(), Kind::Str)]);
+        assert_eq!(l[2][0], ("\"\"\"".into(), Kind::Str));
+
+        let k = kinds(Lang::Java, "@Override public String toString() { return new StringBuilder().toString(); }");
+        assert_eq!(k[..4], [("@Override".into(), Kind::Attr), ("public".into(), Kind::Keyword), ("String".into(), Kind::Type), ("toString".into(), Kind::Function)]);
+        assert!(k.contains(&("StringBuilder".into(), Kind::Type)) && k.last() == Some(&("toString".into(), Kind::Function)), "{k:?}");
+        let l = lines(Lang::Java, "String s = \"\"\"\n  text \"block\"\n  \"\"\";\n/**\n * Docs.\n */\nclass A {}");
+        assert_eq!(l[1], vec![("  text \"block\"".into(), Kind::Str)]);
+        assert_eq!(l[4], vec![(" * Docs.".into(), Kind::Comment)]);
+        assert_eq!(l[6][..2], [("class".into(), Kind::Keyword), ("A".into(), Kind::Type)]);
+    }
+
+    #[test]
+    fn word_lists_are_sorted_and_sync_lines() {
+        for s in words::ALL {
+            for l in [s.keywords, s.types] {
+                assert!(l.windows(2).all(|w| w[0] < w[1]), "{l:?}");
+            }
+        }
+        assert!(Lang::C.sync_line("#include <x>") && Lang::C.sync_line("int main(void)"));
+        assert!(!Lang::C.sync_line(" * int") && !Lang::C.sync_line("integer = 1"));
+        assert!(Lang::Java.sync_line("@Override") && Lang::Java.sync_line("public class A") && !Lang::Json.sync_line("{"));
+    }
+
+    #[test]
     fn never_panics_on_odd_input() {
         for lang in Lang::ALL {
-            for s in ["\"", "<", "<!--", "'", "\"\\", "-", "a,\"", "[", "=", "/*"] {
+            for s in ["\"", "<", "<!--", "'", "\"\\", "-", "a,\"", "[", "=", "/*", "R\"", "R\"(", "@\"", "$@", "\"\"\"", "#", "u8'", "/*/", "0x", "1e"] {
                 let mut v = Vec::new();
                 spans(lang, s, &mut v);
                 assert!(v.iter().all(|&(a, b, _)| a <= b && b <= s.len()));

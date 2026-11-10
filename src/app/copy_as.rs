@@ -28,6 +28,9 @@ pub fn fence_lang(lang: Lang) -> &'static str {
         Lang::Csv(_) => "csv",
         Lang::Sql => "sql",
         Lang::Ini => "ini",
+        Lang::C => "cpp",
+        Lang::CSharp => "csharp",
+        Lang::Java => "java",
     }
 }
 
