@@ -10,6 +10,7 @@ bigtext [OPTIONS] [FILE[:LINE] ...]
 
   FILE:LINE        open FILE at line LINE (FILE:LINE:COLUMN, as compilers and grep -n
                    print it, works too)
+  FOLDER           show FOLDER's files in the side bar
   -                read standard input, following it as it grows
                    (e.g.  journalctl -f | bigtext -)
   -n, --line N     go to line N in the last file
@@ -69,6 +70,7 @@ times). Exit codes: 0 done, 1 nothing matched, 2 error.
 | Shortcut | Action |
 |---|---|
 | Ctrl+O / Ctrl+N | Open / new |
+| Ctrl+Shift+O / Ctrl+Shift+E | Open a folder in the side bar / show or hide the side bar |
 | Ctrl+S / Ctrl+Shift+S | Save / save as |
 | Ctrl+W | Close tab |
 | Ctrl+1 … Ctrl+8, Ctrl+9 | Tab 1 … 8, the last tab |

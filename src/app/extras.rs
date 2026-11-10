@@ -93,6 +93,12 @@ pub struct Persisted {
     pub commands: Vec<String>,
     /// The shell commands run in.
     pub shell: Option<String>,
+    /// File → Open folder: the folder in the side bar.
+    pub folder: Option<PathBuf>,
+    /// The side bar shows.
+    pub folder_open: Option<bool>,
+    /// The side bar's expanded folders.
+    pub folder_expanded: Vec<PathBuf>,
 }
 
 /// What BigText remembers about a file, put back when it opens again.
@@ -325,6 +331,9 @@ pub(super) fn parse(text: &str) -> Persisted {
             "tool" => p.tools.extend(v.split_once('|').filter(|(n, c)| !n.is_empty() && !c.is_empty()).map(|(n, c)| super::run_command::Tool { name: n.to_string(), command: c.to_string() })),
             "cmd" => p.commands.push(v.to_string()),
             "shell" => p.shell = Some(v.to_string()),
+            "folder" => p.folder = Some(PathBuf::from(v)).filter(|f| !f.as_os_str().is_empty()),
+            "folder_open" => p.folder_open = Some(v == "1"),
+            "folder_expand" => p.folder_expanded.push(PathBuf::from(v)),
             _ => {}
         }
     }
@@ -390,6 +399,13 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(sh) = &p.shell {
         s.push_str(&format!("shell={sh}\n"));
+    }
+    if let Some(f) = &p.folder {
+        s.push_str(&format!("folder={}\n", f.display()));
+        s.push_str(&format!("folder_open={}\n", b(p.folder_open.unwrap_or(true))));
+        for x in &p.folder_expanded {
+            s.push_str(&format!("folder_expand={}\n", x.display()));
+        }
     }
     if let Some(d) = p.update_check {
         s.push_str(&format!("update_check={}\n", b(d)));
@@ -773,6 +789,9 @@ impl BigTextApp {
             tools: self.settings.tools.clone(),
             commands: self.run_cmd.history.clone(),
             shell: Some(self.run_cmd.shell.id().to_string()),
+            folder: self.folder.root.as_deref().map(|r| PathBuf::from(file::display_path(r))),
+            folder_open: Some(self.folder.visible),
+            folder_expanded: self.folder.expanded_to_keep().iter().map(|p| PathBuf::from(file::display_path(p))).collect(),
             saved: self.settings.saved.clone(),
             show_ws: Some(self.settings.show_ws),
             filter_ctx: Some((self.settings.filter_context, self.settings.filter_entries)),
@@ -1433,6 +1452,9 @@ mod tests {
             tools: vec![super::super::run_command::Tool { name: "Open in VS Code".into(), command: "code -g \"{file}:{line}\"".into() }],
             commands: vec!["sort | uniq -c".into(), "jq .".into()],
             shell: Some("git-bash".into()),
+            folder: Some(PathBuf::from(r"D:\projects\app")),
+            folder_open: Some(false),
+            folder_expanded: vec![PathBuf::from(r"D:\projects\app\src"), PathBuf::from(r"D:\projects\app\logs|old")],
             show_ws: Some(true),
             filter_ctx: Some((3, true)),
             id_keys: Some(vec!["rid".into(), "trace_id".into()]),
@@ -1473,6 +1495,7 @@ mod tests {
         assert_eq!((&q0.tools, &q0.commands, q0.shell.as_deref()), (&p.tools, &p.commands, Some("git-bash")));
         assert_eq!((q0.theme, q0.cvd, q0.scale, q0.dark), (p.theme, Some(true), Some(150), Some(false)));
         assert_eq!(parse(&serialize(&p)).show_ws, Some(true));
+        assert_eq!((&q0.folder, q0.folder_open, &q0.folder_expanded), (&p.folder, Some(false), &p.folder_expanded));
         assert_eq!(parse(&serialize(&p)).filter_ctx, Some((3, true)));
         assert_eq!(parse(&serialize(&p)).id_keys, p.id_keys);
         assert_eq!(parse(&serialize(&p)).pinned, p.pinned);

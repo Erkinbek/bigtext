@@ -17,6 +17,8 @@ use super::{toggle_split, BigTextApp, GotoDialog, GotoMode};
 pub enum Cmd {
     New,
     Open,
+    OpenFolder,
+    CloseFolder,
     Save,
     SaveAs,
     CloseTab,
@@ -124,6 +126,8 @@ pub enum Cmd {
     LineNumbers,
     TimeAllTabs,
     JsonCrumb,
+    /// The open folder's tree on the left.
+    Sidebar,
     Fold,
     Unfold,
     FoldAll1,
@@ -146,9 +150,11 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 113] = [
+    pub const ALL: [Cmd; 116] = [
         Cmd::New,
         Cmd::Open,
+        Cmd::OpenFolder,
+        Cmd::CloseFolder,
         Cmd::Save,
         Cmd::SaveAs,
         Cmd::CloseTab,
@@ -239,6 +245,7 @@ impl Cmd {
         Cmd::LineNumbers,
         Cmd::TimeAllTabs,
         Cmd::JsonCrumb,
+        Cmd::Sidebar,
         Cmd::Fold,
         Cmd::Unfold,
         Cmd::FoldAll1,
@@ -301,6 +308,9 @@ impl Cmd {
         match self {
             Cmd::New => "New",
             Cmd::Open => "Open…",
+            Cmd::OpenFolder => "Open folder…",
+            Cmd::CloseFolder => "Close folder",
+            Cmd::Sidebar => "Side bar",
             Cmd::Save => "Save",
             Cmd::SaveAs => "Save As…",
             Cmd::CloseTab => "Close tab",
@@ -428,7 +438,7 @@ impl Cmd {
     /// Menu the command lives in (shown in the palette).
     pub fn group(self) -> &'static str {
         match self {
-            Cmd::New | Cmd::Open | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::CompareSaved | Cmd::CompareBackup | Cmd::ApplyPatch | Cmd::Properties | Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault | Cmd::MergeLogs | Cmd::JoinTables | Cmd::CompareJson | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable => "File",
+            Cmd::New | Cmd::Open | Cmd::OpenFolder | Cmd::CloseFolder | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::CompareSaved | Cmd::CompareBackup | Cmd::ApplyPatch | Cmd::Properties | Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault | Cmd::MergeLogs | Cmd::JoinTables | Cmd::CompareJson | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable => "File",
             Cmd::Undo
             | Cmd::Redo
             | Cmd::SelectAll
@@ -457,6 +467,8 @@ impl Cmd {
         match self {
             Cmd::New => key(CTRL, Key::N),
             Cmd::Open => key(CTRL, Key::O),
+            Cmd::OpenFolder => key(CTRL_SHIFT, Key::O),
+            Cmd::Sidebar => key(CTRL_SHIFT, Key::E),
             Cmd::Save => key(CTRL, Key::S),
             Cmd::SaveAs => key(CTRL_SHIFT, Key::S),
             Cmd::CloseTab => key(CTRL, Key::W),
@@ -646,6 +658,9 @@ impl BigTextApp {
         match cmd {
             Cmd::New => self.new_doc(),
             Cmd::Open => self.open_dialog(),
+            Cmd::OpenFolder => self.open_folder_dialog(),
+            Cmd::CloseFolder => self.close_folder(),
+            Cmd::Sidebar => self.toggle_sidebar(),
             Cmd::Save => self.save(false),
             Cmd::SaveAs => self.save(true),
             Cmd::CloseTab => {
@@ -888,6 +903,7 @@ impl BigTextApp {
             Cmd::Fullscreen => self.fullscreen,
             Cmd::Zen => self.settings.zen,
             Cmd::JsonCrumb => self.settings.json_crumb,
+            Cmd::Sidebar => self.folder.visible && self.folder.root.is_some(),
             Cmd::LineNumbers => self.settings.show_gutter,
             Cmd::Scale(s) => self.settings.scale == s,
             Cmd::PerfOverlay => self.settings.show_perf,
@@ -944,13 +960,14 @@ impl BigTextApp {
     }
 
     fn is_toggle(cmd: Cmd) -> bool {
-        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::ColourBlind | Cmd::Fullscreen | Cmd::Zen | Cmd::LineNumbers | Cmd::JsonCrumb | Cmd::Theme(_) | Cmd::Scale(_) | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
+        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::ColourBlind | Cmd::Fullscreen | Cmd::Zen | Cmd::LineNumbers | Cmd::JsonCrumb | Cmd::Sidebar | Cmd::Theme(_) | Cmd::Scale(_) | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
     }
 
     fn enabled(&self, cmd: Cmd) -> bool {
         let d = self.docs.get(self.active);
         match cmd {
             Cmd::Undo => d.is_some_and(|d| !d.undo.is_empty()),
+            Cmd::CloseFolder => self.folder.root.is_some(),
             Cmd::NavBack => !self.nav.back.is_empty(),
             Cmd::NextDiff | Cmd::PrevDiff => self.diff.is_some(),
             Cmd::CompareSaved => d.is_some_and(|d| d.path.is_some() && d.is_ready() && d.is_modified()),
@@ -1019,7 +1036,7 @@ impl BigTextApp {
         let mut run = None;
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button(tr("File"), |ui| {
-                for c in [Cmd::New, Cmd::Open, Cmd::Save, Cmd::SaveAs] {
+                for c in [Cmd::New, Cmd::Open, Cmd::OpenFolder, Cmd::CloseFolder, Cmd::Save, Cmd::SaveAs] {
                     run = run.or(self.item(ui, c));
                 }
                 ui.checkbox(&mut self.settings.backup_on_save, tr("Keep backup (.bak) on save"));
@@ -1164,6 +1181,8 @@ impl BigTextApp {
                 }
             });
             ui.menu_button(tr("View"), |ui| {
+                run = run.or(self.item(ui, Cmd::Sidebar));
+                ui.separator();
                 run = run.or(self.item(ui, Cmd::WordWrap));
                 self.wrap_menu(ui);
                 for c in [Cmd::HexView, Cmd::TableView, Cmd::CheckRows, Cmd::JsonStructure, Cmd::JsonFields, Cmd::LogFields, Cmd::JsonlTable, Cmd::Follow, Cmd::SplitView, Cmd::CompareSideBySide] {

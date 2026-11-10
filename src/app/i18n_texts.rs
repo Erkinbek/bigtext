@@ -1285,4 +1285,16 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Unpacking", "Распаковка", "Ochilmoqda"],
     ["Unpacking was cancelled; the first {size} of {name} are shown.", "Распаковка отменена; показаны первые {size} файла {name}.", "Ochish bekor qilindi; {name} ning dastlabki {size} qismi ko'rsatilmoqda."],
     ["Unpacking {name}: the start is shown and the rest appears as it is unpacked (read-only).", "Распаковка {name}: начало уже показано, остальное появляется по мере распаковки (только чтение).", "{name} ochilmoqda: boshi ko'rsatilgan, qolgani ochilgan sari paydo bo'ladi (faqat o'qish)."],
+    // The folder side bar.
+    ["Open folder…", "Открыть папку…", "Papkani ochish…"],
+    ["Open folder", "Открыть папку", "Papkani ochish"],
+    ["Close folder", "Закрыть папку", "Papkani yopish"],
+    ["Side bar", "Боковая панель", "Yon panel"],
+    ["Hide the side bar", "Скрыть боковую панель", "Yon panelni yashirish"],
+    ["Read the folders again", "Перечитать папки", "Papkalarni qayta o'qish"],
+    ["Collapse all folders", "Свернуть все папки", "Barcha papkalarni yig'ish"],
+    ["Filter names", "Фильтр по имени", "Nom bo'yicha filtr"],
+    ["No names match the filter in the folders read so far.", "В прочитанных папках нет имён, подходящих под фильтр.", "O'qilgan papkalarda filtrga mos nom yo'q."],
+    ["Reading…", "Чтение…", "O'qilmoqda…"],
+    ["Opened folder {name}", "Открыта папка {name}", "{name} papkasi ochildi"],
 ];

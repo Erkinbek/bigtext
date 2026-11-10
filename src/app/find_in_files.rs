@@ -194,6 +194,10 @@ impl BigTextApp {
     pub(crate) fn open_find_in_files(&mut self) {
         self.files.open = true;
         self.files.focus = true;
+        // The open folder first, as Sublime Text searches its folders.
+        if let (true, Some(root)) = (self.files.dir.is_empty(), self.folder.root.as_deref()) {
+            self.files.dir = bigtext::file::display_path(root);
+        }
         if self.files.dir.is_empty() {
             if let Some(dir) = self.docs.get(self.active).and_then(|d| d.unpacked_from.as_deref().or(d.path.as_deref())).and_then(Path::parent) {
                 self.files.dir = bigtext::file::display_path(dir);

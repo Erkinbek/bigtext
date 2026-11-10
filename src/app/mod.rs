@@ -16,6 +16,7 @@ pub mod extras;
 pub mod fields_panel;
 pub mod filter_panel;
 pub mod find_in_files;
+pub mod folder_tree;
 pub mod fold;
 pub mod follow_id;
 pub mod gaps_panel;
@@ -338,6 +339,8 @@ pub struct BigTextApp {
     instance: Option<crate::instance::Server>,
     pub clips: clipboard::ClipHistory,
     pub files: find_in_files::FilesUi,
+    /// File → Open folder: the side bar's tree.
+    pub folder: folder_tree::FolderUi,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
     pub palette: Option<commands::Palette>,
@@ -407,10 +410,16 @@ pub struct FileChange {
     pub rotated_to: Option<PathBuf>,
 }
 
+/// What opening a folder returns instead of a file: it goes to the side bar.
+const FOLDER: &str = "\u{1}folder";
+
 fn open_worker(path: &Path, forced: Option<Encoding>, mode: OpenMode) -> Result<Opened, String> {
     let t = Instant::now();
     let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let path = canonical.as_path();
+    if std::fs::metadata(path).is_ok_and(|m| m.is_dir()) {
+        return Err(FOLDER.into());
+    }
     let src = Source::open(path, mode).map_err(|e| friendly_io(&e, path))?;
     let read_only = std::fs::metadata(path).map(|m| m.permissions().readonly()).unwrap_or(false);
     let n = src.len().min(1 << 20);
@@ -624,6 +633,7 @@ impl BigTextApp {
             instance: None,
             clips: clipboard::ClipHistory::default(),
             files: find_in_files::FilesUi::default(),
+            folder: folder_tree::FolderUi::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
             palette: None,
@@ -660,6 +670,9 @@ impl BigTextApp {
             app.run_cmd.history = std::mem::take(&mut state.commands);
             app.run_cmd.shell = state.shell.as_deref().map(run_command::ShellChoice::from_id).unwrap_or_default();
             app.settings.show_ws = state.show_ws.unwrap_or(false);
+            if let Some(root) = state.folder.take() {
+                app.restore_folder(root, state.folder_open.unwrap_or(true), std::mem::take(&mut state.folder_expanded));
+            }
             app.recovery.enabled = state.recovery.unwrap_or(true);
             app.settings.id_keys = state.id_keys.take();
             if let Some((n, e)) = state.filter_ctx {
@@ -946,6 +959,7 @@ impl BigTextApp {
                     }
                     let waker = self.waker.clone();
                     let tx = self.tx.clone();
+                    let mut folder = None;
                     if let Some(d) = self.doc_mut(doc) {
                         let unpacking = d.unpacking.take();
                         let reload = std::mem::take(&mut d.reloading);
@@ -1018,6 +1032,7 @@ impl BigTextApp {
                                     self.announce(i18n::trf("Opened {name}", &[("name", &name)]));
                                 }
                             }
+                            Err(e) if e == FOLDER => folder = d.path.clone(),
                             Err(e) => d.state = DocState::Failed(e),
                         }
                     } else if let Ok(o) = result.as_ref().map(|o| (o.unpacked.is_some(), o.path.clone())) {
@@ -1026,6 +1041,11 @@ impl BigTextApp {
                         if o.0 {
                             jobs::spawn("remove-unpacked", move || bigtext::decompress::remove_temp(&o.1));
                         }
+                    }
+                    // A folder: its tab goes, the side bar shows it.
+                    if let Some(dir) = folder {
+                        self.close_tab(doc, true);
+                        self.open_folder(dir);
                     }
                 }
                 Msg::Found { doc, version, found, wrapped } => self.on_found(doc, version, found, wrapped),
@@ -1842,6 +1862,7 @@ impl eframe::App for BigTextApp {
         self.run_pending_filters();
         self.announce_results();
         self.json_crumb_tick(&ctx);
+        self.folder_tick(&ctx);
         self.sync_diff_marks();
 
         self.fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
@@ -1850,6 +1871,11 @@ impl eframe::App for BigTextApp {
             self.zen_menu(&ctx);
         } else {
             egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
+            // The status bar under everything, the side bar beside the tabs and the text.
+            egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
+            if self.folder.visible && self.folder.root.is_some() {
+                egui::Panel::left("folder").resizable(true).default_size(240.0).min_size(120.0).show(ui, |ui| self.folder_panel(ui));
+            }
             egui::Panel::top("tabs").show(ui, |ui| self.tab_bar(ui));
         }
         if self.search.open {
@@ -1857,9 +1883,6 @@ impl eframe::App for BigTextApp {
         }
         if self.level_bar_visible() && !zen {
             egui::Panel::top("levels").show(ui, |ui| self.level_bar(ui));
-        }
-        if !zen {
-            egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
         }
         if self.search.show_results && self.docs.get(self.active).is_some_and(|d| d.results.is_some()) {
             egui::Panel::bottom("results").resizable(true).default_size(220.0).show(ui, |ui| self.results_panel(ui));

@@ -2811,6 +2811,68 @@ impl SelfTest {
             }
             check(sel == (0, 6), format!("selection {sel:?}"))
         }));
+        s("folder side bar: a click expands a sub-folder, another opens its file", Box::new(|app, c| {
+            let tree = c.file("tree");
+            if c.first() {
+                app.open_folder(tree.clone());
+                return Step::Wait;
+            }
+            let rect = |app: &mut BigTextApp, p: &Path| app.folder.drawn.iter().find(|(q, _)| q == p).map(|(_, r)| *r);
+            let late = c.waited() > Duration::from_secs(5);
+            match c.mark {
+                0 => {
+                    let Some(r) = rect(app, &tree.join("sub")) else { return if late { Step::Fail(format!("rows {:?}", app.folder.drawn)) } else { Step::Wait } };
+                    c.click(r.center(), NONE);
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 => {
+                    let Some(r) = rect(app, &tree.join("sub").join("b.log")) else { return if late { Step::Fail("sub-folder not expanded".into()) } else { Step::Wait } };
+                    c.click(r.center(), NONE);
+                    c.mark = 2;
+                    Step::Wait
+                }
+                _ => {
+                    let d = doc(app);
+                    if d.title != "b.log" || !d.is_ready() {
+                        return if late { Step::Fail(format!("active tab {:?}", d.title)) } else { Step::Wait };
+                    }
+                    // With --screenshot, a picture of the side bar first.
+                    if let Some(p) = c.shot.clone().map(|d| d.join("selftest-folder.png")) {
+                        if c.mark == 2 {
+                            let _ = std::fs::remove_file(&p);
+                            c.pending_shot = Some(p);
+                            c.mark = 3;
+                            return Step::Wait;
+                        }
+                        if !p.exists() {
+                            return if late { Step::Fail("no screenshot".into()) } else { Step::Wait };
+                        }
+                    }
+                    // Folders first, then files by name; the open file's row is the selected one.
+                    let order: Vec<String> = app.folder.drawn.iter().map(|(p, _)| p.strip_prefix(&tree).unwrap_or(p).to_string_lossy().replace('\\', "/")).collect();
+                    c.mark = 0;
+                    check(order == ["sub", "sub/b.log", "a.log", "c.txt"] && app.folder.expanded.contains(&tree.join("sub")), format!("rows {order:?}"))
+                }
+            }
+        }));
+        s("a folder to open goes to the side bar, not into a tab; it is kept with the session", Box::new(|app, c| {
+            let sub = c.file("tree").join("sub");
+            if c.first() {
+                app.open_path(sub.clone());
+                return Step::Wait;
+            }
+            let root = app.folder.root.clone();
+            if root.as_deref() != Some(sub.as_path()) {
+                return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("root {root:?}")) } else { Step::Wait };
+            }
+            let tabs = app.docs.iter().filter(|d| d.path.as_deref() == Some(sub.as_path())).count();
+            let st = app.test_state_round_trip();
+            let ok = tabs == 0 && app.folder.visible && st.folder.as_deref() == Some(sub.as_path()) && st.folder_open == Some(true);
+            let got = format!("tabs {tabs}, visible {}, saved {:?} {:?}", app.folder.visible, st.folder, st.folder_open);
+            app.close_folder();
+            check(ok && app.folder.root.is_none(), got)
+        }));
         s("open epoch.log", open_step("epoch.log"));
         s("go to time in a log of Unix times", Box::new(|app, c| {
             if c.first() {

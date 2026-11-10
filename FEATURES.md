@@ -306,6 +306,18 @@ keyboard shortcuts.
 - **More table tools**: **Group rows by this column…** (counts, with sums of another column),
   **Filter rows by conditions…** (several conditions at once), and export as JSON, JSON Lines,
   Markdown or Excel (.xlsx).
+- **Folder side bar** (File → Open folder…, Ctrl+Shift+O; View → Side bar, Ctrl+Shift+E): a
+  folder's files as a tree on the left, as in Sublime Text — folders first, names in natural
+  order (`file2` before `file10`), each file's size, the open file marked. A click opens a file
+  or expands a folder; a folder is read only when it is expanded, on a worker, so a folder of a
+  million files or a slow network drive never stalls the window, and only the rows on screen
+  are drawn. **Filter names** narrows the tree to matching names in the folders read so far.
+  Right-click: Find in files here, Open terminal here, Show in folder, Copy path, Open with the
+  default app. `bigtext FOLDER`, dropping a folder on the window or opening one from another
+  launch shows it there; the folder, the expanded folders and whether the side bar shows are
+  kept with the session, and the folders are read again when BigText comes back to the front.
+  Find in files starts in the open folder. `.git`, `.svn`, `.hg`, `.DS_Store` and `Thumbs.db`
+  are hidden.
 - **Tabs and sessions**: Ctrl+Tab in most-recently-used order, pinned tabs, close other tabs /
   tabs to the right, drag to move; **File → Sessions** saves the open files with positions,
   bookmarks, pins, filters and highlights under a name; **Edit → Copy file:line**
