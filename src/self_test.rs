@@ -70,7 +70,8 @@ const BRACKETS_JSON: &str = "{\"a\": [1, \"]\", {\"b\": 2}]}\n";
 const CATALOG_XML: &str = "<?xml version=\"1.0\"?>\n<catalog>\n  <item id=\"1\"><price>10</price></item>\n  <item id=\"2\"><price>12</price></item>\n</catalog>\n";
 const OUTLINE_JSON: &str = "{\"name\": \"demo\", \"items\": [{\"id\": 10}, {\"id\": 11}, {\"id\": 12}]}\n";
 const FOLD_JSON: &str = "{\n  \"a\": {\n    \"x\": 1,\n    \"y\": 2\n  },\n  \"b\": [\n    1,\n    2,\n    3\n  ],\n  \"c\": 3\n}\n";
-const CSV_WITHOUT_NAME_CITY: &str = "id;age\r\n1;30\r\n2;41\r\n3;25\r\n";
+const COMMENT_SQL: &str = "SELECT 1;\n/* the next line\nSELECT 'is a comment';\n*/\nSELECT 2;\n";
+const CSV_WITHOUT_NAME_CITY: &str ="id;age\r\n1;30\r\n2;41\r\n3;25\r\n";
 
 fn doc(app: &mut BigTextApp) -> &mut Document {
     app.active_doc().expect("active document")
@@ -235,6 +236,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("long-path.txt"), long.join("deep.txt").to_string_lossy().as_bytes())?;
     std::fs::write(dir.join("table.csv"), CSV)?;
     std::fs::write(dir.join("data.json"),"{\"name\": \"bigtext\", \"size\": 42, \"ok\": true}\n")?;
+    std::fs::write(dir.join("comment.sql"), COMMENT_SQL)?;
     std::fs::write(dir.join("app.log"), "2026-10-24 10:00:00.000 [ERROR] failed\n2026-10-24 10:00:01.000 [INFO] ok\n")?;
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
@@ -1070,6 +1072,20 @@ impl SelfTest {
             let log = Lang::from_path(doc(app).path.as_deref());
             let json = Lang::from_path(Some(&c.file("data.json")));
             check(log == Lang::Log && json == Lang::Json && app.settings.syntax, format!("log {log:?} json {json:?}"))
+        }));
+        s("highlighting carries a block comment over lines", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("comment.sql"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) {
+                return Step::Wait;
+            }
+            let at = |s: &str| COMMENT_SQL.find(s).unwrap() as u64;
+            let d = doc(app);
+            let inside = |off: u64| d.view.hl.get(off).map(|s| s.in_comment());
+            let got = [inside(at("SELECT 'is")), inside(at("*/")), inside(at("SELECT 2"))];
+            check(got == [Some(true), Some(true), Some(false)], format!("{got:?}"))
         }));
         s("follow reads the file in chunks, not mapped", Box::new(|app, c| {
             if c.first() {

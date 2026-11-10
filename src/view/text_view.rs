@@ -234,6 +234,8 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         (Some(o), Some(a), Some(b)) => (o.spans)(a.start..b.seg.next.max(b.end)),
         _ => Vec::new(),
     };
+    let hl_states = super::hl_rows::row_states(&mut doc.view.hl, &doc.buf, doc.version, env.lang, &rows);
+    let stateful = env.lang.stateful();
     let diff_color = match env.diff.as_ref().map(|o| o.added) {
         Some(true) => role(Color32::from_rgba_unmultiplied(70, 190, 90, if visuals.dark_mode { 40 } else { 55 }), Tone::Ok, visuals.dark_mode),
         _ => role(Color32::from_rgba_unmultiplied(230, 70, 70, if visuals.dark_mode { 40 } else { 50 }), Tone::Bad, visuals.dark_mode),
@@ -271,10 +273,18 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         // Visible text of the row plus the byte ranges of placeholder (special) glyphs.
         let mut run = String::new();
         let mut specials: Vec<(usize, usize)> = Vec::new();
+        // The same characters as they are in the file (a tab, not `→   `), for highlighting, with
+        // where each starts in `src` and in `run`; and the part of the row left of the screen.
+        let mut src = String::new();
+        let mut map: Vec<(usize, usize)> = Vec::new();
+        let mut pre = String::new();
         let mut a11y_row = a11y_on.then(|| super::a11y::Row::new(row.start, row.end, Rect::from_min_max(pos2(text_rect.left(), y), pos2(text_rect.right(), y + m.rh))));
         rows::for_each_cell(&codec, &bytes, row.start, |c| {
             end_cell = c.cell + c.width;
             if c.cell + c.width <= first_cell {
+                if stateful && c.kind != CellKind::Hidden {
+                    pre.push(c.ch);
+                }
                 return true;
             }
             if c.cell >= first_cell + vis_cells {
@@ -310,11 +320,18 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             if sp {
                 specials.push((run.len(), run.len() + s.len()));
             }
+            if c.kind != CellKind::Hidden {
+                map.push((src.len(), run.len()));
+                src.push(c.ch);
+            }
             run.push_str(&s);
             cur = c.cell.max(first_cell) + c.width;
             true
         });
-        build_job(&mut job, &run, &specials, env.lang, &font, text_color, weak, visuals.dark_mode);
+        let st = hl_states.get(i).copied().unwrap_or_default();
+        let st = if pre.is_empty() { st } else { super::highlight::scan(env.lang, st, &pre, false) };
+        let text = Shown { run: &run, specials: &specials, src: &src, map: &map };
+        build_job(&mut job, &text, env.lang, st, &font, text_color, weak, visuals.dark_mode);
         if let Some(mut r) = a11y_row.take() {
             if reached_end && row.is_last_in_seg() && row.seg.has_nl {
                 r.push('\n', row.end, (end_cell.max(first_cell) - first_cell) as f32 * m.cw, 0.0);
@@ -529,23 +546,43 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     }
 }
 
-/// Turns the visible text of a row into layout sections: syntax colours, with placeholder
-/// glyphs (controls, invalid bytes) always dimmed.
+/// The visible text of a row: as painted (`run`, with the byte ranges of placeholder glyphs),
+/// and as in the file (`src`), with where each character of `src` is painted in `run`.
+struct Shown<'a> {
+    run: &'a str,
+    specials: &'a [(usize, usize)],
+    src: &'a str,
+    map: &'a [(usize, usize)],
+}
+
+/// Turns the visible text of a row into layout sections: syntax colours (of the text as it is
+/// in the file, starting in state `st`), with placeholder glyphs (controls, invalid bytes)
+/// always dimmed.
 #[allow(clippy::too_many_arguments)]
-fn build_job(job: &mut LayoutJob, text: &str, specials: &[(usize, usize)], lang: super::highlight::Lang, font: &FontId, normal: Color32, weak: Color32, dark: bool) {
+fn build_job(job: &mut LayoutJob, shown: &Shown, lang: super::highlight::Lang, st: super::highlight::State, font: &FontId, normal: Color32, weak: Color32, dark: bool) {
+    let text = shown.run;
     if text.is_empty() {
         return;
     }
     let mut colors = vec![normal; text.len()];
-    let mut spans = Vec::new();
-    super::highlight::spans(lang, text, &mut spans);
-    for (a, b, k) in spans {
-        let c = super::highlight::color(k, dark);
-        for x in &mut colors[a.min(text.len())..b.min(text.len())] {
-            *x = c;
+    if lang != super::highlight::Lang::Plain && !shown.src.is_empty() {
+        let mut spans = Vec::new();
+        super::highlight::spans_from(lang, st, shown.src, false, &mut spans);
+        let mut src_colors = vec![normal; shown.src.len()];
+        for (a, b, k) in spans {
+            let c = super::highlight::color(k, dark);
+            for x in &mut src_colors[a.min(shown.src.len())..b.min(shown.src.len())] {
+                *x = c;
+            }
+        }
+        for (n, &(s, r)) in shown.map.iter().enumerate() {
+            let end = shown.map.get(n + 1).map_or(text.len(), |m| m.1);
+            for x in &mut colors[r..end] {
+                *x = src_colors[s];
+            }
         }
     }
-    for &(a, b) in specials {
+    for &(a, b) in shown.specials {
         for x in &mut colors[a..b] {
             *x = weak;
         }

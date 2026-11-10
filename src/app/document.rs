@@ -90,6 +90,8 @@ pub struct ViewState {
     pub text_rect: Option<egui::Rect>,
     pub cell: egui::Vec2,
     pub scroll_marks: crate::view::text_view::ScrollMarks,
+    /// Highlighting state at the start of rows seen so far.
+    pub hl: crate::view::hl_rows::HlCache,
     /// Column (block) selection, made with Alt+drag.
     pub block: Option<crate::view::block::Block>,
     pub block_drag: bool,
@@ -134,6 +136,7 @@ impl Default for ViewState {
             text_rect: None,
             cell: egui::Vec2::ZERO,
             scroll_marks: Default::default(),
+            hl: Default::default(),
             block: None,
             block_drag: false,
             extra: Vec::new(),

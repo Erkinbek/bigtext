@@ -53,8 +53,9 @@ fn hex(c: egui::Color32) -> String {
     format!("#{:02x}{:02x}{:02x}", c.r(), c.g(), c.b())
 }
 
-/// `text` as preformatted HTML with each token in its syntax colour.
-pub fn html_block(text: &str, lang: Lang, dark: bool, caption: Option<&str>) -> String {
+/// `text` as preformatted HTML with each token in its syntax colour; `st` is what the text starts
+/// inside of (a comment opened above the selection).
+pub fn html_block(text: &str, lang: Lang, st: highlight::State, dark: bool, caption: Option<&str>) -> String {
     let (bg, fg) = if dark { ("#1e1e1e", "#d4d4d4") } else { ("#f6f8fa", "#24292f") };
     let mut out = String::from("<div>");
     if let Some(c) = caption {
@@ -62,13 +63,14 @@ pub fn html_block(text: &str, lang: Lang, dark: bool, caption: Option<&str>) -> 
     }
     out.push_str(&format!("<pre style=\"font-family:Consolas,'Courier New',monospace;background:{bg};color:{fg};padding:8px;margin:0\">"));
     let mut spans = Vec::new();
+    let mut st = st;
     for (i, line) in text.trim_end_matches(['\n', '\r']).split('\n').enumerate() {
         if i > 0 {
             out.push('\n');
         }
         let line = line.strip_suffix('\r').unwrap_or(line);
         spans.clear();
-        highlight::spans(lang, line, &mut spans);
+        st = highlight::spans_from(lang, st, line, true, &mut spans);
         let mut at = 0;
         for &(s, e, kind) in &spans {
             if s < at || e > line.len() || !line.is_char_boundary(s) || !line.is_char_boundary(e) {
@@ -117,7 +119,8 @@ impl BigTextApp {
                     self.error = Some(tr("Copy as HTML works on up to 2 MB. Select a smaller part.").into());
                     return;
                 }
-                let html = html_block(&text, lang, self.settings.theme.is_dark(), Some(&caption));
+                let st = crate::view::hl_rows::state_at(&d.buf, lang, s).unwrap_or_default();
+                let html = html_block(&text, lang, st, self.settings.theme.is_dark(), Some(&caption));
                 if let Err(e) = copy_html(&html, &text) {
                     ctx.copy_text(text);
                     self.notify(format!("{} ({e})", tr("HTML could not be put on the clipboard; copied as plain text")), None);
@@ -137,8 +140,12 @@ mod tests {
     fn markdown_fences_and_html_colours() {
         assert_eq!(markdown_block("a\nb\n", Lang::Log, Some("app.log:3")), "app.log:3\n```log\na\nb\n```\n");
         assert_eq!(markdown_block("x ``` y", Lang::Plain, None), "````\nx ``` y\n````\n");
-        let html = html_block("2024-05-01 10:00:00 ERROR <boom> & co\n", Lang::Log, false, Some("a.log:1"));
+        let html = html_block("2024-05-01 10:00:00 ERROR <boom> & co\n", Lang::Log, Default::default(), false, Some("a.log:1"));
         assert!(html.contains("&lt;boom&gt; &amp; co") && html.contains("<span style=\"color:#") && html.starts_with("<div>"), "{html}");
         assert!(!html.contains("\n</pre>"));
+        // A comment over lines is one colour on each of them.
+        let html = html_block("/* a\nselect */ select", Lang::Sql, Default::default(), true, None);
+        let grey = hex(highlight::color(highlight::Kind::Comment, true));
+        assert!(html.contains(&format!("<span style=\"color:{grey}\">select */</span>")), "{html}");
     }
 }

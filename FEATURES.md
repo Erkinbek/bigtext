@@ -178,6 +178,9 @@ keyboard shortcuts.
 - **Split view** (Ctrl+\\): two panes over one document with independent scrolling.
 - **Syntax highlighting** for logs, JSON, XML/HTML, CSV/TSV, SQL and INI/TOML/YAML — computed
   only for the visible slice of the visible rows; View → Highlight as overrides the extension.
+  Comments and tags that span lines are followed: each row starts in the state the row above
+  left (remembered while you scroll), and after a jump the 64 KB above the screen are read to
+  find it.
 - **CSV / TSV table view**: `.csv` and `.tsv` files open as a table (View → Table view or
   Ctrl+T switches any file between table and text). The delimiter (comma, semicolon, tab, pipe)
   is detected from the first lines and can be changed in the toolbar; quoted fields follow
@@ -333,7 +336,9 @@ keyboard shortcuts.
 - On Linux/macOS, another process truncating a file while it is mapped can raise SIGBUS
   (inherent to mmap; Windows forbids truncating mapped files). Followed files and network
   drives use chunked reads, so a followed log can be truncated safely.
-- Syntax highlighting is row-local: a string or comment that spans lines is not tracked.
+- Syntax highlighting never reads a file from its start: after a jump it looks 64 KB above the
+  screen, so a comment or string opened further up than that is not seen until you scroll
+  through it from above.
 - The CSV table shows one line per row, so a quoted field that contains line breaks appears as
   several rows (the text is unchanged). Deleting columns reads whole records and handles such
   fields correctly.

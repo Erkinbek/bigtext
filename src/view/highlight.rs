@@ -1,12 +1,49 @@
 //! Simple syntax highlighting for common formats.
 //!
-//! Highlighting is row-local and runs only on the visible slice of each visible row, so it costs
-//! nothing for the rest of the file. Constructs spanning rows (multi-line strings or comments)
-//! are not tracked — this is a lightweight editor, not an IDE.
+//! Highlighting runs only on the visible slice of each visible row, so it costs nothing for the
+//! rest of the file. What a row starts inside of — a block comment, an open tag — is a
+//! [`State`], carried down from the row above (see [`super::hl_rows`]); nothing reads the file
+//! from its start.
 
 use std::path::Path;
 
 use egui::Color32;
+
+/// What the text at a point is inside of, for constructs that span lines.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct State {
+    mode: Mode,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+enum Mode {
+    #[default]
+    Code,
+    /// A block comment (`/* */`, `<!-- -->`).
+    Comment,
+    /// An XML tag's attributes.
+    Tag,
+    /// An XML `<![CDATA[` section.
+    CData,
+}
+
+impl State {
+    /// Inside a block comment.
+    pub fn in_comment(self) -> bool {
+        self.mode == Mode::Comment
+    }
+}
+
+/// Where a tokenizer puts its spans: nowhere when only the state after the text is wanted.
+struct Sink<'a>(Option<&'a mut Vec<(usize, usize, Kind)>>);
+
+impl Sink<'_> {
+    fn push(&mut self, a: usize, b: usize, k: Kind) {
+        if let Some(o) = self.0.as_mut() {
+            o.push((a, b, k));
+        }
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Lang {
@@ -51,6 +88,11 @@ impl Lang {
         } else {
             Lang::Plain
         }
+    }
+
+    /// True if a row's colours depend on the rows above it (block comments, tags over lines).
+    pub fn stateful(self) -> bool {
+        matches!(self, Lang::Xml | Lang::Sql)
     }
 
     pub fn name(self) -> &'static str {
@@ -161,17 +203,46 @@ const SQL_KEYWORDS: &[&str] = &[
     "decimal", "float", "double", "boolean", "true", "false", "auto_increment", "with", "returning", "grant", "revoke", "desc", "asc",
 ];
 
-/// Byte spans (into `text`, the visible slice of one row) with their kinds.
+/// Byte spans (into `text`, one line or the visible slice of one row) with their kinds, for text
+/// that starts outside any comment or tag.
+#[cfg(test)]
 pub fn spans(lang: Lang, text: &str, out: &mut Vec<(usize, usize, Kind)>) {
-    let t = text.as_bytes();
-    match lang {
-        Lang::Plain => {}
-        Lang::Log => log_spans(t, out),
-        Lang::Json => json_spans(t, out),
-        Lang::Xml => xml_spans(t, out),
-        Lang::Csv(sep) => csv_spans(t, sep, out),
-        Lang::Sql => sql_spans(t, out),
-        Lang::Ini => ini_spans(t, out),
+    spans_from(lang, State::default(), text, true, out);
+}
+
+/// Spans of `text` starting in state `st`; returns the state after it. `ends_line`: the text
+/// ends at a line break (not at a wrap or the edge of the screen).
+pub fn spans_from(lang: Lang, st: State, text: &str, ends_line: bool, out: &mut Vec<(usize, usize, Kind)>) -> State {
+    run(lang, st, text.as_bytes(), ends_line, Sink(Some(out)))
+}
+
+/// The state after `text` starting in state `st`, without the spans.
+pub fn scan(lang: Lang, st: State, text: &str, ends_line: bool) -> State {
+    if !lang.stateful() {
+        return st;
+    }
+    run(lang, st, text.as_bytes(), ends_line, Sink(None))
+}
+
+fn run(lang: Lang, mut st: State, t: &[u8], _ends_line: bool, mut sink: Sink) -> State {
+    match (lang, sink.0.as_deref_mut()) {
+        (Lang::Xml, _) => xml_spans(&mut st, t, &mut sink),
+        (Lang::Sql, _) => sql_spans(&mut st, t, &mut sink),
+        (_, None) | (Lang::Plain, _) => {}
+        (Lang::Log, Some(out)) => log_spans(t, out),
+        (Lang::Json, Some(out)) => json_spans(t, out),
+        (Lang::Csv(sep), Some(out)) => csv_spans(t, sep, out),
+        (Lang::Ini, Some(out)) => ini_spans(t, out),
+    }
+    st
+}
+
+/// End of a construct closed by `pat`, searched from `from`: past `pat`, or the end of the text
+/// (false) when it goes on.
+fn close(t: &[u8], from: usize, pat: &[u8]) -> (usize, bool) {
+    match memchr::memmem::find(&t[from.min(t.len())..], pat) {
+        Some(p) => (from + p + pat.len(), true),
+        None => (t.len(), false),
     }
 }
 
@@ -250,53 +321,71 @@ fn json_spans(t: &[u8], out: &mut Vec<(usize, usize, Kind)>) {
     }
 }
 
-fn xml_spans(t: &[u8], out: &mut Vec<(usize, usize, Kind)>) {
+fn xml_spans(st: &mut State, t: &[u8], out: &mut Sink) {
     let mut i = 0;
-    let mut in_tag = false;
     while i < t.len() {
-        if !in_tag {
-            if t[i..].starts_with(b"<!--") {
-                let e = memchr::memmem::find(&t[i..], b"-->").map(|p| i + p + 3).unwrap_or(t.len());
-                out.push((i, e, Kind::Comment));
-                i = e;
-            } else if t[i] == b'<' {
-                let mut e = i + 1;
-                while e < t.len() && (t[e] == b'/' || t[e] == b'?' || t[e] == b'!') {
-                    e += 1;
+        match st.mode {
+            Mode::Comment | Mode::CData => {
+                let (kind, pat) = if st.mode == Mode::Comment { (Kind::Comment, &b"-->"[..]) } else { (Kind::Str, &b"]]>"[..]) };
+                let (e, closed) = close(t, i, pat);
+                out.push(i, e, kind);
+                if closed {
+                    st.mode = Mode::Code;
                 }
-                while e < t.len() && (is_ident(t[e]) || t[e] == b':' || t[e] == b'-' || t[e] == b'.') {
-                    e += 1;
-                }
-                out.push((i, e, Kind::Tag));
-                in_tag = true;
                 i = e;
-            } else if t[i] == b'&' {
-                let e = t[i..].iter().position(|&b| b == b';' || b == b' ').map(|p| i + p + 1).unwrap_or(t.len()).min(i + 12);
-                out.push((i, e, Kind::Keyword));
-                i = e;
-            } else {
-                i += 1;
             }
-        } else {
-            let c = t[i];
-            if c == b'>' || (c == b'/' && t.get(i + 1) == Some(&b'>')) || (c == b'?' && t.get(i + 1) == Some(&b'>')) {
-                let e = if c == b'>' { i + 1 } else { i + 2 };
-                out.push((i, e, Kind::Tag));
-                in_tag = false;
-                i = e;
-            } else if c == b'"' || c == b'\'' {
-                let e = string_end(t, i, c, false);
-                out.push((i, e, Kind::Str));
-                i = e;
-            } else if is_ident(c) {
-                let mut e = i;
-                while e < t.len() && (is_ident(t[e]) || t[e] == b':' || t[e] == b'-' || t[e] == b'.') {
-                    e += 1;
+            Mode::Code => {
+                if t[i..].starts_with(b"<!--") {
+                    let (e, closed) = close(t, i + 4, b"-->");
+                    out.push(i, e, Kind::Comment);
+                    if !closed {
+                        st.mode = Mode::Comment;
+                    }
+                    i = e;
+                } else if t[i..].starts_with(b"<![CDATA[") {
+                    out.push(i, i + 9, Kind::Tag);
+                    st.mode = Mode::CData;
+                    i += 9;
+                } else if t[i] == b'<' {
+                    let mut e = i + 1;
+                    while e < t.len() && (t[e] == b'/' || t[e] == b'?' || t[e] == b'!') {
+                        e += 1;
+                    }
+                    while e < t.len() && (is_ident(t[e]) || t[e] == b':' || t[e] == b'-' || t[e] == b'.') {
+                        e += 1;
+                    }
+                    out.push(i, e, Kind::Tag);
+                    st.mode = Mode::Tag;
+                    i = e;
+                } else if t[i] == b'&' {
+                    let e = t[i..].iter().position(|&b| b == b';' || b == b' ').map(|p| i + p + 1).unwrap_or(t.len()).min(i + 12);
+                    out.push(i, e, Kind::Keyword);
+                    i = e;
+                } else {
+                    i += 1;
                 }
-                out.push((i, e, Kind::Attr));
-                i = e;
-            } else {
-                i += 1;
+            }
+            Mode::Tag => {
+                let c = t[i];
+                if c == b'>' || (c == b'/' && t.get(i + 1) == Some(&b'>')) || (c == b'?' && t.get(i + 1) == Some(&b'>')) {
+                    let e = if c == b'>' { i + 1 } else { i + 2 };
+                    out.push(i, e, Kind::Tag);
+                    st.mode = Mode::Code;
+                    i = e;
+                } else if c == b'"' || c == b'\'' {
+                    let e = string_end(t, i, c, false);
+                    out.push(i, e, Kind::Str);
+                    i = e;
+                } else if is_ident(c) {
+                    let mut e = i;
+                    while e < t.len() && (is_ident(t[e]) || t[e] == b':' || t[e] == b'-' || t[e] == b'.') {
+                        e += 1;
+                    }
+                    out.push(i, e, Kind::Attr);
+                    i = e;
+                } else {
+                    i += 1;
+                }
             }
         }
     }
@@ -334,31 +423,46 @@ fn csv_spans(t: &[u8], sep: u8, out: &mut Vec<(usize, usize, Kind)>) {
     out.push((start, t.len(), Kind::Col(col)));
 }
 
-fn sql_spans(t: &[u8], out: &mut Vec<(usize, usize, Kind)>) {
+fn sql_spans(st: &mut State, t: &[u8], out: &mut Sink) {
     let mut i = 0;
+    if st.mode == Mode::Comment {
+        let (e, closed) = close(t, 0, b"*/");
+        out.push(0, e, Kind::Comment);
+        if !closed {
+            return;
+        }
+        st.mode = Mode::Code;
+        i = e;
+    }
+    let colour = out.0.is_some();
     while i < t.len() {
         let c = t[i];
         if t[i..].starts_with(b"--") || c == b'#' {
-            out.push((i, t.len(), Kind::Comment));
+            out.push(i, t.len(), Kind::Comment);
             return;
         }
         if t[i..].starts_with(b"/*") {
-            let e = memchr::memmem::find(&t[i..], b"*/").map(|p| i + p + 2).unwrap_or(t.len());
-            out.push((i, e, Kind::Comment));
+            let (e, closed) = close(t, i + 2, b"*/");
+            out.push(i, e, Kind::Comment);
+            if !closed {
+                st.mode = Mode::Comment;
+            }
             i = e;
         } else if c == b'\'' || c == b'"' || c == b'`' {
             let e = string_end(t, i, c, true);
-            out.push((i, e, if c == b'`' { Kind::Key } else { Kind::Str }));
+            out.push(i, e, if c == b'`' { Kind::Key } else { Kind::Str });
             i = e;
         } else if c.is_ascii_digit() {
             let e = number_end(t, i);
-            out.push((i, e, Kind::Number));
+            out.push(i, e, Kind::Number);
             i = e;
         } else if is_ident(c) {
             let e = word_end(t, i);
-            let w = String::from_utf8_lossy(&t[i..e]).to_ascii_lowercase();
-            if SQL_KEYWORDS.contains(&w.as_str()) {
-                out.push((i, e, Kind::Keyword));
+            if colour {
+                let w = String::from_utf8_lossy(&t[i..e]).to_ascii_lowercase();
+                if SQL_KEYWORDS.contains(&w.as_str()) {
+                    out.push(i, e, Kind::Keyword);
+                }
             }
             i = e;
         } else {
@@ -453,6 +557,35 @@ mod tests {
         let k = kinds(Lang::Ini, "port = 8080 # comment");
         assert!(k.contains(&("port ".into(), Kind::Key)));
         assert!(k.contains(&("8080".into(), Kind::Number)));
+    }
+
+    /// Each line's spans, the state carried from line to line.
+    fn lines(lang: Lang, text: &str) -> Vec<Vec<(String, Kind)>> {
+        let mut st = State::default();
+        text.lines()
+            .map(|l| {
+                let mut v = Vec::new();
+                st = spans_from(lang, st, l, true, &mut v);
+                v.into_iter().map(|(a, b, k)| (l[a..b].to_string(), k)).collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn comments_and_tags_over_lines() {
+        let x = lines(Lang::Xml, "<a href=\"x\"\n   id=\"y\">t</a>\n<!-- one\ntwo -->\n<b/>\n<![CDATA[\n<raw>\n]]>");
+        assert!(x[1].contains(&("id".into(), Kind::Attr)) && x[1].contains(&("\"y\"".into(), Kind::Str)), "{:?}", x[1]);
+        assert_eq!(x[3], vec![("two -->".into(), Kind::Comment)]);
+        assert!(x[4].contains(&("<b".into(), Kind::Tag)));
+        assert_eq!(x[6], vec![("<raw>".into(), Kind::Str)]);
+        assert!(x[7].iter().all(|s| s.1 == Kind::Str));
+        let s = lines(Lang::Sql, "SELECT 1; /* a\nselect\n*/ SELECT 2");
+        assert_eq!(s[1], vec![("select".into(), Kind::Comment)]);
+        assert!(s[2].contains(&("SELECT".into(), Kind::Keyword)));
+        // The state alone, without spans.
+        let st = scan(Lang::Sql, State::default(), "x /* open", true);
+        assert!(st.in_comment() && !scan(Lang::Sql, st, "*/", true).in_comment());
+        assert_eq!(scan(Lang::Json, st, "{", true), st);
     }
 
     #[test]
