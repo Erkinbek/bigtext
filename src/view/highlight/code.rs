@@ -44,6 +44,8 @@ pub(super) fn spec(lang: Lang) -> Option<&'static Spec> {
         Lang::Go => &GO,
         Lang::Rust => &RUST,
         Lang::Php => &PHP,
+        Lang::Python => &PYTHON,
+        Lang::Shell => &SHELL,
         _ => return None,
     })
 }
@@ -169,7 +171,9 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
         }
         let first = !st.inked;
         st.inked = true;
-        if spec.line.iter().any(|o| t[i..].starts_with(o.as_bytes())) && !(lang == Lang::Php && t[i..].starts_with(b"#[")) {
+        // In a shell `#` starts a comment only at the start of a word (not in `a#b` or `${#x}`).
+        let shell_word = lang != Lang::Shell || i == 0 || matches!(t[i - 1], b' ' | b'\t' | b';' | b'|' | b'&' | b'(' | b')');
+        if spec.line.iter().any(|o| t[i..].starts_with(o.as_bytes())) && !(lang == Lang::Php && t[i..].starts_with(b"#[")) && shell_word {
             // In PHP a line comment ends at `?>` too.
             if let Some(p) = memchr::memmem::find(&t[i..], b"?>").filter(|_| lang == Lang::Php) {
                 out.push(i, i + p, Kind::Comment);
@@ -213,7 +217,30 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                 prev = Prev::Name;
                 continue;
             }
-            if let Some(e) = heredoc_open(st, t, i) {
+        }
+        if lang == Lang::Shell && c == b'$' {
+            // $name, ${name…}, $1, $?, $@ and $'…' (a string with escapes).
+            let e = match t.get(i + 1) {
+                Some(b'{') => Some(memchr::memchr(b'}', &t[i..]).map_or(t.len(), |p| i + p + 1)),
+                Some(&b) if is_ident(b) => Some(super::word_end(t, i + 1)),
+                Some(b'@' | b'?' | b'#' | b'$' | b'!' | b'*' | b'-') => Some(i + 2),
+                _ => None,
+            };
+            if let Some(e) = e {
+                out.push(i, e, Kind::Key);
+                i = e;
+                prev = Prev::Name;
+                continue;
+            }
+            if t.get(i + 1) == Some(&b'\'') {
+                st.mode = Mode::Str(Str { q: b'\'', n: 1, esc: true, ml: true, dbl: false });
+                i = string(st, t, i, i + 2, out);
+                prev = Prev::Value;
+                continue;
+            }
+        }
+        if matches!(lang, Lang::Php | Lang::Shell) {
+            if let Some(e) = heredoc_open(lang, st, t, i) {
                 out.push(i, e, Kind::Str);
                 i = e;
                 prev = Prev::Value;
@@ -281,8 +308,22 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
             continue;
         }
         if is_ident(c) {
-            let e = super::word_end(t, i);
-            // A string with a prefix: L"wide", u8"text", R"(raw)".
+            let mut e = super::word_end(t, i);
+            if lang == Lang::Shell {
+                // Shell words go on over `-` and `.`: apt-get, my-script.sh.
+                while e + 1 < t.len() && matches!(t[e], b'-' | b'.') && is_ident(t[e + 1]) {
+                    e = super::word_end(t, e + 1);
+                }
+                // NAME=value, local name=value
+                let declared = prev == Prev::Name && matches!(&t[last_name.0..last_name.1], b"local" | b"export" | b"readonly" | b"declare" | b"typeset");
+                if t.get(e) == Some(&b'=') && (matches!(prev, Prev::Start | Prev::Punct) || declared) {
+                    out.push(i, e, Kind::Key);
+                    i = e;
+                    prev = Prev::Name;
+                    continue;
+                }
+            }
+            // A string with a prefix: L"wide", u8"text", R"(raw)", f"{x}".
             if let Some((open, body)) = prefixed_string(lang, st, &t[i..e], t, e) {
                 st.mode = open;
                 i = match open {
@@ -312,6 +353,8 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                         None
                     };
                     Some(Kind::Keyword)
+                } else if lang == Lang::Shell && has(super::words::SH_BUILTINS, w) {
+                    Some(Kind::Function)
                 } else {
                     next.take().or_else(|| name_kind(spec, w, t, e, prev))
                 };
@@ -427,6 +470,9 @@ fn open_string(lang: Lang, t: &[u8], i: usize) -> Option<(Mode, usize)> {
         Lang::Rust if c == b'"' => Some((Mode::Str(Str { q: c, n: 1, esc: true, ml: true, dbl: false }), i + 1)),
         // PHP's strings (and `shell` commands) may span lines.
         Lang::Php if matches!(c, b'"' | b'\'' | b'`') => Some((Mode::Str(Str { q: c, n: 1, esc: true, ml: true, dbl: false }), i + 1)),
+        Lang::Python if t[i..].starts_with(b"\"\"\"") || t[i..].starts_with(b"'''") => Some((Mode::Str(Str { q: c, n: 3, esc: true, ml: true, dbl: false }), i + 3)),
+        // A shell's quotes may span lines; '…' has no escapes.
+        Lang::Shell if c == b'"' || c == b'\'' => Some((Mode::Str(Str { q: c, n: 1, esc: c == b'"', ml: true, dbl: false }), i + 1)),
         Lang::CSharp if c == b'@' || c == b'$' || three => {
             let mut j = i;
             let mut verbatim = false;
@@ -458,6 +504,11 @@ fn prefixed_string(lang: Lang, st: &mut State, w: &[u8], t: &[u8], e: usize) -> 
         return None;
     }
     match lang {
+        // r"…", b'…', f"""…""", rb"…"
+        Lang::Python if q != b'#' && w.len() <= 2 && w.iter().all(|b| b"rRbBuUfF".contains(b)) => {
+            let n = if t[e..].starts_with(&[q; 3]) { 3 } else { 1 };
+            Some((Mode::Str(Str { q, n, esc: true, ml: n == 3, dbl: false }), e + n as usize))
+        }
         Lang::Rust => match (w, q) {
             (b"b" | b"c", b'"') => Some((Mode::Str(Str { q, n: 1, esc: true, ml: true, dbl: false }), e + 1)),
             (b"b", b'\'') => Some((Mode::Str(Str { q, n: 1, esc: true, ml: false, dbl: false }), e + 1)),
@@ -534,13 +585,15 @@ fn html(t: &[u8], from: usize, to: usize, out: &mut Sink) {
     }
 }
 
-/// A heredoc's opening at `t[i]` (PHP `<<<ID`, `<<<'ID'`): its end. The text starts on the next
-/// line and runs to a line that begins with `ID`.
-fn heredoc_open(st: &mut State, t: &[u8], i: usize) -> Option<usize> {
-    if !t[i..].starts_with(b"<<<") {
-        return None;
-    }
-    let mut j = i + 3;
+/// A heredoc's opening at `t[i]` (PHP `<<<ID`, `<<<'ID'`; shell `<<EOF`, `<<-'EOF'`): its end.
+/// The text starts on the next line and runs to a line that begins with `ID`.
+fn heredoc_open(lang: Lang, st: &mut State, t: &[u8], i: usize) -> Option<usize> {
+    let mut j = match lang {
+        Lang::Php if t[i..].starts_with(b"<<<") => i + 3,
+        // `<<<` is a shell's here-string, not a heredoc.
+        Lang::Shell if t[i..].starts_with(b"<<") && !t[i..].starts_with(b"<<<") => i + 2 + t[i + 2..].starts_with(b"-") as usize,
+        _ => return None,
+    };
     while j < t.len() && (t[j] == b' ' || t[j] == b'\t') {
         j += 1;
     }

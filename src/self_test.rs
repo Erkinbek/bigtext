@@ -75,6 +75,8 @@ const APP_TS: &str = "const tick = /`/;\nexport function view(name: string): str
 const DEMO_RS: &str = "/* outer\n   /* nested */\n   still a comment */\nfn main() {\n    let s = r#\"\n        raw \"text\"\n    \"#;\n}\n";
 const COMMENT_SQL: &str ="SELECT 1;\n/* the next line\nSELECT 'is a comment';\n*/\nSELECT 2;\n";
 const PAGE_PHP: &str = "<!doctype html>\n<title>Demo</title>\n<?php\n$body = <<<HTML\n    <p>inside the heredoc</p>\n    HTML;\necho $body;\n?>\n<footer>after PHP</footer>\n";
+const TOOL_PY: &str = "#!/usr/bin/env python3\ndef main():\n    \"\"\"Print a greeting.\n\n    def inside_the_docstring(): ...\n    \"\"\"\n    print('hi')\n";
+const DEPLOY_SH: &str = "#!/bin/bash\nset -e\ncat > /etc/app.conf <<'EOF'\nport=8080 # not a comment here\nEOF\necho \"deployed\"\n";
 const CSV_WITHOUT_NAME_CITY: &str = "id;age\r\n1;30\r\n2;41\r\n3;25\r\n";
 
 fn doc(app: &mut BigTextApp) -> &mut Document {
@@ -245,6 +247,8 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("app.ts"), APP_TS)?;
     std::fs::write(dir.join("demo.rs"), DEMO_RS)?;
     std::fs::write(dir.join("page.php"), PAGE_PHP)?;
+    std::fs::write(dir.join("tool"), TOOL_PY)?;
+    std::fs::write(dir.join("deploy.sh"), DEPLOY_SH)?;
     std::fs::write(dir.join("app.log"), "2026-10-24 10:00:00.000 [ERROR] failed\n2026-10-24 10:00:01.000 [INFO] ok\n")?;
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
@@ -1154,6 +1158,34 @@ impl SelfTest {
             let got = (d.effective_lang(), st(line("<title>")), st(line("inside the")), st(line("echo")), st(line("<footer>")));
             let want = (crate::view::highlight::Lang::Php, Some((true, false)), Some((false, true)), Some((false, false)), Some((true, false)));
             check(got == want, format!("{got:?}"))
+        }));
+        s("code highlighting: a Python script known by its #! line, with a docstring over lines", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("tool"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) {
+                return Step::Wait;
+            }
+            let line = |s: &str| TOOL_PY[..TOOL_PY.find(s).unwrap()].rfind('\n').map_or(0, |p| p + 1) as u64;
+            let d = doc(app);
+            let st = |off: u64| d.view.hl.get(off).map(|s| s.in_string());
+            let got = (d.effective_lang(), st(line("def main")), st(line("def inside")), st(line("print(")));
+            check(got == (crate::view::highlight::Lang::Python, Some(false), Some(true), Some(false)), format!("{got:?}"))
+        }));
+        s("code highlighting: a shell heredoc over lines", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("deploy.sh"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) {
+                return Step::Wait;
+            }
+            let line = |s: &str| DEPLOY_SH[..DEPLOY_SH.find(s).unwrap()].rfind('\n').map_or(0, |p| p + 1) as u64;
+            let d = doc(app);
+            let st = |off: u64| d.view.hl.get(off).map(|s| s.in_string());
+            let got = (d.effective_lang(), st(line("port=")), st(line("EOF\necho")), st(line("echo")));
+            check(got == (crate::view::highlight::Lang::Shell, Some(true), Some(true), Some(false)), format!("{got:?}"))
         }));
         s("follow reads the file in chunks, not mapped", Box::new(|app, c| {
             if c.first() {

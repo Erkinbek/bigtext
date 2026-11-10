@@ -36,6 +36,8 @@ pub fn fence_lang(lang: Lang) -> &'static str {
         Lang::Go => "go",
         Lang::Rust => "rust",
         Lang::Php => "php",
+        Lang::Python => "python",
+        Lang::Shell => "bash",
     }
 }
 

@@ -119,6 +119,51 @@ pub(super) const PHP: Spec = Spec {
     sync: &["<?php", "#[", "abstract", "class", "enum", "final", "function", "interface", "namespace", "trait", "use"],
 };
 
+pub(super) const PYTHON: Spec = Spec {
+    line: &["#"],
+    block: false,
+    nest: false,
+    keywords: PY_KEYWORDS,
+    types: PY_TYPES,
+    type_kw: &["class"],
+    fn_kw: &["def"],
+    pascal: true,
+    at_attr: true,
+    ci: false,
+    sync: &["@", "async", "class", "def", "from", "if __name__", "import"],
+};
+
+pub(super) const SHELL: Spec = Spec {
+    line: &["#"],
+    block: false,
+    nest: false,
+    keywords: SH_KEYWORDS,
+    types: &[],
+    type_kw: &[],
+    fn_kw: &["function"],
+    pascal: false,
+    at_attr: false,
+    ci: false,
+    sync: &["alias", "case", "declare", "export", "for", "function", "if", "readonly", "set", "source", "while"],
+};
+
+const PY_KEYWORDS: &[&str] = &[
+    "False", "None", "True", "and", "as", "assert", "async", "await", "break", "case", "class", "cls", "continue", "def", "del", "elif", "else", "except",
+    "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "match", "nonlocal", "not", "or", "pass", "raise", "return", "self", "try", "while",
+    "with", "yield",
+];
+const PY_TYPES: &[&str] = &["bool", "bytearray", "bytes", "complex", "dict", "float", "frozenset", "int", "list", "object", "set", "str", "tuple", "type"];
+
+const SH_KEYWORDS: &[&str] = &[
+    "alias", "break", "case", "continue", "declare", "do", "done", "elif", "else", "esac", "eval", "exec", "exit", "export", "fi", "for", "function", "if", "in",
+    "local", "readonly", "return", "select", "shift", "source", "then", "time", "trap", "typeset", "unset", "until", "while",
+];
+/// Shell built-in commands, coloured as functions.
+pub(super) const SH_BUILTINS: &[&str] = &[
+    "bg", "cd", "command", "echo", "enable", "false", "fg", "getopts", "hash", "jobs", "kill", "let", "mapfile", "popd", "printf", "pushd", "pwd", "read", "set",
+    "shopt", "sleep", "test", "true", "type", "ulimit", "umask", "wait",
+];
+
 /// PHP's keywords in lower case (they are matched ignoring case).
 const PHP_KEYWORDS: &[&str] = &[
     "__class__", "__dir__", "__file__", "__function__", "__line__", "__method__", "__namespace__", "__trait__", "abstract", "and", "array", "as", "break",
@@ -195,4 +240,4 @@ const RUST_TYPES: &[&str] = &["bool", "char", "f32", "f64", "i128", "i16", "i32"
 pub(super) const JS_BEFORE_REGEX: &[&str] = &["await", "case", "delete", "do", "else", "in", "instanceof", "new", "of", "return", "throw", "typeof", "void", "yield"];
 
 #[cfg(test)]
-pub(super) const ALL: &[&Spec] = &[&C, &CSHARP, &JAVA, &JS, &TS, &GO, &RUST, &PHP];
+pub(super) const ALL: &[&Spec] = &[&C, &CSHARP, &JAVA, &JS, &TS, &GO, &RUST, &PHP, &PYTHON, &SHELL];

@@ -177,7 +177,8 @@ keyboard shortcuts.
 - **Bookmarks** (Ctrl+F2, F2 / Shift+F2) that stay on their lines while you edit.
 - **Split view** (Ctrl+\\): two panes over one document with independent scrolling.
 - **Syntax highlighting** for logs, JSON, XML/HTML, CSV/TSV, SQL and INI/TOML/YAML, and for
-  code in C/C++, C#, Java, JavaScript, TypeScript, Go, Rust and PHP: keywords, strings, numbers,
+  code in Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP and shell scripts
+  (Bash; a script without an extension is known by its `#!` line): keywords, strings, numbers,
   comments, types, function calls, constants, variables, annotations, decorators, attributes,
   macros, lifetimes, regular expressions, heredocs and preprocessor lines (and the HTML around
   PHP's `<?php … ?>`) — computed only for the visible slice of the

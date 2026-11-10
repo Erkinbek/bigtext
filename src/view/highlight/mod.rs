@@ -139,10 +139,13 @@ pub enum Lang {
     Go,
     Rust,
     Php,
+    Python,
+    /// Bash and other POSIX shells.
+    Shell,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 16] = [
+    pub const ALL: [Lang; 18] = [
         Lang::Plain,
         Lang::Log,
         Lang::Json,
@@ -159,9 +162,15 @@ impl Lang {
         Lang::Go,
         Lang::Rust,
         Lang::Php,
+        Lang::Python,
+        Lang::Shell,
     ];
 
     pub fn from_path(p: Option<&Path>) -> Lang {
+        let name = p.and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        if matches!(name.as_str(), ".bashrc" | ".bash_profile" | ".bash_aliases" | ".bash_logout" | ".profile" | ".zshrc" | ".zprofile" | ".zshenv" | "pkgbuild") {
+            return Lang::Shell;
+        }
         let ext = p.and_then(|p| p.extension()).map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
         match ext.as_str() {
             "log" | "out" | "err" => Lang::Log,
@@ -179,13 +188,30 @@ impl Lang {
             "go" => Lang::Go,
             "rs" => Lang::Rust,
             "php" | "phtml" | "php3" | "php4" | "php5" | "php7" | "php8" | "phps" => Lang::Php,
+            "py" | "pyw" | "pyi" => Lang::Python,
+            "sh" | "bash" | "zsh" | "ksh" => Lang::Shell,
             _ => Lang::Plain,
         }
     }
 
-    /// Guesses the format of a file whose name says nothing from its first lines: most lines
-    /// starting with a time make a log, a `{` or `[` JSON, `<?xml` or a tag XML.
+    /// Guesses the format of a file whose name says nothing from its first lines: a `#!` line
+    /// names a script's language, most lines starting with a time make a log, a `{` or `[` JSON,
+    /// `<?xml` or a tag XML.
     pub fn sniff(text: &str) -> Lang {
+        if let Some(bang) = text.trim_start_matches('\u{FEFF}').strip_prefix("#!").and_then(|t| t.lines().next()) {
+            // #!/usr/bin/env python3, #!/bin/bash -e: the interpreter's name.
+            let mut words = bang.split_whitespace();
+            let first = words.next().unwrap_or_default().rsplit('/').next().unwrap_or_default();
+            let prog = if first == "env" { words.find(|w| !w.starts_with('-')).unwrap_or_default() } else { first };
+            let prog = prog.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
+            match prog {
+                "python" | "pypy" => return Lang::Python,
+                "sh" | "bash" | "zsh" | "ksh" | "dash" | "ash" => return Lang::Shell,
+                "node" | "deno" | "bun" => return Lang::JavaScript,
+                "php" => return Lang::Php,
+                _ => {}
+            }
+        }
         let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).take(8).collect();
         let Some(first) = lines.first().map(|l| l.trim_start()) else { return Lang::Plain };
         let stamped = lines.iter().filter(|l| bigtext::timestamp::parse(&l.chars().take(40).collect::<String>()).is_some()).count();
@@ -234,6 +260,8 @@ impl Lang {
             Lang::Go => "Go",
             Lang::Rust => "Rust",
             Lang::Php => "PHP",
+            Lang::Python => "Python",
+            Lang::Shell => "Shell (Bash)",
         }
     }
 }
@@ -848,12 +876,52 @@ mod tests {
     }
 
     #[test]
+    fn python_shell() {
+        let l = lines(
+            Lang::Python,
+            "@dataclass\nclass User(Base):\n    \"\"\"A user.\n\n    More text.\n    \"\"\"\n    def greet(self, name: str) -> str:\n        return f\"hi {name}\"  # say hi\nMAX = 3\nx = 'open\ny = 1",
+        );
+        assert_eq!(l[0], vec![("@dataclass".into(), Kind::Attr)]);
+        assert_eq!(l[1], vec![("class".into(), Kind::Keyword), ("User".into(), Kind::Type), ("Base".into(), Kind::Type)]);
+        assert_eq!(l[2], vec![("\"\"\"A user.".into(), Kind::Str)]);
+        assert_eq!(l[4], vec![("    More text.".into(), Kind::Str)]);
+        assert_eq!(l[6], vec![("def".into(), Kind::Keyword), ("greet".into(), Kind::Function), ("self".into(), Kind::Keyword), ("str".into(), Kind::Type), ("str".into(), Kind::Type)]);
+        assert_eq!(l[7], vec![("return".into(), Kind::Keyword), ("f\"hi {name}\"".into(), Kind::Str), ("# say hi".into(), Kind::Comment)]);
+        assert_eq!(l[8], vec![("MAX".into(), Kind::Number), ("3".into(), Kind::Number)]);
+        // A '…' string ends with its line.
+        assert_eq!(l[10], vec![("1".into(), Kind::Number)]);
+
+        let l = lines(
+            Lang::Shell,
+            "#!/bin/bash\nNAME=\"world\"  # greet\nif [ -n \"$NAME\" ]; then echo \"hi ${NAME}\"; fi\ncat <<-'EOF' | grep x\n  body $NAME\n\tEOF\necho done a#b $# my-done.sh",
+        );
+        assert_eq!(l[0], vec![("#!/bin/bash".into(), Kind::Comment)]);
+        assert_eq!(l[1], vec![("NAME".into(), Kind::Key), ("\"world\"".into(), Kind::Str), ("# greet".into(), Kind::Comment)]);
+        assert_eq!(
+            l[2],
+            vec![("if".into(), Kind::Keyword), ("\"$NAME\"".into(), Kind::Str), ("then".into(), Kind::Keyword), ("echo".into(), Kind::Function), ("\"hi ${NAME}\"".into(), Kind::Str), ("fi".into(), Kind::Keyword)]
+        );
+        assert_eq!(l[3], vec![("<<-'EOF'".into(), Kind::Str)]);
+        assert_eq!(l[4], vec![("  body $NAME".into(), Kind::Str)]);
+        assert_eq!(l[5], vec![("EOF".into(), Kind::Str)]);
+        assert_eq!(l[6], vec![("echo".into(), Kind::Function), ("done".into(), Kind::Keyword), ("$#".into(), Kind::Key)]);
+        assert_eq!(kinds(Lang::Shell, "local dir=/tmp"), vec![("local".into(), Kind::Keyword), ("dir".into(), Kind::Key)]);
+
+        assert_eq!(Lang::sniff("#!/usr/bin/env python3\nprint(1)\n"), Lang::Python);
+        assert_eq!(Lang::sniff("\u{FEFF}#!/bin/bash -e\n"), Lang::Shell);
+        assert_eq!(Lang::sniff("#!/usr/bin/env -S node --x\n"), Lang::JavaScript);
+        assert_eq!(Lang::sniff("#!/usr/bin/perl\n"), Lang::Plain);
+        assert_eq!((Lang::from_path(Some(Path::new("/home/a/.bashrc"))), Lang::from_path(Some(Path::new("t.pyi")))), (Lang::Shell, Lang::Python));
+    }
+
+    #[test]
     fn word_lists_are_sorted_and_sync_lines() {
         for s in words::ALL {
             for l in [s.keywords, s.types] {
                 assert!(l.windows(2).all(|w| w[0] < w[1]), "{l:?}");
             }
         }
+        assert!(words::SH_BUILTINS.windows(2).all(|w| w[0] < w[1]));
         assert!(Lang::C.sync_line("#include <x>") && Lang::C.sync_line("int main(void)"));
         assert!(!Lang::C.sync_line(" * int") && !Lang::C.sync_line("integer = 1"));
         assert!(Lang::Java.sync_line("@Override") && Lang::Java.sync_line("public class A") && !Lang::Json.sync_line("{"));
