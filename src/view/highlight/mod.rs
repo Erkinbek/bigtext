@@ -21,9 +21,11 @@ pub struct State {
     mode: Mode,
     /// Something other than blanks came since the line started (`#include` must come first).
     inked: bool,
-    /// What closes a [`Mode::Delim`] string.
+    /// What closes a [`Mode::Delim`] string or a heredoc.
     delim: [u8; DELIM],
     delim_len: u8,
+    /// A heredoc opened on this line: its text starts on the next one.
+    pending: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -38,6 +40,10 @@ enum Mode {
     Str(Str),
     /// A raw string closed by `State::delim`.
     Delim,
+    /// A heredoc's lines, up to one that starts with `State::delim`.
+    Heredoc,
+    /// HTML around PHP's `<?php … ?>`.
+    Html,
     /// An XML tag's attributes.
     Tag,
     /// An XML `<![CDATA[` section.
@@ -56,6 +62,13 @@ struct Str {
 }
 
 impl State {
+    /// The state at the start of the file (`file_start`), or at a point after a jump: PHP files
+    /// start as HTML, though a point inside one is more likely code.
+    pub fn start(lang: Lang, file_start: bool) -> State {
+        let mode = if lang == Lang::Php && file_start { Mode::Html } else { Mode::Code };
+        State { mode, ..State::default() }
+    }
+
     /// Inside a block comment.
     pub fn in_comment(self) -> bool {
         matches!(self.mode, Mode::Comment(_))
@@ -63,7 +76,12 @@ impl State {
 
     /// Inside a string.
     pub fn in_string(self) -> bool {
-        matches!(self.mode, Mode::Str(_) | Mode::Delim)
+        matches!(self.mode, Mode::Str(_) | Mode::Delim | Mode::Heredoc)
+    }
+
+    /// In the HTML of a PHP file.
+    pub fn in_html(self) -> bool {
+        self.mode == Mode::Html
     }
 
     fn set_delim(&mut self, d: &[u8]) {
@@ -77,7 +95,7 @@ impl State {
     }
 
     /// At a line break: line comments and single-line strings end (unless the line ends with a
-    /// backslash, which continues a C string).
+    /// backslash, which continues a C string), and a heredoc opened on the line begins.
     fn end_line(&mut self, t: &[u8]) {
         self.inked = false;
         match self.mode {
@@ -85,6 +103,10 @@ impl State {
             Mode::Str(s) if !s.ml && !t.ends_with(b"\\") => self.mode = Mode::Code,
             _ => {}
         }
+        if self.pending && self.mode == Mode::Code {
+            self.mode = Mode::Heredoc;
+        }
+        self.pending = false;
     }
 }
 
@@ -116,10 +138,11 @@ pub enum Lang {
     TypeScript,
     Go,
     Rust,
+    Php,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 15] = [
+    pub const ALL: [Lang; 16] = [
         Lang::Plain,
         Lang::Log,
         Lang::Json,
@@ -135,6 +158,7 @@ impl Lang {
         Lang::TypeScript,
         Lang::Go,
         Lang::Rust,
+        Lang::Php,
     ];
 
     pub fn from_path(p: Option<&Path>) -> Lang {
@@ -154,6 +178,7 @@ impl Lang {
             "ts" | "tsx" | "mts" | "cts" => Lang::TypeScript,
             "go" => Lang::Go,
             "rs" => Lang::Rust,
+            "php" | "phtml" | "php3" | "php4" | "php5" | "php7" | "php8" | "phps" => Lang::Php,
             _ => Lang::Plain,
         }
     }
@@ -208,6 +233,7 @@ impl Lang {
             Lang::TypeScript => "TypeScript",
             Lang::Go => "Go",
             Lang::Rust => "Rust",
+            Lang::Php => "PHP",
         }
     }
 }
@@ -448,7 +474,7 @@ fn xml_spans(st: &mut State, t: &[u8], out: &mut Sink) {
                 }
                 i = e;
             }
-            Mode::Code | Mode::LineComment | Mode::Str(_) | Mode::Delim => {
+            Mode::Code | Mode::LineComment | Mode::Str(_) | Mode::Delim | Mode::Heredoc | Mode::Html => {
                 if t[i..].starts_with(b"<!--") {
                     let (e, closed) = close(t, i + 4, b"-->");
                     out.push(i, e, Kind::Comment);
@@ -675,7 +701,10 @@ mod tests {
 
     /// Each line's spans, the state carried from line to line.
     fn lines(lang: Lang, text: &str) -> Vec<Vec<(String, Kind)>> {
-        let mut st = State::default();
+        lines_from(lang, State::default(), text)
+    }
+
+    fn lines_from(lang: Lang, mut st: State, text: &str) -> Vec<Vec<(String, Kind)>> {
         text.lines()
             .map(|l| {
                 let mut v = Vec::new();
@@ -797,6 +826,28 @@ mod tests {
     }
 
     #[test]
+    fn php() {
+        let text = "<h1 class=\"t\">Hi</h1>\n<?php\n$name = 'Ann'; // greet ?> <b>x</b>\n<?= strtoupper($name) ?>\n<?php\n$t = <<<EOT\n  Hello $name\n  EOT;\necho TRUE; #[Route('/')]\nfunction show(int $id): string {}";
+        let l = lines_from(Lang::Php, State::start(Lang::Php, true), text);
+        assert_eq!(l[0][..3], [("<h1".into(), Kind::Tag), ("class".into(), Kind::Attr), ("\"t\"".into(), Kind::Str)]);
+        assert_eq!(l[1], vec![("<?php".into(), Kind::Tag)]);
+        assert_eq!(l[2][..4], [("$name".into(), Kind::Key), ("'Ann'".into(), Kind::Str), ("// greet ".into(), Kind::Comment), ("?>".into(), Kind::Tag)]);
+        assert!(l[2].contains(&("<b".into(), Kind::Tag)), "{:?}", l[2]);
+        assert_eq!(l[3], vec![("<?=".into(), Kind::Tag), ("strtoupper".into(), Kind::Function), ("$name".into(), Kind::Key), ("?>".into(), Kind::Tag)]);
+        assert_eq!(l[5], vec![("$t".into(), Kind::Key), ("<<<EOT".into(), Kind::Str)]);
+        assert_eq!(l[6], vec![("  Hello $name".into(), Kind::Str)]);
+        assert_eq!(l[7], vec![("EOT".into(), Kind::Str)]);
+        assert_eq!(l[8], vec![("echo".into(), Kind::Keyword), ("TRUE".into(), Kind::Keyword), ("#[Route('/')]".into(), Kind::Attr)]);
+        for want in [("function", Kind::Keyword), ("show", Kind::Function), ("int", Kind::Type), ("$id", Kind::Key), ("string", Kind::Type)] {
+            assert!(l[9].contains(&(want.0.into(), want.1)), "{want:?} in {:?}", l[9]);
+        }
+        // <?xml is not PHP; after a jump a PHP file is assumed to be in code.
+        let l = lines_from(Lang::Php, State::start(Lang::Php, true), "<?xml version=\"1.0\"?>\n$x");
+        assert!(l[1].is_empty(), "{:?}", l[1]);
+        assert_eq!(kinds(Lang::Php, "$x"), vec![("$x".into(), Kind::Key)]);
+    }
+
+    #[test]
     fn word_lists_are_sorted_and_sync_lines() {
         for s in words::ALL {
             for l in [s.keywords, s.types] {
@@ -811,7 +862,7 @@ mod tests {
     #[test]
     fn never_panics_on_odd_input() {
         for lang in Lang::ALL {
-            for s in ["\"", "<", "<!--", "'", "\"\\", "-", "a,\"", "[", "=", "/*", "R\"", "R\"(", "@\"", "$@", "\"\"\"", "#", "u8'", "/*/", "0x", "1e", "r#", "r#\"", "'\\", "#[", "b'", "x!", "'é"] {
+            for s in ["\"", "<", "<!--", "'", "\"\\", "-", "a,\"", "[", "=", "/*", "R\"", "R\"(", "@\"", "$@", "\"\"\"", "#", "u8'", "/*/", "0x", "1e", "r#", "r#\"", "'\\", "#[", "b'", "x!", "'é", "<<<", "<<<'", "<<<\"A", "<?", "?>", "$", "$$"] {
                 let mut v = Vec::new();
                 spans(lang, s, &mut v);
                 assert!(v.iter().all(|&(a, b, _)| a <= b && b <= s.len()));

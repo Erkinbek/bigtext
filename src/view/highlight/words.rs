@@ -13,6 +13,7 @@ pub(super) const C: Spec = Spec {
     fn_kw: &[],
     pascal: true,
     at_attr: false,
+    ci: false,
     sync: &[
         "#define", "#if", "#ifdef", "#ifndef", "#include", "#pragma", "bool", "char", "class", "const", "double", "enum", "extern", "float", "inline", "int", "long",
         "namespace", "static", "struct", "template", "typedef", "union", "unsigned", "using", "void",
@@ -29,6 +30,7 @@ pub(super) const CSHARP: Spec = Spec {
     fn_kw: &[],
     pascal: true,
     at_attr: false,
+    ci: false,
     sync: &["#region", "abstract", "class", "enum", "interface", "internal", "namespace", "partial", "public", "record", "sealed", "static", "struct", "using"],
 };
 
@@ -42,6 +44,7 @@ pub(super) const JAVA: Spec = Spec {
     fn_kw: &[],
     pascal: true,
     at_attr: true,
+    ci: false,
     sync: &["@", "abstract", "class", "enum", "final", "import", "interface", "package", "public", "record"],
 };
 
@@ -55,6 +58,7 @@ pub(super) const JS: Spec = Spec {
     fn_kw: &["function"],
     pascal: true,
     at_attr: true,
+    ci: false,
     sync: JS_SYNC,
 };
 
@@ -68,6 +72,7 @@ pub(super) const TS: Spec = Spec {
     fn_kw: &["function"],
     pascal: true,
     at_attr: true,
+    ci: false,
     sync: JS_SYNC,
 };
 
@@ -82,6 +87,7 @@ pub(super) const GO: Spec = Spec {
     // Exported functions and variables are capitalised too.
     pascal: false,
     at_attr: false,
+    ci: false,
     sync: &["const", "func", "import", "package", "type", "var"],
 };
 
@@ -95,8 +101,34 @@ pub(super) const RUST: Spec = Spec {
     fn_kw: &["fn"],
     pascal: true,
     at_attr: false,
+    ci: false,
     sync: &["#[", "#![", "async", "const", "enum", "extern", "fn", "impl", "macro_rules!", "mod", "pub", "static", "struct", "trait", "type", "unsafe", "use"],
 };
+
+pub(super) const PHP: Spec = Spec {
+    line: &["//", "#"],
+    block: true,
+    nest: false,
+    keywords: PHP_KEYWORDS,
+    types: PHP_TYPES,
+    type_kw: &["class", "enum", "extends", "implements", "instanceof", "interface", "new", "trait"],
+    fn_kw: &["fn", "function"],
+    pascal: true,
+    at_attr: false,
+    ci: true,
+    sync: &["<?php", "#[", "abstract", "class", "enum", "final", "function", "interface", "namespace", "trait", "use"],
+};
+
+/// PHP's keywords in lower case (they are matched ignoring case).
+const PHP_KEYWORDS: &[&str] = &[
+    "__class__", "__dir__", "__file__", "__function__", "__line__", "__method__", "__namespace__", "__trait__", "abstract", "and", "array", "as", "break",
+    "callable", "case", "catch", "class", "clone", "const", "continue", "declare", "default", "do", "echo", "else", "elseif", "empty", "enddeclare", "endfor",
+    "endforeach", "endif", "endswitch", "endwhile", "enum", "extends", "false", "final", "finally", "fn", "for", "foreach", "function", "global", "goto", "if",
+    "implements", "include", "include_once", "instanceof", "insteadof", "interface", "isset", "list", "match", "namespace", "new", "null", "or", "parent", "print",
+    "private", "protected", "public", "readonly", "require", "require_once", "return", "self", "static", "switch", "throw", "trait", "true", "try", "unset", "use",
+    "var", "while", "xor", "yield",
+];
+const PHP_TYPES: &[&str] = &["bool", "float", "int", "iterable", "mixed", "never", "object", "string", "void"];
 
 const JS_SYNC: &[&str] =&["@", "abstract", "async", "class", "const", "declare", "enum", "export", "function", "import", "interface", "let", "namespace", "type", "var"];
 
@@ -163,4 +195,4 @@ const RUST_TYPES: &[&str] = &["bool", "char", "f32", "f64", "i128", "i16", "i32"
 pub(super) const JS_BEFORE_REGEX: &[&str] = &["await", "case", "delete", "do", "else", "in", "instanceof", "new", "of", "return", "throw", "typeof", "void", "yield"];
 
 #[cfg(test)]
-pub(super) const ALL: &[&Spec] = &[&C, &CSHARP, &JAVA, &JS, &TS, &GO, &RUST];
+pub(super) const ALL: &[&Spec] = &[&C, &CSHARP, &JAVA, &JS, &TS, &GO, &RUST, &PHP];

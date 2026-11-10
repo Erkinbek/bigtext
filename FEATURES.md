@@ -177,9 +177,10 @@ keyboard shortcuts.
 - **Bookmarks** (Ctrl+F2, F2 / Shift+F2) that stay on their lines while you edit.
 - **Split view** (Ctrl+\\): two panes over one document with independent scrolling.
 - **Syntax highlighting** for logs, JSON, XML/HTML, CSV/TSV, SQL and INI/TOML/YAML, and for
-  code in C/C++, C#, Java, JavaScript, TypeScript, Go and Rust: keywords, strings, numbers,
-  comments, types, function calls, constants, annotations, decorators, attributes, macros,
-  lifetimes, regular expressions and preprocessor lines — computed only for the visible slice of the
+  code in C/C++, C#, Java, JavaScript, TypeScript, Go, Rust and PHP: keywords, strings, numbers,
+  comments, types, function calls, constants, variables, annotations, decorators, attributes,
+  macros, lifetimes, regular expressions, heredocs and preprocessor lines (and the HTML around
+  PHP's `<?php … ?>`) — computed only for the visible slice of the
   visible rows; View → Highlight as overrides the extension. Comments, strings and tags that
   span lines are followed: each row starts in the state the row above left (remembered while
   you scroll), and after a jump the 64 KB above the screen are read to find it, starting at a

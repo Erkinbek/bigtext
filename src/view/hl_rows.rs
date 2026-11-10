@@ -91,12 +91,12 @@ fn after_row(buf: &TextBuf, lang: Lang, p: &Row, st: State) -> Result<State, Pen
 /// line that begins a declaration (`class Foo`, `#include`), which is surely outside comments and
 /// strings, where the 64 KB boundary may not be.
 pub fn state_at(buf: &TextBuf, lang: Lang, at: u64) -> Result<State, Pending> {
-    let mut st = State::default();
     if at == 0 || !lang.stateful() {
-        return Ok(st);
+        return Ok(State::start(lang, true));
     }
     let mut seg = rows::seg_containing(buf, at.saturating_sub(LOOKBACK))?;
     let mut synced = seg.start == 0;
+    let mut st = State::start(lang, synced);
     while seg.start < at {
         let end = seg.content_end.min(at);
         let text = text_of(buf, seg.start, end)?;

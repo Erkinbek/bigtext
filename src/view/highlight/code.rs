@@ -26,6 +26,8 @@ pub(super) struct Spec {
     pub pascal: bool,
     /// `@Name` annotations and decorators.
     pub at_attr: bool,
+    /// Keywords ignore case (the list is in lower case).
+    pub ci: bool,
     /// Words that begin a declaration at the start of a line: after a jump, highlighting trusts
     /// such a line to be outside comments and strings.
     pub sync: &'static [&'static str],
@@ -41,12 +43,27 @@ pub(super) fn spec(lang: Lang) -> Option<&'static Spec> {
         Lang::TypeScript => &TS,
         Lang::Go => &GO,
         Lang::Rust => &RUST,
+        Lang::Php => &PHP,
         _ => return None,
     })
 }
 
 fn has(list: &[&str], w: &[u8]) -> bool {
     list.binary_search_by(|k| k.as_bytes().cmp(w)).is_ok()
+}
+
+/// Like [`has`], ignoring case when `ci` (for a list in lower case).
+fn has_word(list: &[&str], w: &[u8], ci: bool) -> bool {
+    if !ci {
+        return has(list, w);
+    }
+    let mut buf = [0u8; 32];
+    if w.len() > buf.len() {
+        return false;
+    }
+    buf[..w.len()].copy_from_slice(w);
+    buf[..w.len()].make_ascii_lowercase();
+    has(list, &buf[..w.len()])
 }
 
 /// True if `line` (from its start) begins with one of the language's declaration words.
@@ -133,7 +150,17 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                 prev = Prev::Value;
                 continue;
             }
-            _ => st.mode = Mode::Code,
+            Mode::Heredoc => {
+                i = heredoc(st, t, i, out);
+                prev = Prev::Value;
+                continue;
+            }
+            Mode::Html => {
+                i = php_html(st, t, i, out);
+                prev = Prev::Start;
+                continue;
+            }
+            Mode::Tag | Mode::CData => st.mode = Mode::Code,
         }
         let c = t[i];
         if c == b' ' || c == b'\t' || c == b'\r' {
@@ -142,7 +169,13 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
         }
         let first = !st.inked;
         st.inked = true;
-        if spec.line.iter().any(|o| t[i..].starts_with(o.as_bytes())) {
+        if spec.line.iter().any(|o| t[i..].starts_with(o.as_bytes())) && !(lang == Lang::Php && t[i..].starts_with(b"#[")) {
+            // In PHP a line comment ends at `?>` too.
+            if let Some(p) = memchr::memmem::find(&t[i..], b"?>").filter(|_| lang == Lang::Php) {
+                out.push(i, i + p, Kind::Comment);
+                i += p;
+                continue;
+            }
             out.push(i, t.len(), Kind::Comment);
             st.mode = Mode::LineComment;
             return;
@@ -157,14 +190,44 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
             prev = Prev::Punct;
             continue;
         }
-        if lang == Lang::Rust {
-            if c == b'\'' {
-                i = rust_quote(t, i, out);
+        if lang == Lang::Php {
+            if t[i..].starts_with(b"?>") {
+                out.push(i, i + 2, Kind::Tag);
+                st.mode = Mode::Html;
+                i += 2;
+                continue;
+            }
+            if let Some(len) = php_open(t, i).filter(|&n| n > 2) {
+                out.push(i, i + len, Kind::Tag);
+                i += len;
+                continue;
+            }
+            if c == b'$' && t.get(i + 1).is_some_and(|&b| is_ident(b) || b == b'$') {
+                let mut e = i + 1;
+                while e < t.len() && t[e] == b'$' {
+                    e += 1;
+                }
+                let e = super::word_end(t, e);
+                out.push(i, e, Kind::Key);
+                i = e;
+                prev = Prev::Name;
+                continue;
+            }
+            if let Some(e) = heredoc_open(st, t, i) {
+                out.push(i, e, Kind::Str);
+                i = e;
                 prev = Prev::Value;
                 continue;
             }
+        }
+        if lang == Lang::Rust && c == b'\'' {
+            i = rust_quote(t, i, out);
+            prev = Prev::Value;
+            continue;
+        }
+        if matches!(lang, Lang::Rust | Lang::Php) {
             if c == b'#' && (t[i + 1..].starts_with(b"[") || t[i + 1..].starts_with(b"![")) {
-                // #[derive(Debug)], #![allow(x)]: up to the matching bracket on this row.
+                // #[derive(Debug)], #![allow(x)], #[Route('/')]: up to the matching bracket on this row.
                 let mut depth = 0;
                 let mut e = i;
                 while e < t.len() {
@@ -240,10 +303,10 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
             }
             if colour {
                 let w = &t[i..e];
-                let kind = if prev != Prev::Dot && has(spec.keywords, w) {
-                    next = if spec.type_kw.iter().any(|k| k.as_bytes() == w) {
+                let kind = if prev != Prev::Dot && has_word(spec.keywords, w, spec.ci) {
+                    next = if spec.type_kw.iter().any(|k| k.as_bytes().eq_ignore_ascii_case(w)) {
                         Some(Kind::Type)
-                    } else if spec.fn_kw.iter().any(|k| k.as_bytes() == w) {
+                    } else if spec.fn_kw.iter().any(|k| k.as_bytes().eq_ignore_ascii_case(w)) {
                         Some(Kind::Function)
                     } else {
                         None
@@ -273,8 +336,8 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
         }
         prev = match c {
             b'.' => Prev::Dot,
-            // `->` reaches a member only in C++ (in Rust and TypeScript it comes before a type).
-            b'>' if i > 0 && t[i - 1] == b'-' && lang == Lang::C => Prev::Dot,
+            // `->` reaches a member only in C++ and PHP (in Rust and TypeScript a type follows).
+            b'>' if i > 0 && t[i - 1] == b'-' && matches!(lang, Lang::C | Lang::Php) => Prev::Dot,
             b':' if i > 0 && t[i - 1] == b':' => Prev::Path,
             b')' | b']' => Prev::Close,
             _ => Prev::Punct,
@@ -362,6 +425,8 @@ fn open_string(lang: Lang, t: &[u8], i: usize) -> Option<(Mode, usize)> {
         // Go's raw strings; Rust's strings may span lines.
         Lang::Go if c == b'`' => Some((Mode::Str(Str { q: c, n: 1, esc: false, ml: true, dbl: false }), i + 1)),
         Lang::Rust if c == b'"' => Some((Mode::Str(Str { q: c, n: 1, esc: true, ml: true, dbl: false }), i + 1)),
+        // PHP's strings (and `shell` commands) may span lines.
+        Lang::Php if matches!(c, b'"' | b'\'' | b'`') => Some((Mode::Str(Str { q: c, n: 1, esc: true, ml: true, dbl: false }), i + 1)),
         Lang::CSharp if c == b'@' || c == b'$' || three => {
             let mut j = i;
             let mut verbatim = false;
@@ -419,6 +484,98 @@ fn prefixed_string(lang: Lang, st: &mut State, w: &[u8], t: &[u8], e: usize) -> 
         Lang::C if matches!(w, b"L" | b"u" | b"U" | b"u8") => Some((Mode::Str(Str { q, n: 1, esc: true, ml: false, dbl: false }), e + 1)),
         _ => None,
     }
+}
+
+/// The length of a PHP opening tag at `t[p]`: `<?php`, `<?=` or a short `<? `. (`<?xml` is not
+/// one.)
+fn php_open(t: &[u8], p: usize) -> Option<usize> {
+    let r = &t[p..];
+    if !r.starts_with(b"<?") {
+        return None;
+    }
+    if r.len() >= 5 && r[2..5].eq_ignore_ascii_case(b"php") && r.get(5).is_none_or(|&b| !is_ident(b)) {
+        Some(5)
+    } else if r.starts_with(b"<?=") {
+        Some(3)
+    } else if r.get(2).is_none_or(|&b| matches!(b, b' ' | b'\t' | b'\r')) {
+        Some(2)
+    } else {
+        None
+    }
+}
+
+/// HTML around PHP: highlighted as XML up to the next opening tag.
+fn php_html(st: &mut State, t: &[u8], i: usize, out: &mut Sink) -> usize {
+    let mut from = i;
+    loop {
+        let Some(p) = memchr::memmem::find(&t[from..], b"<?").map(|p| from + p) else {
+            html(t, i, t.len(), out);
+            return t.len();
+        };
+        if let Some(len) = php_open(t, p) {
+            html(t, i, p, out);
+            out.push(p, p + len, Kind::Tag);
+            st.mode = Mode::Code;
+            return p + len;
+        }
+        from = p + 2;
+    }
+}
+
+/// `t[from..to]` as HTML (tags and comments on this row only).
+fn html(t: &[u8], from: usize, to: usize, out: &mut Sink) {
+    if let Some(v) = out.0.as_deref_mut() {
+        let n = v.len();
+        super::xml_spans(&mut State::default(), &t[from..to], &mut Sink(Some(&mut *v)));
+        for s in &mut v[n..] {
+            s.0 += from;
+            s.1 += from;
+        }
+    }
+}
+
+/// A heredoc's opening at `t[i]` (PHP `<<<ID`, `<<<'ID'`): its end. The text starts on the next
+/// line and runs to a line that begins with `ID`.
+fn heredoc_open(st: &mut State, t: &[u8], i: usize) -> Option<usize> {
+    if !t[i..].starts_with(b"<<<") {
+        return None;
+    }
+    let mut j = i + 3;
+    while j < t.len() && (t[j] == b' ' || t[j] == b'\t') {
+        j += 1;
+    }
+    let quote = t.get(j).filter(|&&b| b == b'\'' || b == b'"').is_some();
+    let w = j + quote as usize;
+    if !t.get(w).is_some_and(|&b| is_ident(b) && !b.is_ascii_digit()) {
+        return None;
+    }
+    let e = super::word_end(t, w);
+    if e - w > DELIM {
+        return None;
+    }
+    st.set_delim(&t[w..e]);
+    st.pending = true;
+    Some(if quote && e < t.len() { e + 1 } else { e })
+}
+
+/// A heredoc's text from `t[i]` (the start of a row): up to its closing word at the start of a
+/// line, after which the code goes on.
+fn heredoc(st: &mut State, t: &[u8], i: usize, out: &mut Sink) -> usize {
+    if !st.inked {
+        let at = i + t[i..].iter().take_while(|&&b| b == b' ' || b == b'\t').count();
+        let d = st.delim().len();
+        if t[at..].starts_with(st.delim()) && t.get(at + d).is_none_or(|&b| !is_ident(b)) {
+            st.inked = true;
+            st.mode = Mode::Code;
+            out.push(at, at + d, Kind::Str);
+            return at + d;
+        }
+    }
+    if t[i..].iter().any(|&b| b != b' ' && b != b'\t') {
+        st.inked = true;
+    }
+    out.push(i, t.len(), Kind::Str);
+    t.len()
 }
 
 /// Rust's `'`: a character (`'a'`, `'\n'`, `'é'`) or a lifetime or label (`'a`, `'static`).

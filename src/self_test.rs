@@ -74,6 +74,7 @@ const DEMO_JAVA: &str = "/**\n * A demo.\n */\npublic class Demo {\n    String s
 const APP_TS: &str = "const tick = /`/;\nexport function view(name: string): string {\n    return `<p>\n        ${name}\n    </p>`;\n}\n";
 const DEMO_RS: &str = "/* outer\n   /* nested */\n   still a comment */\nfn main() {\n    let s = r#\"\n        raw \"text\"\n    \"#;\n}\n";
 const COMMENT_SQL: &str ="SELECT 1;\n/* the next line\nSELECT 'is a comment';\n*/\nSELECT 2;\n";
+const PAGE_PHP: &str = "<!doctype html>\n<title>Demo</title>\n<?php\n$body = <<<HTML\n    <p>inside the heredoc</p>\n    HTML;\necho $body;\n?>\n<footer>after PHP</footer>\n";
 const CSV_WITHOUT_NAME_CITY: &str = "id;age\r\n1;30\r\n2;41\r\n3;25\r\n";
 
 fn doc(app: &mut BigTextApp) -> &mut Document {
@@ -243,6 +244,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("Demo.java"), DEMO_JAVA)?;
     std::fs::write(dir.join("app.ts"), APP_TS)?;
     std::fs::write(dir.join("demo.rs"), DEMO_RS)?;
+    std::fs::write(dir.join("page.php"), PAGE_PHP)?;
     std::fs::write(dir.join("app.log"), "2026-10-24 10:00:00.000 [ERROR] failed\n2026-10-24 10:00:01.000 [INFO] ok\n")?;
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
@@ -1136,6 +1138,21 @@ impl SelfTest {
             let st = |off: u64| d.view.hl.get(off).map(|s| (s.in_comment(), s.in_string()));
             let got = (d.effective_lang(), st(line("still a")), st(line("fn main")), st(line("raw \"text")), st(line("\"#;")));
             let want = (crate::view::highlight::Lang::Rust, Some((true, false)), Some((false, false)), Some((false, true)), Some((false, true)));
+            check(got == want, format!("{got:?}"))
+        }));
+        s("code highlighting: PHP between HTML, with a heredoc over lines", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("page.php"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) {
+                return Step::Wait;
+            }
+            let line = |s: &str| PAGE_PHP[..PAGE_PHP.find(s).unwrap()].rfind('\n').map_or(0, |p| p + 1) as u64;
+            let d = doc(app);
+            let st = |off: u64| d.view.hl.get(off).map(|s| (s.in_html(), s.in_string()));
+            let got = (d.effective_lang(), st(line("<title>")), st(line("inside the")), st(line("echo")), st(line("<footer>")));
+            let want = (crate::view::highlight::Lang::Php, Some((true, false)), Some((false, true)), Some((false, false)), Some((true, false)));
             check(got == want, format!("{got:?}"))
         }));
         s("follow reads the file in chunks, not mapped", Box::new(|app, c| {
