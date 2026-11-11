@@ -86,6 +86,7 @@ pub enum Cmd {
     FollowId,
     IdPatterns,
     GotoFile,
+    GotoSymbol,
     GotoLine,
     GotoOffset,
     GotoTime,
@@ -152,7 +153,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 118] = [
+    pub const ALL: [Cmd; 119] = [
         Cmd::New,
         Cmd::Open,
         Cmd::OpenFolder,
@@ -222,6 +223,7 @@ impl Cmd {
         Cmd::FollowId,
         Cmd::IdPatterns,
         Cmd::GotoFile,
+        Cmd::GotoSymbol,
         Cmd::GotoLine,
         Cmd::GotoOffset,
         Cmd::GotoTime,
@@ -381,6 +383,7 @@ impl Cmd {
             Cmd::FollowId => "Follow id at caret",
             Cmd::IdPatterns => "Id patterns…",
             Cmd::GotoFile => "Go to file…",
+            Cmd::GotoSymbol => "Go to symbol…",
             Cmd::GotoLine => "Go to line…",
             Cmd::GotoOffset => "Go to byte offset…",
             Cmd::GotoTime => "Go to time…",
@@ -464,7 +467,7 @@ impl Cmd {
             | Cmd::ReadOnly
             | Cmd::RunCommand
             | Cmd::Text(_) => "Edit",
-            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::NextDiff | Cmd::PrevDiff | Cmd::OnlyIn | Cmd::GotoFile | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::TimeAllTabs | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::CheckJson | Cmd::MatchBracket => "Search",
+            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::NextDiff | Cmd::PrevDiff | Cmd::OnlyIn | Cmd::GotoFile | Cmd::GotoSymbol | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::TimeAllTabs | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::CheckJson | Cmd::MatchBracket => "Search",
             Cmd::Palette | Cmd::Shortcuts | Cmd::ExportSettings | Cmd::ImportSettings | Cmd::Portable | Cmd::UnpackDir | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
@@ -515,6 +518,7 @@ impl Cmd {
             Cmd::NavBack => key(Modifiers::ALT, Key::ArrowLeft),
             Cmd::NavForward => key(Modifiers::ALT, Key::ArrowRight),
             Cmd::GotoFile => key(CTRL, Key::P),
+            Cmd::GotoSymbol => key(CTRL, Key::R),
             Cmd::GotoLine => key(CTRL, Key::G),
             Cmd::GotoOffset => key(CTRL_SHIFT, Key::G),
             Cmd::GotoTime => key(CTRL_SHIFT, Key::T),
@@ -780,6 +784,7 @@ impl BigTextApp {
             Cmd::FollowId => self.follow_id_at_caret(),
             Cmd::IdPatterns => self.open_id_patterns(),
             Cmd::GotoFile => self.open_quick_open(),
+            Cmd::GotoSymbol => self.open_symbols(),
             Cmd::GotoLine => self.goto = GotoDialog::new(GotoMode::Line),
             Cmd::GotoOffset => self.goto = GotoDialog::new(GotoMode::Offset),
             Cmd::GotoTime => self.goto = GotoDialog::new(GotoMode::Time),
@@ -1206,7 +1211,7 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                for c in [Cmd::NextDiff, Cmd::PrevDiff, Cmd::OnlyIn, Cmd::NavBack, Cmd::NavForward, Cmd::GotoFile, Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::TimeAllTabs, Cmd::MatchBracket, Cmd::Timeline, Cmd::TimeGaps, Cmd::Patterns, Cmd::CheckJson] {
+                for c in [Cmd::NextDiff, Cmd::PrevDiff, Cmd::OnlyIn, Cmd::NavBack, Cmd::NavForward, Cmd::GotoFile, Cmd::GotoSymbol, Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::TimeAllTabs, Cmd::MatchBracket, Cmd::Timeline, Cmd::TimeGaps, Cmd::Patterns, Cmd::CheckJson] {
                     run = run.or(self.item(ui, c));
                 }
             });

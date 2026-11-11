@@ -1242,6 +1242,38 @@ impl SelfTest {
                 _ => Step::Wait,
             }
         }));
+        s("go to symbol (Ctrl+R): the file's functions and classes, a few letters go to one", Box::new(|app, c| {
+            let line_of = |s: &str| SETTINGS_PY[..SETTINGS_PY.find(s).unwrap()].matches('\n').count() as u64;
+            match c.mark {
+                0 => {
+                    if c.first() {
+                        app.open_path(c.file("settings.py"));
+                    }
+                    if !wait_ready(app) {
+                        return Step::Wait;
+                    }
+                    doc(app).set_caret(0, false);
+                    c.key(Key::R, CTRL);
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 if app.symbols.as_ref().is_some_and(|s| s.open && s.list.is_some()) => {
+                    c.typed("load");
+                    c.key(Key::Enter, NONE);
+                    c.mark = 2;
+                    Step::Wait
+                }
+                2 if !app.symbols_open() => {
+                    c.mark = 0;
+                    let names: Vec<String> = app.symbols.as_ref().and_then(|s| s.list.as_ref()).map(|l| l.iter().map(|s| s.name.clone()).collect()).unwrap_or_default();
+                    let d = doc(app);
+                    let (line, _) = d.buf.line_of(d.view.caret);
+                    check(line == line_of("    def load") && names == ["_bool", "Settings", "load"], format!("line {line}, symbols {names:?}"))
+                }
+                _ if c.waited() > Duration::from_secs(4) => Step::Fail(format!("step {}", c.mark)),
+                _ => Step::Wait,
+            }
+        }));
         s("toggle comment (Ctrl+/): the caret's line gets `# ` and loses it again, the caret moving with the text", Box::new(|app, c| {
             let at = SETTINGS_PY.find("import os").unwrap() as u64 + 3;
             match c.mark {

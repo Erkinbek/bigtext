@@ -342,6 +342,12 @@ keyboard shortcuts.
   most 200,000 files, without `.git`, `node_modules`, `target`, `__pycache__`, virtual
   environments and the like) and listed again after 15 s or ⟳; with no folder open the open
   tabs and recent files are offered.
+- **Go to symbol** (Search → Go to symbol…, Ctrl+R): the functions, methods, classes, types and
+  macros defined in a code file, indented under their class, with their line numbers; a few
+  letters filter them as in Go to file and Enter goes there. Definitions are found line by line
+  on a worker with the highlighter's help, so a `def` inside a docstring or a comment is not
+  listed, nor a call such as `return format(x);`. Python, JavaScript, TypeScript, Java, C#,
+  C/C++, Go, Rust, PHP and shell scripts; the first 32 MB of a file are read.
 - **Tabs and sessions**: Ctrl+Tab in most-recently-used order, pinned tabs, close other tabs /
   tabs to the right, drag to move; **File → Sessions** saves the open files with positions,
   bookmarks, pins, filters and highlights under a name; **Edit → Copy file:line**

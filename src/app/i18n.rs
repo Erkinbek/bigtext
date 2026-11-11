@@ -128,6 +128,7 @@ mod tests {
         "app" / "find_in_files.rs",
         "app" / "folder_tree.rs",
         "app" / "quick_open.rs",
+        "app" / "symbols.rs",
         "app" / "fold.rs",
         "app" / "follow_id.rs",
         "app" / "gaps_panel.rs",

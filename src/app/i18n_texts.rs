@@ -1309,4 +1309,11 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Line is too long to comment with this command", "Строка слишком длинная для этой команды", "Satr bu buyruq uchun juda uzun"],
     ["Select less text to comment it out (up to 8 MB).", "Выделите меньше текста (до 8 МБ), чтобы закомментировать его.", "Izohga olish uchun kamroq matn belgilang (8 MB gacha)."],
     ["The lines contain bytes that are not valid in this encoding; commenting them would change them.", "В строках есть байты, недопустимые в этой кодировке; комментирование изменило бы их.", "Satrlarda bu kodlashda yaroqsiz baytlar bor; izohga olish ularni o'zgartirib yuborardi."],
+    // Go to symbol.
+    ["Go to symbol…", "Перейти к символу…", "Belgiga o'tish…"],
+    ["Go to symbol", "Перейти к символу", "Belgiga o'tish"],
+    ["Go to symbol works in code files (Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell).", "Переход к символу работает в файлах кода (Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell).", "Belgiga o'tish kod fayllarida ishlaydi (Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell)."],
+    ["No functions or classes were found.", "Функции и классы не найдены.", "Funksiya yoki klass topilmadi."],
+    ["No symbol matches.", "Нет подходящих символов.", "Mos belgi yo'q."],
+    ["Only the first {size} of the file are read.", "Прочитаны только первые {size} файла.", "Faylning faqat dastlabki {size} qismi o'qildi."],
 ];
