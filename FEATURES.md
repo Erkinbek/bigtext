@@ -341,6 +341,15 @@ keyboard shortcuts.
   kept with the session, and the folders are read again when BigText comes back to the front.
   Find in files starts in the open folder. `.git`, `.svn`, `.hg`, `.DS_Store` and `Thumbs.db`
   are hidden.
+- **Remote files and URLs** (File → Open remote file or URL…, Ctrl+Shift+U, or on the command
+  line): `user@server:/var/log/app.log` or `ssh://user@server:2222/path` is read with the
+  system's `ssh` and your keys or agent (no password prompts); `https://…` and public
+  `s3://bucket/key` addresses are downloaded. A whole file downloads as a task with progress and
+  Cancel in the status bar and opens read-only; **its last N MB, then follow** (SSH) opens at once
+  and keeps adding what `tail -F` on the server sends, like a local log in follow mode
+  (`bigtext -f user@server:/var/log/syslog` does the same). The copies are temporary and go
+  away with their tabs; closing a followed tab ends its `ssh`, and errors (a refused key, a
+  missing file) are shown in ssh's own words.
 - **Go to file** (Search → Go to file…, Ctrl+P): a few letters of a file's name or path find it
   among the open folder's files, as in Sublime Text — `ftree` finds `folder_tree.rs`. Letters in
   the file name, at the start of a word and next to each other count more, and the matched

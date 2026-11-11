@@ -36,6 +36,8 @@ pub enum TaskOutcome {
     JsonFields(Box<(String, bigtext::json_fields::Fields)>),
     /// Where a patch's hunks go, to apply to the document.
     Patch(Box<super::extras::PatchDone>),
+    /// A remote file or web address downloaded into a temporary copy, to open.
+    Remote(Box<super::remote::RemoteDone>),
     /// A command run on the text (Edit → Run command).
     Command(Box<super::run_command::CommandOutput>),
 }
@@ -129,6 +131,7 @@ impl BigTextApp {
             TaskOutcome::Groups(g) => self.csv.groups = Some(*g),
             TaskOutcome::JsonFields(f) => self.json_fields.result = Some(*f),
             TaskOutcome::Patch(p) => self.on_patch_done(*p),
+            TaskOutcome::Remote(r) => self.open_remote_done(*r),
         }
     }
 

@@ -11,6 +11,9 @@ Usage: bigtext [OPTIONS] [FILE[:LINE] ...]
   FILE:LINE        open FILE at line LINE (FILE:LINE:COLUMN, as compilers and grep -n
                    print it, works too)
   FOLDER           show FOLDER's files in the side bar
+  user@host:/path  a file on a server, read over ssh with your keys (with -f: its
+                   last megabyte, then what is added); also ssh://user@host:port/path
+  https://URL      a file on the web (or s3://bucket/key, public), downloaded
   -                read standard input, following it as it grows
                    (e.g.  journalctl -f | bigtext -)
   -n, --line N     go to line N in the last file

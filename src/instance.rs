@@ -27,7 +27,9 @@ pub fn lock_path() -> Option<PathBuf> {
 pub fn encode(start: &StartOptions, token: &str) -> String {
     let mut s = format!("{MAGIC} {token}\n");
     for (p, line) in &start.files {
-        let abs = std::path::absolute(p).unwrap_or_else(|_| p.clone());
+        // A remote address (user@host:/path, https://…) goes as it is.
+        let remote = !p.exists() && crate::app::remote::parse(&p.to_string_lossy()).is_some();
+        let abs = if remote { p.clone() } else { std::path::absolute(p).unwrap_or_else(|_| p.clone()) };
         s.push_str(&format!("file\t{}\t{}\n", abs.display(), line.map(|l| l.to_string()).unwrap_or_default()));
     }
     if let Some(q) = &start.find {

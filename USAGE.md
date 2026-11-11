@@ -11,6 +11,9 @@ bigtext [OPTIONS] [FILE[:LINE] ...]
   FILE:LINE        open FILE at line LINE (FILE:LINE:COLUMN, as compilers and grep -n
                    print it, works too)
   FOLDER           show FOLDER's files in the side bar
+  user@host:/path  a file on a server, read over ssh with your keys (with -f: its
+                   last megabyte, then what is added); also ssh://user@host:port/path
+  https://URL      a file on the web (or s3://bucket/key, public), downloaded
   -                read standard input, following it as it grows
                    (e.g.  journalctl -f | bigtext -)
   -n, --line N     go to line N in the last file
@@ -71,6 +74,7 @@ times). Exit codes: 0 done, 1 nothing matched, 2 error.
 |---|---|
 | Ctrl+O / Ctrl+N | Open / new |
 | Ctrl+Shift+O / Ctrl+Shift+E | Open a folder in the side bar / show or hide the side bar |
+| Ctrl+Shift+U | Open a remote file (SSH) or a URL |
 | Ctrl+P | Go to file in the open folder (`name:42` opens at line 42) |
 | Ctrl+R | Go to symbol: the functions and classes of a code file |
 | Ctrl+S / Ctrl+Shift+S | Save / save as |

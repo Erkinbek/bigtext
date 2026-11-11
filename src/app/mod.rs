@@ -19,6 +19,7 @@ pub mod find_in_files;
 pub mod file_ops;
 pub mod folder_tree;
 pub mod quick_open;
+pub mod remote;
 pub mod symbols;
 pub mod fold;
 pub mod follow_id;
@@ -352,6 +353,8 @@ pub struct BigTextApp {
     pub file_index: quick_open::FileIndex,
     /// The side bar's New file, Rename and Move to the trash.
     pub file_ops: file_ops::FileOps,
+    /// File → Open remote file or URL, and the remote files followed.
+    pub remote: remote::RemoteUi,
     /// Search → Go to symbol.
     pub symbols: Option<symbols::SymbolsUi>,
     pub timeline: timeline::TimelineUi,
@@ -650,6 +653,7 @@ impl BigTextApp {
             quick_open: None,
             file_index: Default::default(),
             file_ops: Default::default(),
+            remote: Default::default(),
             symbols: None,
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -743,6 +747,14 @@ impl BigTextApp {
             }
         };
         for (path, line) in start.files {
+            // user@host:/path, ssh://…, https://… (with --follow: the end of a remote log, followed).
+            let addr = path.to_string_lossy().into_owned();
+            if !path.exists() && remote::parse(&addr).is_some() {
+                if let Err(e) = self.open_remote(&addr, follow.then_some(1)) {
+                    self.error = Some(e);
+                }
+                continue;
+            }
             opened(self, path, line, follow);
         }
         if let Some(path) = start.stdin {
@@ -1869,7 +1881,7 @@ impl eframe::App for BigTextApp {
         }
 
         self.update_tick();
-        let modal_open = self.run_cmd.open || self.goto.is_some() || self.clips.open.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.quick_open.is_some() || self.file_ops.dialog.is_some() || self.symbols_open() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
+        let modal_open = self.run_cmd.open || self.goto.is_some() || self.clips.open.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.quick_open.is_some() || self.file_ops.dialog.is_some() || self.remote.open || self.symbols_open() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
         if !modal_open {
             self.shortcuts(&ctx);
             // The mouse's back and forward buttons.
@@ -1900,6 +1912,7 @@ impl eframe::App for BigTextApp {
         self.announce_results();
         self.json_crumb_tick(&ctx);
         self.folder_tick(&ctx);
+        self.remote_tick();
         self.sync_diff_marks();
 
         self.fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
@@ -2096,6 +2109,7 @@ impl eframe::App for BigTextApp {
         self.palette_window(&ctx);
         self.quick_open_window(&ctx);
         self.file_ops_window(&ctx);
+        self.remote_window(&ctx);
         self.symbols_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);

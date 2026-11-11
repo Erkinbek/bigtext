@@ -129,6 +129,7 @@ mod tests {
         "app" / "file_ops.rs",
         "app" / "folder_tree.rs",
         "app" / "quick_open.rs",
+        "app" / "remote.rs",
         "app" / "symbols.rs",
         "app" / "fold.rs",
         "app" / "follow_id.rs",

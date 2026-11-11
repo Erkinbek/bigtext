@@ -3100,6 +3100,71 @@ impl SelfTest {
                 _ => Step::Wait,
             }
         }));
+        s("open remote: a web address downloads as a task and opens read-only", Box::new(|app, c| {
+            if c.first() {
+                // A local server answering one request.
+                let Ok(listener) = std::net::TcpListener::bind("127.0.0.1:0") else { return Step::Skip("no local port".into()) };
+                let port = listener.local_addr().map(|a| a.port()).unwrap_or(0);
+                std::thread::spawn(move || {
+                    use std::io::{Read, Write};
+                    if let Ok((mut s, _)) = listener.accept() {
+                        let mut buf = [0u8; 2048];
+                        let _ = s.read(&mut buf);
+                        let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 18\r\nConnection: close\r\n\r\nserved 1\nserved 2\n");
+                    }
+                });
+                if let Err(e) = app.open_remote(&format!("http://127.0.0.1:{port}/logs/served.log"), None) {
+                    return Step::Fail(e);
+                }
+                return Step::Wait;
+            }
+            let ok = app.active_doc().is_some_and(|d| d.is_ready() && d.title == "served.log" && d.read_only && d.temporary);
+            if ok && text(app) == "served 1\nserved 2\n" {
+                if let Some(id) = app.active_doc().map(|d| d.id) {
+                    app.close_tab(id, true);
+                }
+                return Step::Next;
+            }
+            if c.waited() > Duration::from_secs(8) {
+                return Step::Fail(format!("doc {:?}", app.active_doc().map(|d| (d.title.clone(), d.is_ready()))));
+            }
+            Step::Wait
+        }));
+        s("open remote: what a followed command sends grows in its tab; closing the tab ends it", Box::new(|app, c| {
+            if c.first() {
+                let mut cmd = if cfg!(windows) {
+                    let mut c = std::process::Command::new("cmd");
+                    c.args(["/C", "echo line1&echo line2"]);
+                    c
+                } else {
+                    let mut c = std::process::Command::new("sh");
+                    c.args(["-c", "printf 'line1\\nline2\\n'"]);
+                    c
+                };
+                cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    cmd.creation_flags(0x0800_0000);
+                }
+                if let Err(e) = app.test_follow(cmd, "follow.log") {
+                    return Step::Fail(e);
+                }
+                return Step::Wait;
+            }
+            let t = text(app);
+            let following = app.active_doc().is_some_and(|d| d.title == "follow.log" && d.follow && d.read_only);
+            if following && t.contains("line2") {
+                if let Some(id) = app.active_doc().map(|d| d.id) {
+                    app.close_tab(id, true);
+                }
+                return check(t.starts_with("line1"), format!("{t:?}"));
+            }
+            if c.waited() > Duration::from_secs(8) {
+                return Step::Fail(format!("following {following}, text {t:?}"));
+            }
+            Step::Wait
+        }));
         s("open epoch.log", open_step("epoch.log"));
         s("go to time in a log of Unix times", Box::new(|app, c| {
             if c.first() {

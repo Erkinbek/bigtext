@@ -18,6 +18,7 @@ pub enum Cmd {
     New,
     Open,
     OpenFolder,
+    OpenRemote,
     CloseFolder,
     Save,
     SaveAs,
@@ -153,10 +154,11 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 119] = [
+    pub const ALL: [Cmd; 120] = [
         Cmd::New,
         Cmd::Open,
         Cmd::OpenFolder,
+        Cmd::OpenRemote,
         Cmd::CloseFolder,
         Cmd::Save,
         Cmd::SaveAs,
@@ -315,6 +317,7 @@ impl Cmd {
             Cmd::New => "New",
             Cmd::Open => "Open…",
             Cmd::OpenFolder => "Open folder…",
+            Cmd::OpenRemote => "Open remote file or URL…",
             Cmd::CloseFolder => "Close folder",
             Cmd::Sidebar => "Side bar",
             Cmd::Save => "Save",
@@ -447,7 +450,7 @@ impl Cmd {
     /// Menu the command lives in (shown in the palette).
     pub fn group(self) -> &'static str {
         match self {
-            Cmd::New | Cmd::Open | Cmd::OpenFolder | Cmd::CloseFolder | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::CompareSaved | Cmd::CompareBackup | Cmd::ApplyPatch | Cmd::Properties | Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault | Cmd::MergeLogs | Cmd::JoinTables | Cmd::CompareJson | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable => "File",
+            Cmd::New | Cmd::Open | Cmd::OpenFolder | Cmd::OpenRemote | Cmd::CloseFolder | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::CompareSaved | Cmd::CompareBackup | Cmd::ApplyPatch | Cmd::Properties | Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault | Cmd::MergeLogs | Cmd::JoinTables | Cmd::CompareJson | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable => "File",
             Cmd::Undo
             | Cmd::Redo
             | Cmd::SelectAll
@@ -478,6 +481,7 @@ impl Cmd {
             Cmd::New => key(CTRL, Key::N),
             Cmd::Open => key(CTRL, Key::O),
             Cmd::OpenFolder => key(CTRL_SHIFT, Key::O),
+            Cmd::OpenRemote => key(CTRL_SHIFT, Key::U),
             Cmd::Sidebar => key(CTRL_SHIFT, Key::E),
             Cmd::Save => key(CTRL, Key::S),
             Cmd::SaveAs => key(CTRL_SHIFT, Key::S),
@@ -672,6 +676,7 @@ impl BigTextApp {
             Cmd::New => self.new_doc(),
             Cmd::Open => self.open_dialog(),
             Cmd::OpenFolder => self.open_folder_dialog(),
+            Cmd::OpenRemote => self.open_remote_dialog(),
             Cmd::CloseFolder => self.close_folder(),
             Cmd::Sidebar => self.toggle_sidebar(),
             Cmd::Save => self.save(false),
@@ -1071,7 +1076,7 @@ impl BigTextApp {
         let mut run = None;
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button(tr("File"), |ui| {
-                for c in [Cmd::New, Cmd::Open, Cmd::OpenFolder, Cmd::CloseFolder, Cmd::Save, Cmd::SaveAs] {
+                for c in [Cmd::New, Cmd::Open, Cmd::OpenFolder, Cmd::OpenRemote, Cmd::CloseFolder, Cmd::Save, Cmd::SaveAs] {
                     run = run.or(self.item(ui, c));
                 }
                 ui.checkbox(&mut self.settings.backup_on_save, tr("Keep backup (.bak) on save"));
