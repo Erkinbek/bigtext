@@ -1297,4 +1297,10 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["No names match the filter in the folders read so far.", "В прочитанных папках нет имён, подходящих под фильтр.", "O'qilgan papkalarda filtrga mos nom yo'q."],
     ["Reading…", "Чтение…", "O'qilmoqda…"],
     ["Opened folder {name}", "Открыта папка {name}", "{name} papkasi ochildi"],
+    // Go to file.
+    ["Go to file…", "Перейти к файлу…", "Faylga o'tish…"],
+    ["Go to file (name:line)", "Перейти к файлу (имя:строка)", "Faylga o'tish (nom:satr)"],
+    ["Open a folder (Ctrl+Shift+O) to find its files here.", "Откройте папку (Ctrl+Shift+O), чтобы искать здесь её файлы.", "Fayllarini shu yerda topish uchun papka oching (Ctrl+Shift+O)."],
+    ["No file matches.", "Нет подходящих файлов.", "Mos fayl yo'q."],
+    ["Only the first {n} files of the folder are listed.", "Показаны только первые {n} файлов папки.", "Papkaning faqat dastlabki {n} ta fayli ko'rsatilgan."],
 ];

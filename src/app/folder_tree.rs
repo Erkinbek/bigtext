@@ -331,6 +331,9 @@ impl BigTextApp {
 
     /// Reads every expanded folder again.
     pub(crate) fn refresh_folder(&mut self) {
+        if let Some(root) = self.folder.root.clone() {
+            self.file_index.refresh(&root, self.waker.clone(), true);
+        }
         let dirs: Vec<PathBuf> = self.folder.expanded.iter().cloned().collect();
         for d in dirs {
             self.folder.request(d, &self.waker);

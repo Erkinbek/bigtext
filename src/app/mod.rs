@@ -17,6 +17,7 @@ pub mod fields_panel;
 pub mod filter_panel;
 pub mod find_in_files;
 pub mod folder_tree;
+pub mod quick_open;
 pub mod fold;
 pub mod follow_id;
 pub mod gaps_panel;
@@ -342,6 +343,9 @@ pub struct BigTextApp {
     pub files: find_in_files::FilesUi,
     /// File → Open folder: the side bar's tree.
     pub folder: folder_tree::FolderUi,
+    /// Search → Go to file and the folder's files it chooses from.
+    pub quick_open: Option<quick_open::QuickOpen>,
+    pub file_index: quick_open::FileIndex,
     pub timeline: timeline::TimelineUi,
     pub keymap: commands::Keymap,
     pub palette: Option<commands::Palette>,
@@ -635,6 +639,8 @@ impl BigTextApp {
             clips: clipboard::ClipHistory::default(),
             files: find_in_files::FilesUi::default(),
             folder: folder_tree::FolderUi::default(),
+            quick_open: None,
+            file_index: Default::default(),
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
             palette: None,
@@ -717,14 +723,12 @@ impl BigTextApp {
     pub(crate) fn apply_start(&mut self, start: StartOptions) {
         let follow = start.follow;
         let opened = |app: &mut BigTextApp, path: PathBuf, line: Option<u64>, end: bool| {
-            app.open_path(path);
+            app.open_path_at(path, line);
             let Some(d) = app.docs.get_mut(app.active) else { return };
             d.follow |= follow;
             match (line, d.is_ready()) {
-                // Already open: move there now.
-                (Some(n), true) => d.goto_line(n),
                 (None, true) if end => d.set_caret(d.buf.len(), false),
-                (_, false) if line.is_some() || end => d.restore = Some(Restore { line, end: line.is_none() && end, ..Default::default() }),
+                (None, false) if end => d.restore = Some(Restore { end: true, ..Default::default() }),
                 _ => {}
             }
         };
@@ -773,6 +777,17 @@ impl BigTextApp {
         let id = self.alloc_id();
         self.docs.push(Document::untitled(id, self.untitled));
         self.active = self.docs.len() - 1;
+    }
+
+    /// Opens `path` (or goes to its tab) at line `line` (1-based) when given.
+    pub(crate) fn open_path_at(&mut self, path: PathBuf, line: Option<u64>) {
+        self.open_path(path);
+        let (Some(n), Some(d)) = (line, self.docs.get_mut(self.active)) else { return };
+        if d.is_ready() {
+            d.goto_line(n);
+        } else {
+            d.restore = Some(Restore { line: Some(n), ..Default::default() });
+        }
     }
 
     pub fn open_path(&mut self, path: PathBuf) {
@@ -1834,7 +1849,7 @@ impl eframe::App for BigTextApp {
         }
 
         self.update_tick();
-        let modal_open = self.run_cmd.open || self.goto.is_some() || self.clips.open.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
+        let modal_open = self.run_cmd.open || self.goto.is_some() || self.clips.open.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.quick_open.is_some() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
         if !modal_open {
             self.shortcuts(&ctx);
             // The mouse's back and forward buttons.
@@ -2059,6 +2074,7 @@ impl eframe::App for BigTextApp {
         self.derive_window(&ctx);
         self.json_fields_window(&ctx);
         self.palette_window(&ctx);
+        self.quick_open_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);
         self.perf_overlay(&ctx);

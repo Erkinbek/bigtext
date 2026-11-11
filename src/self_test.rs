@@ -2899,6 +2899,37 @@ impl SelfTest {
             app.close_folder();
             check(ok && app.folder.root.is_none(), got)
         }));
+        s("go to file (Ctrl+P): a few letters of a name in the folder open it, at :line", Box::new(|app, c| {
+            let tree = c.file("tree");
+            let late = c.waited() > Duration::from_secs(5);
+            match c.mark {
+                0 => {
+                    app.open_folder(tree.clone());
+                    c.key(Key::P, CTRL);
+                    c.mark = 1;
+                    Step::Wait
+                }
+                // Once the folder is listed: "blog" finds sub/b.log.
+                1 if app.quick_open.is_some() && app.file_index.files.len() == 3 => {
+                    c.typed("blog:1");
+                    c.key(Key::Enter, NONE);
+                    c.mark = 2;
+                    Step::Wait
+                }
+                2 if app.quick_open.is_none() && app.active_doc().is_some_and(|d| d.path.as_deref().is_some_and(|p| p.ends_with(Path::new("tree").join("sub").join("b.log"))) && d.is_ready()) => {
+                    c.mark = 0;
+                    let files = app.file_index.files.clone();
+                    app.close_folder();
+                    check(files == ["a.log", "c.txt", "sub/b.log"], format!("{files:?}"))
+                }
+                _ if late => {
+                    let active = app.active_doc().map(|d| (d.path.clone(), d.is_ready()));
+                    let q = app.quick_open.as_ref().map(|q| q.query.clone());
+                    Step::Fail(format!("step {} files {:?} query {q:?} active {active:?}", c.mark, app.file_index.files))
+                }
+                _ => Step::Wait,
+            }
+        }));
         s("open epoch.log", open_step("epoch.log"));
         s("go to time in a log of Unix times", Box::new(|app, c| {
             if c.first() {

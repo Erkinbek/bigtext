@@ -324,6 +324,13 @@ keyboard shortcuts.
   kept with the session, and the folders are read again when BigText comes back to the front.
   Find in files starts in the open folder. `.git`, `.svn`, `.hg`, `.DS_Store` and `Thumbs.db`
   are hidden.
+- **Go to file** (Search → Go to file…, Ctrl+P): a few letters of a file's name or path find it
+  among the open folder's files, as in Sublime Text — `ftree` finds `folder_tree.rs`. Letters in
+  the file name, at the start of a word and next to each other count more, and the matched
+  letters are lit; `name:42` opens the file at line 42. The folder is listed on a worker (at
+  most 200,000 files, without `.git`, `node_modules`, `target`, `__pycache__`, virtual
+  environments and the like) and listed again after 15 s or ⟳; with no folder open the open
+  tabs and recent files are offered.
 - **Tabs and sessions**: Ctrl+Tab in most-recently-used order, pinned tabs, close other tabs /
   tabs to the right, drag to move; **File → Sessions** saves the open files with positions,
   bookmarks, pins, filters and highlights under a name; **Edit → Copy file:line**

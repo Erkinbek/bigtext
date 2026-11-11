@@ -71,6 +71,7 @@ times). Exit codes: 0 done, 1 nothing matched, 2 error.
 |---|---|
 | Ctrl+O / Ctrl+N | Open / new |
 | Ctrl+Shift+O / Ctrl+Shift+E | Open a folder in the side bar / show or hide the side bar |
+| Ctrl+P | Go to file in the open folder (`name:42` opens at line 42) |
 | Ctrl+S / Ctrl+Shift+S | Save / save as |
 | Ctrl+W | Close tab |
 | Ctrl+1 … Ctrl+8, Ctrl+9 | Tab 1 … 8, the last tab |
