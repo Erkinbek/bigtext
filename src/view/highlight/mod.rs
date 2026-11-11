@@ -142,10 +142,13 @@ pub enum Lang {
     Python,
     /// Bash and other POSIX shells.
     Shell,
+    Kotlin,
+    Swift,
+    Dart,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 18] = [
+    pub const ALL: [Lang; 21] = [
         Lang::Plain,
         Lang::Log,
         Lang::Json,
@@ -164,6 +167,9 @@ impl Lang {
         Lang::Php,
         Lang::Python,
         Lang::Shell,
+        Lang::Kotlin,
+        Lang::Swift,
+        Lang::Dart,
     ];
 
     pub fn from_path(p: Option<&Path>) -> Lang {
@@ -190,6 +196,9 @@ impl Lang {
             "php" | "phtml" | "php3" | "php4" | "php5" | "php7" | "php8" | "phps" => Lang::Php,
             "py" | "pyw" | "pyi" => Lang::Python,
             "sh" | "bash" | "zsh" | "ksh" => Lang::Shell,
+            "kt" | "kts" => Lang::Kotlin,
+            "swift" => Lang::Swift,
+            "dart" => Lang::Dart,
             _ => Lang::Plain,
         }
     }
@@ -280,6 +289,9 @@ impl Lang {
             Lang::Php => "PHP",
             Lang::Python => "Python",
             Lang::Shell => "Shell (Bash)",
+            Lang::Kotlin => "Kotlin",
+            Lang::Swift => "Swift",
+            Lang::Dart => "Dart",
         }
     }
 }
@@ -1010,6 +1022,36 @@ mod tests {
         assert_eq!(Lang::sniff("#!/usr/bin/env -S node --x\n"), Lang::JavaScript);
         assert_eq!(Lang::sniff("#!/usr/bin/perl\n"), Lang::Plain);
         assert_eq!((Lang::from_path(Some(Path::new("/home/a/.bashrc"))), Lang::from_path(Some(Path::new("t.pyi")))), (Lang::Shell, Lang::Python));
+    }
+
+    #[test]
+    fn kotlin_swift_dart() {
+        let k = kinds(Lang::Kotlin, "@JvmStatic suspend fun load(id: Int): String? = null");
+        for want in [("@JvmStatic", Kind::Decorator), ("suspend", Kind::Keyword), ("fun", Kind::Keyword), ("load", Kind::Function), ("Int", Kind::Type), ("String", Kind::Type), ("null", Kind::Number)] {
+            assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
+        }
+        let l = lines(Lang::Kotlin, "val s = \"\"\"\n  raw \\n $x\n\"\"\"\n/* a /* b */ c */ val y = 1");
+        assert_eq!(l[1], vec![("  raw \\n $x".into(), Kind::Str)]);
+        assert_eq!(l[3][..2], [("/* a /* b */ c */".into(), Kind::Comment), ("val".into(), Kind::Keyword)]);
+
+        let k = kinds(Lang::Swift, "#if DEBUG\nstruct Point: Codable { let x: Int; func move() { self.x } }");
+        assert_eq!(k[0], ("#if".into(), Kind::Keyword));
+        for want in [("struct", Kind::Keyword), ("Point", Kind::Type), ("let", Kind::Keyword), ("Int", Kind::Type), ("move", Kind::Function), ("self", Kind::Var)] {
+            assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
+        }
+        let l = lines(Lang::Swift, "let t = \"\"\"\n  line \\(x)\n  \"\"\"");
+        assert_eq!(l[1], vec![("  line \\(x)".into(), Kind::Str)]);
+
+        let k = kinds(Lang::Dart, "Future<void> main() async { final s = r'\\d+'; }");
+        for want in [("Future", Kind::Type), ("void", Kind::Type), ("main", Kind::Function), ("async", Kind::Keyword), ("final", Kind::Keyword), ("r'\\d+'", Kind::Str)] {
+            assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
+        }
+        let l = lines(Lang::Dart, "var m = '''\nmulti\n''';");
+        assert_eq!(l[1], vec![("multi".into(), Kind::Str)]);
+        assert_eq!(
+            (Lang::from_path(Some(Path::new("App.kt"))), Lang::from_path(Some(Path::new("main.swift"))), Lang::from_path(Some(Path::new("lib.dart")))),
+            (Lang::Kotlin, Lang::Swift, Lang::Dart)
+        );
     }
 
     #[test]

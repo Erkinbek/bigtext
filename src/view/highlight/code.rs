@@ -46,6 +46,9 @@ pub(super) fn spec(lang: Lang) -> Option<&'static Spec> {
         Lang::Php => &PHP,
         Lang::Python => &PYTHON,
         Lang::Shell => &SHELL,
+        Lang::Kotlin => &KOTLIN,
+        Lang::Swift => &SWIFT,
+        Lang::Dart => &DART,
         _ => return None,
     })
 }
@@ -189,7 +192,7 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
             i = block_comment(st, t, i, i + 2, spec.nest, out);
             continue;
         }
-        if first && c == b'#' && matches!(lang, Lang::C | Lang::CSharp) {
+        if first && c == b'#' && matches!(lang, Lang::C | Lang::CSharp | Lang::Swift) {
             i = directive(t, i, out);
             prev = Prev::Punct;
             continue;
@@ -469,6 +472,10 @@ fn open_string(lang: Lang, t: &[u8], i: usize) -> Option<(Mode, usize)> {
     let three = t[i..].starts_with(b"\"\"\"");
     match lang {
         Lang::Java if three => Some((Mode::Str(Str { q: b'"', n: 3, esc: true, ml: true, dbl: false }), i + 3)),
+        // Kotlin's """raw strings""" have no escapes; Swift's and Dart's multi-line ones do.
+        Lang::Kotlin if three => Some((Mode::Str(Str { q: b'"', n: 3, esc: false, ml: true, dbl: false }), i + 3)),
+        Lang::Swift if three => Some((Mode::Str(Str { q: b'"', n: 3, esc: true, ml: true, dbl: false }), i + 3)),
+        Lang::Dart if three || t[i..].starts_with(b"'''") => Some((Mode::Str(Str { q: c, n: 3, esc: true, ml: true, dbl: false }), i + 3)),
         // A template literal; what is inside `${}` is coloured as the string.
         Lang::JavaScript | Lang::TypeScript if c == b'`' => Some((Mode::Str(Str { q: c, n: 1, esc: true, ml: true, dbl: false }), i + 1)),
         // Go's raw strings; Rust's strings may span lines.
@@ -539,6 +546,11 @@ fn prefixed_string(lang: Lang, st: &mut State, w: &[u8], t: &[u8], e: usize) -> 
             Some((Mode::Delim, e + 1 + p + 1))
         }
         Lang::C if matches!(w, b"L" | b"u" | b"U" | b"u8") => Some((Mode::Str(Str { q, n: 1, esc: true, ml: false, dbl: false }), e + 1)),
+        // Dart's raw strings: r'…', r"""…""".
+        Lang::Dart if w == b"r" && q != b'#' => {
+            let n = if t[e..].starts_with(&[q; 3]) { 3 } else { 1 };
+            Some((Mode::Str(Str { q, n, esc: false, ml: n == 3, dbl: false }), e + n as usize))
+        }
         _ => None,
     }
 }

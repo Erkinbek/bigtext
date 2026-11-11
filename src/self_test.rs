@@ -76,7 +76,8 @@ const DEMO_RS: &str = "/* outer\n   /* nested */\n   still a comment */\nfn main
 const COMMENT_SQL: &str ="SELECT 1;\n/* the next line\nSELECT 'is a comment';\n*/\nSELECT 2;\n";
 const PAGE_PHP: &str = "<!doctype html>\n<title>Demo</title>\n<?php\n$body = <<<HTML\n    <p>inside the heredoc</p>\n    HTML;\necho $body;\n?>\n<footer>after PHP</footer>\n";
 const TOOL_PY: &str = "#!/usr/bin/env python3\ndef main():\n    \"\"\"Print a greeting.\n\n    def inside_the_docstring(): ...\n    \"\"\"\n    print('hi')\n";
-const DEPLOY_SH: &str = "#!/bin/bash\nset -e\ncat > /etc/app.conf <<'EOF'\nport=8080 # not a comment here\nEOF\necho \"deployed\"\n";
+const MAIN_KT: &str = "fun main() {\n    val sql = \"\"\"\n        SELECT * FROM t // not a comment\n    \"\"\"\n    println(sql)\n}\n";
+const DEPLOY_SH: &str ="#!/bin/bash\nset -e\ncat > /etc/app.conf <<'EOF'\nport=8080 # not a comment here\nEOF\necho \"deployed\"\n";
 const SETTINGS_PY: &str = "\"\"\"Settings, read once from the environment.\"\"\"\nimport os\nfrom dataclasses import dataclass\n\nROOT = os.path.dirname(__file__)\n\n\ndef _bool(name: str, default: bool = False) -> bool:\n    v = os.getenv(name)\n    if v is None:\n        return default\n    return v.strip().lower() in (\"1\", \"true\", \"yes\")\n\n\n@dataclass(frozen=True)\nclass Settings:\n    # Network\n    host: str\n    port: int\n\n    @classmethod\n    def load(cls) -> \"Settings\":\n        port = os.getenv(\"PORT\", \"8080\")\n        if not port.isdigit():\n            raise SystemExit(\"PORT must be a number\")\n        return cls(host=os.getenv(\"HOST\", \"127.0.0.1\"), port=int(port))\n";
 const CSV_WITHOUT_NAME_CITY: &str ="id;age\r\n1;30\r\n2;41\r\n3;25\r\n";
 
@@ -250,6 +251,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("page.php"), PAGE_PHP)?;
     std::fs::write(dir.join("tool"), TOOL_PY)?;
     std::fs::write(dir.join("deploy.sh"), DEPLOY_SH)?;
+    std::fs::write(dir.join("Main.kt"), MAIN_KT)?;
     std::fs::write(dir.join("settings.py"), SETTINGS_PY)?;
     std::fs::write(dir.join("pairs.py"), "def f():\n")?;
     std::fs::write(dir.join("app.log"),"2026-10-24 10:00:00.000 [ERROR] failed\n2026-10-24 10:00:01.000 [INFO] ok\n")?;
@@ -1189,6 +1191,20 @@ impl SelfTest {
             let st = |off: u64| d.view.hl.get(off).map(|s| s.in_string());
             let got = (d.effective_lang(), st(line("port=")), st(line("EOF\necho")), st(line("echo")));
             check(got == (crate::view::highlight::Lang::Shell, Some(true), Some(true), Some(false)), format!("{got:?}"))
+        }));
+        s("code highlighting: a Kotlin raw string over lines", Box::new(|app, c| {
+            if c.first() {
+                app.open_path(c.file("Main.kt"));
+                return Step::Wait;
+            }
+            if !wait_ready(app) {
+                return Step::Wait;
+            }
+            let line = |s: &str| MAIN_KT[..MAIN_KT.find(s).unwrap()].rfind('\n').map_or(0, |p| p + 1) as u64;
+            let d = doc(app);
+            let st = |off: u64| d.view.hl.get(off).map(|s| s.in_string());
+            let got = (d.effective_lang(), st(line("val sql")), st(line("SELECT")), st(line("println")));
+            check(got == (crate::view::highlight::Lang::Kotlin, Some(false), Some(true), Some(false)), format!("{got:?}"))
         }));
         s("code look: taller rows and indent guides; whitespace marks stay off in code while text shows them", Box::new(|app, c| {
             use crate::app::commands::Cmd;

@@ -108,6 +108,21 @@ fn rules(lang: Lang) -> &'static [Rule] {
             (Lang::Shell, build(&[(r"^\s*function\s+([A-Za-z_][\w.-]*)", Function, ""), (r"^\s*([A-Za-z_][\w.-]*)\s*\(\s*\)", Function, "")])),
             (Lang::C, build(&[(&c_types, Class, ""), (&id(r"^#\s*define\s+(ID)"), Macro, ""), (&c_func, Function, "")])),
             (Lang::CSharp, build(&[(&c_types, Class, ""), (&c_func, Function, "")])),
+            (
+                Lang::Kotlin,
+                build(&[
+                    (&id(r"^\s*(?:(?:public|private|protected|internal|open|override|abstract|suspend|inline|operator|infix|tailrec|external|actual|expect)\s+)*fun\s+(?:<[^>]*>\s*)?(?:[\w.]+\.)?(ID)"), Function, ""),
+                    (&id(r"^\s*(?:(?:public|private|protected|internal|open|abstract|data|sealed|enum|annotation|inner|value|companion)\s+)*(?:class|interface|object|typealias)\s+(ID)"), Class, ""),
+                ]),
+            ),
+            (
+                Lang::Swift,
+                build(&[
+                    (&id(r"^\s*(?:(?:public|private|fileprivate|internal|open|static|class|final|override|mutating|nonisolated|@\w+)\s+)*func\s+(ID)"), Function, ""),
+                    (&id(r"^\s*(?:(?:public|private|fileprivate|internal|open|final|indirect|@\w+)\s+)*(?:class|struct|enum|protocol|extension|actor|typealias)\s+(ID)"), Class, ""),
+                ]),
+            ),
+            (Lang::Dart, build(&[(&id(r"^\s*(?:(?:abstract|sealed|base|final|interface)\s+)*(?:class|mixin|enum|extension|typedef)\s+(ID)"), Class, ""), (&c_func, Function, "")])),
             (Lang::Java, build(&[(&c_types, Class, ""), (&c_func, Function, "")])),
         ]
     });
@@ -154,7 +169,7 @@ pub fn scan(lang: Lang, text: &str, unit: u32) -> Vec<Symbol> {
                 continue;
             }
             // A C-style call or declaration is not a definition.
-            if r.kind == SymKind::Function && matches!(lang, Lang::C | Lang::CSharp | Lang::Java) && r.prefix.is_empty() {
+            if r.kind == SymKind::Function && matches!(lang, Lang::C | Lang::CSharp | Lang::Java | Lang::Dart) && r.prefix.is_empty() {
                 let t = String::from_utf8_lossy(&code);
                 let t = t.trim_end();
                 let first = t.split_whitespace().next().unwrap_or("");
@@ -192,7 +207,7 @@ impl BigTextApp {
         let Some(d) = self.docs.get(self.active) else { return };
         let lang = d.effective_lang();
         if !supported(lang) || !d.is_ready() {
-            self.notify(tr("Go to symbol works in code files (Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell).").into(), None);
+            self.notify(tr("Go to symbol lists the functions and classes of code files.").into(), None);
             return;
         }
         if let Some(s) = self.symbols.as_mut().filter(|s| s.doc == d.id && s.version == d.version && s.list.is_some()) {
@@ -353,5 +368,11 @@ mod tests {
         let c = "#define MAX 10\nstatic int count(const char *s) {\n    printf(\"x\");\n}\nstruct point {\n";
         assert_eq!(names(Lang::C, c).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["MAX", "count", "point"]);
         assert!(!supported(Lang::Json) && supported(Lang::Shell));
+        let kt = "data class User(val id: Int)\nobject Registry {\n    suspend fun <T> load(x: T): T = x\n    fun String.shout() = uppercase()\n}\n";
+        assert_eq!(names(Lang::Kotlin, kt).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["User", "Registry", "load", "shout"]);
+        let sw = "public struct Point {\n    mutating func move() {}\n}\nextension Point: Codable {}\n";
+        assert_eq!(names(Lang::Swift, sw).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["Point", "move", "Point"]);
+        let dart = "abstract class Shape {}\nFuture<void> main() async {\n  print(1);\n}\nmixin Fly {}\n";
+        assert_eq!(names(Lang::Dart, dart).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["Shape", "main", "Fly"]);
     }
 }

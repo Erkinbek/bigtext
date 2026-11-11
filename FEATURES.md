@@ -177,7 +177,7 @@ keyboard shortcuts.
 - **Bookmarks** (Ctrl+F2, F2 / Shift+F2) that stay on their lines while you edit.
 - **Split view** (Ctrl+\\): two panes over one document with independent scrolling.
 - **Syntax highlighting** for logs, JSON, XML/HTML, CSV/TSV, SQL and INI/TOML/YAML, and for
-  code in Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP and shell scripts
+  code in Python, JavaScript, TypeScript, Java, Kotlin, Swift, Dart, C#, C/C++, Go, Rust, PHP and shell scripts
   (Bash; a script without an extension is known by its `#!` line): keywords, strings, numbers,
   comments, types, function calls, constants, variables, annotations, decorators, attributes,
   macros, lifetimes, regular expressions, heredocs and preprocessor lines (and the HTML around
@@ -349,8 +349,8 @@ keyboard shortcuts.
   macros defined in a code file, indented under their class, with their line numbers; a few
   letters filter them as in Go to file and Enter goes there. Definitions are found line by line
   on a worker with the highlighter's help, so a `def` inside a docstring or a comment is not
-  listed, nor a call such as `return format(x);`. Python, JavaScript, TypeScript, Java, C#,
-  C/C++, Go, Rust, PHP and shell scripts; the first 32 MB of a file are read.
+  listed, nor a call such as `return format(x);`. Python, JavaScript, TypeScript, Java, Kotlin,
+  Swift, Dart, C#, C/C++, Go, Rust, PHP and shell scripts; the first 32 MB of a file are read.
 - **Tabs and sessions**: Ctrl+Tab in most-recently-used order, pinned tabs, close other tabs /
   tabs to the right, drag to move; **File → Sessions** saves the open files with positions,
   bookmarks, pins, filters and highlights under a name; **Edit → Copy file:line**

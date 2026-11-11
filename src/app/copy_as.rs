@@ -38,6 +38,9 @@ pub fn fence_lang(lang: Lang) -> &'static str {
         Lang::Php => "php",
         Lang::Python => "python",
         Lang::Shell => "bash",
+        Lang::Kotlin => "kotlin",
+        Lang::Swift => "swift",
+        Lang::Dart => "dart",
     }
 }
 

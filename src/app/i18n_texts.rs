@@ -1312,7 +1312,7 @@ pub static TEXTS: &[[&str; 3]] = &[
     // Go to symbol.
     ["Go to symbol…", "Перейти к символу…", "Belgiga o'tish…"],
     ["Go to symbol", "Перейти к символу", "Belgiga o'tish"],
-    ["Go to symbol works in code files (Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell).", "Переход к символу работает в файлах кода (Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell).", "Belgiga o'tish kod fayllarida ishlaydi (Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell)."],
+    ["Go to symbol lists the functions and classes of code files.", "Переход к символу показывает функции и классы файлов кода.", "Belgiga o'tish kod fayllaridagi funksiya va klasslarni ko'rsatadi."],
     ["No functions or classes were found.", "Функции и классы не найдены.", "Funksiya yoki klass topilmadi."],
     ["No symbol matches.", "Нет подходящих символов.", "Mos belgi yo'q."],
     ["Only the first {size} of the file are read.", "Прочитаны только первые {size} файла.", "Faylning faqat dastlabki {size} qismi o'qildi."],

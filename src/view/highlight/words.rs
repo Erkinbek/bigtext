@@ -147,6 +147,55 @@ pub(super) const SHELL: Spec = Spec {
     sync: &["alias", "case", "declare", "export", "for", "function", "if", "readonly", "set", "source", "while"],
 };
 
+pub(super) const KOTLIN: Spec = Spec {
+    line: &["//"],
+    block: true,
+    nest: true,
+    keywords: KOTLIN_KEYWORDS,
+    types: KOTLIN_TYPES,
+    type_kw: &["class", "interface", "object", "typealias"],
+    fn_kw: &["fun"],
+    pascal: true,
+    at_attr: true,
+    ci: false,
+    sync: &["@", "abstract", "class", "data", "enum", "fun", "import", "interface", "internal", "object", "open", "package", "private", "public", "sealed"],
+};
+
+pub(super) const SWIFT: Spec = Spec {
+    line: &["//"],
+    block: true,
+    nest: true,
+    keywords: SWIFT_KEYWORDS,
+    types: SWIFT_TYPES,
+    type_kw: &["actor", "class", "enum", "extension", "protocol", "struct", "typealias"],
+    fn_kw: &["func"],
+    pascal: true,
+    at_attr: true,
+    ci: false,
+    sync: &["@", "actor", "class", "enum", "extension", "fileprivate", "final", "func", "import", "internal", "open", "private", "protocol", "public", "struct"],
+};
+
+pub(super) const DART: Spec = Spec {
+    line: &["//"],
+    block: true,
+    nest: true,
+    keywords: DART_KEYWORDS,
+    types: DART_TYPES,
+    type_kw: &["class", "enum", "extends", "implements", "mixin", "new", "typedef", "with"],
+    fn_kw: &[],
+    pascal: true,
+    at_attr: true,
+    ci: false,
+    sync: &["@", "abstract", "class", "enum", "extension", "import", "library", "mixin", "part", "typedef", "void"],
+};
+
+const KOTLIN_KEYWORDS: &[&str] = &["abstract", "annotation", "as", "break", "by", "catch", "class", "companion", "const", "constructor", "continue", "crossinline", "data", "do", "else", "enum", "external", "false", "final", "finally", "for", "fun", "get", "if", "import", "in", "infix", "init", "inline", "inner", "interface", "internal", "is", "lateinit", "noinline", "null", "object", "open", "operator", "out", "override", "package", "private", "protected", "public", "reified", "return", "sealed", "set", "super", "suspend", "tailrec", "this", "throw", "true", "try", "typealias", "val", "value", "var", "vararg", "when", "where", "while"];
+const KOTLIN_TYPES: &[&str] = &["Any", "Array", "Boolean", "Byte", "Char", "Double", "Float", "Int", "List", "Long", "Map", "MutableList", "MutableMap", "Nothing", "Set", "Short", "String", "UInt", "ULong", "Unit"];
+const SWIFT_KEYWORDS: &[&str] = &["actor", "any", "as", "associatedtype", "async", "await", "break", "case", "catch", "class", "continue", "convenience", "default", "defer", "deinit", "didSet", "do", "dynamic", "else", "enum", "extension", "fallthrough", "false", "fileprivate", "final", "for", "func", "get", "guard", "if", "import", "in", "indirect", "infix", "init", "inout", "internal", "is", "lazy", "let", "mutating", "nil", "nonisolated", "nonmutating", "open", "operator", "optional", "override", "postfix", "precedencegroup", "prefix", "private", "protocol", "public", "repeat", "required", "rethrows", "return", "self", "set", "some", "static", "struct", "subscript", "super", "switch", "throw", "throws", "true", "try", "typealias", "unowned", "var", "weak", "where", "while", "willSet"];
+const SWIFT_TYPES: &[&str] = &["Any", "AnyObject", "Array", "Bool", "Character", "Dictionary", "Double", "Float", "Int", "Int16", "Int32", "Int64", "Int8", "Optional", "Self", "Set", "String", "UInt", "UInt16", "UInt32", "UInt64", "UInt8", "Void"];
+const DART_KEYWORDS: &[&str] = &["abstract", "as", "assert", "async", "await", "base", "break", "case", "catch", "class", "const", "continue", "covariant", "default", "deferred", "do", "dynamic", "else", "enum", "export", "extends", "extension", "external", "factory", "false", "final", "finally", "for", "get", "hide", "if", "implements", "import", "in", "interface", "is", "late", "library", "mixin", "new", "null", "of", "on", "operator", "part", "required", "rethrow", "return", "sealed", "set", "show", "static", "super", "switch", "sync", "this", "throw", "true", "try", "typedef", "var", "when", "while", "with", "yield"];
+const DART_TYPES: &[&str] = &["Future", "Iterable", "List", "Map", "Never", "Null", "Object", "Set", "Stream", "String", "bool", "double", "int", "num", "void"];
+
 const PY_KEYWORDS: &[&str] = &[
     "False", "None", "True", "and", "as", "assert", "async", "await", "break", "case", "class", "cls", "continue", "def", "del", "elif", "else", "except",
     "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "match", "nonlocal", "not", "or", "pass", "raise", "return", "self", "try", "while",
@@ -243,4 +292,4 @@ pub(super) const JS_BEFORE_REGEX: &[&str] = &["await", "case", "delete", "do", "
 pub(super) const LITERALS: &[&str] = &["FALSE", "False", "NULL", "None", "TRUE", "True", "false", "iota", "nil", "null", "nullptr", "true", "undefined"];
 
 #[cfg(test)]
-pub(super) const ALL: &[&Spec] =&[&C, &CSHARP, &JAVA, &JS, &TS, &GO, &RUST, &PHP, &PYTHON, &SHELL];
+pub(super) const ALL: &[&Spec] = &[&C, &CSHARP, &JAVA, &JS, &TS, &GO, &RUST, &PHP, &PYTHON, &SHELL, &KOTLIN, &SWIFT, &DART];
