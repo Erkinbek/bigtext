@@ -158,6 +158,9 @@ T = {
              [("Apple Silicon", "bigtext-macos-arm64.app.zip"), ("Intel", "bigtext-macos-x64.app.zip")]),
         ],
         "dl_all": "All releases and release notes",
+        "dl_pm": "Install with a package manager",
+        "dl_pm_scoop": "Windows, with Scoop:",
+        "dl_pm_brew": "macOS and Linux, with Homebrew: the command-line build, or the app with --cask:",
         "dl_source": "Install with Cargo",
         "dl_source_text": "Install Rust from rustup.rs, then run:",
         "dl_source_text2": "Or build it from source:",
@@ -307,6 +310,9 @@ T = {
              [("Apple Silicon", "bigtext-macos-arm64.app.zip"), ("Intel", "bigtext-macos-x64.app.zip")]),
         ],
         "dl_all": "Все релизы и примечания к ним",
+        "dl_pm": "Установка через менеджер пакетов",
+        "dl_pm_scoop": "Windows, через Scoop:",
+        "dl_pm_brew": "macOS и Linux, через Homebrew: сборка для командной строки или приложение с --cask:",
         "dl_source": "Установка через Cargo",
         "dl_source_text": "Установите Rust с rustup.rs и выполните:",
         "dl_source_text2": "Или соберите из исходников:",
@@ -456,6 +462,9 @@ T = {
              [("Apple Silicon", "bigtext-macos-arm64.app.zip"), ("Intel", "bigtext-macos-x64.app.zip")]),
         ],
         "dl_all": "Barcha relizlar va ular haqida",
+        "dl_pm": "Paket menejeri orqali o'rnatish",
+        "dl_pm_scoop": "Windows, Scoop orqali:",
+        "dl_pm_brew": "macOS va Linux, Homebrew orqali: buyruq qatori versiyasi yoki --cask bilan ilova:",
         "dl_source": "Cargo orqali o'rnatish",
         "dl_source_text": "rustup.rs dan Rust'ni o'rnating, so'ng bajaring:",
         "dl_source_text2": "Yoki manba koddan yig'ing:",
@@ -727,6 +736,13 @@ def page(lang):
     <p class="intro">{e(t['dl_intro'])}</p>
     <div class="grid downloads">{dl}</div>
     <p class="all"><a href="{REPO}/releases">{e(t['dl_all'])}</a></p>
+    <h3 class="src">{e(t['dl_pm'])}</h3>
+    <p>{e(t['dl_pm_scoop'])}</p>
+    <pre><code>scoop bucket add bigtext https://github.com/Erkinbek/scoop-bigtext
+scoop install bigtext/bigtext</code></pre>
+    <p>{e(t['dl_pm_brew'])}</p>
+    <pre><code>brew install erkinbek/tap/bigtext
+brew install --cask erkinbek/tap/bigtext-app</code></pre>
     <h3 class="src">{e(t['dl_source'])}</h3>
     <p>{e(t['dl_source_text'])}</p>
     <pre><code>cargo install bigtext</code></pre>

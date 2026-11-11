@@ -65,10 +65,15 @@ Latest release: [all files and release notes](https://github.com/Erkinbek/bigtex
 | Linux x64 | [AppImage](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.AppImage) · [.deb](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.deb) (Debian, Ubuntu) · [.tar.gz](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.tar.gz) |
 | macOS | BigText.app for [Apple Silicon](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-arm64.app.zip) · [Intel](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-x64.app.zip); plain binaries: [Apple Silicon](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-arm64.tar.gz) · [Intel](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-x64.tar.gz) (unsigned: right-click → Open on first launch) |
 
-With Rust installed, on any platform: `cargo install bigtext`
-([crates.io/crates/bigtext](https://crates.io/crates/bigtext); on Linux, first install the
-packages listed under [Building](CONTRIBUTING.md#linux)). Or build it yourself (see
-[Building](CONTRIBUTING.md#building)).
+With a package manager:
+
+| Package manager | Command |
+| --- | --- |
+| [Scoop](https://scoop.sh/) (Windows) | `scoop bucket add bigtext https://github.com/Erkinbek/scoop-bigtext`, then `scoop install bigtext/bigtext` |
+| [Homebrew](https://brew.sh/) (macOS, Linux) | `brew install erkinbek/tap/bigtext`; the macOS app: `brew install --cask erkinbek/tap/bigtext-app` |
+| Cargo (any platform) | `cargo install bigtext` ([crates.io](https://crates.io/crates/bigtext); on Linux, first install the packages listed under [Building](CONTRIBUTING.md#linux)) |
+
+Or build it yourself (see [Building](CONTRIBUTING.md#building)).
 
 ## How it compares
 

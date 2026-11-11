@@ -261,6 +261,13 @@
     <p class="intro">Free for personal and commercial use. No account, no telemetry, one executable.</p>
     <div class="grid downloads"><article class="card dl"><h3>Windows 10 / 11</h3><p>Installer with “Open with” and Explorer context-menu integration, or a portable build.</p><div class="btns"><a class="btn primary" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-setup-windows-x64.exe">Installer (.exe)</a><a class="btn" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-windows-x64.zip">Portable (.zip)</a></div></article><article class="card dl"><h3>Linux x64</h3><p>An AppImage that runs on most distributions, a .deb package for Debian and Ubuntu, or a portable .tar.gz.</p><div class="btns"><a class="btn primary" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.AppImage">AppImage</a><a class="btn" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.deb">.deb</a><a class="btn" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.tar.gz">.tar.gz</a></div></article><article class="card dl"><h3>macOS</h3><p>BigText.app for Apple Silicon and Intel. The app is not signed: right-click → Open on first launch.</p><div class="btns"><a class="btn primary" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-arm64.app.zip">Apple Silicon</a><a class="btn" href="https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-x64.app.zip">Intel</a></div></article></div>
     <p class="all"><a href="https://github.com/Erkinbek/bigtext/releases">All releases and release notes</a></p>
+    <h3 class="src">Install with a package manager</h3>
+    <p>Windows, with Scoop:</p>
+    <pre><code>scoop bucket add bigtext https://github.com/Erkinbek/scoop-bigtext
+scoop install bigtext/bigtext</code></pre>
+    <p>macOS and Linux, with Homebrew: the command-line build, or the app with --cask:</p>
+    <pre><code>brew install erkinbek/tap/bigtext
+brew install --cask erkinbek/tap/bigtext-app</code></pre>
     <h3 class="src">Install with Cargo</h3>
     <p>Install Rust from rustup.rs, then run:</p>
     <pre><code>cargo install bigtext</code></pre>
