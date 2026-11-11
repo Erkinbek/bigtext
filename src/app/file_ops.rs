@@ -190,7 +190,7 @@ impl BigTextApp {
                     self.notify(text, None);
                     self.folder.expanded.retain(|p| !under(p, &path));
                     if let Some(parent) = path.parent() {
-                        self.reread(&parent.to_path_buf());
+                        self.reread(parent);
                     }
                 }
                 Err(e) => self.error = Some(format!("{}: {e}", trf("Could not move {name}", &[("name", &name)]))),

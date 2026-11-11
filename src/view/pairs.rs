@@ -91,11 +91,9 @@ pub fn typed(doc: &mut Document, t: &str, lang: Lang) -> bool {
     }
     let next = char_after(doc, s);
     // The closing character over its partner: step over it.
-    if matches!(c, ')' | ']' | '}') || is_quote(c) {
-        if next == Some(c) && (!is_quote(c) || pairs_quote(lang, c)) {
-            doc.set_caret(doc.buf.next_char(s), false);
-            return true;
-        }
+    if (matches!(c, ')' | ']' | '}') || is_quote(c)) && next == Some(c) && (!is_quote(c) || pairs_quote(lang, c)) {
+        doc.set_caret(doc.buf.next_char(s), false);
+        return true;
     }
     let Some(close) = close else { return false };
     if !free_after(next) {
