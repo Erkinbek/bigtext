@@ -262,6 +262,10 @@ keyboard shortcuts.
   folder and its sub-folders, listed as `file:line`; click to open the file there.
 - **Saved searches** (★ in the search bar): a pattern with its options, `!` and column under a
   name, applied as a filter with one click.
+- **Toggle comment** (Edit → Toggle comment, Ctrl+/): the selected lines, or the caret's, get
+  the language's line comment (`//`, `#`, `--`) at their common indentation, or lose it when
+  they all have it; blank lines are left alone. XML and HTML get `<!-- … -->` around the lines.
+  One undo step; the caret moves with the text.
 - **Multiple cursors**: Ctrl+D adds the next occurrence of the selection, Alt+click adds a
   cursor; typing, paste, Backspace, Delete, Enter and Tab change the text at all of them.
 - **Matching brackets and tags** highlighted next to the caret; Ctrl+] jumps to the partner.

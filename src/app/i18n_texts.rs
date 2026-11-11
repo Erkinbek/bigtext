@@ -1303,4 +1303,10 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Open a folder (Ctrl+Shift+O) to find its files here.", "Откройте папку (Ctrl+Shift+O), чтобы искать здесь её файлы.", "Fayllarini shu yerda topish uchun papka oching (Ctrl+Shift+O)."],
     ["No file matches.", "Нет подходящих файлов.", "Mos fayl yo'q."],
     ["Only the first {n} files of the folder are listed.", "Показаны только первые {n} файлов папки.", "Papkaning faqat dastlabki {n} ta fayli ko'rsatilgan."],
+    // Toggle comment.
+    ["Toggle comment", "Закомментировать / раскомментировать", "Izohga olish / izohdan chiqarish"],
+    ["This kind of file has no comments.", "В файлах этого типа нет комментариев.", "Bu turdagi fayllarda izoh yo'q."],
+    ["Line is too long to comment with this command", "Строка слишком длинная для этой команды", "Satr bu buyruq uchun juda uzun"],
+    ["Select less text to comment it out (up to 8 MB).", "Выделите меньше текста (до 8 МБ), чтобы закомментировать его.", "Izohga olish uchun kamroq matn belgilang (8 MB gacha)."],
+    ["The lines contain bytes that are not valid in this encoding; commenting them would change them.", "В строках есть байты, недопустимые в этой кодировке; комментирование изменило бы их.", "Satrlarda bu kodlashda yaroqsiz baytlar bor; izohga olish ularni o'zgartirib yuborardi."],
 ];

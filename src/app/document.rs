@@ -964,6 +964,57 @@ impl Document {
         self.set_caret(c, false);
     }
 
+    /// Edit → Toggle comment: the selected lines (or the caret's) commented out with `c`, or
+    /// uncommented when they all are, as one undo step. Selected lines stay selected; a caret
+    /// keeps its place in the text.
+    pub fn toggle_comment(&mut self, c: crate::view::highlight::Comment) -> Result<(), &'static str> {
+        if !self.editable() {
+            return Err("The document is read-only (Edit → Read-only).");
+        }
+        let (s, e) = self.selection();
+        // A selection ending at the start of a line leaves that line out.
+        let last = if e > s { self.buf.prev_char(e).max(s) } else { e };
+        let too_long = "Line is too long to comment with this command";
+        let (ls, _, _) = self.line_bounds(s, LINE_CMD_LIMIT).ok_or(too_long)?;
+        let (_, end, _) = self.line_bounds(last, LINE_CMD_LIMIT).ok_or(too_long)?;
+        if end - ls > LINE_CMD_LIMIT {
+            return Err("Select less text to comment it out (up to 8 MB).");
+        }
+        let codec = self.buf.codec;
+        let bytes = self.buf.read(ls..end).ok_or("Could not read the text.")?;
+        let text = codec.decode_lossy(&bytes);
+        if codec.encode(&text) != *bytes {
+            return Err("The lines contain bytes that are not valid in this encoding; commenting them would change them.");
+        }
+        let (new, changes) = crate::view::highlight::toggle_comment(&text, c);
+        let out = codec.encode(&new);
+        let caret = self.view.caret;
+        self.edit(ls..end, &out, EditKind::Other);
+        let new_end = ls + out.len() as u64;
+        if s != e {
+            self.select(ls, new_end);
+            return Ok(());
+        }
+        // One line: the caret moves with the text after the change.
+        let caret = match changes.first() {
+            Some(&(at, removed, inserted)) => {
+                let at_off = ls + codec.encode(&text[..at]).len() as u64;
+                let rem = codec.encode(&text[at..at + removed]).len() as u64;
+                let ins = codec.encode(&new[at..at + inserted]).len() as u64;
+                if caret >= at_off + rem {
+                    caret - rem + ins
+                } else if caret > at_off {
+                    at_off
+                } else {
+                    caret
+                }
+            }
+            None => caret,
+        };
+        self.set_caret(caret.min(new_end), false);
+        Ok(())
+    }
+
     /// Leading whitespace of the line containing `off` (for auto-indent).
     pub fn indent_of_line(&self, off: u64) -> Vec<u8> {
         let Ok(seg) = rows::seg_containing(&self.buf, off) else { return Vec::new() };

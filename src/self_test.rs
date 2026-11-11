@@ -1213,6 +1213,34 @@ impl SelfTest {
             check(ok, format!("row {row} line {line} guides {guides} toggled {toggled:?}"))
         }));
         s("screenshot: code", shot_step("selftest-code.png"));
+        s("toggle comment (Ctrl+/): the caret's line gets `# ` and loses it again, the caret moving with the text", Box::new(|app, c| {
+            let at = SETTINGS_PY.find("import os").unwrap() as u64 + 3;
+            match c.mark {
+                0 => {
+                    if c.first() {
+                        app.open_path(c.file("settings.py"));
+                    }
+                    if !wait_ready(app) {
+                        return Step::Wait;
+                    }
+                    doc(app).set_caret(at, false);
+                    c.key(Key::Slash, CTRL);
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 if text(app).contains("\n# import os\n") && doc(app).view.caret == at + 2 => {
+                    c.key(Key::Slash, CTRL);
+                    c.mark = 2;
+                    Step::Wait
+                }
+                2 if text(app) == SETTINGS_PY && doc(app).view.caret == at => {
+                    c.mark = 0;
+                    Step::Next
+                }
+                _ if c.waited() > Duration::from_secs(3) => Step::Fail(format!("step {} caret {} at {at}", c.mark, doc(app).view.caret)),
+                _ => Step::Wait,
+            }
+        }));
         s("follow reads the file in chunks, not mapped", Box::new(|app, c| {
             if c.first() {
                 app.open_path(c.file("rot.log"));

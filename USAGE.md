@@ -104,6 +104,7 @@ times). Exit codes: 0 done, 1 nothing matched, 2 error.
 | Ctrl+D | Select the word, then add its next occurrence as another cursor |
 | Alt+click | Add a cursor (Esc: back to one cursor) |
 | Ctrl+Shift+D / Ctrl+Shift+K | Duplicate line (or selection) / delete line |
+| Ctrl+/ | Toggle comment on the selected lines (or the caret's) |
 | Ctrl+←/→, Ctrl+Backspace/Delete | Word movement / delete word |
 | Home / End, Ctrl+Home / Ctrl+End | Line start (smart) / end, document start / end |
 | Ctrl+wheel, Ctrl+= / Ctrl+- / Ctrl+0 | Zoom |

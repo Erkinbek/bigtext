@@ -59,6 +59,7 @@ pub enum Cmd {
     AddNextOccurrence,
     DuplicateLine,
     DeleteLine,
+    ToggleComment,
     CopyFileLine,
     ToggleBookmark,
     NextBookmark,
@@ -151,7 +152,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 117] = [
+    pub const ALL: [Cmd; 118] = [
         Cmd::New,
         Cmd::Open,
         Cmd::OpenFolder,
@@ -194,6 +195,7 @@ impl Cmd {
         Cmd::AddNextOccurrence,
         Cmd::DuplicateLine,
         Cmd::DeleteLine,
+        Cmd::ToggleComment,
         Cmd::CopyFileLine,
         Cmd::ToggleBookmark,
         Cmd::NextBookmark,
@@ -352,6 +354,7 @@ impl Cmd {
             Cmd::AddNextOccurrence => "Add next occurrence (another cursor)",
             Cmd::DuplicateLine => "Duplicate line",
             Cmd::DeleteLine => "Delete line",
+            Cmd::ToggleComment => "Toggle comment",
             Cmd::CopyFileLine => "Copy file:line",
             Cmd::ToggleBookmark => "Toggle bookmark",
             Cmd::NextBookmark => "Next bookmark",
@@ -448,6 +451,7 @@ impl Cmd {
             | Cmd::AddNextOccurrence
             | Cmd::DuplicateLine
             | Cmd::DeleteLine
+            | Cmd::ToggleComment
             | Cmd::CopyFileLine
             | Cmd::ToggleBookmark
             | Cmd::NextBookmark
@@ -483,6 +487,7 @@ impl Cmd {
             Cmd::AddNextOccurrence => key(CTRL, Key::D),
             Cmd::DuplicateLine => key(CTRL_SHIFT, Key::D),
             Cmd::DeleteLine => key(CTRL_SHIFT, Key::K),
+            Cmd::ToggleComment => key(CTRL, Key::Slash),
             Cmd::CopyFileLine => key(CTRL_SHIFT, Key::C),
             Cmd::ToggleBookmark => key(CTRL, Key::F2),
             Cmd::NextBookmark => key(Modifiers::NONE, Key::F2),
@@ -729,6 +734,14 @@ impl BigTextApp {
             Cmd::AddNextOccurrence => self.add_next_occurrence(),
             Cmd::DuplicateLine => doc(self).into_iter().for_each(|d| d.duplicate_line()),
             Cmd::DeleteLine => doc(self).into_iter().for_each(|d| d.delete_line()),
+            Cmd::ToggleComment => {
+                let done = doc(self).map(|d| d.effective_lang().comment().map(|c| d.toggle_comment(c)));
+                match done {
+                    Some(None) => self.notify(tr("This kind of file has no comments.").into(), None),
+                    Some(Some(Err(e))) => self.error = Some(tr(e).into()),
+                    _ => {}
+                }
+            }
             Cmd::CopyFileLine => self.copy_file_line(ctx),
             Cmd::ToggleBookmark => doc(self).into_iter().for_each(|d| d.toggle_bookmark()),
             Cmd::NextBookmark => doc(self).into_iter().for_each(|d| d.goto_bookmark(true)),
@@ -1005,7 +1018,7 @@ impl BigTextApp {
             Cmd::NavForward => !self.nav.forward.is_empty(),
             Cmd::Redo => d.is_some_and(|d| !d.redo.is_empty()),
             Cmd::ClearBookmarks => d.is_some_and(|d| !d.bookmarks.is_empty()),
-            Cmd::Text(_) => d.is_some_and(|d| d.editable()),
+            Cmd::Text(_) | Cmd::ToggleComment => d.is_some_and(|d| d.editable()),
             _ => true,
         }
     }
@@ -1168,7 +1181,7 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                for c in [Cmd::SelectAll, Cmd::AddNextOccurrence, Cmd::DuplicateLine, Cmd::DeleteLine, Cmd::CopyFileLine] {
+                for c in [Cmd::SelectAll, Cmd::AddNextOccurrence, Cmd::DuplicateLine, Cmd::DeleteLine, Cmd::ToggleComment, Cmd::CopyFileLine] {
                     run = run.or(self.item(ui, c));
                 }
                 ui.menu_button(tr("Copy as"), |ui| {

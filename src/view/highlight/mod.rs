@@ -231,6 +231,24 @@ impl Lang {
         matches!(self, Lang::Xml | Lang::Sql) || self.is_code()
     }
 
+    /// How a line is commented out (Edit → Toggle comment): a line comment, or a block comment
+    /// around the lines when the language has none.
+    pub fn comment(self) -> Option<Comment> {
+        if let Some(s) = code::spec(self) {
+            return match (s.line.first(), s.block) {
+                (Some(t), _) => Some(Comment::Line(t)),
+                (None, true) => Some(Comment::Block("/*", "*/")),
+                (None, false) => None,
+            };
+        }
+        match self {
+            Lang::Sql => Some(Comment::Line("--")),
+            Lang::Ini => Some(Comment::Line("#")),
+            Lang::Xml => Some(Comment::Block("<!--", "-->")),
+            _ => None,
+        }
+    }
+
     /// A programming language (not a data or log format).
     pub fn is_code(self) -> bool {
         code::spec(self).is_some()
@@ -262,6 +280,74 @@ impl Lang {
             Lang::Php => "PHP",
             Lang::Python => "Python",
             Lang::Shell => "Shell (Bash)",
+        }
+    }
+}
+
+/// How a language comments a line out.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Comment {
+    /// `//`, `#`, `--`
+    Line(&'static str),
+    /// `/* … */`, `<!-- … -->`
+    Block(&'static str, &'static str),
+}
+
+/// Lines with `c` toggled: commented out at their common indentation (blank lines left alone,
+/// unless all are blank), or uncommented when every line with text already is. Returns the new
+/// text and, per line, where the change is (byte in the old line, bytes removed, inserted).
+pub fn toggle_comment(text: &str, c: Comment) -> (String, Vec<(usize, usize, usize)>) {
+    let lines: Vec<&str> = text.split('\n').collect();
+    // Each line without its CR (the CR goes back after it).
+    let bodies: Vec<&str> = lines.iter().map(|l| l.strip_suffix('\r').unwrap_or(l)).collect();
+    let all_blank = bodies.iter().all(|l| l.trim().is_empty());
+    let has_text = |l: &str| all_blank || !l.trim().is_empty();
+    let indent = |l: &str| l.len() - l.trim_start_matches([' ', '\t']).len();
+    match c {
+        Comment::Line(t) => {
+            let commented = !all_blank && bodies.iter().filter(|l| has_text(l)).all(|l| l.trim_start().starts_with(t));
+            let col = bodies.iter().filter(|l| has_text(l)).map(|l| indent(l)).min().unwrap_or(0);
+            let mut out = Vec::with_capacity(lines.len());
+            let mut changes = Vec::with_capacity(lines.len());
+            for (l, b) in lines.iter().zip(&bodies) {
+                let cr = &l[b.len()..];
+                if !has_text(b) {
+                    out.push(l.to_string());
+                    changes.push((0, 0, 0));
+                } else if commented {
+                    let at = indent(b);
+                    let mut n = t.len();
+                    if b[at + n..].starts_with(' ') {
+                        n += 1;
+                    }
+                    out.push(format!("{}{}{cr}", &b[..at], &b[at + n..]));
+                    changes.push((at, n, 0));
+                } else {
+                    let at = col.min(b.len());
+                    out.push(format!("{}{t} {}{cr}", &b[..at], &b[at..]));
+                    changes.push((at, 0, t.len() + 1));
+                }
+            }
+            (out.join("\n"), changes)
+        }
+        Comment::Block(open, close) => {
+            let joined = bodies.join("\n");
+            let trimmed = joined.trim();
+            let new = if trimmed.len() >= open.len() + close.len() && trimmed.starts_with(open) && trimmed.ends_with(close) {
+                let s = joined.find(open).unwrap_or(0);
+                let e = joined.rfind(close).unwrap_or(joined.len());
+                let inner = &joined[s + open.len()..e];
+                let inner = inner.strip_prefix(' ').unwrap_or(inner);
+                let inner = inner.strip_suffix(' ').unwrap_or(inner);
+                format!("{}{inner}{}", &joined[..s], &joined[e + close.len()..])
+            } else {
+                let s = joined.len() - joined.trim_start().len();
+                let e = joined.trim_end().len().max(s);
+                format!("{}{open} {} {close}{}", &joined[..s], &joined[s..e], &joined[e..])
+            };
+            // CR LF line breaks stay CR LF.
+            let crlf = lines.len() > 1 && lines[..lines.len() - 1].iter().all(|l| l.ends_with('\r'));
+            (if crlf { new.replace('\n', "\r\n") } else { new }, Vec::new())
         }
     }
 }
@@ -924,6 +1010,27 @@ mod tests {
         assert_eq!(Lang::sniff("#!/usr/bin/env -S node --x\n"), Lang::JavaScript);
         assert_eq!(Lang::sniff("#!/usr/bin/perl\n"), Lang::Plain);
         assert_eq!((Lang::from_path(Some(Path::new("/home/a/.bashrc"))), Lang::from_path(Some(Path::new("t.pyi")))), (Lang::Shell, Lang::Python));
+    }
+
+    #[test]
+    fn toggling_comments() {
+        let c = Lang::Python.comment().unwrap();
+        assert_eq!(c, Comment::Line("#"));
+        // At the common indentation, blank lines left alone; back again.
+        let (on, ch) = toggle_comment("    a = 1\n\n        b = 2", c);
+        assert_eq!(on, "    # a = 1\n\n    #     b = 2");
+        assert_eq!(ch, vec![(4, 0, 2), (0, 0, 0), (4, 0, 2)]);
+        assert_eq!(toggle_comment(&on, c).0, "    a = 1\n\n        b = 2");
+        // Partly commented lines are all commented; CR LF kept; an empty line gets one.
+        assert_eq!(toggle_comment("// x\r\ny\r\n", Comment::Line("//")).0, "// // x\r\n// y\r\n");
+        assert_eq!(toggle_comment("", Comment::Line("//")).0, "// ");
+        assert_eq!(toggle_comment("  //x", Comment::Line("//")).0, "  x");
+        // A block comment around the lines, and off again.
+        let x = Lang::Xml.comment().unwrap();
+        let (on, _) = toggle_comment("  <a/>\r\n  <b/>", x);
+        assert_eq!(on, "  <!-- <a/>\r\n  <b/> -->");
+        assert_eq!(toggle_comment(&on, x).0, "  <a/>\r\n  <b/>");
+        assert_eq!((Lang::Sql.comment(), Lang::Json.comment(), Lang::C.comment()), (Some(Comment::Line("--")), None, Some(Comment::Line("//"))));
     }
 
     #[test]
