@@ -16,6 +16,7 @@ depends=('gcc-libs' 'glibc' 'libglvnd' 'libx11' 'libxcursor' 'libxi' 'libxkbcomm
          'libxkbcommon-x11' 'wayland' 'hicolor-icon-theme')
 provides=('bigtext')
 conflicts=('bigtext')
+options=('!strip' '!debug')
 source=("bigtext-linux-x64-$pkgver.tar.gz::$url/releases/download/v$pkgver/bigtext-linux-x64.tar.gz"
         "LICENSE-$pkgver::https://raw.githubusercontent.com/Erkinbek/bigtext/v$pkgver/LICENSE")
 sha256sums=('5c24fc2a2cd7923cff854e5eb24bc1f823206b42cc2b43b42ef279a0fabadbd4'
