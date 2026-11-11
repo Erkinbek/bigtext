@@ -171,7 +171,7 @@ keyboard shortcuts.
   Portuguese, German and Turkish (View → Language), kept across sessions; a first start speaks
   the system's language when it is one of them. In Chinese a system font with its characters
   (Microsoft YaHei, PingFang, Noto Sans CJK…) is added behind the built-in fonts.
-  A unit test checks that every interface text has both translations with the same
+  A unit test checks that every interface text has all seven translations with the same
   placeholders. Error details that come from the operating system stay in English.
 - **Command palette** (Ctrl+Shift+P): type a few letters of any command (menus, views, text
   operations) and press Enter. **Help → Keyboard shortcuts** lists every command with its key;
@@ -343,8 +343,9 @@ keyboard shortcuts.
   default app, and **New file…**, **New folder…**, **Rename…** (the name is selected without
   its extension) and **Move to the Recycle Bin** (the Trash on macOS and Linux, after asking),
   so a mistake can be undone there. A new file opens in a tab; the tabs of renamed files move
-  with them; a file with unsaved changes stops a rename or a move until it is saved or closed. `bigtext FOLDER`, dropping a folder on the window or opening one from another
-  launch shows it there; the folder, the expanded folders and whether the side bar shows are
+  with them; a file with unsaved changes stops a rename or a move until it is saved or closed.
+  `bigtext FOLDER`, dropping a folder on the window or opening one from another launch shows it
+  there; the folder, the expanded folders and whether the side bar shows are
   kept with the session, and the folders are read again when BigText comes back to the front.
   Find in files starts in the open folder. `.git`, `.svn`, `.hg`, `.DS_Store` and `Thumbs.db`
   are hidden.
@@ -370,8 +371,8 @@ keyboard shortcuts.
   on a worker with the highlighter's help, so a `def` inside a docstring or a comment is not
   listed, nor a call such as `return format(x);`. Python, JavaScript, TypeScript, Java, Kotlin,
   Swift, Dart, C#, C/C++, Go, Rust, PHP, Ruby, Lua, PowerShell and shell scripts, as well as
-  Markdown headings, CSS selectors, top-level YAML keys, Makefile targets and Dockerfile stages; the first 32 MB
-  of a file are read.
+  Markdown headings, CSS selectors, top-level YAML keys, Makefile targets and Dockerfile
+  stages; the first 32 MB of a file are read.
 - **Tabs and sessions**: Ctrl+Tab in most-recently-used order, pinned tabs, close other tabs /
   tabs to the right, drag to move; **File → Sessions** saves the open files with positions,
   bookmarks, pins, filters and highlights under a name; **Edit → Copy file:line**

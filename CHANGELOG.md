@@ -3,6 +3,75 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## 0.7.0 — 2026-11-11
+
+### Working with code
+
+- **Go to file** (Search → Go to file…, **Ctrl+P**): a few letters of a file's name or path find
+  it among the open folder's files, as in Sublime Text — `ftree` finds `folder_tree.rs`. Letters
+  in the file name, at the start of a word and next to each other count more, the matched
+  letters are lit, and `name:42` opens the file at line 42. The folder is listed on a worker (up
+  to 200,000 files, without `.git`, `node_modules`, `target`, `__pycache__`, virtual environments
+  and the like); with no folder open, the open tabs and recent files are offered.
+- **Go to symbol** (Search → Go to symbol…, **Ctrl+R**): the functions, methods, classes, types
+  and macros of a code file, indented under their class, with their line numbers; type to filter
+  and Enter goes there. A `def` inside a docstring or a comment is not listed, nor a call such as
+  `return format(x);`. Markdown headings, CSS selectors, top-level YAML keys, Makefile targets
+  and Dockerfile stages are listed too.
+- **Toggle comment** (Edit → Toggle comment, **Ctrl+/**): the selected lines, or the caret's, get
+  the language's line comment (`//`, `#`, `--`) at their common indentation, or lose it when they
+  all have it. XML and HTML get `<!-- … -->`. One undo step.
+- **Brackets and quotes pair themselves** in code and JSON: `(`, `[`, `{`, `"`, `'` get their
+  partner after the caret, a selection is wrapped instead, typing the closing one steps over it,
+  Backspace between an empty pair removes both, and Enter between `{}` opens an indented line
+  with the closing bracket below. A quote does not pair after a letter (`don't`), and a Rust `'`
+  never does (lifetimes).
+
+### Files in the side bar
+
+- Right-click in the folder side bar for **New file…**, **New folder…**, **Rename…** (the name is
+  selected without its extension) and **Move to the Recycle Bin** (the Trash on macOS and Linux),
+  which asks first, so a mistake can be undone there. A new file opens in a tab, the tabs of
+  renamed files move with them, and a file with unsaved changes is not renamed or moved until it
+  is saved or closed.
+
+### More languages highlighted
+
+- **Kotlin, Swift and Dart**: triple-quoted strings, Dart raw strings, annotations and Swift
+  `#if` directives.
+- **Ruby, Lua and PowerShell**: Ruby `@vars`, `:symbols`, `=begin … =end` and heredocs; Lua
+  `--[[ … ]]` and long strings; PowerShell `$variables`, `-eq` style operators, `Verb-Noun`
+  commands, `<# … #>` and here-strings.
+- **CSS / SCSS / Less, Markdown, YAML, Dockerfiles and Makefiles**: selectors, properties,
+  numbers and colours; Markdown headings, emphasis, links and fenced code; YAML keys, anchors,
+  tags and block scalars (`.yaml` was highlighted as INI before); the commands of Dockerfiles
+  and Makefile recipes as shell.
+
+### Code colour themes
+
+- **View → Theme → Code colours** picks the palette of code apart from the interface theme:
+  One Dark / One Light (following the theme, as before), **Monokai**, **GitHub Dark**,
+  **GitHub Light**, **Solarized Dark** or **Solarized Light** — background, text, line numbers,
+  caret and every kind of token. Copy as HTML uses it too, and it is kept with the settings.
+
+### Remote files and URLs
+
+- **File → Open remote file or URL…** (**Ctrl+Shift+U**) or the command line:
+  `user@server:/var/log/app.log` or `ssh://user@server:2222/path` is read with the system's
+  `ssh` and your keys or agent (there is no password prompt); `https://…` and public
+  `s3://bucket/key` addresses are downloaded, with progress and Cancel in the status bar.
+- **Its last N MB, then follow** opens a server's log at once and keeps adding what `tail -F`
+  sends, like a local log in follow mode; `bigtext -f user@server:/var/log/syslog` does the same.
+  The copies are temporary and go away with their tabs, closing a followed tab ends its `ssh`,
+  and errors (a refused key, a missing file) are shown in ssh's own words.
+
+### Five more interface languages
+
+- **Simplified Chinese, Spanish, Brazilian Portuguese, German and Turkish** join English, Russian
+  and Uzbek in **View → Language**. On a first start BigText speaks the system's language when it
+  is one of these; a language chosen before is kept. Chinese adds a system font with its
+  characters (Microsoft YaHei, PingFang, Noto Sans CJK…) behind the built-in fonts.
+
 ## 0.6.0 — 2026-11-10
 
 ### Fixed: whitespace display

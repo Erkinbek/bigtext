@@ -21,7 +21,7 @@ DOCS = ROOT / "docs"
 BASE = "https://erkinbek.github.io/bigtext/"
 REPO = "https://github.com/Erkinbek/bigtext"
 RELEASES = REPO + "/releases/latest"
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 UPDATED = "2026-10-24"
 LANGS = ["en", "ru", "uz"]
 LOCALE = {"en": "en_US", "ru": "ru_RU", "uz": "uz_UZ"}
@@ -99,7 +99,7 @@ T = {
             ("Compressed logs and pipes", "Open .gz and .zst files directly, pipe a command into BigText (journalctl -f | bigtext -), or open app.log:120 at a line from the command line."),
             ("CSV tables", "CSV and TSV files open as a table that scrolls as fast as text. Sort by a column, get column statistics, filter by a column, and rename, move, export or delete columns."),
             ("Text tools", "Sort, de-duplicate and reverse lines, change case, trim whitespace, pretty-print or minify JSON, and edit many lines at once with an Alt+drag column selection."),
-            ("Your way", "A command palette (Ctrl+Shift+P), shortcuts you can change, any monospaced font, and an interface in English, Russian or Uzbek."),
+            ("Your way", "A command palette (Ctrl+Shift+P), shortcuts you can change, any monospaced font, and an interface in English, Russian, Uzbek, Chinese, Spanish, Portuguese, German or Turkish."),
             ("Log analysis", "A level bar with ERROR, WARN, INFO and DEBUG filters and F8 to the next error, a time histogram, log fields, message patterns, top values, time gaps, and the lines around each match or with the same request id."),
             ("Logs side by side in time", "Merge several logs by timestamp into one coloured view, or line up the open logs and scroll them together by time, with a clock skew you can set. Following survives log rotation."),
             ("JSON and XML", "A structure panel, the JSON path of the caret in the status bar, folding, JSON Lines as a table with queries, a strict check that points at the error, conversion between JSON, JSON Lines and logfmt, and a structural diff."),
@@ -108,7 +108,10 @@ T = {
             ("Archives and big edits", "Files inside zip and tar archives, .xz and .bz2 files shown while they unpack, saving straight to .gz or .zst, multiple cursors, a column editor, and sort, de-duplicate or run any command on a file of any size."),
             ("Find in files and scripts", "Search a whole folder with file:line results, and use bigtext-cli for count, head, tail, slice, replace, CSV tools and JSON output in scripts. Sessions, portable mode, and a second launch opens in the running window."),
             ("Comfortable for everyone", "High-contrast and colour-blind-safe themes, interface scaling, screen reader support, zen mode, wrapping at a column with a ruler, a clickable status bar, and settings remembered for each file."),
-            ("Code in colour", "Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP and shell scripts are highlighted: keywords, strings, comments, types and function calls, with comments and strings followed over lines, in One Dark colours with indent guides instead of whitespace dots, like a code editor. Only the rows on screen are coloured, so a huge file opens and scrolls just as fast."),
+            ("Code in colour", "Python, JavaScript, TypeScript, Java, Kotlin, Swift, Dart, C#, C/C++, Go, Rust, PHP, Ruby, Lua, PowerShell and shell scripts, as well as CSS, Markdown, YAML, Dockerfiles and Makefiles, are highlighted: keywords, strings, comments, types and function calls, with comments and strings followed over lines, in One Dark, Monokai, GitHub or Solarized colours with indent guides instead of whitespace dots, like a code editor. Only the rows on screen are coloured, so a huge file opens and scrolls just as fast."),
+            ("Folder side bar", "Open folder shows a folder as a tree on the left, as in Sublime Text: folders are read only when expanded, names can be filtered, and a right-click creates, renames or moves files to the Recycle Bin."),
+            ("Editor tools for code", "Ctrl+P finds a file in the open folder from a few letters of its name, Ctrl+R lists the functions and classes of a file, Ctrl+/ comments lines out and back in, and brackets and quotes close themselves."),
+            ("Logs on servers", "Open user@server:/var/log/app.log over SSH with your keys, or follow its last megabytes like tail -F. https:// and public s3:// files are downloaded with progress."),
         ],
         "gallery_h2": "Screenshots",
         "gallery": {
@@ -245,7 +248,7 @@ T = {
             ("Сжатые логи и конвейеры", "Открывайте файлы .gz и .zst напрямую, передавайте BigText вывод команды (journalctl -f | bigtext -) или открывайте app.log:120 сразу на нужной строке из командной строки."),
             ("Таблицы CSV", "CSV и TSV открываются таблицей, которая прокручивается так же быстро, как текст. Сортировка по столбцу, статистика столбца, фильтр по столбцу, переименование, перемещение, экспорт и удаление столбцов."),
             ("Инструменты для текста", "Сортировка, удаление повторов и разворот строк, смена регистра, удаление пробелов, форматирование и сжатие JSON, правка многих строк сразу выделением столбцом (Alt+перетаскивание)."),
-            ("Как вам удобно", "Палитра команд (Ctrl+Shift+P), настраиваемые сочетания клавиш, любой моноширинный шрифт и интерфейс на английском, русском или узбекском."),
+            ("Как вам удобно", "Палитра команд (Ctrl+Shift+P), настраиваемые сочетания клавиш, любой моноширинный шрифт и интерфейс на английском, русском, узбекском, китайском, испанском, португальском, немецком или турецком."),
             ("Анализ логов", "Панель уровней с фильтрами ERROR, WARN, INFO и DEBUG и F8 к следующей ошибке, гистограмма по времени, поля логов, шаблоны сообщений, частые значения, разрывы во времени, а также строки вокруг каждого совпадения или с тем же id запроса."),
             ("Логи бок о бок во времени", "Объединяйте несколько логов по времени в один цветной вид или выравнивайте открытые логи и прокручивайте их вместе по времени с настраиваемым сдвигом часов. Слежение переживает ротацию логов."),
             ("JSON и XML", "Панель структуры, JSON-путь курсора в строке состояния, сворачивание, JSON Lines в виде таблицы с запросами, строгая проверка с указанием места ошибки, преобразование между JSON, JSON Lines и logfmt и структурное сравнение."),
@@ -254,7 +257,10 @@ T = {
             ("Архивы и большие правки", "Файлы внутри архивов zip и tar, файлы .xz и .bz2, видимые ещё во время распаковки, сохранение сразу в .gz или .zst, несколько курсоров, редактор столбцов, сортировка, удаление повторов и любая команда над файлом любого размера."),
             ("Поиск в файлах и скрипты", "Поиск по всей папке с результатами file:line и bigtext-cli для count, head, tail, slice, replace, работы с CSV и вывода JSON в скриптах. Сеансы, портативный режим, а повторный запуск открывает файл в уже запущенном окне."),
             ("Удобно каждому", "Высококонтрастные темы и темы для людей с нарушением цветового зрения, масштаб интерфейса, поддержка экранного диктора, режим дзен, перенос по столбцу с линейкой, кликабельная строка состояния и настройки, запоминаемые для каждого файла."),
-            ("Код в цвете", "Подсветка Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP и shell-скриптов: ключевые слова, строки, комментарии, типы и вызовы функций, а комментарии и строки отслеживаются через несколько строк; цвета One Dark и направляющие отступов вместо точек на месте пробелов, как в редакторе кода. Раскрашиваются только строки на экране, поэтому огромный файл открывается и прокручивается так же быстро."),
+            ("Код в цвете", "Подсветка Python, JavaScript, TypeScript, Java, Kotlin, Swift, Dart, C#, C/C++, Go, Rust, PHP, Ruby, Lua, PowerShell и shell-скриптов, а также CSS, Markdown, YAML, Dockerfile и Makefile: ключевые слова, строки, комментарии, типы и вызовы функций, а комментарии и строки отслеживаются через несколько строк; цвета One Dark, Monokai, GitHub или Solarized и направляющие отступов вместо точек на месте пробелов, как в редакторе кода. Раскрашиваются только строки на экране, поэтому огромный файл открывается и прокручивается так же быстро."),
+            ("Боковая панель папки", "«Открыть папку» показывает папку деревом слева, как в Sublime Text: папки читаются только при раскрытии, имена можно отфильтровать, а правый щелчок создаёт и переименовывает файлы или перемещает их в корзину."),
+            ("Инструменты для кода", "Ctrl+P находит файл в открытой папке по нескольким буквам имени, Ctrl+R показывает функции и классы файла, Ctrl+/ закомментирует и раскомментирует строки, а скобки и кавычки закрываются сами."),
+            ("Логи на серверах", "Открывайте user@server:/var/log/app.log по SSH с вашими ключами или следите за его последними мегабайтами, как tail -F. Файлы по https:// и публичные s3:// скачиваются с индикатором хода."),
         ],
         "gallery_h2": "Скриншоты",
         "gallery": {
@@ -391,7 +397,7 @@ T = {
             ("Siqilgan loglar va konveyer", ".gz va .zst fayllarni to'g'ridan-to'g'ri oching, buyruq chiqishini BigText ga uzating (journalctl -f | bigtext -) yoki buyruq qatoridan app.log:120 ni kerakli satrda oching."),
             ("CSV jadvallar", "CSV va TSV fayllar matn kabi tez aylanadigan jadval bo'lib ochiladi. Ustun bo'yicha saralash, ustun statistikasi, ustun bo'yicha filtr, ustunlarni qayta nomlash, surish, eksport qilish va o'chirish."),
             ("Matn vositalari", "Satrlarni saralash, takrorlarini olib tashlash va teskari tartiblash, harf registrini o'zgartirish, bo'shliqlarni tozalash, JSON ni formatlash va ixchamlash, Alt+sudrash bilan ustunli belgilab ko'p satrni birdaniga tahrirlash."),
-            ("O'zingizga qulay", "Buyruqlar palitrasi (Ctrl+Shift+P), o'zgartiriladigan tezkor tugmalar, istalgan bir xil kenglikdagi shrift va ingliz, rus yoki o'zbek tilidagi interfeys."),
+            ("O'zingizga qulay", "Buyruqlar palitrasi (Ctrl+Shift+P), o'zgartiriladigan tezkor tugmalar, istalgan bir xil kenglikdagi shrift va ingliz, rus, o'zbek, xitoy, ispan, portugal, nemis yoki turk tilidagi interfeys."),
             ("Loglarni tahlil qilish", "ERROR, WARN, INFO va DEBUG filtrli darajalar paneli va F8 bilan keyingi xatoga o'tish, vaqt gistogrammasi, log maydonlari, xabar shablonlari, eng ko'p uchraydigan qiymatlar, vaqtdagi uzilishlar, har bir moslik atrofidagi yoki bir xil so'rov id'li satrlar."),
             ("Loglar vaqt bo'yicha yonma-yon", "Bir nechta logni vaqt bo'yicha bitta rangli ko'rinishga birlashtiring yoki ochiq loglarni vaqt bo'yicha tekislab, soatlar farqini sozlagan holda birga aylantiring. Kuzatish rejimi log rotatsiyasidan keyin ham davom etadi."),
             ("JSON va XML", "Tuzilma paneli, holat qatorida kursordagi JSON yo'li, yig'ish, so'rovlar bilan jadval ko'rinishidagi JSON Lines, xato joyini ko'rsatadigan qat'iy tekshiruv, JSON, JSON Lines va logfmt orasida konvertatsiya hamda tuzilmaviy taqqoslash."),
@@ -400,7 +406,10 @@ T = {
             ("Arxivlar va katta tahrirlar", "zip va tar arxivlari ichidagi fayllar, ochilayotgan paytdayoq ko'rinadigan .xz va .bz2 fayllar, to'g'ridan-to'g'ri .gz yoki .zst'ga saqlash, bir nechta kursor, ustun muharriri, istalgan hajmdagi faylda saralash, takrorlarni olib tashlash yoki istalgan buyruqni bajarish."),
             ("Fayllar ichida qidiruv va skriptlar", "Butun papka bo'ylab file:line natijali qidiruv va skriptlar uchun bigtext-cli: count, head, tail, slice, replace, CSV vositalari va JSON chiqishi. Seanslar, portativ rejim, ikkinchi ishga tushirish esa faylni ochiq oynada ochadi."),
             ("Hamma uchun qulay", "Yuqori kontrastli va ranglarni ajratishda qiynaladiganlar uchun mavzular, interfeys masshtabi, ekran o'quvchi qo'llab-quvvatlashi, zen rejimi, belgilangan ustunda o'rash va chizg'ich, bosiladigan holat qatori va har bir fayl uchun eslab qolinadigan sozlamalar."),
-            ("Rangli kod", "Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP va shell skriptlari rangli ko'rinadi: kalit so'zlar, matnlar, izohlar, turlar va funksiya chaqiruvlari; bir necha satrga cho'zilgan izoh va matnlar ham to'g'ri bo'yaladi; kod muharriridagidek One Dark ranglari, bo'shliqlar o'rnida nuqtalar emas, indent chiziqlari. Faqat ekrandagi satrlar bo'yaladi, shuning uchun ulkan fayl ham avvalgidek tez ochiladi va aylantiriladi."),
+            ("Rangli kod", "Python, JavaScript, TypeScript, Java, Kotlin, Swift, Dart, C#, C/C++, Go, Rust, PHP, Ruby, Lua, PowerShell va shell skriptlari, shuningdek CSS, Markdown, YAML, Dockerfile va Makefile rangli ko'rinadi: kalit so'zlar, matnlar, izohlar, turlar va funksiya chaqiruvlari; bir necha satrga cho'zilgan izoh va matnlar ham to'g'ri bo'yaladi; kod muharriridagidek One Dark, Monokai, GitHub yoki Solarized ranglari, bo'shliqlar o'rnida nuqtalar emas, indent chiziqlari. Faqat ekrandagi satrlar bo'yaladi, shuning uchun ulkan fayl ham avvalgidek tez ochiladi va aylantiriladi."),
+            ("Papka paneli", "«Papkani ochish» papkani Sublime Text'dagidek chap tomonda daraxt ko'rinishida ko'rsatadi: papkalar faqat ochilganda o'qiladi, nomlarni filtrlash mumkin, o'ng tugma bilan esa fayl yaratish, nomini o'zgartirish yoki savatchaga o'tkazish mumkin."),
+            ("Kod uchun vositalar", "Ctrl+P ochiq papkadagi faylni nomining bir necha harfi bo'yicha topadi, Ctrl+R fayldagi funksiya va klasslarni ko'rsatadi, Ctrl+/ satrlarni izohga oladi va izohdan chiqaradi, qavs va qo'shtirnoqlar esa o'zi yopiladi."),
+            ("Serverdagi loglar", "user@server:/var/log/app.log faylini kalitlaringiz bilan SSH orqali oching yoki uning oxirgi megabaytlarini tail -F kabi kuzatib boring. https:// va ochiq s3:// fayllar yuklanish jarayoni ko'rsatilgan holda yuklab olinadi."),
         ],
         "gallery_h2": "Skrinshotlar",
         "gallery": {
