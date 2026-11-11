@@ -39,5 +39,6 @@ jobs:
         run: |
           $env:SCOOP_HOME = scoop prefix scoop
           $version = (Get-Content bucket\bigtext.json -Raw | ConvertFrom-Json).version
-          .\bin\checkver.ps1 -App bigtext -Dir bucket -Version $version -ForceUpdate
+          # The template's bin\checkver.ps1 passes -Dir itself.
+          .\bin\checkver.ps1 -App bigtext -Version $version -ForceUpdate
           git diff --exit-code -- bucket/bigtext.json
