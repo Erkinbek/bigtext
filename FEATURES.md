@@ -262,6 +262,13 @@ keyboard shortcuts.
   folder and its sub-folders, listed as `file:line`; click to open the file there.
 - **Saved searches** (★ in the search bar): a pattern with its options, `!` and column under a
   name, applied as a filter with one click.
+- **Brackets and quotes pair themselves in code** (and JSON): `(`, `[`, `{`, `"`, `'` and, where
+  they are strings, backticks get their partner after the caret when nothing but space or a
+  closing character follows; a selection is wrapped instead; typing the closing one over its
+  partner steps over it; Backspace between an empty pair removes both; Enter between `{}`,
+  `[]` or `()` puts the closing one on its own line below an indented empty one, and after an
+  opening bracket or a Python `:` the new line is indented one step more. A quote does not pair
+  after a letter (`don't`), and a Rust `'` never does (lifetimes).
 - **Toggle comment** (Edit → Toggle comment, Ctrl+/): the selected lines, or the caret's, get
   the language's line comment (`//`, `#`, `--`) at their common indentation, or lose it when
   they all have it; blank lines are left alone. XML and HTML get `<!-- … -->` around the lines.

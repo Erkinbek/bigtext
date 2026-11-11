@@ -1224,10 +1224,16 @@ fn handle_keys(ui: &mut Ui, doc: &mut Document, wrap: Option<usize>, env: &mut V
         }
         match ev {
             Event::Text(t) => {
-                if doc.editable() && !t.chars().all(|c| c.is_control()) {
+                if doc.editable() && !t.chars().all(|c| c.is_control()) && !super::pairs::typed(doc, &t, env.lang) {
                     doc.insert_text(&t);
                 }
             }
+            // Brackets and quotes in code: an empty pair goes at once, Enter opens a block.
+            Event::Key { key: Key::Backspace, pressed: true, modifiers, .. } if modifiers.is_none() && super::pairs::backspace(doc, env.lang) => {}
+            Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if modifiers.is_none() && {
+                let unit = " ".repeat(doc.view.indent_unit.map_or(4, |u| u.1 as usize));
+                super::pairs::enter(doc, env.lang, &unit)
+            } => {}
             Event::Ime(egui::ImeEvent::Commit(t)) => {
                 if doc.editable() && !t.is_empty() {
                     doc.insert_text(&t);

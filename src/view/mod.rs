@@ -8,5 +8,6 @@ pub mod highlight;
 pub mod hl_rows;
 pub mod indent;
 pub mod multi;
+pub mod pairs;
 pub mod table_view;
 pub mod text_view;

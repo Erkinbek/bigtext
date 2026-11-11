@@ -251,6 +251,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("tool"), TOOL_PY)?;
     std::fs::write(dir.join("deploy.sh"), DEPLOY_SH)?;
     std::fs::write(dir.join("settings.py"), SETTINGS_PY)?;
+    std::fs::write(dir.join("pairs.py"), "def f():\n")?;
     std::fs::write(dir.join("app.log"),"2026-10-24 10:00:00.000 [ERROR] failed\n2026-10-24 10:00:01.000 [INFO] ok\n")?;
     let base: String = (0..2000).map(|i| format!("row {i}\n")).collect();
     std::fs::write(dir.join("diff-a.txt"), &base)?;
@@ -1213,6 +1214,34 @@ impl SelfTest {
             check(ok, format!("row {row} line {line} guides {guides} toggled {toggled:?}"))
         }));
         s("screenshot: code", shot_step("selftest-code.png"));
+        s("brackets and quotes pair themselves in code; Enter after `:` or between `{}` indents", Box::new(|app, c| {
+            let want = "def f():\n    print(\"hi\"){\n        \n    }\n";
+            match c.mark {
+                0 => {
+                    if c.first() {
+                        app.open_path(c.file("pairs.py"));
+                    }
+                    if !wait_ready(app) {
+                        return Step::Wait;
+                    }
+                    doc(app).set_caret(8, false);
+                    // `"` and `)` step over their partners; Backspace takes `[]` at once.
+                    c.key(Key::Enter, NONE);
+                    c.typed("print(\"hi\")[");
+                    c.key(Key::Backspace, NONE);
+                    c.typed("{");
+                    c.key(Key::Enter, NONE);
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 if text(app) == want && doc(app).view.caret == want.find("{\n").unwrap() as u64 + 10 => {
+                    c.mark = 0;
+                    Step::Next
+                }
+                _ if c.waited() > Duration::from_secs(4) => Step::Fail(format!("text {:?} caret {}", text(app), doc(app).view.caret)),
+                _ => Step::Wait,
+            }
+        }));
         s("toggle comment (Ctrl+/): the caret's line gets `# ` and loses it again, the caret moving with the text", Box::new(|app, c| {
             let at = SETTINGS_PY.find("import os").unwrap() as u64 + 3;
             match c.mark {
