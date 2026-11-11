@@ -167,7 +167,10 @@ keyboard shortcuts.
   JetBrains Mono, DejaVu Sans Mono, Menlo, …) or any `.ttf`/`.otf`/`.ttc` file, with a preview
   and a warning for fonts that are not monospaced; the built-in font stays as the fallback
   for missing characters. Kept across sessions.
-- **Interface languages**: English, Russian and Uzbek (View → Language), kept across sessions.
+- **Interface languages**: English, Russian, Uzbek, Simplified Chinese, Spanish, Brazilian
+  Portuguese, German and Turkish (View → Language), kept across sessions; a first start speaks
+  the system's language when it is one of them. In Chinese a system font with its characters
+  (Microsoft YaHei, PingFang, Noto Sans CJK…) is added behind the built-in fonts.
   A unit test checks that every interface text has both translations with the same
   placeholders. Error details that come from the operating system stay in English.
 - **Command palette** (Ctrl+Shift+P): type a few letters of any command (menus, views, text

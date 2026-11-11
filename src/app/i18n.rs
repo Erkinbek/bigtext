@@ -10,10 +10,17 @@ pub enum Lang {
     En,
     Ru,
     Uz,
+    /// Simplified Chinese.
+    Zh,
+    Es,
+    /// Brazilian Portuguese.
+    Pt,
+    De,
+    Tr,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 3] = [Lang::En, Lang::Ru, Lang::Uz];
+    pub const ALL: [Lang; 8] = [Lang::En, Lang::Ru, Lang::Uz, Lang::Zh, Lang::Es, Lang::Pt, Lang::De, Lang::Tr];
 
     /// Native name, shown in the language menu.
     pub fn name(self) -> &'static str {
@@ -21,6 +28,11 @@ impl Lang {
             Lang::En => "English",
             Lang::Ru => "Русский",
             Lang::Uz => "O'zbekcha",
+            Lang::Zh => "简体中文",
+            Lang::Es => "Español",
+            Lang::Pt => "Português",
+            Lang::De => "Deutsch",
+            Lang::Tr => "Türkçe",
         }
     }
 
@@ -29,6 +41,11 @@ impl Lang {
             Lang::En => "en",
             Lang::Ru => "ru",
             Lang::Uz => "uz",
+            Lang::Zh => "zh",
+            Lang::Es => "es",
+            Lang::Pt => "pt",
+            Lang::De => "de",
+            Lang::Tr => "tr",
         }
     }
 
@@ -44,22 +61,47 @@ pub fn set_lang(l: Lang) {
 }
 
 pub fn lang() -> Lang {
-    match LANG.load(Ordering::Relaxed) {
-        1 => Lang::Ru,
-        2 => Lang::Uz,
-        _ => Lang::En,
-    }
+    Lang::ALL.get(LANG.load(Ordering::Relaxed) as usize).copied().unwrap_or(Lang::En)
 }
 
-fn table(l: Lang) -> Option<&'static HashMap<&'static str, &'static str>> {
-    static RU: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
-    static UZ: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
-    let build = |col: usize| TEXTS.iter().map(|t| (t[0], t[col])).filter(|(_, v)| !v.is_empty()).collect();
-    match l {
-        Lang::En => None,
-        Lang::Ru => Some(RU.get_or_init(|| build(1))),
-        Lang::Uz => Some(UZ.get_or_init(|| build(2))),
-    }
+/// The language the system is set to, when BigText speaks it (for a first start).
+pub fn system_lang() -> Option<Lang> {
+    let tag = os_locale()?;
+    let primary = tag.split(['-', '_', '.', '@']).next()?.to_ascii_lowercase();
+    Lang::from_code(&primary)
+}
+
+#[cfg(windows)]
+fn os_locale() -> Option<String> {
+    use windows_sys::Win32::Globalization::GetUserDefaultLocaleName;
+    let mut buf = [0u16; 85];
+    // SAFETY: the buffer is as long as the length passed.
+    let n = unsafe { GetUserDefaultLocaleName(buf.as_mut_ptr(), buf.len() as i32) };
+    (n > 1).then(|| String::from_utf16_lossy(&buf[..n as usize - 1]))
+}
+
+#[cfg(not(windows))]
+fn os_locale() -> Option<String> {
+    ["LC_ALL", "LC_MESSAGES", "LANG"].iter().find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty() && v != "C" && v != "POSIX"))
+}
+
+type Table = HashMap<&'static str, &'static str>;
+
+fn table(l: Lang) -> Option<&'static Table> {
+    static TABLES: [OnceLock<Table>; 8] = [const { OnceLock::new() }; 8];
+    let column = |col: usize| -> Table { TEXTS.iter().map(|t| (t[0], t[col])).filter(|(_, v)| !v.is_empty()).collect() };
+    let pairs = |p: &'static [(&'static str, &'static str)]| -> Table { p.iter().copied().filter(|(_, v)| !v.is_empty()).collect() };
+    let cell = &TABLES[l as usize];
+    Some(match l {
+        Lang::En => return None,
+        Lang::Ru => cell.get_or_init(|| column(1)),
+        Lang::Uz => cell.get_or_init(|| column(2)),
+        Lang::Zh => cell.get_or_init(|| pairs(super::i18n_zh::ZH)),
+        Lang::Es => cell.get_or_init(|| pairs(super::i18n_es::ES)),
+        Lang::Pt => cell.get_or_init(|| pairs(super::i18n_pt::PT)),
+        Lang::De => cell.get_or_init(|| pairs(super::i18n_de::DE)),
+        Lang::Tr => cell.get_or_init(|| pairs(super::i18n_tr::TR)),
+    })
 }
 
 /// The interface text `s` in the current language.
@@ -88,6 +130,8 @@ impl super::BigTextApp {
             for l in Lang::ALL {
                 if ui.radio(lang() == l, l.name()).clicked() {
                     set_lang(l);
+                    // Chinese needs a font with its characters.
+                    let _ = super::fonts::apply_font(ui.ctx(), self.settings.font_path.as_deref());
                     self.persist_state();
                     ui.close();
                 }
@@ -374,6 +418,28 @@ mod tests {
                 assert!(!x.trim().is_empty(), "{:?}: empty translation {i}", t[0]);
                 assert_eq!(placeholders(x), placeholders(t[0]), "{:?} → {x:?}", t[0]);
             }
+        }
+    }
+
+    #[test]
+    fn every_language_has_every_text() {
+        let tables: [(&str, &[(&str, &str)]); 5] =
+            [("zh", crate::app::i18n_zh::ZH), ("es", crate::app::i18n_es::ES), ("pt", crate::app::i18n_pt::PT), ("de", crate::app::i18n_de::DE), ("tr", crate::app::i18n_tr::TR)];
+        let english: std::collections::HashSet<&str> = TEXTS.iter().map(|t| t[0]).collect();
+        for (code, table) in tables {
+            let map: HashMap<&str, &str> = table.iter().copied().collect();
+            assert_eq!(map.len(), table.len(), "{code}: a text is there twice");
+            let mut missing: Vec<&&str> = english.iter().filter(|k| !map.contains_key(*k)).collect();
+            missing.sort();
+            assert!(missing.is_empty(), "{code}: texts without a translation: {missing:#?}");
+            for (k, v) in table {
+                assert!(english.contains(k), "{code}: {k:?} is not an English text");
+                assert!(!v.trim().is_empty(), "{code}: {k:?} has an empty translation");
+                assert_eq!(placeholders(v), placeholders(k), "{code}: {k:?} → {v:?}");
+            }
+        }
+        for l in Lang::ALL {
+            assert_eq!(Lang::from_code(l.code()), Some(l));
         }
     }
 

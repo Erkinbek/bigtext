@@ -109,8 +109,39 @@ pub fn check_font(bytes: &[u8]) -> Result<bool, String> {
     Ok(metrics.advance_width(i) == metrics.advance_width(m))
 }
 
-/// Installs the font at `path` as the first monospace font (none: the built-in one only).
-/// Returns whether it is monospaced.
+/// Fonts with Chinese characters that come with the system, best first.
+const CJK_FONTS: &[&str] = &[
+    "msyh.ttc",
+    "msyh.ttf",
+    "Deng.ttf",
+    "simhei.ttf",
+    "simsun.ttc",
+    "/System/Library/Fonts/PingFang.ttc",
+    "/System/Library/Fonts/STHeiti Light.ttc",
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    "/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc",
+    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+];
+
+/// A system font with Chinese characters (the built-in fonts have none).
+fn cjk_font() -> Option<Vec<u8>> {
+    let win = std::env::var_os("WINDIR").map(|w| PathBuf::from(w).join("Fonts"));
+    CJK_FONTS.iter().find_map(|f| {
+        let p = if f.starts_with('/') { PathBuf::from(f) } else { win.as_ref()?.join(f) };
+        let bytes = std::fs::read(&p).ok()?;
+        // egui stops on a font it cannot read: check it first.
+        skrifa::FontRef::from_index(&bytes, 0).ok()?.charmap().map('中')?;
+        Some(bytes)
+    })
+}
+
+/// Installs the font at `path` as the first monospace font (none: the built-in one only), and
+/// in Chinese a system font with its characters behind the others. Returns whether the font is
+/// monospaced.
 pub fn apply_font(ctx: &egui::Context, path: Option<&Path>) -> Result<bool, String> {
     let mut defs = egui::FontDefinitions::default();
     let mut mono = true;
@@ -119,6 +150,14 @@ pub fn apply_font(ctx: &egui::Context, path: Option<&Path>) -> Result<bool, Stri
         mono = check_font(&bytes)?;
         defs.font_data.insert("user-mono".into(), Arc::new(egui::FontData::from_owned(bytes)));
         defs.families.entry(egui::FontFamily::Monospace).or_default().insert(0, "user-mono".into());
+    }
+    if super::i18n::lang() == super::i18n::Lang::Zh {
+        if let Some(bytes) = cjk_font() {
+            defs.font_data.insert("cjk".into(), Arc::new(egui::FontData::from_owned(bytes)));
+            for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+                defs.families.entry(family).or_default().push("cjk".into());
+            }
+        }
     }
     ctx.set_fonts(defs);
     Ok(mono)

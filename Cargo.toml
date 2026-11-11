@@ -64,7 +64,7 @@ skrifa = "0.44"
 
 [target.'cfg(windows)'.dependencies]
 # Moving files to the Recycle Bin (SHFileOperationW).
-windows-sys = { version = "0.59", features = ["Win32_UI_Shell", "Win32_Foundation"] }
+windows-sys = { version = "0.59", features = ["Win32_UI_Shell", "Win32_Foundation", "Win32_Globalization"] }
 
 [target.'cfg(unix)'.dependencies]
 # Free disk space (statvfs).

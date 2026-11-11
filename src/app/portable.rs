@@ -129,6 +129,9 @@ impl BigTextApp {
             if super::fonts::apply_font(ctx, Some(&f)).is_ok() {
                 self.settings.font_path = Some(f);
             }
+        } else if let (Some(ctx), Some(i18n::Lang::Zh)) = (ctx, p.lang.as_deref().and_then(i18n::Lang::from_code)) {
+            // Chinese needs a font with its characters.
+            let _ = super::fonts::apply_font(ctx, self.settings.font_path.as_deref());
         }
         self.persist_state();
         Ok(())

@@ -27,7 +27,12 @@ pub mod gaps_panel;
 pub mod fonts;
 pub mod goto;
 pub mod i18n;
+mod i18n_de;
+mod i18n_es;
+mod i18n_pt;
 mod i18n_texts;
+mod i18n_tr;
+mod i18n_zh;
 pub mod join_tables;
 pub mod json_crumb;
 pub mod json_diff_panel;
@@ -709,8 +714,12 @@ impl BigTextApp {
                     app.settings.font_path = Some(p);
                 }
             }
-            if let Some(l) = state.lang.as_deref().and_then(i18n::Lang::from_code) {
+            // A first start speaks the system's language when BigText knows it.
+            if let Some(l) = state.lang.as_deref().and_then(i18n::Lang::from_code).or_else(|| state.lang.is_none().then(i18n::system_lang).flatten()) {
                 i18n::set_lang(l);
+                if l == i18n::Lang::Zh {
+                    let _ = fonts::apply_font(&cc.egui_ctx, app.settings.font_path.as_deref());
+                }
             }
             for (id, k) in std::mem::take(&mut state.keys) {
                 if let (Some(c), Some(k)) = (commands::Cmd::from_id(&id), commands::key_from_string(&k)) {

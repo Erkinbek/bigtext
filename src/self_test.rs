@@ -1256,6 +1256,26 @@ impl SelfTest {
             check(bg == egui::Color32::from_rgb(0x27, 0x28, 0x22) && saved == Some(CodeTheme::Monokai), format!("bg {bg:?}, saved {saved:?}"))
         }));
         s("screenshot: code in Monokai", shot_step("selftest-code-monokai.png"));
+        s("interface in Chinese: menus translated, a system font with Chinese characters behind the built-in ones", Box::new(|app, c| {
+            use crate::app::i18n::{self, Lang};
+            let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+            if c.first() {
+                i18n::set_lang(Lang::Zh);
+                let _ = crate::app::fonts::apply_font(&ctx, None);
+                return Step::Wait;
+            }
+            let file = i18n::tr("File");
+            let ok = file != "File" && file.chars().any(|ch| ch as u32 > 0x4e00);
+            check(ok, format!("File → {file}"))
+        }));
+        s("screenshot: Chinese interface", shot_step("selftest-zh.png"));
+        s("interface back in English", Box::new(|app, _c| {
+            use crate::app::i18n::{self, Lang};
+            let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+            i18n::set_lang(Lang::En);
+            let _ = crate::app::fonts::apply_font(&ctx, None);
+            check(i18n::tr("File") == "File", "English")
+        }));
         s("code colours back to the theme's", Box::new(|app, _c| {
             use crate::app::commands::Cmd;
             let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
