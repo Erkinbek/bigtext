@@ -7,7 +7,8 @@ This page explains how BigText is built, how it works inside, and how it is test
 
 The workspace builds four binaries: `bigtext` (the editor), `bigtext-cli` (the script
 commands), `bigtext-bench` (core benchmarks) and `gen-testfiles` (test corpus generator).
-`packaging/` has the Linux `.deb` / AppImage and macOS `.app` scripts and Homebrew templates.
+`packaging/` has the Linux `.deb` / AppImage and macOS `.app` scripts, the AUR package, and the
+Scoop bucket and Homebrew tap (see [packaging/README.md](packaging/README.md)).
 
 ### Windows (MSVC)
 
@@ -150,3 +151,9 @@ python scripts/build-site.py
      under the repository owner, and it only updates a package that is already in winget: the
      first version is submitted by hand from the manifests in `packaging/winget/`, which pass
      `winget validate`. Until that submission is merged the job skips itself.
+   - **AUR** (the `aur` workflow, after the build) builds and checks the package `bigtext-bin`
+     and pushes it to the AUR once `AUR_PUBLISH` and `AUR_SSH_PRIVATE_KEY` are set
+     ([packaging/README.md → AUR](packaging/README.md#aur)).
+   - **Scoop and Homebrew** need nothing from the release: the bucket and the tap repositories
+     (once they exist, see [packaging/README.md](packaging/README.md#scoop-and-homebrew)) pick
+     up the new version by themselves within a few hours.

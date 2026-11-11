@@ -1,0 +1,43 @@
+name: Install test
+
+# Installs BigText from this bucket with a fresh Scoop, runs it, and checks that autoupdate
+# computes the same URL and hash for the current version.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Scoop
+        run: |
+          Invoke-RestMethod -Uri https://get.scoop.sh -OutFile install.ps1
+          .\install.ps1 -RunAsAdmin
+          Join-Path $HOME 'scoop\shims' | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      - name: Install BigText from this bucket
+        run: |
+          scoop bucket add bigtext $env:GITHUB_WORKSPACE
+          scoop install bigtext/bigtext
+          if ($LASTEXITCODE) { throw "scoop install failed" }
+          Set-Content -NoNewline -Path app.log -Value "2024-05-01 10:00:00 INFO a`n2024-05-01 10:00:01 ERROR b`n"
+          $n = (bigtext-cli count ERROR app.log | Out-String).Trim()
+          if ($n -ne '1') { throw "bigtext-cli count printed '$n'" }
+
+      - name: Autoupdate gives the same manifest for the current version
+        run: |
+          $env:SCOOP_HOME = scoop prefix scoop
+          $version = (Get-Content bucket\bigtext.json -Raw | ConvertFrom-Json).version
+          .\bin\checkver.ps1 -App bigtext -Dir bucket -Version $version -ForceUpdate
+          git diff --exit-code -- bucket/bigtext.json

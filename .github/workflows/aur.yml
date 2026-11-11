@@ -1,0 +1,85 @@
+name: aur
+
+# Builds the AUR package bigtext-bin (packaging/aur/PKGBUILD) from a release, installs it and
+# checks it, then pushes it to the AUR once publishing is set up: the repository variable
+# AUR_PUBLISH is "true" and the secret AUR_SSH_PRIVATE_KEY holds the private half of an SSH key
+# added to the AUR account (packaging/README.md → AUR). Runs after a successful build of a v* tag,
+# or by hand from the Actions tab for any release.
+on:
+  workflow_run:
+    workflows: [build]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v0.7.0 (empty: the latest release)"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  aur:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git openssh pacman-contrib jq
+
+      - uses: actions/checkout@v7
+
+      - name: Prepare the PKGBUILD
+        env:
+          TAG: ${{ github.event.inputs.tag || github.event.workflow_run.head_branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TAG" ]; then
+            TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | jq -r .tag_name)
+          fi
+          version="${TAG#v}"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          useradd -m builder
+          install -d -o builder /tmp/pkg
+          cp packaging/aur/PKGBUILD /tmp/pkg/
+          sed -i -e "s/^pkgver=.*/pkgver=$version/" -e "s/^pkgrel=.*/pkgrel=1/" /tmp/pkg/PKGBUILD
+          chown builder /tmp/pkg/PKGBUILD
+          su builder -c "cd /tmp/pkg && updpkgsums && makepkg --printsrcinfo > .SRCINFO"
+          # The downloaded tarball must be the one the release's SHA256SUMS.txt lists.
+          want=$(curl -fsSL "https://github.com/$REPO/releases/download/$TAG/SHA256SUMS.txt" | awk '$2 == "bigtext-linux-x64.tar.gz" { print $1 }')
+          grep -q "sha256sums = $want" /tmp/pkg/.SRCINFO
+          cat /tmp/pkg/PKGBUILD /tmp/pkg/.SRCINFO
+
+      - name: Build, install and check
+        run: |
+          set -euo pipefail
+          su builder -c "cd /tmp/pkg && makepkg --noconfirm"
+          pacman -U --noconfirm /tmp/pkg/bigtext-bin-*.pkg.tar.zst
+          pacman -Ql bigtext-bin
+          printf '2024-05-01 10:00:00 INFO a\n2024-05-01 10:00:01 ERROR b\n' > /tmp/app.log
+          test "$(bigtext-cli count ERROR /tmp/app.log)" = 1
+
+      - name: Push to the AUR
+        if: vars.AUR_PUBLISH == 'true'
+        env:
+          AUR_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          install -dm700 ~/.ssh
+          printf '%s\n' "$AUR_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/aur -o IdentitiesOnly=yes"
+          git clone ssh://aur@aur.archlinux.org/bigtext-bin.git /tmp/aur
+          cp /tmp/pkg/PKGBUILD /tmp/pkg/.SRCINFO /tmp/aur/
+          cd /tmp/aur
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "The AUR already has $VERSION."
+            exit 0
+          fi
+          git -c user.name="Erkin Pardayev" -c user.email="erkin.pardayev@gmail.com" commit -m "Update to $VERSION"
+          git push origin HEAD:master

@@ -1,0 +1,60 @@
+name: test
+
+# Installs the formula and the cask from this checkout and runs them.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Tap this checkout
+        run: brew tap erkinbek/tap "$GITHUB_WORKSPACE"
+
+      - name: Formula
+        run: |
+          brew install erkinbek/tap/bigtext
+          brew test erkinbek/tap/bigtext
+          brew uninstall erkinbek/tap/bigtext
+
+      - name: Cask
+        run: |
+          brew install --cask erkinbek/tap/bigtext
+          ls /Applications/BigText.app/Contents/MacOS
+          printf '2024-05-01 10:00:00 INFO a\n2024-05-01 10:00:01 ERROR b\n' > "$RUNNER_TEMP/app.log"
+          test "$(bigtext-cli count ERROR "$RUNNER_TEMP/app.log")" = 1
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Formula
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          brew tap erkinbek/tap "$GITHUB_WORKSPACE"
+          brew install erkinbek/tap/bigtext
+          brew test erkinbek/tap/bigtext
+
+  update-script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: The update script keeps the files as they are for the current release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^  version "\(.*\)"/\1/p' Formula/bigtext.rb)
+          gh release download "v$version" --repo Erkinbek/bigtext --pattern SHA256SUMS.txt --dir "$RUNNER_TEMP"
+          python3 .github/update.py "$version" "$RUNNER_TEMP/SHA256SUMS.txt" Formula/bigtext.rb Casks/bigtext.rb
+          git diff --exit-code

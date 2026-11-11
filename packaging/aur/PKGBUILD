@@ -1,0 +1,31 @@
+# Maintainer: Erkin Pardayev <erkin dot pardayev at gmail dot com>
+#
+# The AUR package bigtext-bin: the release's Linux binaries. .github/workflows/aur.yml sets
+# pkgver and the checksums for each release, builds and checks the package, and pushes it to the
+# AUR once publishing is set up (packaging/README.md → AUR).
+
+pkgname=bigtext-bin
+pkgver=0.7.0
+pkgrel=1
+pkgdesc='Fast text editor for huge files (1-50+ GB) that never freezes'
+arch=('x86_64')
+url='https://github.com/Erkinbek/bigtext'
+license=('MIT')
+# The binary links only glibc and libgcc; the window system libraries are loaded at run time.
+depends=('gcc-libs' 'glibc' 'libglvnd' 'libx11' 'libxcursor' 'libxi' 'libxkbcommon'
+         'libxkbcommon-x11' 'wayland' 'hicolor-icon-theme')
+provides=('bigtext')
+conflicts=('bigtext')
+source=("bigtext-linux-x64-$pkgver.tar.gz::$url/releases/download/v$pkgver/bigtext-linux-x64.tar.gz"
+        "LICENSE-$pkgver::https://raw.githubusercontent.com/Erkinbek/bigtext/v$pkgver/LICENSE")
+sha256sums=('5c24fc2a2cd7923cff854e5eb24bc1f823206b42cc2b43b42ef279a0fabadbd4'
+            '1abe148c0be194a1fcdb711bc2668141a2db0fa6a03974698ff27905448966bf')
+
+package() {
+  cd bigtext-linux-x64
+  install -Dm755 bigtext bigtext-cli -t "$pkgdir/usr/bin/"
+  install -Dm644 bigtext.desktop -t "$pkgdir/usr/share/applications/"
+  install -Dm644 icon-256.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/bigtext.png"
+  install -Dm644 README.md FEATURES.md USAGE.md -t "$pkgdir/usr/share/doc/$pkgname/"
+  install -Dm644 "$srcdir/LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

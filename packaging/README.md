@@ -16,15 +16,35 @@ window's app id is `bigtext`, so desktops match it to this entry.
 `winget/` holds the winget manifests; the release workflow's winget job submits new versions
 once the package is in `microsoft/winget-pkgs`.
 
-## Homebrew
+## Scoop and Homebrew
 
-`homebrew/bigtext-cask.rb` (the macOS app) and `homebrew/bigtext-formula.rb` (built from source,
-Linux and macOS) are ready for a tap. To publish one:
+`scoop-bucket/` and `homebrew-tap/` are the contents of the repositories `Erkinbek/scoop-bigtext`
+and `Erkinbek/homebrew-tap`, file for file, at version 0.7.0. Once those repositories exist they
+keep themselves up to date, so the copies here are only where they started:
 
-1. Create the repository `Erkinbek/homebrew-tap` on GitHub.
-2. Copy the cask to `Casks/bigtext.rb` and the formula to `Formula/bigtext.rb`.
-3. For each release, set `version` (and the formula's `url`) and the `sha256` values: the
-   app zips' are in the release's `SHA256SUMS.txt`; the source tarball's is
-   `curl -L https://github.com/Erkinbek/bigtext/archive/refs/tags/vX.Y.Z.tar.gz | shasum -a 256`.
+- **Scoop**: the repository is made from the template `ScoopInstaller/BucketTemplate`, with
+  `bucket/bigtext.json`, `README.md` and `.github/workflows/install-test.yml` from here (and the
+  template's `bucket/app-name.json.template` removed). The template's Excavator workflow checks
+  for a new release every four hours and updates the manifest from the release's
+  `SHA256SUMS.txt`; the install test installs BigText with a fresh Scoop and runs it.
+  `scoop bucket add bigtext https://github.com/Erkinbek/scoop-bigtext`, then
+  `scoop install bigtext/bigtext`.
+- **Homebrew**: `Formula/bigtext.rb` installs the release binaries (macOS arm64 and x64, Linux
+  x64; Homebrew does not quarantine them, so macOS opens them without the unsigned-app warning),
+  `Casks/bigtext.rb` the macOS app. The update workflow brings both to the latest release every
+  six hours (`.github/update.py` takes the checksums from `SHA256SUMS.txt`); the test workflow
+  installs both on macOS and the formula on Linux. `brew install erkinbek/tap/bigtext` or
+  `brew install --cask erkinbek/tap/bigtext`.
 
-Then: `brew install --cask erkinbek/tap/bigtext` (the app) or `brew install erkinbek/tap/bigtext`.
+## AUR
+
+`aur/PKGBUILD` is the package `bigtext-bin` (the Linux release binaries). The workflow
+`.github/workflows/aur.yml` sets its version and checksums after each release (or by hand from
+the Actions tab), builds it in an Arch Linux container, installs and runs it, and pushes it to
+the AUR when the repository variable `AUR_PUBLISH` is `true` and the secret
+`AUR_SSH_PRIVATE_KEY` holds a key added to the AUR account. One-time setup:
+
+1. Make an account on [aur.archlinux.org](https://aur.archlinux.org/register) and add the public
+   half of an SSH key (`ssh-keygen -t ed25519 -f aur -C bigtext-aur`) under *My Account*.
+2. `gh secret set AUR_SSH_PRIVATE_KEY < aur` and `gh variable set AUR_PUBLISH --body true`.
+3. Run the `aur` workflow by hand once: the first push creates the package.
