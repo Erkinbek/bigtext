@@ -173,6 +173,8 @@ pub struct Settings {
     /// View → Show whitespace and line breaks, in text and in code (off: indent guides only).
     pub show_ws: bool,
     pub show_ws_code: bool,
+    /// View → Theme → Code colours.
+    pub code_theme: theme::CodeTheme,
     /// Filter view: lines shown before and after each match, and whole log entries.
     pub filter_context: u32,
     pub filter_entries: bool,
@@ -585,7 +587,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, show_ws_code: false, filter_context: 0, filter_entries: false, id_keys: None, status: Default::default(), zen: false, show_gutter: true, wrap_column: None, ruler: None, json_crumb: true, tools: Vec::new() },
+            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, show_ws_code: false, code_theme: Default::default(), filter_context: 0, filter_entries: false, id_keys: None, status: Default::default(), zen: false, show_gutter: true, wrap_column: None, ruler: None, json_crumb: true, tools: Vec::new() },
             goto: None,
             confirm: None,
             error: None,

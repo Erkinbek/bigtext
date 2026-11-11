@@ -99,13 +99,18 @@ struct Look {
     line_no_active: Color32,
     cur_line: Color32,
     guide: Color32,
+    caret: Color32,
+    /// Code colours on a dark background (the code theme can differ from the interface's).
+    dark: bool,
+    /// Tokens take the code theme's colours.
+    code: bool,
 }
 
 impl Look {
     fn new(v: &egui::Visuals, code: bool) -> Look {
         if code && !crate::app::theme::high_contrast_on() {
             let c = crate::app::theme::code_colors(v.dark_mode);
-            return Look { bg: c.bg, gutter: c.bg, fg: c.fg, line_no: c.line_no, line_no_active: c.line_no_active, cur_line: c.cur_line, guide: c.guide };
+            return Look { bg: c.bg, gutter: c.bg, fg: c.fg, line_no: c.line_no, line_no_active: c.line_no_active, cur_line: c.cur_line, guide: c.guide, caret: c.caret, dark: c.dark, code: true };
         }
         let weak = v.weak_text_color();
         Look {
@@ -116,7 +121,16 @@ impl Look {
             line_no_active: v.text_color(),
             cur_line: if v.dark_mode { Color32::from_white_alpha(8) } else { Color32::from_black_alpha(10) },
             guide: weak.gamma_multiply(0.4),
+            caret: v.text_cursor.stroke.color,
+            dark: v.dark_mode,
+            code: false,
         }
+    }
+
+    /// The colour of a token.
+    fn token(&self, k: super::highlight::Kind) -> Color32 {
+        let plain = crate::app::theme::cvd() || crate::app::theme::high_contrast_on();
+        self.code.then(|| crate::app::theme::code_token(k, self.dark)).flatten().filter(|_| !plain).unwrap_or_else(|| super::highlight::color(k, self.dark))
     }
 }
 
@@ -408,7 +422,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         let st = hl_states.get(i).copied().unwrap_or_default();
         let st = if pre.is_empty() { st } else { super::highlight::scan(env.lang, st, &pre, false) };
         let text = Shown { run: &run, specials: &specials, src: &src, map: &map };
-        build_job(&mut job, &text, env.lang, st, &font, text_color, weak, visuals.dark_mode);
+        build_job(&mut job, &text, env.lang, st, &font, text_color, weak, &look);
         if code {
             // A wrapped row goes on with its line's indentation.
             let indent = if starts_line {
@@ -479,7 +493,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             let x0 = text_rect.left() + lo as f32 * m.cw - doc.view.scroll_x;
             let x1 = text_rect.left() + hi as f32 * m.cw - doc.view.scroll_x;
             let r = Rect::from_min_max(pos2(x0 - if lo == hi { 0.5 } else { 0.0 }, y), pos2(if lo == hi { x0 + 1.5 } else { x1 }, y + m.rh));
-            text_painter.rect_filled(r, 0.0, if lo == hi { visuals.text_cursor.stroke.color } else { sel_color });
+            text_painter.rect_filled(r, 0.0, if lo == hi { look.caret } else { sel_color });
         }
         if sel_s < sel_e && sel_e > row.start && sel_s <= row.end {
             let x0 = x_of(cell_for(sel_s.max(row.start)));
@@ -517,13 +531,13 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         }
         if row_has_caret {
             let x = x_of(cell_for(caret));
-            let color = if focused { visuals.text_cursor.stroke.color } else { weak };
+            let color = if focused { look.caret } else { weak };
             text_painter.rect_filled(Rect::from_min_max(pos2(x - 0.5, y), pos2(x + 1.5, y + m.rh)), 0.0, color);
         }
         for &(_, c) in &extra {
             if c >= row.start && (c < row.end || (c == row.end && (row.is_last_in_seg() || row.end == doc.buf.len()))) {
                 let x = x_of(cell_for(c));
-                let color = if focused { visuals.text_cursor.stroke.color } else { weak };
+                let color = if focused { look.caret } else { weak };
                 text_painter.rect_filled(Rect::from_min_max(pos2(x - 0.5, y), pos2(x + 1.5, y + m.rh)), 0.0, color);
             }
         }
@@ -689,7 +703,7 @@ struct Shown<'a> {
 /// in the file, starting in state `st`), with placeholder glyphs (controls, invalid bytes)
 /// always dimmed.
 #[allow(clippy::too_many_arguments)]
-fn build_job(job: &mut LayoutJob, shown: &Shown, lang: super::highlight::Lang, st: super::highlight::State, font: &FontId, normal: Color32, weak: Color32, dark: bool) {
+fn build_job(job: &mut LayoutJob, shown: &Shown, lang: super::highlight::Lang, st: super::highlight::State, font: &FontId, normal: Color32, weak: Color32, look: &Look) {
     let text = shown.run;
     if text.is_empty() {
         return;
@@ -700,7 +714,7 @@ fn build_job(job: &mut LayoutJob, shown: &Shown, lang: super::highlight::Lang, s
         super::highlight::spans_from(lang, st, shown.src, false, &mut spans);
         let mut src_colors = vec![normal; shown.src.len()];
         for (a, b, k) in spans {
-            let c = super::highlight::color(k, dark);
+            let c = look.token(k);
             for x in &mut src_colors[a.min(shown.src.len())..b.min(shown.src.len())] {
                 *x = c;
             }

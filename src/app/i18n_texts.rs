@@ -1352,4 +1352,14 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["BigText signs in with your SSH keys or agent (and known hosts); password sign-in is not supported.", "BigText входит по вашим SSH-ключам или через агент (и known hosts); вход по паролю не поддерживается.", "BigText SSH kalitlaringiz yoki agent (va known hosts) orqali kiradi; parol bilan kirish qo'llanmaydi."],
     ["ssh was not found. Install the OpenSSH client (on Windows: Settings → System → Optional features).", "ssh не найден. Установите клиент OpenSSH (в Windows: Параметры → Система → Дополнительные компоненты).", "ssh topilmadi. OpenSSH mijozini o'rnating (Windows'da: Sozlamalar → Tizim → Qo'shimcha komponentlar)."],
     ["The server answered with HTTP status {code}.", "Сервер ответил кодом HTTP {code}.", "Server HTTP {code} holati bilan javob berdi."],
+    // Code colours (theme names stay as they are).
+    ["Code colours", "Цвета кода", "Kod ranglari"],
+    ["As the theme (One Dark / One Light)", "Как тема (One Dark / One Light)", "Tema bo'yicha (One Dark / One Light)"],
+    ["One Dark", "One Dark", "One Dark"],
+    ["One Light", "One Light", "One Light"],
+    ["Monokai", "Monokai", "Monokai"],
+    ["GitHub Dark", "GitHub Dark", "GitHub Dark"],
+    ["GitHub Light", "GitHub Light", "GitHub Light"],
+    ["Solarized Dark", "Solarized Dark", "Solarized Dark"],
+    ["Solarized Light", "Solarized Light", "Solarized Light"],
 ];

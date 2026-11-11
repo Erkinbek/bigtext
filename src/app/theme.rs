@@ -228,7 +228,82 @@ pub fn mark_alpha(dark: bool) -> u8 {
     fill_alpha(if dark { 95 } else { 110 })
 }
 
-/// The text area of a code file, like a code editor's (One Dark and One Light).
+/// View → Theme → Code colours: the palette of code files' text areas, apart from the
+/// interface's theme. `Auto` follows it (One Dark on dark themes, One Light on light ones).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum CodeTheme {
+    #[default]
+    Auto,
+    OneDark,
+    OneLight,
+    Monokai,
+    GitHubDark,
+    GitHubLight,
+    SolarizedDark,
+    SolarizedLight,
+}
+
+impl CodeTheme {
+    pub const ALL: [CodeTheme; 8] = [CodeTheme::Auto, CodeTheme::OneDark, CodeTheme::OneLight, CodeTheme::Monokai, CodeTheme::GitHubDark, CodeTheme::GitHubLight, CodeTheme::SolarizedDark, CodeTheme::SolarizedLight];
+
+    /// Stable name in the settings and key bindings.
+    pub fn id(self) -> &'static str {
+        match self {
+            CodeTheme::Auto => "auto",
+            CodeTheme::OneDark => "one-dark",
+            CodeTheme::OneLight => "one-light",
+            CodeTheme::Monokai => "monokai",
+            CodeTheme::GitHubDark => "github-dark",
+            CodeTheme::GitHubLight => "github-light",
+            CodeTheme::SolarizedDark => "solarized-dark",
+            CodeTheme::SolarizedLight => "solarized-light",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<CodeTheme> {
+        CodeTheme::ALL.into_iter().find(|t| t.id() == id)
+    }
+
+    /// The name (translate `Auto`'s with `tr`; the others are names).
+    pub fn label(self) -> &'static str {
+        match self {
+            CodeTheme::Auto => "As the theme (One Dark / One Light)",
+            CodeTheme::OneDark => "One Dark",
+            CodeTheme::OneLight => "One Light",
+            CodeTheme::Monokai => "Monokai",
+            CodeTheme::GitHubDark => "GitHub Dark",
+            CodeTheme::GitHubLight => "GitHub Light",
+            CodeTheme::SolarizedDark => "Solarized Dark",
+            CodeTheme::SolarizedLight => "Solarized Light",
+        }
+    }
+
+    /// `Auto` made concrete for an interface that is `dark` or not.
+    pub fn resolve(self, dark: bool) -> CodeTheme {
+        match self {
+            CodeTheme::Auto if dark => CodeTheme::OneDark,
+            CodeTheme::Auto => CodeTheme::OneLight,
+            t => t,
+        }
+    }
+
+    pub fn is_dark(self) -> bool {
+        matches!(self, CodeTheme::OneDark | CodeTheme::Monokai | CodeTheme::GitHubDark | CodeTheme::SolarizedDark)
+    }
+}
+
+static CODE_THEME: AtomicU8 = AtomicU8::new(0);
+
+pub fn set_code_theme(t: CodeTheme) {
+    let i = CodeTheme::ALL.iter().position(|&x| x == t).unwrap_or(0);
+    CODE_THEME.store(i as u8, Ordering::Relaxed);
+}
+
+pub fn code_theme() -> CodeTheme {
+    CodeTheme::ALL.get(CODE_THEME.load(Ordering::Relaxed) as usize).copied().unwrap_or_default()
+}
+
+/// The text area of a code file, like a code editor's.
 pub struct CodeColors {
     pub bg: Color32,
     /// Text that is not a token with its own colour (names, operators).
@@ -239,15 +314,61 @@ pub struct CodeColors {
     /// Behind the caret's line.
     pub cur_line: Color32,
     pub guide: Color32,
+    pub caret: Color32,
+    /// The palette is a dark one (whatever the interface is).
+    pub dark: bool,
 }
 
+fn hex(v: u32) -> Color32 {
+    Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8)
+}
+
+/// The text area's colours with the chosen code colours, for an interface that is `dark`.
 pub fn code_colors(dark: bool) -> CodeColors {
-    let c = Color32::from_rgb;
-    if dark {
-        CodeColors { bg: c(35, 39, 46), fg: c(171, 178, 191), line_no: c(95, 104, 122), line_no_active: c(200, 205, 215), cur_line: c(44, 49, 60), guide: c(64, 70, 80) }
-    } else {
-        CodeColors { bg: c(250, 250, 250), fg: c(56, 58, 66), line_no: c(157, 157, 159), line_no_active: c(56, 58, 66), cur_line: c(240, 240, 242), guide: c(222, 222, 224) }
-    }
+    let t = code_theme().resolve(dark);
+    // bg, fg, line numbers, the caret's line number, its line, guides, caret
+    let [bg, fg, line_no, active, cur, guide, caret] = match t {
+        CodeTheme::OneDark | CodeTheme::Auto => [0x23272e, 0xabb2bf, 0x5f687a, 0xc8cdd7, 0x2c313c, 0x404650, 0xc8cdd7],
+        CodeTheme::OneLight => [0xfafafa, 0x383a42, 0x9d9d9f, 0x383a42, 0xf0f0f2, 0xdedee0, 0x526fff],
+        CodeTheme::Monokai => [0x272822, 0xf8f8f2, 0x90908a, 0xf8f8f2, 0x3e3d32, 0x464741, 0xf8f8f0],
+        CodeTheme::GitHubDark => [0x0d1117, 0xe6edf3, 0x6e7681, 0xe6edf3, 0x161b22, 0x21262d, 0xe6edf3],
+        CodeTheme::GitHubLight => [0xffffff, 0x1f2328, 0x8c959f, 0x1f2328, 0xf6f8fa, 0xd0d7de, 0x1f2328],
+        CodeTheme::SolarizedDark => [0x002b36, 0x839496, 0x586e75, 0x93a1a1, 0x073642, 0x0e4250, 0x93a1a1],
+        CodeTheme::SolarizedLight => [0xfdf6e3, 0x657b83, 0x93a1a1, 0x586e75, 0xeee8d5, 0xe4ddc8, 0x586e75],
+    };
+    CodeColors { bg: hex(bg), fg: hex(fg), line_no: hex(line_no), line_no_active: hex(active), cur_line: hex(cur), guide: hex(guide), caret: hex(caret), dark: t.is_dark() }
+}
+
+/// A token's colour with the chosen code colours (`None`: a kind code does not use, such as a
+/// log level).
+pub fn code_token(kind: crate::view::highlight::Kind, dark: bool) -> Option<Color32> {
+    use crate::view::highlight::Kind;
+    let t = code_theme().resolve(dark);
+    // keyword, string, number, comment, type, function, variable, decorator, tag, attribute, key
+    let p: [u32; 11] = match t {
+        CodeTheme::OneDark | CodeTheme::Auto => [0xc678dd, 0x98c379, 0xd19a66, 0x7f848e, 0xe5c07b, 0x61afef, 0xe06c75, 0x56b6c2, 0xe06c75, 0xd19a66, 0xe06c75],
+        // One Light, darkened to read well on white.
+        CodeTheme::OneLight => [0x9818a0, 0x28781e, 0xaa5a00, 0x787878, 0x966400, 0x285fd2, 0xc83228, 0x0078a0, 0xc83228, 0xaa5a00, 0xc83228],
+        CodeTheme::Monokai => [0xf92672, 0xe6db74, 0xae81ff, 0x88846f, 0x66d9ef, 0xa6e22e, 0xfd971f, 0xa6e22e, 0xf92672, 0xa6e22e, 0xf92672],
+        CodeTheme::GitHubDark => [0xff7b72, 0xa5d6ff, 0x79c0ff, 0x8b949e, 0xffa657, 0xd2a8ff, 0xffa657, 0xd2a8ff, 0x7ee787, 0x79c0ff, 0x7ee787],
+        CodeTheme::GitHubLight => [0xcf222e, 0x0a3069, 0x0550ae, 0x59636e, 0x953800, 0x8250df, 0x953800, 0x8250df, 0x116329, 0x0550ae, 0x116329],
+        CodeTheme::SolarizedDark | CodeTheme::SolarizedLight => [0x859900, 0x2aa198, 0xd33682, 0x6c8a91, 0xb58900, 0x268bd2, 0xcb4b16, 0x6c71c4, 0x268bd2, 0xb58900, 0x268bd2],
+    };
+    let i = match kind {
+        Kind::Keyword => 0,
+        Kind::Str => 1,
+        Kind::Number => 2,
+        Kind::Comment => 3,
+        Kind::Type => 4,
+        Kind::Function => 5,
+        Kind::Var => 6,
+        Kind::Decorator => 7,
+        Kind::Tag => 8,
+        Kind::Attr => 9,
+        Kind::Key => 10,
+        _ => return None,
+    };
+    Some(hex(p[i]))
 }
 
 /// Syntax colours with colour-blind-safe colours: levels differ in lightness as well (ERROR

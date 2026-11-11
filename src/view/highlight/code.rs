@@ -447,7 +447,7 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                     };
                     Some(if has_word(super::words::LITERALS, w, spec.ci) {
                         Kind::Number
-                    } else if matches!(w, b"self" | b"this") {
+                    } else if matches!(w, b"self" | b"this" | b"cls") {
                         Kind::Var
                     } else {
                         Kind::Keyword

@@ -1246,6 +1246,22 @@ impl SelfTest {
             check(ok, format!("row {row} line {line} guides {guides} toggled {toggled:?}"))
         }));
         s("screenshot: code", shot_step("selftest-code.png"));
+        s("code colours: Monokai paints code apart from the interface's theme and is kept with the session", Box::new(|app, _c| {
+            use crate::app::commands::Cmd;
+            use crate::app::theme::{code_colors, CodeTheme};
+            let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+            app.run(&ctx, Cmd::CodeTheme(CodeTheme::Monokai));
+            let bg = code_colors(true).bg;
+            let saved = app.test_state_round_trip().code_theme;
+            check(bg == egui::Color32::from_rgb(0x27, 0x28, 0x22) && saved == Some(CodeTheme::Monokai), format!("bg {bg:?}, saved {saved:?}"))
+        }));
+        s("screenshot: code in Monokai", shot_step("selftest-code-monokai.png"));
+        s("code colours back to the theme's", Box::new(|app, _c| {
+            use crate::app::commands::Cmd;
+            let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+            app.run(&ctx, Cmd::CodeTheme(crate::app::theme::CodeTheme::Auto));
+            check(crate::app::theme::code_colors(true).bg == egui::Color32::from_rgb(0x23, 0x27, 0x2e), "One Dark again")
+        }));
         s("brackets and quotes pair themselves in code; Enter after `:` or between `{}` indents", Box::new(|app, c| {
             let want = "def f():\n    print(\"hi\"){\n        \n    }\n";
             match c.mark {

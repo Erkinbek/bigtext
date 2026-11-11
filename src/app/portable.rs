@@ -43,6 +43,7 @@ fn shareable(p: &Persisted) -> Persisted {
         saved: p.saved.clone(),
         show_ws: p.show_ws,
         show_ws_code: p.show_ws_code,
+        code_theme: p.code_theme,
         status: p.status,
         gutter: p.gutter,
         wrap_column: p.wrap_column,

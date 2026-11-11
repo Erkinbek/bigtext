@@ -77,6 +77,8 @@ fn hex(c: egui::Color32) -> String {
 /// `text` as preformatted HTML with each token in its syntax colour; `st` is what the text starts
 /// inside of (a comment opened above the selection).
 pub fn html_block(text: &str, lang: Lang, st: highlight::State, dark: bool, caption: Option<&str>) -> String {
+    // Code takes the code colours (their palette may be dark on a light interface).
+    let code_dark = lang.is_code().then(|| super::theme::code_colors(dark).dark);
     let (bg, fg) = if lang.is_code() {
         let c = super::theme::code_colors(dark);
         (hex(c.bg), hex(c.fg))
@@ -105,7 +107,8 @@ pub fn html_block(text: &str, lang: Lang, st: highlight::State, dark: bool, capt
                 continue;
             }
             out.push_str(&escape(&line[at..s]));
-            out.push_str(&format!("<span style=\"color:{}\">{}</span>", hex(highlight::color(kind, dark)), escape(&line[s..e])));
+            let color = code_dark.and_then(|d| super::theme::code_token(kind, d)).unwrap_or_else(|| highlight::color(kind, dark));
+            out.push_str(&format!("<span style=\"color:{}\">{}</span>", hex(color), escape(&line[s..e])));
             at = e;
         }
         out.push_str(&escape(&line[at..]));

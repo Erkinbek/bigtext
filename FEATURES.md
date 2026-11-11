@@ -194,6 +194,10 @@ keyboard shortcuts.
   guides at each level instead of whitespace marks (the step — 2 or 4 spaces, or tabs — is
   guessed from the start of the file; blank lines carry the guides of the lines around them).
   Show whitespace is switched for code apart from other text, so logs can keep showing it.
+  **View → Theme → Code colours** picks the palette of code apart from the interface's theme:
+  One Dark / One Light (following the theme), Monokai, GitHub Dark, GitHub Light, Solarized Dark
+  or Solarized Light — background, text, line numbers, caret and every kind of token; Copy as
+  HTML uses it too. The high-contrast themes and colour-blind-safe colours keep their own.
 - **CSV / TSV table view**: `.csv` and `.tsv` files open as a table (View → Table view or
   Ctrl+T switches any file between table and text). The delimiter (comma, semicolon, tab, pipe)
   is detected from the first lines and can be changed in the toolbar; quoted fields follow

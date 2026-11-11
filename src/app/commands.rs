@@ -139,6 +139,7 @@ pub enum Cmd {
     UnfoldAll,
     RunCommand,
     Theme(super::theme::Theme),
+    CodeTheme(super::theme::CodeTheme),
     ColourBlind,
     /// Interface scale, per cent.
     Scale(u16),
@@ -284,6 +285,7 @@ impl Cmd {
             .chain(Op::ALL.into_iter().map(Cmd::Text))
             .chain((1..=9).map(Cmd::GotoTab))
             .chain(super::theme::Theme::ALL.into_iter().map(Cmd::Theme))
+            .chain(super::theme::CodeTheme::ALL.into_iter().map(Cmd::CodeTheme))
             .chain(super::theme::SCALES.into_iter().map(Cmd::Scale))
     }
 
@@ -293,6 +295,7 @@ impl Cmd {
             Cmd::Text(op) => return format!("text.{op:?}").to_lowercase(),
             Cmd::GotoTab(n) => return format!("goto_tab.{n}"),
             Cmd::Theme(t) => return format!("theme.{}", t.id()),
+            Cmd::CodeTheme(t) => return format!("code_theme.{}", t.id()),
             Cmd::Scale(s) => return format!("scale.{s}"),
             other => format!("{other:?}"),
         };
@@ -436,6 +439,7 @@ impl Cmd {
             Cmd::UnpackDir => "Unpacked copies folder…",
             Cmd::Text(op) => op.name(),
             Cmd::Theme(t) => t.label(),
+            Cmd::CodeTheme(t) => t.label(),
             Cmd::ColourBlind => "Colour-blind-safe colours",
             Cmd::Scale(s) => match s {
                 100 => "Interface scale 100 %",
@@ -868,6 +872,11 @@ impl BigTextApp {
                 self.apply_look(ctx);
                 self.persist_state();
             }
+            Cmd::CodeTheme(t) => {
+                self.settings.code_theme = t;
+                self.apply_look(ctx);
+                self.persist_state();
+            }
             Cmd::Fullscreen => ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!self.fullscreen)),
             Cmd::Zen => {
                 self.settings.zen = !self.settings.zen;
@@ -939,6 +948,7 @@ impl BigTextApp {
             }
             Cmd::DarkTheme => self.settings.theme.is_dark(),
             Cmd::Theme(t) => self.settings.theme == t,
+            Cmd::CodeTheme(t) => self.settings.code_theme == t,
             Cmd::ColourBlind => self.settings.cvd,
             Cmd::Fullscreen => self.fullscreen,
             Cmd::Zen => self.settings.zen,
@@ -1000,7 +1010,7 @@ impl BigTextApp {
     }
 
     fn is_toggle(cmd: Cmd) -> bool {
-        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::ColourBlind | Cmd::Fullscreen | Cmd::Zen | Cmd::LineNumbers | Cmd::JsonCrumb | Cmd::Sidebar | Cmd::Theme(_) | Cmd::Scale(_) | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
+        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::ColourBlind | Cmd::Fullscreen | Cmd::Zen | Cmd::LineNumbers | Cmd::JsonCrumb | Cmd::Sidebar | Cmd::Theme(_) | Cmd::CodeTheme(_) | Cmd::Scale(_) | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
     }
 
     fn enabled(&self, cmd: Cmd) -> bool {
@@ -1274,6 +1284,14 @@ impl BigTextApp {
                     ui.separator();
                     run = run.or(self.item(ui, Cmd::DarkTheme));
                     run = run.or(self.item(ui, Cmd::ColourBlind));
+                    ui.separator();
+                    ui.menu_button(tr("Code colours"), |ui| {
+                        for t in super::theme::CodeTheme::ALL {
+                            if ui.radio(self.settings.code_theme == t, tr(t.label())).clicked() {
+                                run = Some(Cmd::CodeTheme(t));
+                            }
+                        }
+                    });
                 });
                 ui.menu_button(tr("Interface scale"), |ui| {
                     for s in super::theme::SCALES {
