@@ -56,7 +56,9 @@ jobs:
       - name: Build, install and check
         run: |
           set -euo pipefail
-          su builder -c "cd /tmp/pkg && makepkg --noconfirm"
+          # Nothing is compiled, so the dependencies are not needed to build; pacman -U installs
+          # them from the repositories, which also checks that every name in depends exists.
+          su builder -c "cd /tmp/pkg && makepkg --noconfirm --nodeps"
           pacman -U --noconfirm /tmp/pkg/bigtext-bin-*.pkg.tar.zst
           pacman -Ql bigtext-bin
           printf '2024-05-01 10:00:00 INFO a\n2024-05-01 10:00:01 ERROR b\n' > /tmp/app.log

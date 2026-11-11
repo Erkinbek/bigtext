@@ -1,6 +1,6 @@
 """Sets the formula and the cask to a release.
 
-    python3 update.py VERSION SHA256SUMS.txt Formula/bigtext.rb Casks/bigtext.rb
+    python3 update.py VERSION SHA256SUMS.txt Formula/bigtext.rb Casks/bigtext-app.rb
 
 The checksums come from the release's SHA256SUMS.txt: in the formula, the sha256 under each url
 gets the checksum of the file that url names; in the cask, `arm:` and `intel:` get those of the

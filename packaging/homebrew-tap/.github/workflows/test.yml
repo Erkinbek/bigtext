@@ -23,11 +23,11 @@ jobs:
         run: |
           brew install erkinbek/tap/bigtext
           brew test erkinbek/tap/bigtext
-          brew uninstall erkinbek/tap/bigtext
+          brew uninstall --formula erkinbek/tap/bigtext
 
       - name: Cask
         run: |
-          brew install --cask erkinbek/tap/bigtext
+          brew install --cask erkinbek/tap/bigtext-app
           ls /Applications/BigText.app/Contents/MacOS
           printf '2024-05-01 10:00:00 INFO a\n2024-05-01 10:00:01 ERROR b\n' > "$RUNNER_TEMP/app.log"
           test "$(bigtext-cli count ERROR "$RUNNER_TEMP/app.log")" = 1
@@ -56,5 +56,5 @@ jobs:
           set -euo pipefail
           version=$(sed -n 's/^  version "\(.*\)"/\1/p' Formula/bigtext.rb)
           gh release download "v$version" --repo Erkinbek/bigtext --pattern SHA256SUMS.txt --dir "$RUNNER_TEMP"
-          python3 .github/update.py "$version" "$RUNNER_TEMP/SHA256SUMS.txt" Formula/bigtext.rb Casks/bigtext.rb
+          python3 .github/update.py "$version" "$RUNNER_TEMP/SHA256SUMS.txt" Formula/bigtext.rb Casks/bigtext-app.rb
           git diff --exit-code

@@ -1,6 +1,6 @@
 # BigText.app for the Applications folder, with bigtext-cli on the PATH. The tap's update
 # workflow keeps `version` and the checksums at the latest release.
-cask "bigtext" do
+cask "bigtext-app" do
   arch arm: "arm64", intel: "x64"
 
   version "0.7.0"

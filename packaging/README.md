@@ -31,10 +31,11 @@ keep themselves up to date, so the copies here are only where they started:
   `scoop install bigtext/bigtext`.
 - **Homebrew**: `Formula/bigtext.rb` installs the release binaries (macOS arm64 and x64, Linux
   x64; Homebrew does not quarantine them, so macOS opens them without the unsigned-app warning),
-  `Casks/bigtext.rb` the macOS app. The update workflow brings both to the latest release every
-  six hours (`.github/update.py` takes the checksums from `SHA256SUMS.txt`); the test workflow
-  installs both on macOS and the formula on Linux. `brew install erkinbek/tap/bigtext` or
-  `brew install --cask erkinbek/tap/bigtext`.
+  `Casks/bigtext-app.rb` the macOS app (a name of its own, so `brew uninstall bigtext` is not
+  ambiguous). The update workflow brings both to the latest release every six hours
+  (`.github/update.py` takes the checksums from `SHA256SUMS.txt`); the test workflow installs
+  both on macOS and the formula on Linux. `brew install erkinbek/tap/bigtext` or
+  `brew install --cask erkinbek/tap/bigtext-app`.
 
 ## AUR
 

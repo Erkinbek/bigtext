@@ -15,7 +15,7 @@ brew install erkinbek/tap/bigtext
 The app for the Applications folder (macOS):
 
 ```
-brew install --cask erkinbek/tap/bigtext
+brew install --cask erkinbek/tap/bigtext-app
 ```
 
 The app is not signed, so macOS may refuse to open it the first time; the cask's notes show the
@@ -25,7 +25,7 @@ the PATH, so install one of them.
 ## Update
 
 ```
-brew upgrade bigtext          # or: brew upgrade --cask bigtext
+brew upgrade bigtext          # or: brew upgrade --cask bigtext-app
 ```
 
 A workflow brings the formula and the cask to each new BigText release within six hours.

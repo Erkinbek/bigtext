@@ -22,7 +22,7 @@ jobs:
           set -euo pipefail
           tag=$(gh release view --repo Erkinbek/bigtext --json tagName --jq .tagName)
           gh release download "$tag" --repo Erkinbek/bigtext --pattern SHA256SUMS.txt --dir "$RUNNER_TEMP"
-          python3 .github/update.py "${tag#v}" "$RUNNER_TEMP/SHA256SUMS.txt" Formula/bigtext.rb Casks/bigtext.rb
+          python3 .github/update.py "${tag#v}" "$RUNNER_TEMP/SHA256SUMS.txt" Formula/bigtext.rb Casks/bigtext-app.rb
           if git diff --quiet; then
             echo "Already at $tag."
             exit 0

@@ -4,7 +4,7 @@ name: Install test
 # computes the same URL and hash for the current version.
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
   workflow_dispatch:
 
@@ -28,8 +28,8 @@ jobs:
 
       - name: Install BigText from this bucket
         run: |
-          scoop bucket add bigtext $env:GITHUB_WORKSPACE
-          scoop install bigtext/bigtext
+          # `scoop bucket add` takes only git URLs, so the manifest is installed from its file.
+          scoop install .\bucket\bigtext.json
           if ($LASTEXITCODE) { throw "scoop install failed" }
           Set-Content -NoNewline -Path app.log -Value "2024-05-01 10:00:00 INFO a`n2024-05-01 10:00:01 ERROR b`n"
           $n = (bigtext-cli count ERROR app.log | Out-String).Trim()
