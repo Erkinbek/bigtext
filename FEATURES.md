@@ -330,7 +330,10 @@ keyboard shortcuts.
   million files or a slow network drive never stalls the window, and only the rows on screen
   are drawn. **Filter names** narrows the tree to matching names in the folders read so far.
   Right-click: Find in files here, Open terminal here, Show in folder, Copy path, Open with the
-  default app. `bigtext FOLDER`, dropping a folder on the window or opening one from another
+  default app, and **New file…**, **New folder…**, **Rename…** (the name is selected without
+  its extension) and **Move to the Recycle Bin** (the Trash on macOS and Linux, after asking),
+  so a mistake can be undone there. A new file opens in a tab; the tabs of renamed files move
+  with them; a file with unsaved changes stops a rename or a move until it is saved or closed. `bigtext FOLDER`, dropping a folder on the window or opening one from another
   launch shows it there; the folder, the expanded folders and whether the side bar shows are
   kept with the session, and the folders are read again when BigText comes back to the front.
   Find in files starts in the open folder. `.git`, `.svn`, `.hg`, `.DS_Store` and `Thumbs.db`

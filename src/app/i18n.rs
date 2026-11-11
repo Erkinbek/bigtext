@@ -126,6 +126,7 @@ mod tests {
         "app" / "fields_panel.rs",
         "app" / "filter_panel.rs",
         "app" / "find_in_files.rs",
+        "app" / "file_ops.rs",
         "app" / "folder_tree.rs",
         "app" / "quick_open.rs",
         "app" / "symbols.rs",

@@ -262,6 +262,10 @@ enum Act {
     CollapseAll,
     Hide,
     Close,
+    NewFile(PathBuf),
+    NewFolder(PathBuf),
+    Rename(PathBuf),
+    Trash(PathBuf),
 }
 
 impl BigTextApp {
@@ -356,7 +360,7 @@ impl BigTextApp {
         let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| display_path(&root));
         ui.horizontal(|ui| {
             let head = ui.add(egui::Label::new(egui::RichText::new(&name).strong()).truncate().sense(egui::Sense::click())).on_hover_text(display_path(&root));
-            head.context_menu(|ui| folder_menu(ui, &root, &mut act));
+            head.context_menu(|ui| folder_menu(ui, &root, true, &mut act));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button("×").on_hover_text(tr("Hide the side bar")).clicked() {
                     act = Some(Act::Hide);
@@ -418,7 +422,7 @@ impl BigTextApp {
                             }
                             r.context_menu(|ui| {
                                 if entry.dir {
-                                    folder_menu(ui, &entry.path, &mut act);
+                                    folder_menu(ui, &entry.path, false, &mut act);
                                 } else {
                                     file_menu(ui, &entry.path, &mut act);
                                 }
@@ -478,13 +482,32 @@ impl BigTextApp {
                 self.persist_state();
             }
             Some(Act::Close) => self.close_folder(),
+            Some(Act::NewFile(dir)) => self.ask_name(super::file_ops::NameKind::NewFile, dir),
+            Some(Act::NewFolder(dir)) => self.ask_name(super::file_ops::NameKind::NewFolder, dir),
+            Some(Act::Rename(p)) => self.ask_name(super::file_ops::NameKind::Rename, p),
+            Some(Act::Trash(p)) => self.ask_trash(p),
             None => {}
         }
     }
 }
 
 /// The right-click menu of a folder in the side bar.
-fn folder_menu(ui: &mut egui::Ui, dir: &Path, act: &mut Option<Act>) {
+fn folder_menu(ui: &mut egui::Ui, dir: &Path, root: bool, act: &mut Option<Act>) {
+    if ui.button(tr("New file…")).clicked() {
+        *act = Some(Act::NewFile(dir.to_path_buf()));
+    }
+    if ui.button(tr("New folder…")).clicked() {
+        *act = Some(Act::NewFolder(dir.to_path_buf()));
+    }
+    if !root {
+        if ui.button(tr("Rename…")).clicked() {
+            *act = Some(Act::Rename(dir.to_path_buf()));
+        }
+        if ui.button(super::file_ops::trash_label()).clicked() {
+            *act = Some(Act::Trash(dir.to_path_buf()));
+        }
+    }
+    ui.separator();
     if ui.button(tr("Find in files…")).clicked() {
         *act = Some(Act::FindIn(dir.to_path_buf()));
     }
@@ -522,6 +545,13 @@ fn file_menu(ui: &mut egui::Ui, file: &Path, act: &mut Option<Act>) {
     }
     if ui.button(tr("Copy path")).clicked() {
         *act = Some(Act::CopyPath(file.to_path_buf()));
+    }
+    ui.separator();
+    if ui.button(tr("Rename…")).clicked() {
+        *act = Some(Act::Rename(file.to_path_buf()));
+    }
+    if ui.button(super::file_ops::trash_label()).clicked() {
+        *act = Some(Act::Trash(file.to_path_buf()));
     }
 }
 

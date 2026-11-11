@@ -411,6 +411,7 @@ dependencies = [
  "tar",
  "tempfile",
  "ureq",
+ "windows-sys 0.59.0",
  "winresource",
  "zip",
 ]

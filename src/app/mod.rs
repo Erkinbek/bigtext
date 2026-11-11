@@ -16,6 +16,7 @@ pub mod extras;
 pub mod fields_panel;
 pub mod filter_panel;
 pub mod find_in_files;
+pub mod file_ops;
 pub mod folder_tree;
 pub mod quick_open;
 pub mod symbols;
@@ -234,6 +235,8 @@ enum ConfirmAction {
     TextOpOnDisk { doc: u64, op: bigtext::textops::Op, range: std::ops::Range<u64> },
     ColumnEditOnDisk { doc: u64, from: u64, cells: (u32, u32), gen: bigtext::column_edit::ColumnGen },
     SortOnDisk { doc: u64, spec: bigtext::extsort::SortSpec, eol: Vec<u8> },
+    /// A file or folder of the side bar to the Recycle Bin.
+    Trash(PathBuf),
 }
 
 #[derive(Default)]
@@ -347,6 +350,8 @@ pub struct BigTextApp {
     /// Search → Go to file and the folder's files it chooses from.
     pub quick_open: Option<quick_open::QuickOpen>,
     pub file_index: quick_open::FileIndex,
+    /// The side bar's New file, Rename and Move to the trash.
+    pub file_ops: file_ops::FileOps,
     /// Search → Go to symbol.
     pub symbols: Option<symbols::SymbolsUi>,
     pub timeline: timeline::TimelineUi,
@@ -644,6 +649,7 @@ impl BigTextApp {
             folder: folder_tree::FolderUi::default(),
             quick_open: None,
             file_index: Default::default(),
+            file_ops: Default::default(),
             symbols: None,
             timeline: timeline::TimelineUi::default(),
             keymap: commands::Keymap::default(),
@@ -1443,6 +1449,8 @@ impl BigTextApp {
                         ConfirmAction::TextOpOnDisk { .. } => "Change on disk",
                         ConfirmAction::ColumnEditOnDisk { .. } => "Fill on disk",
                         ConfirmAction::SortOnDisk { .. } => "Sort on disk",
+                        ConfirmAction::Trash(_) if cfg!(windows) => "Move to the Recycle Bin",
+                        ConfirmAction::Trash(_) => "Move to the Trash",
                     };
                     if ui.button(i18n::tr(primary)).clicked() {
                         decision = Some(1);
@@ -1535,6 +1543,7 @@ impl BigTextApp {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
             (1, ConfirmAction::CopyLarge { doc, cut }) => self.start_copy_job(doc, cut),
+            (1, ConfirmAction::Trash(path)) => self.trash_now(path),
             (1, ConfirmAction::ReplaceOnDisk { doc }) => self.replace_on_disk(doc, checked),
             (1, ConfirmAction::DeleteColumns { doc, dialect, cols, on_disk }) => self.delete_columns(doc, dialect, cols, on_disk, checked),
             (1, ConfirmAction::CsvRewrite { doc, dialect, rewrite, on_disk }) => self.rewrite_csv(doc, dialect, rewrite, on_disk, checked),
@@ -1810,6 +1819,13 @@ impl BigTextApp {
     pub(crate) fn test_ctx(&self) -> Option<egui::Context> {
         self.ctx_clone()
     }
+    /// The title of the confirmation being asked, if any.
+    pub(crate) fn test_confirm_title(&self) -> Option<String> {
+        self.confirm.as_ref().map(|c| c.title.clone())
+    }
+    pub(crate) fn test_cancel_confirm(&mut self) {
+        self.confirm = None;
+    }
 
     pub(crate) fn test_properties_sha(&mut self) {
         self.start_sha();
@@ -1853,7 +1869,7 @@ impl eframe::App for BigTextApp {
         }
 
         self.update_tick();
-        let modal_open = self.run_cmd.open || self.goto.is_some() || self.clips.open.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.quick_open.is_some() || self.symbols_open() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
+        let modal_open = self.run_cmd.open || self.goto.is_some() || self.clips.open.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.quick_open.is_some() || self.file_ops.dialog.is_some() || self.symbols_open() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
         if !modal_open {
             self.shortcuts(&ctx);
             // The mouse's back and forward buttons.
@@ -2079,6 +2095,7 @@ impl eframe::App for BigTextApp {
         self.json_fields_window(&ctx);
         self.palette_window(&ctx);
         self.quick_open_window(&ctx);
+        self.file_ops_window(&ctx);
         self.symbols_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);

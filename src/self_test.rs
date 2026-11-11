@@ -3019,6 +3019,55 @@ impl SelfTest {
                 _ => Step::Wait,
             }
         }));
+        s("side bar: New file… creates and opens a file, Rename… renames it with its tab, Move to the Recycle Bin asks first", Box::new(|app, c| {
+            use crate::app::file_ops::NameKind;
+            let tree = c.file("tree");
+            let late = c.waited() > Duration::from_secs(5);
+            let tab_ends = |app: &mut BigTextApp, name: &str| app.active_doc().is_some_and(|d| d.is_ready() && d.path.as_deref().is_some_and(|p| p.ends_with(Path::new("tree").join(name))));
+            match c.mark {
+                0 => {
+                    let _ = std::fs::remove_file(tree.join("new.txt"));
+                    let _ = std::fs::remove_file(tree.join("renamed.txt"));
+                    app.open_folder(tree.clone());
+                    app.ask_name(NameKind::NewFile, tree.clone());
+                    c.mark = 1;
+                    Step::Wait
+                }
+                1 if c.waited() > Duration::from_millis(300) => {
+                    c.typed("new.txt");
+                    c.key(Key::Enter, NONE);
+                    c.mark = 2;
+                    Step::Wait
+                }
+                2 if app.file_ops.dialog.is_none() && tree.join("new.txt").is_file() && tab_ends(app, "new.txt") => {
+                    // The name is selected without its extension: typing replaces "new".
+                    app.ask_name(NameKind::Rename, tree.join("new.txt"));
+                    c.mark = 3;
+                    Step::Wait
+                }
+                3 if c.waited() > Duration::from_millis(300) => {
+                    c.typed("renamed");
+                    c.key(Key::Enter, NONE);
+                    c.mark = 4;
+                    Step::Wait
+                }
+                4 if app.file_ops.dialog.is_none() && tree.join("renamed.txt").is_file() && !tree.join("new.txt").exists() && tab_ends(app, "renamed.txt") => {
+                    app.ask_trash(tree.join("renamed.txt"));
+                    let asks = app.test_confirm_title();
+                    app.test_cancel_confirm();
+                    let tabs = app.docs.iter().filter(|d| d.path.as_deref().is_some_and(|p| p.ends_with("renamed.txt"))).count();
+                    c.mark = 0;
+                    if let Some(id) = app.active_doc().map(|d| d.id) {
+                        app.close_tab(id, true);
+                    }
+                    let _ = std::fs::remove_file(tree.join("renamed.txt"));
+                    app.close_folder();
+                    check(asks.as_deref() == Some(crate::app::file_ops::trash_label()) && tabs == 1, format!("confirm {asks:?}, tabs {tabs}"))
+                }
+                _ if late => Step::Fail(format!("step {} dialog {:?}", c.mark, app.file_ops.dialog.as_ref().map(|d| (d.name.clone(), d.error.clone())))),
+                _ => Step::Wait,
+            }
+        }));
         s("open epoch.log", open_step("epoch.log"));
         s("go to time in a log of Unix times", Box::new(|app, c| {
             if c.first() {

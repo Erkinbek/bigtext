@@ -62,6 +62,10 @@ lzma-rust2 = { version = "0.23", default-features = false, features = ["std", "x
 bzip2 = "0.6"
 skrifa = "0.44"
 
+[target.'cfg(windows)'.dependencies]
+# Moving files to the Recycle Bin (SHFileOperationW).
+windows-sys = { version = "0.59", features = ["Win32_UI_Shell", "Win32_Foundation"] }
+
 [target.'cfg(unix)'.dependencies]
 # Free disk space (statvfs).
 libc = "0.2"
