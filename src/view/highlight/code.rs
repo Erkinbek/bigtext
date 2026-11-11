@@ -12,8 +12,9 @@ use super::{is_ident, Kind, Lang, Mode, Sink, State, Str, DELIM};
 pub(super) struct Spec {
     /// Line comment openers.
     pub line: &'static [&'static str],
-    /// `/* */` comments, nested when `nest`.
-    pub block: bool,
+    /// Block comments (`/* */`, `<# #>`, `--[[ ]]`; Ruby's `=begin`/`=end` at line starts),
+    /// nested when `nest`.
+    pub block: Option<(&'static str, &'static str)>,
     pub nest: bool,
     pub keywords: &'static [&'static str],
     /// Built-in type names.
@@ -49,6 +50,9 @@ pub(super) fn spec(lang: Lang) -> Option<&'static Spec> {
         Lang::Kotlin => &KOTLIN,
         Lang::Swift => &SWIFT,
         Lang::Dart => &DART,
+        Lang::Ruby => &RUBY,
+        Lang::Lua => &LUA,
+        Lang::PowerShell => &POWERSHELL,
         _ => return None,
     })
 }
@@ -142,7 +146,7 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                 return;
             }
             Mode::Comment(_) => {
-                i = block_comment(st, t, i, i, spec.nest, out);
+                i = block_comment(st, t, i, i, spec, out);
                 continue;
             }
             Mode::Str(_) => {
@@ -176,6 +180,12 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
         st.inked = true;
         // In a shell `#` starts a comment only at the start of a word (not in `a#b` or `${#x}`).
         let shell_word = lang != Lang::Shell || i == 0 || matches!(t[i - 1], b' ' | b'\t' | b';' | b'|' | b'&' | b'(' | b')');
+        // A block comment first: Lua's `--[[` starts like its line comment.
+        if let Some((open, _)) = spec.block.filter(|(o, _)| t[i..].starts_with(o.as_bytes()) && (!o.starts_with('=') || i == 0)) {
+            st.mode = Mode::Comment(1);
+            i = block_comment(st, t, i, i + open.len(), spec, out);
+            continue;
+        }
         if spec.line.iter().any(|o| t[i..].starts_with(o.as_bytes())) && !(lang == Lang::Php && t[i..].starts_with(b"#[")) && shell_word {
             // In PHP a line comment ends at `?>` too.
             if let Some(p) = memchr::memmem::find(&t[i..], b"?>").filter(|_| lang == Lang::Php) {
@@ -186,11 +196,6 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
             out.push(i, t.len(), Kind::Comment);
             st.mode = Mode::LineComment;
             return;
-        }
-        if spec.block && t[i..].starts_with(b"/*") {
-            st.mode = Mode::Comment(1);
-            i = block_comment(st, t, i, i + 2, spec.nest, out);
-            continue;
         }
         if first && c == b'#' && matches!(lang, Lang::C | Lang::CSharp | Lang::Swift) {
             i = directive(t, i, out);
@@ -242,7 +247,80 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                 continue;
             }
         }
-        if matches!(lang, Lang::Php | Lang::Shell) {
+        // Ruby's @instance, @@class and $global variables, and :symbols.
+        if lang == Lang::Ruby {
+            if (c == b'@' || c == b'$') && t.get(i + 1).is_some_and(|&b| is_ident(b) || b == b'@') {
+                let mut e = i + 1;
+                while t.get(e) == Some(&b'@') {
+                    e += 1;
+                }
+                let e = super::word_end(t, e);
+                out.push(i, e, Kind::Var);
+                i = e;
+                prev = Prev::Name;
+                continue;
+            }
+            if c == b':' && t.get(i + 1).is_some_and(|&b| is_ident(b) && !b.is_ascii_digit()) && (i == 0 || (t[i - 1] != b':' && !is_ident(t[i - 1]))) {
+                let mut e = super::word_end(t, i + 1);
+                if matches!(t.get(e), Some(b'?' | b'!')) {
+                    e += 1;
+                }
+                out.push(i, e, Kind::Number);
+                i = e;
+                prev = Prev::Value;
+                continue;
+            }
+        }
+        if lang == Lang::PowerShell {
+            // $name, ${any name}, $env:PATH, $script:x, $_, $?
+            if c == b'$' {
+                let e = match t.get(i + 1) {
+                    Some(b'{') => Some(memchr::memchr(b'}', &t[i..]).map_or(t.len(), |p| i + p + 1)),
+                    Some(&b) if is_ident(b) => {
+                        let e = super::word_end(t, i + 1);
+                        Some(if t.get(e) == Some(&b':') && t.get(e + 1).is_some_and(|&b| is_ident(b)) { super::word_end(t, e + 1) } else { e })
+                    }
+                    Some(b'?' | b'$' | b'^') => Some(i + 2),
+                    _ => None,
+                };
+                if let Some(e) = e {
+                    out.push(i, e, Kind::Var);
+                    i = e;
+                    prev = Prev::Name;
+                    continue;
+                }
+            }
+            // -eq, -like, -and…
+            if c == b'-' && t.get(i + 1).is_some_and(u8::is_ascii_alphabetic) {
+                let e = super::word_end(t, i + 1);
+                if has_word(super::words::PS_OPERATORS, &t[i + 1..e], true) {
+                    out.push(i, e, Kind::Keyword);
+                    i = e;
+                    prev = Prev::Punct;
+                    continue;
+                }
+            }
+            // @"…"@ and @'…'@ here-strings.
+            if c == b'@' && matches!(t.get(i + 1), Some(b'"' | b'\'')) {
+                st.set_delim(&[t[i + 1], b'@']);
+                st.mode = Mode::Delim;
+                i = delimited(st, t, i, i + 2, out);
+                prev = Prev::Value;
+                continue;
+            }
+        }
+        // Lua's long strings: [[…]], [==[…]==].
+        if lang == Lang::Lua && c == b'[' {
+            let n = t[i + 1..].iter().take_while(|&&b| b == b'=').count();
+            if t.get(i + 1 + n) == Some(&b'[') && n + 2 <= DELIM {
+                st.set_delim(&[&b"]"[..], &[b'='; DELIM][..n], &b"]"[..]].concat());
+                st.mode = Mode::Delim;
+                i = delimited(st, t, i, i + 2 + n, out);
+                prev = Prev::Value;
+                continue;
+            }
+        }
+        if matches!(lang, Lang::Php | Lang::Shell | Lang::Ruby) {
             if let Some(e) = heredoc_open(lang, st, t, i) {
                 out.push(i, e, Kind::Str);
                 i = e;
@@ -323,6 +401,20 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                     prev = Prev::Name;
                     continue;
                 }
+            }
+            // Ruby's predicate and bang methods: empty?, save!, defined?
+            if lang == Lang::Ruby && matches!(t.get(e), Some(b'?' | b'!')) && t.get(e + 1) != Some(&b'=') {
+                e += 1;
+            }
+            // PowerShell's Verb-Noun commands: Get-ChildItem.
+            if lang == Lang::PowerShell && t.get(e) == Some(&b'-') && t.get(e + 1).is_some_and(u8::is_ascii_alphabetic) {
+                while t.get(e) == Some(&b'-') && t.get(e + 1).is_some_and(u8::is_ascii_alphabetic) {
+                    e = super::word_end(t, e + 1);
+                }
+                out.push(i, e, Kind::Function);
+                i = e;
+                prev = Prev::Name;
+                continue;
             }
             // A string with a prefix: L"wide", u8"text", R"(raw)", f"{x}".
             if let Some((open, body)) = prefixed_string(lang, st, &t[i..e], t, e) {
@@ -406,7 +498,7 @@ fn name_kind(spec: &Spec, w: &[u8], t: &[u8], e: usize, prev: Prev) -> Option<Ki
     if t.get(j) == Some(&b'(') {
         return Some(Kind::Function);
     }
-    if prev != Prev::Dot && has(spec.types, w) {
+    if prev != Prev::Dot && has_word(spec.types, w, spec.ci) {
         return Some(Kind::Type);
     }
     let upper = w.iter().filter(|b| b.is_ascii_uppercase()).count();
@@ -473,7 +565,11 @@ fn open_string(lang: Lang, t: &[u8], i: usize) -> Option<(Mode, usize)> {
     match lang {
         Lang::Java if three => Some((Mode::Str(Str { q: b'"', n: 3, esc: true, ml: true, dbl: false }), i + 3)),
         // Kotlin's """raw strings""" have no escapes; Swift's and Dart's multi-line ones do.
-        Lang::Kotlin if three => Some((Mode::Str(Str { q: b'"', n: 3, esc: false, ml: true, dbl: false }), i + 3)),
+        // Ruby's strings may span lines; PowerShell's too, where a backtick escapes, not a
+        // backslash, and '' is a quote inside '…'.
+        Lang::Ruby if matches!(c, b'"' | b'\'' | b'`') => Some((Mode::Str(Str { q: c, n: 1, esc: true, ml: true, dbl: false }), i + 1)),
+        Lang::PowerShell if c == b'"' || c == b'\'' => Some((Mode::Str(Str { q: c, n: 1, esc: false, ml: true, dbl: true }), i + 1)),
+        Lang::Kotlin if three =>Some((Mode::Str(Str { q: b'"', n: 3, esc: false, ml: true, dbl: false }), i + 3)),
         Lang::Swift if three => Some((Mode::Str(Str { q: b'"', n: 3, esc: true, ml: true, dbl: false }), i + 3)),
         Lang::Dart if three || t[i..].starts_with(b"'''") => Some((Mode::Str(Str { q: c, n: 3, esc: true, ml: true, dbl: false }), i + 3)),
         // A template literal; what is inside `${}` is coloured as the string.
@@ -610,6 +706,9 @@ fn heredoc_open(lang: Lang, st: &mut State, t: &[u8], i: usize) -> Option<usize>
         Lang::Php if t[i..].starts_with(b"<<<") => i + 3,
         // `<<<` is a shell's here-string, not a heredoc.
         Lang::Shell if t[i..].starts_with(b"<<") && !t[i..].starts_with(b"<<<") => i + 2 + t[i + 2..].starts_with(b"-") as usize,
+        // <<~EOS, <<-EOS, <<EOS (a capital or a quote right after: `a << b` appends).
+        Lang::Ruby if t[i..].starts_with(b"<<~") || t[i..].starts_with(b"<<-") => i + 3,
+        Lang::Ruby if t[i..].starts_with(b"<<") && t.get(i + 2).is_some_and(|&b| b.is_ascii_uppercase() || b == b'"' || b == b'\'') => i + 2,
         _ => return None,
     };
     while j < t.len() && (t[j] == b' ' || t[j] == b'\t') {
@@ -678,21 +777,25 @@ fn rust_quote(t: &[u8], i: usize, out: &mut Sink) -> usize {
 }
 
 /// A block comment from `from` (the comment's text pushed from `start`); returns where it ends.
-fn block_comment(st: &mut State, t: &[u8], start: usize, from: usize, nest: bool, out: &mut Sink) -> usize {
+fn block_comment(st: &mut State, t: &[u8], start: usize, from: usize, spec: &Spec, out: &mut Sink) -> usize {
     let Mode::Comment(mut depth) = st.mode else { return from };
+    let Some((open, close)) = spec.block else { return from };
+    let (open, close) = (open.as_bytes(), close.as_bytes());
+    // Ruby's `=end` counts only at the start of a line.
+    let line_start = close.starts_with(b"=");
     let mut j = from;
-    while j + 1 < t.len() {
-        if t[j] == b'*' && t[j + 1] == b'/' {
+    while j < t.len() {
+        if t[j..].starts_with(close) && (!line_start || j == 0) {
             depth -= 1;
-            j += 2;
+            j += close.len();
             if depth == 0 {
                 st.mode = Mode::Code;
                 out.push(start, j, Kind::Comment);
                 return j;
             }
-        } else if nest && t[j] == b'/' && t[j + 1] == b'*' {
+        } else if spec.nest && t[j..].starts_with(open) {
             depth = depth.saturating_add(1);
-            j += 2;
+            j += open.len();
         } else {
             j += 1;
         }

@@ -122,6 +122,9 @@ fn rules(lang: Lang) -> &'static [Rule] {
                     (&id(r"^\s*(?:(?:public|private|fileprivate|internal|open|final|indirect|@\w+)\s+)*(?:class|struct|enum|protocol|extension|actor|typealias)\s+(ID)"), Class, ""),
                 ]),
             ),
+            (Lang::Ruby, build(&[(r"^\s*def\s+(?:self\.)?([A-Za-z_]\w*[?!=]?)", Function, ""), (r"^\s*(?:class|module)\s+([A-Z][\w:]*)", Class, "")])),
+            (Lang::Lua, build(&[(r"^\s*(?:local\s+)?function\s+([\w.:]+)", Function, ""), (r"^\s*(?:local\s+)?([\w.]+)\s*=\s*function\b", Function, "")])),
+            (Lang::PowerShell, build(&[(r"(?i)^\s*(?:function|filter|workflow)\s+([\w-]+)", Function, ""), (r"(?i)^\s*class\s+(\w+)", Class, ""), (r"(?i)^\s*enum\s+(\w+)", Type, "")])),
             (Lang::Dart, build(&[(&id(r"^\s*(?:(?:abstract|sealed|base|final|interface)\s+)*(?:class|mixin|enum|extension|typedef)\s+(ID)"), Class, ""), (&c_func, Function, "")])),
             (Lang::Java, build(&[(&c_types, Class, ""), (&c_func, Function, "")])),
         ]
@@ -372,6 +375,12 @@ mod tests {
         assert_eq!(names(Lang::Kotlin, kt).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["User", "Registry", "load", "shout"]);
         let sw = "public struct Point {\n    mutating func move() {}\n}\nextension Point: Codable {}\n";
         assert_eq!(names(Lang::Swift, sw).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["Point", "move", "Point"]);
+        let rb = "module Shop\n  class Cart < Base\n    def empty?\n    end\n    def self.build\n    end\n  end\nend\n";
+        assert_eq!(names(Lang::Ruby, rb).into_iter().map(|s| (s.0, s.3)).collect::<Vec<_>>(), [("Shop".into(), 0), ("Cart".into(), 0), ("empty?".into(), 1), ("build".into(), 1)]);
+        let lua = "local function helper(x)\nend\nfunction M.run()\nend\nM.stop = function() end\n";
+        assert_eq!(names(Lang::Lua, lua).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["helper", "M.run", "M.stop"]);
+        let ps = "Function Get-Thing {\n}\nclass Point {\n}\n# function Not-This\n";
+        assert_eq!(names(Lang::PowerShell, ps).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["Get-Thing", "Point"]);
         let dart = "abstract class Shape {}\nFuture<void> main() async {\n  print(1);\n}\nmixin Fly {}\n";
         assert_eq!(names(Lang::Dart, dart).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["Shape", "main", "Fly"]);
     }

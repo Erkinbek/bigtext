@@ -145,10 +145,13 @@ pub enum Lang {
     Kotlin,
     Swift,
     Dart,
+    Ruby,
+    Lua,
+    PowerShell,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 21] = [
+    pub const ALL: [Lang; 24] = [
         Lang::Plain,
         Lang::Log,
         Lang::Json,
@@ -170,12 +173,18 @@ impl Lang {
         Lang::Kotlin,
         Lang::Swift,
         Lang::Dart,
+        Lang::Ruby,
+        Lang::Lua,
+        Lang::PowerShell,
     ];
 
     pub fn from_path(p: Option<&Path>) -> Lang {
         let name = p.and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
         if matches!(name.as_str(), ".bashrc" | ".bash_profile" | ".bash_aliases" | ".bash_logout" | ".profile" | ".zshrc" | ".zprofile" | ".zshenv" | "pkgbuild") {
             return Lang::Shell;
+        }
+        if matches!(name.as_str(), "gemfile" | "rakefile" | "podfile" | "vagrantfile" | "guardfile" | "brewfile") {
+            return Lang::Ruby;
         }
         let ext = p.and_then(|p| p.extension()).map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
         match ext.as_str() {
@@ -199,6 +208,9 @@ impl Lang {
             "kt" | "kts" => Lang::Kotlin,
             "swift" => Lang::Swift,
             "dart" => Lang::Dart,
+            "rb" | "rake" | "gemspec" | "ru" | "erb" => Lang::Ruby,
+            "lua" => Lang::Lua,
+            "ps1" | "psm1" | "psd1" => Lang::PowerShell,
             _ => Lang::Plain,
         }
     }
@@ -218,6 +230,9 @@ impl Lang {
                 "sh" | "bash" | "zsh" | "ksh" | "dash" | "ash" => return Lang::Shell,
                 "node" | "deno" | "bun" => return Lang::JavaScript,
                 "php" => return Lang::Php,
+                "ruby" => return Lang::Ruby,
+                "lua" | "luajit" => return Lang::Lua,
+                "pwsh" | "powershell" => return Lang::PowerShell,
                 _ => {}
             }
         }
@@ -246,8 +261,8 @@ impl Lang {
         if let Some(s) = code::spec(self) {
             return match (s.line.first(), s.block) {
                 (Some(t), _) => Some(Comment::Line(t)),
-                (None, true) => Some(Comment::Block("/*", "*/")),
-                (None, false) => None,
+                (None, Some((open, close))) => Some(Comment::Block(open, close)),
+                (None, None) => None,
             };
         }
         match self {
@@ -292,6 +307,9 @@ impl Lang {
             Lang::Kotlin => "Kotlin",
             Lang::Swift => "Swift",
             Lang::Dart => "Dart",
+            Lang::Ruby => "Ruby",
+            Lang::Lua => "Lua",
+            Lang::PowerShell => "PowerShell",
         }
     }
 }
@@ -1052,6 +1070,38 @@ mod tests {
             (Lang::from_path(Some(Path::new("App.kt"))), Lang::from_path(Some(Path::new("main.swift"))), Lang::from_path(Some(Path::new("lib.dart")))),
             (Lang::Kotlin, Lang::Swift, Lang::Dart)
         );
+    }
+
+    #[test]
+    fn ruby_lua_powershell() {
+        let k = kinds(Lang::Ruby, "def valid?(x) = @items.empty? && $debug || :ok if defined?(Foo) # done");
+        for want in [("def", Kind::Keyword), ("valid?", Kind::Function), ("@items", Kind::Var), ("$debug", Kind::Var), (":ok", Kind::Number), ("defined?", Kind::Keyword), ("Foo", Kind::Type), ("# done", Kind::Comment)] {
+            assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
+        }
+        let l = lines(Lang::Ruby, "=begin\ndef hidden\n=end\nsql = <<~SQL\n  SELECT 1\nSQL\nx = A::B");
+        assert_eq!(l[1], vec![("def hidden".into(), Kind::Comment)]);
+        assert_eq!(l[2], vec![("=end".into(), Kind::Comment)]);
+        assert_eq!(l[4], vec![("  SELECT 1".into(), Kind::Str)]);
+        assert!(!l[6].iter().any(|s| s.1 == Kind::Number), "{:?}", l[6]);
+
+        let l = lines(Lang::Lua, "--[[ block\nstill ]] local s = [==[\nraw ]] here\n]==] -- end\nprint(#t)");
+        assert_eq!(l[1][..2], [("still ]]".into(), Kind::Comment), ("local".into(), Kind::Keyword)]);
+        assert_eq!(l[2], vec![("raw ]] here".into(), Kind::Str)]);
+        assert_eq!(l[3], vec![("]==]".into(), Kind::Str), ("-- end".into(), Kind::Comment)]);
+        assert_eq!(l[4], vec![("print".into(), Kind::Function)]);
+
+        let k = kinds(Lang::PowerShell, "Function Get-Info([string]$Path) { if ($env:DEBUG -eq $true) { Write-Host \"a`\"b\" } }");
+        for want in [("Function", Kind::Keyword), ("Get-Info", Kind::Function), ("string", Kind::Type), ("$Path", Kind::Var), ("$env:DEBUG", Kind::Var), ("-eq", Kind::Keyword), ("$true", Kind::Var), ("Write-Host", Kind::Function)] {
+            assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
+        }
+        let l = lines(Lang::PowerShell, "<# help\n#> $t = @\"\nhere $x\n\"@");
+        assert_eq!(l[1][0], ("#>".into(), Kind::Comment));
+        assert_eq!(l[2], vec![("here $x".into(), Kind::Str)]);
+        assert_eq!(
+            (Lang::from_path(Some(Path::new("Gemfile"))), Lang::from_path(Some(Path::new("init.lua"))), Lang::from_path(Some(Path::new("build.ps1"))), Lang::sniff("#!/usr/bin/env ruby\n")),
+            (Lang::Ruby, Lang::Lua, Lang::PowerShell, Lang::Ruby)
+        );
+        assert_eq!((Lang::Lua.comment(), Lang::PowerShell.comment()), (Some(Comment::Line("--")), Some(Comment::Line("#"))));
     }
 
     #[test]

@@ -41,6 +41,9 @@ pub fn fence_lang(lang: Lang) -> &'static str {
         Lang::Kotlin => "kotlin",
         Lang::Swift => "swift",
         Lang::Dart => "dart",
+        Lang::Ruby => "ruby",
+        Lang::Lua => "lua",
+        Lang::PowerShell => "powershell",
     }
 }
 

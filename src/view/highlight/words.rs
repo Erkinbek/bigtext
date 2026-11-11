@@ -5,7 +5,7 @@ use super::code::Spec;
 
 pub(super) const C: Spec = Spec {
     line: &["//"],
-    block: true,
+    block: Some(("/*", "*/")),
     nest: false,
     keywords: C_KEYWORDS,
     types: C_TYPES,
@@ -22,7 +22,7 @@ pub(super) const C: Spec = Spec {
 
 pub(super) const CSHARP: Spec = Spec {
     line: &["//"],
-    block: true,
+    block: Some(("/*", "*/")),
     nest: false,
     keywords: CSHARP_KEYWORDS,
     types: CSHARP_TYPES,
@@ -36,7 +36,7 @@ pub(super) const CSHARP: Spec = Spec {
 
 pub(super) const JAVA: Spec = Spec {
     line: &["//"],
-    block: true,
+    block: Some(("/*", "*/")),
     nest: false,
     keywords: JAVA_KEYWORDS,
     types: JAVA_TYPES,
@@ -50,7 +50,7 @@ pub(super) const JAVA: Spec = Spec {
 
 pub(super) const JS: Spec = Spec {
     line: &["//"],
-    block: true,
+    block: Some(("/*", "*/")),
     nest: false,
     keywords: JS_KEYWORDS,
     types: &[],
@@ -64,7 +64,7 @@ pub(super) const JS: Spec = Spec {
 
 pub(super) const TS: Spec = Spec {
     line: &["//"],
-    block: true,
+    block: Some(("/*", "*/")),
     nest: false,
     keywords: TS_KEYWORDS,
     types: TS_TYPES,
@@ -78,7 +78,7 @@ pub(super) const TS: Spec = Spec {
 
 pub(super) const GO: Spec = Spec {
     line: &["//"],
-    block: true,
+    block: Some(("/*", "*/")),
     nest: false,
     keywords: GO_KEYWORDS,
     types: GO_TYPES,
@@ -93,7 +93,7 @@ pub(super) const GO: Spec = Spec {
 
 pub(super) const RUST: Spec = Spec {
     line: &["//"],
-    block: true,
+    block: Some(("/*", "*/")),
     nest: true,
     keywords: RUST_KEYWORDS,
     types: RUST_TYPES,
@@ -107,7 +107,7 @@ pub(super) const RUST: Spec = Spec {
 
 pub(super) const PHP: Spec = Spec {
     line: &["//", "#"],
-    block: true,
+    block: Some(("/*", "*/")),
     nest: false,
     keywords: PHP_KEYWORDS,
     types: PHP_TYPES,
@@ -121,7 +121,7 @@ pub(super) const PHP: Spec = Spec {
 
 pub(super) const PYTHON: Spec = Spec {
     line: &["#"],
-    block: false,
+    block: None,
     nest: false,
     keywords: PY_KEYWORDS,
     types: PY_TYPES,
@@ -135,7 +135,7 @@ pub(super) const PYTHON: Spec = Spec {
 
 pub(super) const SHELL: Spec = Spec {
     line: &["#"],
-    block: false,
+    block: None,
     nest: false,
     keywords: SH_KEYWORDS,
     types: &[],
@@ -149,7 +149,7 @@ pub(super) const SHELL: Spec = Spec {
 
 pub(super) const KOTLIN: Spec = Spec {
     line: &["//"],
-    block: true,
+    block: Some(("/*", "*/")),
     nest: true,
     keywords: KOTLIN_KEYWORDS,
     types: KOTLIN_TYPES,
@@ -163,7 +163,7 @@ pub(super) const KOTLIN: Spec = Spec {
 
 pub(super) const SWIFT: Spec = Spec {
     line: &["//"],
-    block: true,
+    block: Some(("/*", "*/")),
     nest: true,
     keywords: SWIFT_KEYWORDS,
     types: SWIFT_TYPES,
@@ -177,7 +177,7 @@ pub(super) const SWIFT: Spec = Spec {
 
 pub(super) const DART: Spec = Spec {
     line: &["//"],
-    block: true,
+    block: Some(("/*", "*/")),
     nest: true,
     keywords: DART_KEYWORDS,
     types: DART_TYPES,
@@ -195,6 +195,55 @@ const SWIFT_KEYWORDS: &[&str] = &["actor", "any", "as", "associatedtype", "async
 const SWIFT_TYPES: &[&str] = &["Any", "AnyObject", "Array", "Bool", "Character", "Dictionary", "Double", "Float", "Int", "Int16", "Int32", "Int64", "Int8", "Optional", "Self", "Set", "String", "UInt", "UInt16", "UInt32", "UInt64", "UInt8", "Void"];
 const DART_KEYWORDS: &[&str] = &["abstract", "as", "assert", "async", "await", "base", "break", "case", "catch", "class", "const", "continue", "covariant", "default", "deferred", "do", "dynamic", "else", "enum", "export", "extends", "extension", "external", "factory", "false", "final", "finally", "for", "get", "hide", "if", "implements", "import", "in", "interface", "is", "late", "library", "mixin", "new", "null", "of", "on", "operator", "part", "required", "rethrow", "return", "sealed", "set", "show", "static", "super", "switch", "sync", "this", "throw", "true", "try", "typedef", "var", "when", "while", "with", "yield"];
 const DART_TYPES: &[&str] = &["Future", "Iterable", "List", "Map", "Never", "Null", "Object", "Set", "Stream", "String", "bool", "double", "int", "num", "void"];
+
+pub(super) const RUBY: Spec = Spec {
+    line: &["#"],
+    block: Some(("=begin", "=end")),
+    nest: false,
+    keywords: RUBY_KEYWORDS,
+    types: &[],
+    type_kw: &["class", "module"],
+    fn_kw: &["def"],
+    pascal: true,
+    at_attr: false,
+    ci: false,
+    sync: &["class", "def", "module", "require", "require_relative"],
+};
+
+pub(super) const LUA: Spec = Spec {
+    line: &["--"],
+    block: Some(("--[[", "]]")),
+    nest: false,
+    keywords: LUA_KEYWORDS,
+    types: &[],
+    type_kw: &[],
+    fn_kw: &["function"],
+    pascal: false,
+    at_attr: false,
+    ci: false,
+    sync: &["function", "local"],
+};
+
+pub(super) const POWERSHELL: Spec = Spec {
+    line: &["#"],
+    block: Some(("<#", "#>")),
+    nest: false,
+    keywords: PS_KEYWORDS,
+    types: PS_TYPES,
+    type_kw: &["class", "enum"],
+    fn_kw: &["filter", "function", "workflow"],
+    pascal: false,
+    at_attr: false,
+    ci: true,
+    sync: &["class", "function", "param", "using"],
+};
+
+const RUBY_KEYWORDS: &[&str] = &["BEGIN", "END", "__FILE__", "__LINE__", "__method__", "alias", "and", "attr_accessor", "attr_reader", "attr_writer", "begin", "break", "case", "class", "def", "defined?", "do", "else", "elsif", "end", "ensure", "extend", "false", "for", "if", "in", "include", "loop", "module", "module_function", "next", "nil", "not", "or", "private", "protected", "public", "raise", "redo", "require", "require_relative", "rescue", "retry", "return", "self", "super", "then", "true", "undef", "unless", "until", "when", "while", "yield"];
+const LUA_KEYWORDS: &[&str] = &["and", "break", "do", "else", "elseif", "end", "false", "for", "function", "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "self", "then", "true", "until", "while"];
+const PS_KEYWORDS: &[&str] = &["begin", "break", "catch", "class", "clean", "continue", "data", "default", "do", "dynamicparam", "else", "elseif", "end", "enum", "exit", "filter", "finally", "for", "foreach", "function", "hidden", "if", "in", "param", "process", "return", "static", "switch", "throw", "trap", "try", "until", "using", "while", "workflow"];
+const PS_TYPES: &[&str] = &["array", "bool", "byte", "char", "datetime", "decimal", "double", "float", "guid", "hashtable", "int", "int16", "int32", "int64", "long", "object", "pscustomobject", "psobject", "regex", "scriptblock", "string", "timespan", "uint32", "uint64", "void", "xml"];
+/// PowerShell's operators after `-` (`-eq`, `-like`).
+pub(super) const PS_OPERATORS: &[&str] = &["and", "as", "band", "bnot", "bor", "bxor", "ceq", "cge", "cgt", "ckeys", "cle", "clike", "clt", "cmatch", "cne", "cnotlike", "cnotmatch", "contains", "creplace", "csplit", "eq", "f", "ge", "gt", "ieq", "ilike", "imatch", "in", "ine", "inotlike", "inotmatch", "ireplace", "is", "isnot", "isplit", "join", "le", "like", "lt", "match", "ne", "not", "notcontains", "notin", "notlike", "notmatch", "or", "replace", "shl", "shr", "split", "xor"];
 
 const PY_KEYWORDS: &[&str] = &[
     "False", "None", "True", "and", "as", "assert", "async", "await", "break", "case", "class", "cls", "continue", "def", "del", "elif", "else", "except",
@@ -292,4 +341,4 @@ pub(super) const JS_BEFORE_REGEX: &[&str] = &["await", "case", "delete", "do", "
 pub(super) const LITERALS: &[&str] = &["FALSE", "False", "NULL", "None", "TRUE", "True", "false", "iota", "nil", "null", "nullptr", "true", "undefined"];
 
 #[cfg(test)]
-pub(super) const ALL: &[&Spec] = &[&C, &CSHARP, &JAVA, &JS, &TS, &GO, &RUST, &PHP, &PYTHON, &SHELL, &KOTLIN, &SWIFT, &DART];
+pub(super) const ALL: &[&Spec] = &[&C, &CSHARP, &JAVA, &JS, &TS, &GO, &RUST, &PHP, &PYTHON, &SHELL, &KOTLIN, &SWIFT, &DART, &RUBY, &LUA, &POWERSHELL];
