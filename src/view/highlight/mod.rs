@@ -6,6 +6,7 @@
 //! from its start.
 
 mod code;
+mod markup;
 mod words;
 
 use std::path::Path;
@@ -26,6 +27,9 @@ pub struct State {
     delim_len: u8,
     /// A heredoc opened on this line: its text starts on the next one.
     pending: bool,
+    /// CSS: open braces. YAML: the indentation a block scalar's lines are deeper than, plus
+    /// one. Dockerfile: 1 when the line goes on from one ending with `\`.
+    depth: u8,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -48,6 +52,8 @@ enum Mode {
     Tag,
     /// An XML `<![CDATA[` section.
     CData,
+    /// A YAML block scalar's lines (after `key: |`).
+    Block,
 }
 
 /// How a string ends: `n` quote characters `q` (`"` or `"""`), skipping backslash escapes when
@@ -76,7 +82,7 @@ impl State {
 
     /// Inside a string.
     pub fn in_string(self) -> bool {
-        matches!(self.mode, Mode::Str(_) | Mode::Delim | Mode::Heredoc)
+        matches!(self.mode, Mode::Str(_) | Mode::Delim | Mode::Heredoc | Mode::Block)
     }
 
     /// In the HTML of a PHP file.
@@ -148,10 +154,16 @@ pub enum Lang {
     Ruby,
     Lua,
     PowerShell,
+    /// CSS, SCSS and Less.
+    Css,
+    Markdown,
+    Yaml,
+    Dockerfile,
+    Makefile,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 24] = [
+    pub const ALL: [Lang; 29] = [
         Lang::Plain,
         Lang::Log,
         Lang::Json,
@@ -176,6 +188,11 @@ impl Lang {
         Lang::Ruby,
         Lang::Lua,
         Lang::PowerShell,
+        Lang::Css,
+        Lang::Markdown,
+        Lang::Yaml,
+        Lang::Dockerfile,
+        Lang::Makefile,
     ];
 
     pub fn from_path(p: Option<&Path>) -> Lang {
@@ -186,6 +203,12 @@ impl Lang {
         if matches!(name.as_str(), "gemfile" | "rakefile" | "podfile" | "vagrantfile" | "guardfile" | "brewfile") {
             return Lang::Ruby;
         }
+        if name == "dockerfile" || name == "containerfile" || name.starts_with("dockerfile.") || name.ends_with(".dockerfile") {
+            return Lang::Dockerfile;
+        }
+        if matches!(name.as_str(), "makefile" | "gnumakefile" | "bsdmakefile") {
+            return Lang::Makefile;
+        }
         let ext = p.and_then(|p| p.extension()).map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
         match ext.as_str() {
             "log" | "out" | "err" => Lang::Log,
@@ -194,7 +217,11 @@ impl Lang {
             "csv" => Lang::Csv(b','),
             "tsv" | "tab" => Lang::Csv(b'\t'),
             "sql" | "ddl" | "dml" => Lang::Sql,
-            "ini" | "toml" | "cfg" | "conf" | "yaml" | "yml" | "properties" | "env" | "inf" => Lang::Ini,
+            "ini" | "toml" | "cfg" | "conf" | "properties" | "env" | "inf" => Lang::Ini,
+            "yaml" | "yml" => Lang::Yaml,
+            "css" | "scss" | "less" => Lang::Css,
+            "md" | "markdown" | "mdown" | "mkd" | "mdx" => Lang::Markdown,
+            "mk" | "mak" => Lang::Makefile,
             "c" | "h" | "cpp" | "cc" | "cxx" | "c++" | "hpp" | "hh" | "hxx" | "h++" | "inl" | "ipp" | "ino" => Lang::C,
             "cs" | "csx" => Lang::CSharp,
             "java" => Lang::Java,
@@ -268,14 +295,17 @@ impl Lang {
         match self {
             Lang::Sql => Some(Comment::Line("--")),
             Lang::Ini => Some(Comment::Line("#")),
-            Lang::Xml => Some(Comment::Block("<!--", "-->")),
+            Lang::Xml | Lang::Markdown => Some(Comment::Block("<!--", "-->")),
+            Lang::Css => Some(Comment::Block("/*", "*/")),
+            Lang::Yaml | Lang::Dockerfile | Lang::Makefile => Some(Comment::Line("#")),
             _ => None,
         }
     }
 
-    /// A programming language (not a data or log format).
+    /// Code or a format written like it (CSS, Markdown, YAML, Dockerfile, Makefile), not a data
+    /// or log format: it gets the code editor's look and conveniences.
     pub fn is_code(self) -> bool {
-        code::spec(self).is_some()
+        code::spec(self).is_some() || matches!(self, Lang::Css | Lang::Markdown | Lang::Yaml | Lang::Dockerfile | Lang::Makefile)
     }
 
     /// True if `line`, at the start of a line, almost surely begins outside any comment or string
@@ -293,7 +323,7 @@ impl Lang {
             Lang::Csv(b'\t') => "TSV",
             Lang::Csv(_) => "CSV",
             Lang::Sql => "SQL",
-            Lang::Ini => "INI / TOML / YAML",
+            Lang::Ini => "INI / TOML",
             Lang::C => "C / C++",
             Lang::CSharp => "C#",
             Lang::Java => "Java",
@@ -310,6 +340,11 @@ impl Lang {
             Lang::Ruby => "Ruby",
             Lang::Lua => "Lua",
             Lang::PowerShell => "PowerShell",
+            Lang::Css => "CSS / SCSS / Less",
+            Lang::Markdown => "Markdown",
+            Lang::Yaml => "YAML",
+            Lang::Dockerfile => "Dockerfile",
+            Lang::Makefile => "Makefile",
         }
     }
 }
@@ -516,7 +551,12 @@ fn run(lang: Lang, mut st: State, t: &[u8], ends_line: bool, mut sink: Sink) -> 
     match (lang, sink.0.as_deref_mut()) {
         (Lang::Xml, _) => xml_spans(&mut st, t, &mut sink),
         (Lang::Sql, _) => sql_spans(&mut st, t, &mut sink),
-        (l, _) if l.is_code() => code::spans(lang, &mut st, t, &mut sink),
+        (Lang::Css, _) => markup::css(&mut st, t, &mut sink),
+        (Lang::Markdown, _) => markup::markdown(&mut st, t, &mut sink),
+        (Lang::Yaml, _) => markup::yaml(&mut st, t, &mut sink),
+        (Lang::Dockerfile, _) => markup::dockerfile(&mut st, t, &mut sink),
+        (Lang::Makefile, _) => markup::makefile(t, &mut sink),
+        (l, _) if code::spec(l).is_some() => code::spans(lang, &mut st, t, &mut sink),
         (Lang::Log, Some(out)) => log_spans(t, out),
         (Lang::Json, Some(out)) => json_spans(t, out),
         (Lang::Csv(sep), Some(out)) => csv_spans(t, sep, out),
@@ -627,7 +667,7 @@ fn xml_spans(st: &mut State, t: &[u8], out: &mut Sink) {
                 }
                 i = e;
             }
-            Mode::Code | Mode::LineComment | Mode::Str(_) | Mode::Delim | Mode::Heredoc | Mode::Html => {
+            Mode::Code | Mode::LineComment | Mode::Str(_) | Mode::Delim | Mode::Heredoc | Mode::Html | Mode::Block => {
                 if t[i..].starts_with(b"<!--") {
                     let (e, closed) = close(t, i + 4, b"-->");
                     out.push(i, e, Kind::Comment);
@@ -1102,6 +1142,56 @@ mod tests {
             (Lang::Ruby, Lang::Lua, Lang::PowerShell, Lang::Ruby)
         );
         assert_eq!((Lang::Lua.comment(), Lang::PowerShell.comment()), (Some(Comment::Line("--")), Some(Comment::Line("#"))));
+    }
+
+    #[test]
+    fn css_markdown_yaml_docker_make() {
+        let l = lines(Lang::Css, "@media (max-width: 600px) {\n  .card:hover, #main > a {\n    color: #fff !important; /* a\n  comment */ margin: 0 auto;\n    background: url(http://x/y.png);\n  }\n}\n$gap: 4px; // scss");
+        assert_eq!(l[0][..2], [("@media".into(), Kind::Keyword), ("max-width".into(), Kind::Key)]);
+        assert_eq!(l[1], vec![(".card".into(), Kind::Attr), (":hover".into(), Kind::Decorator), ("#main".into(), Kind::Attr), ("a".into(), Kind::Tag)]);
+        assert_eq!(l[2], vec![("color".into(), Kind::Key), ("#fff".into(), Kind::Number), ("!important".into(), Kind::Keyword), ("/* a".into(), Kind::Comment)]);
+        assert_eq!(l[3], vec![("  comment */".into(), Kind::Comment), ("margin".into(), Kind::Key), ("0".into(), Kind::Number)]);
+        assert_eq!(l[4], vec![("background".into(), Kind::Key), ("url".into(), Kind::Function), ("http://x/y.png".into(), Kind::Str)]);
+        assert_eq!(l[7], vec![("$gap".into(), Kind::Var), ("4px".into(), Kind::Number), ("// scss".into(), Kind::Comment)]);
+
+        let l = lines(Lang::Markdown, "# Title\nSome **bold**, *it*, `code` and [a link](https://x).\n- item\n```rust\n# not a heading\n```\n> quote\nsnake_case_word stays");
+        assert_eq!(l[0], vec![("# Title".into(), Kind::Var)]);
+        assert_eq!(l[1], vec![("**bold**".into(), Kind::Number), ("*it*".into(), Kind::Keyword), ("`code`".into(), Kind::Str), ("[a link]".into(), Kind::Function), ("(https://x)".into(), Kind::Decorator)]);
+        assert_eq!(l[2], vec![("-".into(), Kind::Var)]);
+        assert_eq!(l[3], vec![("```rust".into(), Kind::Comment)]);
+        assert_eq!(l[4], vec![("# not a heading".into(), Kind::Str)]);
+        assert_eq!(l[5], vec![("```".into(), Kind::Comment)]);
+        assert_eq!(l[6], vec![("> quote".into(), Kind::Comment)]);
+        assert!(l[7].is_empty(), "{:?}", l[7]);
+
+        let l = lines(Lang::Yaml, "---\nserver:\n  port: 8080 # web\n  name: \"api\"\n  tags: [a, b]\n  on: true\n  ref: &base !!str x\nscript: |\n  echo key: not a key\n  done\nnext: ~");
+        assert_eq!(l[0], vec![("---".into(), Kind::Keyword)]);
+        assert_eq!(l[2], vec![("port".into(), Kind::Key), ("8080".into(), Kind::Number), ("# web".into(), Kind::Comment)]);
+        assert_eq!(l[3], vec![("name".into(), Kind::Key), ("\"api\"".into(), Kind::Str)]);
+        assert_eq!(l[4], vec![("tags".into(), Kind::Key), ("a".into(), Kind::Str), ("b".into(), Kind::Str)]);
+        assert_eq!(l[5], vec![("on".into(), Kind::Key), ("true".into(), Kind::Number)]);
+        assert_eq!(l[6], vec![("ref".into(), Kind::Key), ("&base".into(), Kind::Var), ("!!str".into(), Kind::Decorator), ("x".into(), Kind::Str)]);
+        assert_eq!(l[8], vec![("  echo key: not a key".into(), Kind::Str)]);
+        assert_eq!(l[10], vec![("next".into(), Kind::Key), ("~".into(), Kind::Number)]);
+
+        let l = lines(Lang::Dockerfile, "# build\nFROM rust:1.80 AS builder\nRUN apt-get update && \\\n    echo \"$HOME\"\nENV PATH=/x");
+        assert_eq!(l[0], vec![("# build".into(), Kind::Comment)]);
+        assert_eq!(l[1], vec![("FROM".into(), Kind::Keyword), ("AS".into(), Kind::Keyword), ("builder".into(), Kind::Type)]);
+        assert_eq!(l[2][0], ("RUN".into(), Kind::Keyword));
+        assert!(!l[3].iter().any(|s| s.1 == Kind::Keyword) && l[3].contains(&("\"$HOME\"".into(), Kind::Str)), "{:?}", l[3]);
+        assert!(l[4].contains(&("ENV".into(), Kind::Keyword)) && l[4].contains(&("PATH".into(), Kind::Var)), "{:?}", l[4]);
+
+        let l = lines(Lang::Makefile, "CC ?= gcc\n.PHONY: all\nall: main.o $(OBJS)\n\t$(CC) -o app $@ # link\nifeq ($(OS),Windows_NT)");
+        assert_eq!(l[0], vec![("CC".into(), Kind::Var)]);
+        assert_eq!(l[1], vec![(".PHONY".into(), Kind::Keyword)]);
+        assert_eq!(l[2], vec![("all".into(), Kind::Function), ("$(OBJS)".into(), Kind::Var)]);
+        assert!(l[3].contains(&("$(CC)".into(), Kind::Var)) && l[3].contains(&("$@".into(), Kind::Var)) && l[3].contains(&("# link".into(), Kind::Comment)), "{:?}", l[3]);
+        assert_eq!(l[4][..2], [("ifeq".into(), Kind::Keyword), ("$(OS)".into(), Kind::Var)]);
+        assert_eq!(
+            [Lang::from_path(Some(Path::new("a.scss"))), Lang::from_path(Some(Path::new("README.md"))), Lang::from_path(Some(Path::new("ci.yml"))), Lang::from_path(Some(Path::new("Dockerfile"))), Lang::from_path(Some(Path::new("Makefile")))],
+            [Lang::Css, Lang::Markdown, Lang::Yaml, Lang::Dockerfile, Lang::Makefile]
+        );
+        assert!(Lang::Yaml.is_code() && !Lang::Json.is_code());
     }
 
     #[test]

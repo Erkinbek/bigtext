@@ -44,6 +44,11 @@ pub fn fence_lang(lang: Lang) -> &'static str {
         Lang::Ruby => "ruby",
         Lang::Lua => "lua",
         Lang::PowerShell => "powershell",
+        Lang::Css => "css",
+        Lang::Markdown => "markdown",
+        Lang::Yaml => "yaml",
+        Lang::Dockerfile => "dockerfile",
+        Lang::Makefile => "makefile",
     }
 }
 

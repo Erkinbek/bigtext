@@ -122,6 +122,11 @@ fn rules(lang: Lang) -> &'static [Rule] {
                     (&id(r"^\s*(?:(?:public|private|fileprivate|internal|open|final|indirect|@\w+)\s+)*(?:class|struct|enum|protocol|extension|actor|typealias)\s+(ID)"), Class, ""),
                 ]),
             ),
+            (Lang::Markdown, build(&[(r"^#{1,6}\s+(.+?)\s*#*\s*$", Class, "")])),
+            (Lang::Makefile, build(&[(r"^([A-Za-z0-9_./%$()-][^:=#\t]*?)\s*::?(?:[^=]|$)", Function, "")])),
+            (Lang::Dockerfile, build(&[(r"(?i)^\s*FROM\s+\S+\s+AS\s+(\S+)", Class, "")])),
+            (Lang::Yaml, build(&[(r#"^([A-Za-z_"'][^:#]*?)\s*:(?:\s|$)"#, Type, "")])),
+            (Lang::Css, build(&[(r"^\s*(@(?:media|supports|container|layer|keyframes)[^{]*?)\s*\{", Type, ""), (r"^\s*([^{};/@\s][^{};]*?)\s*\{", Class, "")])),
             (Lang::Ruby, build(&[(r"^\s*def\s+(?:self\.)?([A-Za-z_]\w*[?!=]?)", Function, ""), (r"^\s*(?:class|module)\s+([A-Z][\w:]*)", Class, "")])),
             (Lang::Lua, build(&[(r"^\s*(?:local\s+)?function\s+([\w.:]+)", Function, ""), (r"^\s*(?:local\s+)?([\w.]+)\s*=\s*function\b", Function, "")])),
             (Lang::PowerShell, build(&[(r"(?i)^\s*(?:function|filter|workflow)\s+([\w-]+)", Function, ""), (r"(?i)^\s*class\s+(\w+)", Class, ""), (r"(?i)^\s*enum\s+(\w+)", Type, "")])),
@@ -181,7 +186,17 @@ pub fn scan(lang: Lang, text: &str, unit: u32) -> Vec<Symbol> {
                 }
             }
             let indent: u32 = line.chars().take_while(|c| *c == ' ' || *c == '\t').map(|c| if c == '\t' { bigtext::text::rows::TAB_WIDTH as u32 } else { 1 }).sum();
-            out.push(Symbol { name: format!("{}{name}", r.prefix), kind: r.kind, line: n as u64, depth: (indent / unit.max(1)).min(8) as u8 });
+            // A Markdown heading's depth is its level; YAML lists only the top level.
+            let depth = match lang {
+                Lang::Markdown => line.bytes().take_while(|&b| b == b'#').count().saturating_sub(1) as u32,
+                Lang::Yaml if indent > 0 => continue,
+                _ => indent / unit.max(1),
+            };
+            // Make's special targets (.PHONY) are not symbols.
+            if lang == Lang::Makefile && name.starts_with('.') {
+                continue;
+            }
+            out.push(Symbol { name: format!("{}{name}", r.prefix), kind: r.kind, line: n as u64, depth: depth.min(8) as u8 });
             break;
         }
     }
@@ -381,6 +396,16 @@ mod tests {
         assert_eq!(names(Lang::Lua, lua).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["helper", "M.run", "M.stop"]);
         let ps = "Function Get-Thing {\n}\nclass Point {\n}\n# function Not-This\n";
         assert_eq!(names(Lang::PowerShell, ps).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["Get-Thing", "Point"]);
+        let md = "# Guide\nText\n## Install\n```sh\n# not this\n```\n### Linux ###\n";
+        assert_eq!(names(Lang::Markdown, md).into_iter().map(|s| (s.0, s.3)).collect::<Vec<_>>(), [("Guide".into(), 0), ("Install".into(), 1), ("Linux".into(), 2)]);
+        let mk = "CC := gcc\n.PHONY: all\nall: app\napp: main.o\n\t$(CC) -o $@ $^\n";
+        assert_eq!(names(Lang::Makefile, mk).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["all", "app"]);
+        let df = "FROM rust AS build\nRUN cargo build\nFROM debian\n";
+        assert_eq!(names(Lang::Dockerfile, df).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["build"]);
+        let yaml = "name: ci\non:\n  push:\njobs:\n  test: x\n";
+        assert_eq!(names(Lang::Yaml, yaml).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["name", "on", "jobs"]);
+        let css = "@media print {\n  .card, a:hover {\n    color: red;\n  }\n}\n";
+        assert_eq!(names(Lang::Css, css).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["@media print", ".card, a:hover"]);
         let dart = "abstract class Shape {}\nFuture<void> main() async {\n  print(1);\n}\nmixin Fly {}\n";
         assert_eq!(names(Lang::Dart, dart).into_iter().map(|s| s.0).collect::<Vec<_>>(), ["Shape", "main", "Fly"]);
     }

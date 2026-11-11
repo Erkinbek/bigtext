@@ -176,7 +176,9 @@ keyboard shortcuts.
   with a note). Changes are kept across sessions.
 - **Bookmarks** (Ctrl+F2, F2 / Shift+F2) that stay on their lines while you edit.
 - **Split view** (Ctrl+\\): two panes over one document with independent scrolling.
-- **Syntax highlighting** for logs, JSON, XML/HTML, CSV/TSV, SQL and INI/TOML/YAML, and for
+- **Syntax highlighting** for logs, JSON, XML/HTML, CSV/TSV, SQL, INI/TOML, YAML (keys, anchors,
+  tags, block scalars), CSS/SCSS/Less, Markdown (headings, emphasis, links, fenced code),
+  Dockerfiles and Makefiles (their commands as shell), and for
   code in Python, JavaScript, TypeScript, Java, Kotlin, Swift, Dart, C#, C/C++, Go, Rust, PHP, Ruby, Lua,
   PowerShell and shell scripts
   (Bash; a script without an extension is known by its `#!` line): keywords, strings, numbers,
@@ -351,7 +353,8 @@ keyboard shortcuts.
   letters filter them as in Go to file and Enter goes there. Definitions are found line by line
   on a worker with the highlighter's help, so a `def` inside a docstring or a comment is not
   listed, nor a call such as `return format(x);`. Python, JavaScript, TypeScript, Java, Kotlin,
-  Swift, Dart, C#, C/C++, Go, Rust, PHP, Ruby, Lua, PowerShell and shell scripts; the first 32 MB
+  Swift, Dart, C#, C/C++, Go, Rust, PHP, Ruby, Lua, PowerShell and shell scripts, as well as
+  Markdown headings, CSS selectors, top-level YAML keys, Makefile targets and Dockerfile stages; the first 32 MB
   of a file are read.
 - **Tabs and sessions**: Ctrl+Tab in most-recently-used order, pinned tabs, close other tabs /
   tabs to the right, drag to move; **File → Sessions** saves the open files with positions,

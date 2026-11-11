@@ -169,7 +169,7 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                 prev = Prev::Start;
                 continue;
             }
-            Mode::Tag | Mode::CData => st.mode = Mode::Code,
+            Mode::Tag | Mode::CData | Mode::Block => st.mode = Mode::Code,
         }
         let c = t[i];
         if c == b' ' || c == b'\t' || c == b'\r' {

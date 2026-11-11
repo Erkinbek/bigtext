@@ -132,7 +132,7 @@ pub fn backspace(doc: &mut Document, lang: Lang) -> bool {
 }
 
 /// Enter with one caret: between `{}`, `[]` or `()` the closing one goes to a line of its own
-/// below an indented empty line; after an opening bracket (or a Python `:`) the new line is
+/// below an indented empty line; after an opening bracket (or a Python or YAML `:`) the new line is
 /// indented one step more.
 pub fn enter(doc: &mut Document, lang: Lang, unit: &str) -> bool {
     if !enabled(lang) || !doc.editable() || doc.has_selection() {
@@ -140,7 +140,7 @@ pub fn enter(doc: &mut Document, lang: Lang, unit: &str) -> bool {
     }
     let c = doc.view.caret;
     let prev = char_before(doc, c);
-    let opens = prev.is_some_and(|p| matches!(p, '{' | '[' | '(')) || (lang == Lang::Python && prev == Some(':'));
+    let opens = prev.is_some_and(|p| matches!(p, '{' | '[' | '(')) || (matches!(lang, Lang::Python | Lang::Yaml) && prev == Some(':'));
     if !opens {
         return false;
     }
