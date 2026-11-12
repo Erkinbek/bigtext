@@ -395,8 +395,9 @@ keyboard shortcuts.
 - **Per-file memory**: an encoding chosen with Reopen with encoding, Highlight as, table, hex,
   follow, read-only and wrap, and a table's delimiter, header switch, dragged column widths and
   scroll come back whenever the file opens again (Open recent, a session, the command line).
-- **Updates**: once a day BigText asks GitHub for a newer release (Help → Check for updates
-  does it on demand; Help → Check for updates automatically turns it off). A dialog shows the
+- **Updates**: Help → Check for updates asks GitHub for a newer release. Checking by itself
+  once a day happens only if you agree when BigText first starts (Help → Check for updates
+  automatically changes it); until then nothing goes out on its own. A dialog shows the
   release notes of every newer version and installs nothing until you choose **Update now**;
   **Skip this version** stops the reminders until the next release. The download is checked
   against its size and the SHA-256 that GitHub publishes. An installed copy runs the new

@@ -1320,6 +1320,21 @@ impl SelfTest {
             check(ok, format!("File → {file}"))
         }));
         s("screenshot: Chinese interface", shot_step("selftest-zh.png"));
+        s("updates: the first start asks before checking; Escape puts the question off", Box::new(|app, c| {
+            if c.first() {
+                app.update.test_ask();
+                return Step::Wait;
+            }
+            if c.frames == 2 {
+                if app.update.test_state() != (false, false, true) || app.update.auto {
+                    return Step::Fail(format!("before: {:?}, auto {}", app.update.test_state(), app.update.auto));
+                }
+                c.key(Key::Escape, NONE);
+                return Step::Wait;
+            }
+            let st = app.update.test_state();
+            check(st == (false, true, false) && !app.update.auto, format!("after Escape: {st:?}, auto {}", app.update.auto))
+        }));
         s("interface back in English", Box::new(|app, _c| {
             use crate::app::i18n::{self, Lang};
             let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };

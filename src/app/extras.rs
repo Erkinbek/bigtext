@@ -47,6 +47,8 @@ pub struct Persisted {
     pub backup_on_save: Option<bool>,
     pub syntax: Option<bool>,
     pub update_check: Option<bool>,
+    /// The user has chosen whether to check for updates automatically.
+    pub update_asked: Option<bool>,
     pub skip_version: Option<String>,
     /// Unix time of the last update check.
     pub update_checked: Option<u64>,
@@ -312,6 +314,7 @@ pub(super) fn parse(text: &str) -> Persisted {
             "id_keys" => p.id_keys = Some(v.split(',').filter(|k| !k.is_empty()).map(String::from).collect()),
             "filter_ctx" => p.filter_ctx = v.split_once('|').and_then(|(n, e)| Some((n.parse().ok()?, e == "1"))),
             "update_check" => p.update_check = Some(v == "1"),
+            "update_asked" => p.update_asked = Some(v == "1"),
             "skip_version" => p.skip_version = Some(v.to_string()),
             "update_checked" => p.update_checked = v.parse().ok(),
             "mark" => p.marks.extend(parse_mark(v)),
@@ -419,6 +422,9 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(d) = p.update_check {
         s.push_str(&format!("update_check={}\n", b(d)));
+    }
+    if let Some(d) = p.update_asked {
+        s.push_str(&format!("update_asked={}\n", b(d)));
     }
     if let Some(v) = &p.skip_version {
         s.push_str(&format!("skip_version={v}\n"));
@@ -781,6 +787,7 @@ impl BigTextApp {
             backup_on_save: Some(self.settings.backup_on_save),
             syntax: Some(self.settings.syntax),
             update_check: Some(self.update.auto),
+            update_asked: Some(self.update.asked),
             skip_version: self.update.skipped.map(|v| v.to_string()),
             update_checked: Some(self.update.last_check).filter(|&t| t > 0),
             marks: self.settings.marks.clone(),
@@ -1445,6 +1452,7 @@ mod tests {
             backup_on_save: Some(true),
             syntax: Some(false),
             update_check: Some(false),
+            update_asked: Some(true),
             skip_version: Some("0.2.0".into()),
             update_checked: Some(1_761_550_000),
             marks: vec![super::super::marks::Mark {
@@ -1532,6 +1540,6 @@ mod tests {
         let t = &q.tabs[0];
         assert_eq!((t.caret, t.top, t.wrap, t.bookmarks.clone(), t.path.clone()), (123, 100, true, vec![0, 55, 1 << 40], PathBuf::from(r"D:\big file.txt")));
         assert_eq!((q.font_size, q.dark, q.backup_on_save, q.syntax), (Some(16.0), Some(false), Some(true), Some(false)));
-        assert_eq!((q.update_check, q.skip_version.as_deref(), q.update_checked), (Some(false), Some("0.2.0"), Some(1_761_550_000)));
+        assert_eq!((q.update_check, q.update_asked, q.skip_version.as_deref(), q.update_checked), (Some(false), Some(true), Some("0.2.0"), Some(1_761_550_000)));
     }
 }

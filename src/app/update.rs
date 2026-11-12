@@ -1,6 +1,7 @@
-//! Update check (automatically once a day, and from Help) and the update dialog. The dialog
-//! shows the release notes first and installs only after the user agrees; "Skip this version"
-//! keeps the automatic check from offering that version again.
+//! Update check (from Help, and once a day when the user agreed to it) and the update dialog.
+//! Nothing goes out on its own until the user answers the question asked at the first start.
+//! The dialog shows the release notes first and installs only after the user agrees; "Skip this
+//! version" keeps the automatic check from offering that version again.
 
 use std::mem;
 use std::path::PathBuf;
@@ -47,6 +48,8 @@ pub enum Pending {
 enum Stage {
     #[default]
     Idle,
+    /// The first start: may BigText check on its own?
+    Ask,
     /// A check the user asked for is running.
     Checking,
     Offer(Box<Offer>),
@@ -61,8 +64,12 @@ pub struct UpdateUi {
     stage: Stage,
     /// A check is running on a worker.
     running: bool,
-    /// Check automatically (saved).
+    /// Check automatically (saved; only after the user said so).
     pub auto: bool,
+    /// The user has chosen whether to check automatically (saved).
+    pub asked: bool,
+    /// The question was put off for this session (Escape).
+    ask_later: bool,
     /// "Skip this version" (saved).
     pub skipped: Option<Version>,
     /// Unix time of the last successful check (saved).
@@ -75,19 +82,32 @@ pub struct UpdateUi {
 
 impl Default for UpdateUi {
     fn default() -> Self {
-        UpdateUi { stage: Stage::Idle, running: false, auto: true, skipped: None, last_check: 0, retry_at: None, pending: None, restart: false }
+        UpdateUi { stage: Stage::Idle, running: false, auto: false, asked: false, ask_later: false, skipped: None, last_check: 0, retry_at: None, pending: None, restart: false }
     }
 }
 
 impl UpdateUi {
     pub fn restore(&mut self, p: &Persisted) {
-        self.auto = p.update_check.unwrap_or(true);
+        // Settings from before the question: having turned the check off is an answer; having
+        // left it on (the old default) is not.
+        self.asked = p.update_asked.unwrap_or(p.update_check == Some(false));
+        self.auto = self.asked && p.update_check.unwrap_or(false);
         self.skipped = p.skip_version.as_deref().and_then(Version::parse);
         self.last_check = p.update_checked.unwrap_or(0);
     }
 
     pub fn dialog_open(&self) -> bool {
         !matches!(self.stage, Stage::Idle)
+    }
+
+    /// Self-test: the first start's question (the self-test never saves, so it is not asked).
+    pub(crate) fn test_ask(&mut self) {
+        self.stage = Stage::Ask;
+    }
+
+    /// Self-test: (asked, put off for this session, the question on screen).
+    pub(crate) fn test_state(&self) -> (bool, bool, bool) {
+        (self.asked, self.ask_later, matches!(self.stage, Stage::Ask))
     }
 }
 
@@ -121,6 +141,8 @@ enum Action {
     Skip,
     Cancel,
     Restart,
+    /// The answer to the first start's question.
+    Auto(bool),
     Open(String),
     Copy(&'static str),
 }
@@ -129,6 +151,11 @@ impl BigTextApp {
     /// Starts the automatic check when it is due; called every frame.
     pub(super) fn update_tick(&mut self) {
         let u = &self.update;
+        // The first start asks before anything goes out (benchmarks and the self-test do not).
+        if !u.asked && !u.ask_later && self.persist && !u.dialog_open() {
+            self.update.stage = Stage::Ask;
+            return;
+        }
         // Debug builds (development), benchmarks and the self-test never check on their own.
         if !u.auto || !self.persist || cfg!(debug_assertions) || u.running || u.pending.is_some() || u.dialog_open() {
             return;
@@ -262,6 +289,21 @@ impl BigTextApp {
             ui.set_width(560.0);
             match &u.stage {
                 Stage::Idle => {}
+                Stage::Ask => {
+                    ui.heading(tr("Check for updates automatically?"));
+                    ui.label(tr("BigText can ask GitHub once a day whether a newer version is out. Only that request goes out, with BigText's version; nothing about you or your files."));
+                    ui.add_space(4.0);
+                    ui.weak(tr("Help → Check for updates… works either way, and the Help menu changes this choice later."));
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        if ui.button(RichText::new(tr("Check automatically")).strong()).clicked() {
+                            action = Some(Action::Auto(true));
+                        }
+                        if ui.button(tr("Don't check")).clicked() {
+                            action = Some(Action::Auto(false));
+                        }
+                    });
+                }
                 Stage::Checking => {
                     ui.horizontal(|ui| {
                         ui.spinner();
@@ -375,11 +417,14 @@ impl BigTextApp {
                 }
             }
         });
-        // Escape or a click outside: the same as "Remind me later" / "Later" / "Close".
+        // Escape or a click outside: the same as "Remind me later" / "Later" / "Close"; the first
+        // start's question comes back next time.
         if action.is_none() && modal.should_close() && !matches!(u.stage, Stage::Downloading { .. }) {
+            u.ask_later |= matches!(u.stage, Stage::Ask);
             action = Some(Action::Close);
         }
         if u.auto != auto {
+            u.asked = true;
             self.persist_state();
         }
         match action {
@@ -404,6 +449,11 @@ impl BigTextApp {
                     self.update.restart = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
+            }
+            Some(Action::Auto(on)) => {
+                let u = &mut self.update;
+                (u.auto, u.asked, u.stage) = (on, true, Stage::Idle);
+                self.persist_state();
             }
             Some(Action::Open(url)) => {
                 ctx.open_url(egui::OpenUrl::new_tab(url));
@@ -481,4 +531,25 @@ fn spans_ui(ui: &mut egui::Ui, spans: &[Span], strong: bool) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checks_on_its_own_only_after_the_user_agreed() {
+        let restored = |check: Option<bool>, asked: Option<bool>| {
+            let mut u = UpdateUi::default();
+            u.restore(&Persisted { update_check: check, update_asked: asked, ..Default::default() });
+            (u.asked, u.auto)
+        };
+        // A first start, and settings saved before the question with the old default (on): ask.
+        assert_eq!(restored(None, None), (false, false));
+        assert_eq!(restored(Some(true), None), (false, false));
+        // Turned off before the question: that is an answer.
+        assert_eq!(restored(Some(false), None), (true, false));
+        assert_eq!(restored(Some(true), Some(true)), (true, true));
+        assert_eq!(restored(Some(false), Some(true)), (true, false));
+    }
 }

@@ -57,7 +57,7 @@ Every feature is described in [FEATURES.md](FEATURES.md).
 
 ## Download
 
-Latest release: [all files and release notes](https://github.com/Erkinbek/bigtext/releases/latest) · [changelog](CHANGELOG.md)
+Latest release: [all files and release notes](https://github.com/Erkinbek/bigtext/releases/latest) · [changelog](CHANGELOG.md) · [Code signing policy](#code-signing-policy)
 
 | Platform | Download |
 | --- | --- |
@@ -173,6 +173,37 @@ from `bigtext-bench`. Raw reports: `scripts/bench.ps1` reproduces them.
 - [USAGE.md](USAGE.md): the command line, `bigtext-cli` and the keyboard shortcuts.
 - [CONTRIBUTING.md](CONTRIBUTING.md): building, architecture, tests, the website and releasing.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/).
+
+The Windows programs (`bigtext.exe`, `bigtext-cli.exe` and the installer
+`bigtext-setup-windows-x64.exe`) are signed once the project is accepted. Only files built from
+this repository are signed: GitHub Actions builds them from a release tag
+([build.yml](.github/workflows/build.yml)), and every signing request is approved by hand.
+
+Team roles:
+
+- Committers and reviewers: [Erkin Pardayev](https://github.com/Erkinbek). Changes from anyone
+  else (pull requests) are reviewed by a committer before they are merged.
+- Approvers: [Erkin Pardayev](https://github.com/Erkinbek).
+
+### Privacy
+
+This program will not transfer any information to other networked systems unless specifically
+requested by the user or the person installing or operating it.
+
+- **Update check**: only when you ask for it (**Help → Check for updates…**), or once a day if
+  you agreed to automatic checks when BigText first started (the Help menu changes this). The
+  request goes to GitHub's API (`api.github.com`) and carries BigText's version; nothing about
+  you or your files. **Update now** downloads the new version from GitHub. GitHub's
+  [privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement)
+  applies to these requests.
+- **Remote files**: **Open remote file or URL…** connects only to the server or address you
+  type, with your own `ssh` and keys for SSH.
+- BigText collects no telemetry, usage statistics or crash reports.
 
 ## Author
 

@@ -76,6 +76,17 @@ pub static PT: &[(&str, &str)] = &[
     ("Highlight as", "Realçar como"),
     ("Auto ({lang})", "Automático ({lang})"),
     ("Check for updates automatically", "Verificar atualizações automaticamente"),
+    ("Check for updates automatically?", "Verificar atualizações automaticamente?"),
+    (
+        "BigText can ask GitHub once a day whether a newer version is out. Only that request goes out, with BigText's version; nothing about you or your files.",
+        "O BigText pode perguntar ao GitHub uma vez por dia se há uma versão nova. Só essa consulta é enviada, com a versão do BigText; nada sobre você ou seus arquivos.",
+    ),
+    (
+        "Help → Check for updates… works either way, and the Help menu changes this choice later.",
+        "Ajuda → Verificar atualizações… funciona de qualquer forma, e o menu Ajuda muda essa escolha depois.",
+    ),
+    ("Check automatically", "Verificar automaticamente"),
+    ("Don't check", "Não verificar"),
     ("Sort lines A → Z", "Ordenar linhas A → Z"),
     ("Sort lines Z → A", "Ordenar linhas Z → A"),
     ("Sort lines by number", "Ordenar linhas por número"),

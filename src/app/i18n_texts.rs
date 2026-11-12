@@ -78,6 +78,19 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Highlight as", "Подсвечивать как", "Qanday ranglash"],
     ["Auto ({lang})", "Авто ({lang})", "Avto ({lang})"],
     ["Check for updates automatically", "Проверять обновления автоматически", "Yangilanishlarni avtomatik tekshirish"],
+    ["Check for updates automatically?", "Проверять обновления автоматически?", "Yangilanishlar avtomatik tekshirilsinmi?"],
+    [
+        "BigText can ask GitHub once a day whether a newer version is out. Only that request goes out, with BigText's version; nothing about you or your files.",
+        "BigText может раз в день спрашивать у GitHub, не вышла ли новая версия. Уходит только этот запрос с номером версии BigText — ничего о вас и ваших файлах.",
+        "BigText kuniga bir marta GitHub'dan yangi versiya chiqqan-chiqmaganini so'rashi mumkin. Faqat shu so'rov BigText versiyasi bilan yuboriladi; siz yoki fayllaringiz haqida hech narsa yuborilmaydi.",
+    ],
+    [
+        "Help → Check for updates… works either way, and the Help menu changes this choice later.",
+        "Справка → Проверить обновления… работает в любом случае, а изменить выбор можно позже в меню «Справка».",
+        "Yordam → Yangilanishlarni tekshirish… har holda ishlaydi, bu tanlovni keyinroq Yordam menyusida o'zgartirish mumkin.",
+    ],
+    ["Check automatically", "Проверять автоматически", "Avtomatik tekshirish"],
+    ["Don't check", "Не проверять", "Tekshirmaslik"],
     // Text operations.
     ["Sort lines A → Z", "Сортировать строки А → Я", "Satrlarni saralash A → Z"],
     ["Sort lines Z → A", "Сортировать строки Я → А", "Satrlarni saralash Z → A"],

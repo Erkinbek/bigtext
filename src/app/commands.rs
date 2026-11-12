@@ -1321,6 +1321,7 @@ impl BigTextApp {
                 ui.separator();
                 run = run.or(self.item(ui, Cmd::CheckUpdates));
                 if ui.checkbox(&mut self.update.auto, tr("Check for updates automatically")).changed() {
+                    self.update.asked = true;
                     self.persist_state();
                 }
                 ui.separator();

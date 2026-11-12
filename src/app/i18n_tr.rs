@@ -76,6 +76,17 @@ pub static TR: &[(&str, &str)] = &[
     ("Highlight as", "Vurgulama dili"),
     ("Auto ({lang})", "Otomatik ({lang})"),
     ("Check for updates automatically", "Güncellemeleri otomatik denetle"),
+    ("Check for updates automatically?", "Güncellemeler otomatik denetlensin mi?"),
+    (
+        "BigText can ask GitHub once a day whether a newer version is out. Only that request goes out, with BigText's version; nothing about you or your files.",
+        "BigText, günde bir kez GitHub'a yeni bir sürüm çıkıp çıkmadığını sorabilir. Yalnızca bu istek BigText'in sürümüyle birlikte gönderilir; sizinle ya da dosyalarınızla ilgili hiçbir şey gönderilmez.",
+    ),
+    (
+        "Help → Check for updates… works either way, and the Help menu changes this choice later.",
+        "Yardım → Güncellemeleri denetle… her durumda çalışır; bu seçimi daha sonra Yardım menüsünden değiştirebilirsiniz.",
+    ),
+    ("Check automatically", "Otomatik denetle"),
+    ("Don't check", "Denetleme"),
     ("Sort lines A → Z", "Satırları sırala A → Z"),
     ("Sort lines Z → A", "Satırları sırala Z → A"),
     ("Sort lines by number", "Satırları sayıya göre sırala"),

@@ -76,6 +76,17 @@ pub static DE: &[(&str, &str)] = &[
     ("Highlight as", "Hervorheben als"),
     ("Auto ({lang})", "Automatisch ({lang})"),
     ("Check for updates automatically", "Automatisch nach Updates suchen"),
+    ("Check for updates automatically?", "Automatisch nach Updates suchen?"),
+    (
+        "BigText can ask GitHub once a day whether a newer version is out. Only that request goes out, with BigText's version; nothing about you or your files.",
+        "BigText kann GitHub einmal am Tag fragen, ob es eine neuere Version gibt. Nur diese Anfrage wird gesendet, mit der Version von BigText – nichts über Sie oder Ihre Dateien.",
+    ),
+    (
+        "Help → Check for updates… works either way, and the Help menu changes this choice later.",
+        "Hilfe → Nach Updates suchen… funktioniert in jedem Fall, und im Menü Hilfe lässt sich diese Wahl später ändern.",
+    ),
+    ("Check automatically", "Automatisch suchen"),
+    ("Don't check", "Nicht suchen"),
     ("Sort lines A → Z", "Zeilen sortieren A → Z"),
     ("Sort lines Z → A", "Zeilen sortieren Z → A"),
     ("Sort lines by number", "Zeilen numerisch sortieren"),
