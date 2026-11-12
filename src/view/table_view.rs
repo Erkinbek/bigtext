@@ -761,6 +761,7 @@ fn paint_text(painter: &Painter, cell: Rect, text: &str, font: &FontId, color: C
     if shown.is_empty() {
         return;
     }
+    crate::app::fonts::note_missing(painter.ctx(), font, &shown);
     let y = cell.center().y;
     if right {
         painter.text(pos2(cell.right() - PAD, y), Align2::RIGHT_CENTER, shown, font.clone(), color);

@@ -61,6 +61,10 @@ ruzstd = "0.9"
 lzma-rust2 = { version = "0.23", default-features = false, features = ["std", "xz", "optimization", "encoder"] }
 bzip2 = "0.6"
 skrifa = "0.44"
+# Chinese, Japanese and Korean characters take two columns, accents none, as in terminals;
+# a letter and its accents are drawn as one.
+unicode-width = { version = "0.2", default-features = false }
+unicode-segmentation = "1.12"
 
 [target.'cfg(windows)'.dependencies]
 # Moving files to the Recycle Bin (SHFileOperationW).

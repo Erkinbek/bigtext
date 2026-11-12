@@ -1,9 +1,15 @@
 //! View → Font…: the monospace font of the text, chosen from the fonts installed on the system
 //! or any font file. The built-in font stays as the fallback for characters the chosen font
 //! lacks.
+//!
+//! The built-in fonts have no Arabic, Hindi, Thai, Korean… When the text shows a character no
+//! loaded font has, a system font that has it is looked for on a worker and added behind the
+//! others, so the startup reads no big font files.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use skrifa::instance::{LocationRef, Size};
 use skrifa::MetadataProvider;
@@ -127,21 +133,226 @@ const CJK_FONTS: &[&str] = &[
     "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
 ];
 
-/// A system font with Chinese characters (the built-in fonts have none).
-fn cjk_font() -> Option<Vec<u8>> {
-    let win = std::env::var_os("WINDIR").map(|w| PathBuf::from(w).join("Fonts"));
-    CJK_FONTS.iter().find_map(|f| {
-        let p = if f.starts_with('/') { PathBuf::from(f) } else { win.as_ref()?.join(f) };
-        let bytes = std::fs::read(&p).ok()?;
-        // egui stops on a font it cannot read: check it first.
-        skrifa::FontRef::from_index(&bytes, 0).ok()?.charmap().map('中')?;
-        Some(bytes)
-    })
+/// System fonts with the characters of other scripts, in the order they are tried: names in
+/// the Windows font folder, or macOS and Linux paths. The fonts in the usual font folders come
+/// after them.
+const FALLBACK_FONTS: &[&str] = &[
+    // Latin beyond the built-in fonts (Vietnamese), Greek, Cyrillic, Arabic, Hebrew, Georgian,
+    // Armenian.
+    "segoeui.ttf",
+    // Devanagari, Bengali, Tamil, Telugu, Gujarati, Gurmukhi, Kannada, Malayalam, Odia, Sinhala.
+    "Nirmala.ttc",
+    // Thai, Lao, Khmer.
+    "LeelawUI.ttf",
+    // Symbols, braille, mathematical letters, circled numbers.
+    "seguisym.ttf",
+    // Chinese, Korean, Japanese.
+    "msyh.ttc",
+    "simsun.ttc",
+    "malgun.ttf",
+    "YuGothR.ttc",
+    "msgothic.ttc",
+    // Ethiopic and N'Ko, Cherokee and Canadian syllabics, Tibetan, Mongolian, Myanmar, Thaana,
+    // Syriac and historic scripts, Yi, Tai Le, New Tai Lue, Phags-pa, Javanese.
+    "ebrima.ttf",
+    "gadugi.ttf",
+    "himalaya.ttf",
+    "monbaiti.ttf",
+    "mmrtext.ttf",
+    "mvboli.ttf",
+    "seguihis.ttf",
+    "msyi.ttf",
+    "taile.ttf",
+    "ntailu.ttf",
+    "phagspa.ttf",
+    "javatext.ttf",
+    "arial.ttf",
+    "sylfaen.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    "/System/Library/Fonts/PingFang.ttc",
+    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+];
+
+/// Fonts tried first for Japanese text (kana in sight), so its kanji take Japanese shapes.
+const JAPANESE_FONTS: &[&str] = &["YuGothR.ttc", "msgothic.ttc", "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc"];
+
+/// System fonts added so far for characters the other fonts lack, in the order they are tried.
+static FALLBACKS: Mutex<Vec<(PathBuf, Arc<egui::FontData>)>> = Mutex::new(Vec::new());
+/// A fallback was added since the fonts were last applied.
+static FALLBACKS_CHANGED: AtomicBool = AtomicBool::new(false);
+
+struct Lookup {
+    /// Characters waiting for the worker.
+    queue: Vec<char>,
+    /// Characters asked for already (found or not).
+    asked: Option<HashSet<char>>,
+    /// Characters no system font had.
+    misses: usize,
+    running: bool,
+}
+
+static LOOKUP: Mutex<Lookup> = Mutex::new(Lookup { queue: Vec::new(), asked: None, misses: 0, running: false });
+
+fn font_path(name: &str) -> Option<PathBuf> {
+    if name.starts_with('/') {
+        return Some(PathBuf::from(name));
+    }
+    std::env::var_os("WINDIR").map(|w| PathBuf::from(w).join("Fonts").join(name))
+}
+
+/// Reads the font at `path` if egui can use it (it stops on a font it cannot read) and it has
+/// `ch`.
+fn read_font_with(path: &Path, ch: char) -> Option<Vec<u8>> {
+    let bytes = std::fs::read(path).ok()?;
+    skrifa::FontRef::from_index(&bytes, 0).ok()?.charmap().map(ch)?;
+    Some(bytes)
+}
+
+/// True if one of the fallbacks added so far has `ch`.
+fn fallbacks_have(ch: char) -> bool {
+    FALLBACKS.lock().unwrap().iter().any(|(_, d)| skrifa::FontRef::from_index(&d.font[..], d.index).is_ok_and(|f| f.charmap().map(ch).is_some()))
+}
+
+/// Adds the font at `path` as a fallback (first: before the others) if it has `ch`.
+fn add_fallback(path: &Path, ch: char, first: bool) -> bool {
+    let Some(bytes) = read_font_with(path, ch) else { return false };
+    let mut v = FALLBACKS.lock().unwrap();
+    if !v.iter().any(|(p, _)| p == path) {
+        let entry = (path.to_path_buf(), Arc::new(egui::FontData::from_owned(bytes)));
+        if first {
+            v.insert(0, entry);
+        } else {
+            v.push(entry);
+        }
+    }
+    true
+}
+
+/// Characters worth a look for a font: not ASCII, not invisible, not private-use ones (their
+/// meaning depends on the font).
+fn wanted(c: char) -> bool {
+    !c.is_ascii() && !c.is_whitespace() && !c.is_control() && bigtext::text::rows::char_cells(c) > 0 && !matches!(c as u32, 0xE000..=0xF8FF | 0xFFF0..=0xFFFF | 0xF0000..=0x10FFFF)
+}
+
+fn is_kana(c: char) -> bool {
+    matches!(c as u32, 0x3040..=0x30FF | 0x31F0..=0x31FF | 0xFF66..=0xFF9F)
+}
+
+/// Looks for system fonts with the characters of `text` that `font` shows as the replacement
+/// glyph. Cheap when there are none; the looking is done on a worker, and the fonts found are
+/// applied on a later frame (see [`refresh`]).
+pub fn note_missing(ctx: &egui::Context, font: &egui::FontId, text: &str) {
+    if text.is_ascii() {
+        return;
+    }
+    // egui's `has_glyph` says no for every character of the font with the replacement glyph;
+    // a missing character is one with no width.
+    let missing: Vec<char> = ctx.fonts_mut(|f| text.chars().filter(|&c| wanted(c) && f.glyph_width(font, c) == 0.0).collect());
+    if missing.is_empty() {
+        return;
+    }
+    let mut l = LOOKUP.lock().unwrap();
+    let asked = l.asked.get_or_insert_with(HashSet::new);
+    let new: Vec<char> = missing.into_iter().filter(|&c| asked.insert(c)).collect();
+    if new.is_empty() {
+        return;
+    }
+    l.queue.extend(new);
+    if !l.running {
+        l.running = true;
+        let ctx = ctx.clone();
+        std::thread::spawn(move || find_fallbacks(&ctx));
+    }
+}
+
+/// The worker of [`note_missing`]: for each character asked for, the first font that has it,
+/// trying the list above and then the fonts in the font folders.
+fn find_fallbacks(ctx: &egui::Context) {
+    // Fonts are checked mapped, so a big one is read only once it is chosen.
+    let mut maps: std::collections::HashMap<PathBuf, Option<memmap2::Mmap>> = Default::default();
+    let mut scanned: Option<Vec<PathBuf>> = None;
+    loop {
+        let (batch, give_up) = {
+            let mut l = LOOKUP.lock().unwrap();
+            if l.queue.is_empty() {
+                l.running = false;
+                return;
+            }
+            (std::mem::take(&mut l.queue), l.misses > 200)
+        };
+        let japanese = batch.iter().any(|&c| is_kana(c));
+        let mut added = false;
+        for ch in batch {
+            if fallbacks_have(ch) {
+                continue;
+            }
+            let listed: Vec<PathBuf> = JAPANESE_FONTS.iter().filter(|_| japanese).chain(FALLBACK_FONTS).filter_map(|n| font_path(n)).collect();
+            let others = if give_up { &[][..] } else { scanned.get_or_insert_with(folder_fonts).as_slice() };
+            let has = |p: &PathBuf, maps: &mut std::collections::HashMap<PathBuf, Option<memmap2::Mmap>>| {
+                let map = maps.entry(p.clone()).or_insert_with(|| {
+                    let file = std::fs::File::open(p).ok()?;
+                    // SAFETY: font files are only read; one changed meanwhile is checked again
+                    // when it is read in full.
+                    unsafe { memmap2::Mmap::map(&file) }.ok()
+                });
+                map.as_deref().and_then(|b| skrifa::FontRef::from_index(b, 0).ok()).is_some_and(|f| f.charmap().map(ch).is_some())
+            };
+            match listed.iter().chain(others).find(|p| has(p, &mut maps)) {
+                Some(p) => added |= add_fallback(p, ch, false),
+                None => LOOKUP.lock().unwrap().misses += 1,
+            }
+        }
+        if added {
+            FALLBACKS_CHANGED.store(true, Ordering::Release);
+            ctx.request_repaint();
+        }
+    }
+}
+
+/// The regular fonts in the usual font folders, Noto first.
+fn folder_fonts() -> Vec<PathBuf> {
+    fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                if depth > 0 {
+                    walk(&p, depth - 1, out);
+                }
+                continue;
+            }
+            let file = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+            let stem = file.rsplit_once('.').map_or(file.as_str(), |s| s.0);
+            if (file.ends_with(".ttf") || file.ends_with(".otf") || file.ends_with(".ttc")) && !STYLES.iter().any(|s| stem.contains(s)) {
+                out.push(p);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for (dir, depth) in font_dirs() {
+        walk(&dir, depth, &mut out);
+    }
+    out.sort_by_key(|p| (!p.to_string_lossy().to_lowercase().contains("noto"), p.clone()));
+    out
+}
+
+/// The fallbacks found since the last frame are applied (with the text's font at `path`).
+pub fn refresh(ctx: &egui::Context, path: Option<&Path>) {
+    if FALLBACKS_CHANGED.swap(false, Ordering::AcqRel) {
+        // A text font that went missing meanwhile gives way to the built-in one.
+        if apply_font(ctx, path).is_err() {
+            let _ = apply_font(ctx, None);
+        }
+        ctx.request_repaint();
+    }
 }
 
 /// Installs the font at `path` as the first monospace font (none: the built-in one only), and
-/// in Chinese a system font with its characters behind the others. Returns whether the font is
-/// monospaced.
+/// behind the others the system fonts found for other scripts; in Chinese one with its
+/// characters comes first of those. Returns whether the font is monospaced.
 pub fn apply_font(ctx: &egui::Context, path: Option<&Path>) -> Result<bool, String> {
     let mut defs = egui::FontDefinitions::default();
     let mut mono = true;
@@ -152,11 +363,24 @@ pub fn apply_font(ctx: &egui::Context, path: Option<&Path>) -> Result<bool, Stri
         defs.families.entry(egui::FontFamily::Monospace).or_default().insert(0, "user-mono".into());
     }
     if super::i18n::lang() == super::i18n::Lang::Zh {
-        if let Some(bytes) = cjk_font() {
-            defs.font_data.insert("cjk".into(), Arc::new(egui::FontData::from_owned(bytes)));
-            for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
-                defs.families.entry(family).or_default().push("cjk".into());
+        // The menus need it at once.
+        let mut v = FALLBACKS.lock().unwrap();
+        match v.iter().position(|(p, _)| CJK_FONTS.iter().any(|f| font_path(f).as_deref() == Some(p.as_path()))) {
+            Some(i) => {
+                let cjk = v.remove(i);
+                v.insert(0, cjk);
             }
+            None => {
+                drop(v);
+                let _ = CJK_FONTS.iter().filter_map(|f| font_path(f)).any(|p| add_fallback(&p, '中', true));
+            }
+        }
+    }
+    for (i, (_, data)) in FALLBACKS.lock().unwrap().iter().enumerate() {
+        let name = format!("fallback-{i}");
+        defs.font_data.insert(name.clone(), data.clone());
+        for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+            defs.families.entry(family).or_default().push(name.clone());
         }
     }
     ctx.set_fonts(defs);
@@ -240,6 +464,14 @@ mod tests {
         assert_eq!(display_name("JetBrainsMono-Regular"), "Jet Brains Mono");
         assert_eq!(display_name("DejaVuSansMono"), "Deja Vu Sans Mono");
         assert_eq!(display_name("Hack-Regular"), "Hack");
+    }
+
+    #[test]
+    fn which_characters_are_looked_for() {
+        assert!(wanted('ส') && wanted('中') && wanted('ệ'));
+        // ASCII, spaces, accents (drawn on their letter), private-use icons.
+        assert!(!wanted('a') && !wanted('\u{3000}') && !wanted('\u{301}') && !wanted('\u{E0A0}'));
+        assert!(is_kana('こ') && is_kana('ｶ') && !is_kana('中'));
     }
 
     #[test]

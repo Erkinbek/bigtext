@@ -1875,6 +1875,7 @@ impl eframe::App for BigTextApp {
         self.run_pending_diff();
         self.sync_side_doc();
         self.handle_close_request(&ctx);
+        fonts::refresh(&ctx, self.settings.font_path.as_deref());
 
         // Dropped files.
         let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());

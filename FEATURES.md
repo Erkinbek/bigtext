@@ -167,6 +167,16 @@ keyboard shortcuts.
   JetBrains Mono, DejaVu Sans Mono, Menlo, …) or any `.ttf`/`.otf`/`.ttc` file, with a preview
   and a warning for fonts that are not monospaced; the built-in font stays as the fallback
   for missing characters. Kept across sessions.
+- **Every script on the cell grid**: Chinese, Japanese and Korean characters and most emoji take
+  two columns, accents and other combining marks none, as in terminals; a letter with its
+  marks, a Hindi syllable or an emoji sequence is drawn as one, and every character fills its
+  own cells, so the caret, the selection and the columns stay in step whatever the font.
+  Characters the built-in fonts lack (Arabic, Hebrew, Hindi, Thai, Korean, Japanese,
+  Vietnamese, Ethiopic, Tibetan, symbols…) get a system font that has them (Segoe UI, Nirmala
+  UI, Leelawadee UI, Malgun Gothic, Yu Gothic, Noto…), found on a worker the first time such a
+  character is on screen, so starting up reads no big font files. The caret steps over a
+  letter's marks with it, and an input method's candidate window opens at the caret, with the
+  text being composed shown there.
 - **Interface languages**: English, Russian, Uzbek, Simplified Chinese, Spanish, Brazilian
   Portuguese, German and Turkish (View → Language), kept across sessions; a first start speaks
   the system's language when it is one of them. In Chinese a system font with its characters
@@ -403,8 +413,8 @@ keyboard shortcuts.
 - Column numbers inside soft-broken lines (> 64 KB) are byte-based estimates (`Col ~N`).
 - A CR-only line break is recognised only in files without LF line breaks (mixed CR is shown
   as a `←` placeholder).
-- Wide (CJK) characters are drawn by the font but laid out as one cell; the default fonts do not
-  include CJK glyphs.
+- Right-to-left text (Arabic, Hebrew) is shown left to right in the order it is stored, with
+  its letters unjoined: there is no bidirectional layout.
 - On Linux/macOS, another process truncating a file while it is mapped can raise SIGBUS
   (inherent to mmap; Windows forbids truncating mapped files). Followed files and network
   drives use chunked reads, so a followed log can be truncated safely.

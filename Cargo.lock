@@ -410,6 +410,8 @@ dependencies = [
  "skrifa",
  "tar",
  "tempfile",
+ "unicode-segmentation",
+ "unicode-width",
  "ureq",
  "windows-sys 0.59.0",
  "winresource",

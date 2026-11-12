@@ -535,6 +535,41 @@ impl SelfTest {
             }
             check(text(app) == ORIGINAL, "second undo failed")
         }));
+        s("input method: composition at the caret, Chinese characters take two cells", Box::new(|app, c| {
+            if c.first() {
+                c.key(Key::Home, CTRL);
+                c.event(Event::Ime(egui::ImeEvent::Preedit { text: "nihao".into(), active_range_chars: Some(5..5) }), NONE);
+                return Step::Wait;
+            }
+            let at = |app: &mut BigTextApp, cells: f32| {
+                let d = doc(app);
+                let want = d.view.text_rect.map_or(0.0, |r| r.left()) + cells * d.view.cell.x - d.view.scroll_x;
+                (d.view.ime_rect.map_or(-1.0, |r| r.left()), want)
+            };
+            if c.frames == 2 {
+                // The window follows the input method's cursor at the end of "nihao".
+                let (x, want) = at(app, 5.0);
+                let shown = doc(app).view.preedit.text.clone();
+                if shown != "nihao" || (x - want).abs() > 1.0 || text(app) != ORIGINAL {
+                    return Step::Fail(format!("composing {shown:?}: input method at x {x}, expected {want}"));
+                }
+                c.event(Event::Ime(egui::ImeEvent::Preedit { text: String::new(), active_range_chars: None }), NONE);
+                c.event(Event::Ime(egui::ImeEvent::Commit("你好".into())), NONE);
+                return Step::Wait;
+            }
+            if c.frames == 3 {
+                let t = text(app);
+                let (x, want) = at(app, 4.0);
+                let d = doc(app);
+                if t != format!("你好{ORIGINAL}") || d.view.caret != 6 || !d.view.preedit.text.is_empty() || (x - want).abs() > 1.0 {
+                    return Step::Fail(format!("text {t:?}, caret {}, input method at x {x}, expected {want}", d.view.caret));
+                }
+                c.key(Key::Z, CTRL);
+                return Step::Wait;
+            }
+            let t = text(app);
+            check(t == ORIGINAL, format!("undo left {t:?}"))
+        }));
         s("clipboard: Ctrl+A + copy", Box::new(|_app, c| {
             if c.first() {
                 c.key(Key::A, CTRL);
@@ -1256,6 +1291,22 @@ impl SelfTest {
             check(bg == egui::Color32::from_rgb(0x27, 0x28, 0x22) && saved == Some(CodeTheme::Monokai), format!("bg {bg:?}, saved {saved:?}"))
         }));
         s("screenshot: code in Monokai", shot_step("selftest-code-monokai.png"));
+        s("a script the built-in fonts lack (Thai) gets a system font, loaded on a worker", Box::new(|app, c| {
+            if c.first() {
+                std::fs::write(c.file("thai.txt"), "สวัสดีชาวโลก\n").unwrap();
+                app.open_path(c.file("thai.txt"));
+            }
+            let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+            let font = egui::FontId::monospace(app.settings.font_size / ctx.zoom_factor());
+            if wait_ready(app) && ctx.fonts_mut(|f| f.glyph_width(&font, 'ส')) > 0.0 {
+                return Step::Next;
+            }
+            match c.waited() {
+                t if t < Duration::from_secs(8) => Step::Wait,
+                _ if cfg!(windows) => Step::Fail("no font for Thai after 8 s".into()),
+                _ => Step::Skip("no system font with Thai".into()),
+            }
+        }));
         s("interface in Chinese: menus translated, a system font with Chinese characters behind the built-in ones", Box::new(|app, c| {
             use crate::app::i18n::{self, Lang};
             let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };

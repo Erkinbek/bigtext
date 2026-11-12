@@ -4,9 +4,10 @@
 //! is visible. Rows come from [`bigtext::text::rows`], so every computation is bounded no matter
 //! how long a line is. All positions are byte offsets; nothing here touches the whole file.
 
+use std::collections::HashMap;
 use std::ops::Range;
 
-use egui::text::{LayoutJob, TextFormat};
+use egui::text::{CCursor, LayoutJob, TextFormat};
 use egui::{pos2, Align2, Color32, CursorIcon, Event, EventFilter, FontId, Key, Modifiers, PointerButton, Pos2, Rect, Sense, Ui};
 
 use bigtext::text::rows::{self, CellKind, Pending, Row};
@@ -77,6 +78,34 @@ impl ShowWs {
             self.text
         }
     }
+}
+
+/// What an input method is composing (Chinese pinyin before it becomes characters). It is
+/// drawn at the caret; only the text the input method commits goes into the document.
+#[derive(Clone, Default)]
+pub struct Preedit {
+    pub text: String,
+    /// The input method's cursor in `text` (characters; `None`: at the end).
+    pub cursor: Option<usize>,
+    /// The caret it is composed at; moving the caret ends the composition.
+    pub at: u64,
+}
+
+/// A cluster (a character with its combining marks) painted apart from the rest of its row, on
+/// its own cells: one not as wide as its cells (a Chinese character from a fallback font, an
+/// emoji), which inline would push the text after it away from the cells the caret and the
+/// selection are drawn at.
+struct Loose {
+    /// Where its cells are (as spaces) in the row's painted text.
+    at: usize,
+    cell: u32,
+    width: u32,
+    /// Painted on its own, never with alike neighbours: several characters (the shaper might
+    /// space them apart), or right-to-left ones (it would turn them around).
+    alone: bool,
+    text: String,
+    /// How far it advances as egui draws it.
+    adv: f32,
 }
 
 /// Rows of code are this much taller than the font's line, as in code editors.
@@ -249,7 +278,6 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             epoch_tooltip(ui, doc, &resp, text_rect, m, &rows);
             if focused {
                 handle_keys(ui, doc, wrap, env);
-                ime_output(ui, text_rect);
             }
         } else {
             pending = true;
@@ -263,6 +291,11 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                 pending = true;
             }
         }
+    }
+    // Moving the caret (a click, a key) or the focus ends a composition.
+    let interrupt = active_pane && !doc.view.preedit.text.is_empty() && (!focused || resp.gained_focus() || doc.view.preedit.at != doc.view.caret);
+    if interrupt {
+        doc.view.preedit = Preedit::default();
     }
 
     let painter = ui.painter_at(full);
@@ -334,6 +367,11 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     // Screen readers get the rows on screen as text runs.
     let a11y_on = super::a11y::enabled(ui.ctx(), id);
     let mut a11y_rows: Vec<super::a11y::Row> = Vec::new();
+    let ctx = ui.ctx().clone();
+    // How far the clusters met so far in this frame advance (see `advance`).
+    let mut advances: HashMap<String, f32> = HashMap::new();
+    // Where the caret was drawn, for the input method's window.
+    let mut caret_rect: Option<Rect> = None;
     for (i, row) in rows.iter().enumerate() {
         let y = text_rect.top() + i as f32 * m.rh;
         if y > text_rect.bottom() {
@@ -365,6 +403,9 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         let mut map: Vec<(usize, usize)> = Vec::new();
         let mut pre = String::new();
         let mut a11y_row = a11y_on.then(|| super::a11y::Row::new(row.start, row.end, Rect::from_min_max(pos2(text_rect.left(), y), pos2(text_rect.right(), y + m.rh))));
+        let mut loose: Vec<Loose> = Vec::new();
+        // The visible characters.
+        let mut cells: Vec<rows::Cell> = Vec::new();
         // The cell the row's text starts in (`None`: blank so far).
         let mut ink: Option<u32> = None;
         rows::for_each_cell(&codec, &bytes, row.start, |c| {
@@ -378,30 +419,68 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                 }
                 return true;
             }
-            if c.cell >= first_cell + vis_cells {
+            // A zero-width character right of the screen still goes on the one before it.
+            if c.cell >= first_cell + vis_cells && c.width > 0 {
                 reached_end = false;
                 return false;
             }
-            vis.push((c.off, c.cell));
-            if let Some(r) = a11y_row.as_mut().filter(|_| c.kind != CellKind::Hidden) {
-                let ch = match c.kind {
-                    CellKind::Tab => '\t',
-                    CellKind::Invalid => '\u{FFFD}',
-                    _ => c.ch,
-                };
-                r.push(ch, c.off, (c.cell.max(first_cell) - first_cell) as f32 * m.cw, c.width as f32 * m.cw);
+            cells.push(c);
+            true
+        });
+        // A letter with its accents or vowel signs, an emoji sequence: each cluster is shaped
+        // as one and fills its cells.
+        let starts = cluster_starts(&cells);
+        for (k, &i) in starts.iter().enumerate() {
+            let group = &cells[i..starts.get(k + 1).copied().unwrap_or(cells.len())];
+            let c = group[0];
+            let width: u32 = group.iter().map(|x| x.width).sum();
+            for x in group {
+                vis.push((x.off, x.cell));
+                if let Some(r) = a11y_row.as_mut().filter(|_| x.kind != CellKind::Hidden) {
+                    let ch = match x.kind {
+                        CellKind::Tab => '\t',
+                        CellKind::Invalid => '\u{FFFD}',
+                        _ => x.ch,
+                    };
+                    r.push(ch, x.off, (x.cell.max(first_cell) - first_cell) as f32 * m.cw, x.width as f32 * m.cw);
+                }
             }
             if c.cell > cur {
                 for _ in cur..c.cell {
                     run.push(' ');
                 }
             }
+            let shown = (c.cell + width).saturating_sub(c.cell.max(first_cell)) as usize;
+            let at = run.len();
+            let mut whole = false;
             let (s, sp): (String, bool) = match c.kind {
+                CellKind::Normal if group.len() > 1 || !c.ch.is_ascii() => {
+                    let text: String = group.iter().map(|x| x.ch).collect();
+                    let adv = match advances.get(text.as_str()) {
+                        Some(&a) => a,
+                        None => {
+                            // A script no loaded font has: a system font for it is looked for.
+                            crate::app::fonts::note_missing(&ctx, &font, &text);
+                            *advances.entry(text.clone()).or_insert(advance(&ctx, &font, &text))
+                        }
+                    };
+                    let rtl = is_rtl(c.ch);
+                    // Not as wide as its cells (a Chinese character from a fallback font, an
+                    // accent the font lacks), cut by the left edge, or right-to-left (which the
+                    // shaper would turn around with the text near it): painted apart.
+                    if (adv - width as f32 * m.cw).abs() > 0.05 || c.cell < first_cell || rtl {
+                        loose.push(Loose { at, cell: c.cell, width, alone: group.len() > 1 || rtl, text, adv });
+                        (" ".repeat(shown), false)
+                    } else {
+                        whole = true;
+                        (text, false)
+                    }
+                }
                 CellKind::Tab if show_ws => {
-                    let w = (c.cell + c.width - c.cell.max(first_cell)) as usize;
+                    let w = shown;
                     (if c.cell >= first_cell { format!("→{}", " ".repeat(w - 1)) } else { " ".repeat(w) }, true)
                 }
-                CellKind::Tab => (" ".repeat((c.cell + c.width - c.cell.max(first_cell)) as usize), false),
+                CellKind::Tab => (" ".repeat(shown), false),
                 CellKind::Normal if show_ws && c.ch == ' ' => ("·".to_string(), true),
                 CellKind::Hidden => (String::new(), false),
                 CellKind::Control => (control_glyph(c.ch).to_string(), true),
@@ -409,16 +488,21 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                 CellKind::Normal => (c.ch.to_string(), false),
             };
             if sp {
-                specials.push((run.len(), run.len() + s.len()));
+                specials.push((at, at + s.len()));
             }
-            if c.kind != CellKind::Hidden {
-                map.push((src.len(), run.len()));
-                src.push(c.ch);
+            // Highlighting sees every character; a cluster painted apart takes its first one's
+            // colour.
+            let mut r = at;
+            for (n, x) in group.iter().enumerate().filter(|(_, x)| x.kind != CellKind::Hidden) {
+                if n == 0 || whole {
+                    map.push((src.len(), r));
+                }
+                src.push(x.ch);
+                r += if whole { x.ch.len_utf8() } else { 0 };
             }
             run.push_str(&s);
-            cur = c.cell.max(first_cell) + c.width;
-            true
-        });
+            cur = c.cell.max(first_cell) + width;
+        }
         let st = hl_states.get(i).copied().unwrap_or_default();
         let st = if pre.is_empty() { st } else { super::highlight::scan(env.lang, st, &pre, false) };
         let text = Shown { run: &run, specials: &specials, src: &src, map: &map };
@@ -515,8 +599,13 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             }
         }
         if !job.text.is_empty() {
+            let loose_jobs = loose_jobs(&loose, &job, &font, m.cw, fh);
             let galley = ui.ctx().fonts_mut(|f| f.layout_job(job));
             text_painter.galley(pos2(x_of(first_cell), y + m.pad), galley, text_color);
+            for (cell, d, job) in loose_jobs {
+                let galley = ui.ctx().fonts_mut(|f| f.layout_job(job));
+                text_painter.galley(pos2(x_of(cell), y + m.pad) + d, galley, text_color);
+            }
         }
         // The line break: LF, CRLF or CR.
         if show_ws && reached_end && row.is_last_in_seg() && row.seg.has_nl {
@@ -530,9 +619,26 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             text_painter.text(pos2(x_of(end_cell), y + m.pad), Align2::LEFT_TOP, glyph, font.clone(), weak);
         }
         if row_has_caret {
-            let x = x_of(cell_for(caret));
+            let mut x = x_of(cell_for(caret));
+            let preedit = &doc.view.preedit;
+            if focused && active_pane && !preedit.text.is_empty() {
+                // The composition goes over the text after the caret, underlined, with the
+                // caret where the input method has it.
+                let galley = ui.ctx().fonts_mut(|f| f.layout_no_wrap(preedit.text.clone(), font.clone(), text_color));
+                let under = Rect::from_min_max(pos2(x, y), pos2(x + galley.size().x, y + m.rh));
+                text_painter.rect_filled(under, 0.0, look.bg);
+                if sel_s == sel_e {
+                    text_painter.rect_filled(under, 0.0, cur_line_bg);
+                }
+                text_painter.hline(under.x_range(), text_painter.round_to_pixel_center(y + m.rh - 1.5), egui::Stroke::new(1.0, text_color));
+                let n = preedit.cursor.unwrap_or(usize::MAX).min(preedit.text.chars().count());
+                let dx = galley.pos_from_cursor(CCursor::new(n)).min.x;
+                text_painter.galley(pos2(x, y + m.pad), galley, text_color);
+                x += dx;
+            }
             let color = if focused { look.caret } else { weak };
             text_painter.rect_filled(Rect::from_min_max(pos2(x - 0.5, y), pos2(x + 1.5, y + m.rh)), 0.0, color);
+            caret_rect = Some(Rect::from_min_max(pos2(x, y), pos2(x + 1.0, y + m.rh)));
         }
         for &(_, c) in &extra {
             if c >= row.start && (c < row.end || (c == row.end && (row.is_last_in_seg() || row.end == doc.buf.len()))) {
@@ -630,6 +736,11 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         if text_rect.x_range().contains(x) {
             text_painter.vline(x, text_rect.y_range(), egui::Stroke::new(1.0, weak.gamma_multiply(0.45)));
         }
+    }
+    if focused && doc.is_ready() {
+        // The input method puts its candidate window next to the caret (kept in the text area).
+        let at = caret_rect.map_or(Rect::from_min_size(text_rect.min, egui::vec2(1.0, m.rh)), |r| r.translate(egui::vec2(r.left().clamp(text_rect.left(), text_rect.right()) - r.left(), 0.0)));
+        ime_output(ui, doc, at, interrupt);
     }
     if a11y_on {
         let (line, exact) = doc.buf.line_of(caret);
@@ -1113,15 +1224,100 @@ pub(crate) fn select_word(doc: &mut Document, off: u64, wrap: Option<usize>) {
     doc.view.scroll_to_caret = false;
 }
 
-fn ime_output(ui: &mut Ui, text_rect: Rect) {
+/// Turns on the input method with its window at `caret`. egui-winit places the window by
+/// `rect`, so that is the caret too, not the whole text area (the window would go below it).
+fn ime_output(ui: &mut Ui, doc: &mut Document, caret: Rect, interrupt: bool) {
+    let to_global = ui.ctx().layer_transform_to_global(ui.layer_id()).unwrap_or_default();
+    let rect = to_global * caret;
+    doc.view.ime_rect = Some(rect);
     ui.ctx().output_mut(|o| {
-        o.ime = Some(egui::output::IMEOutput {
-            purpose: egui::IMEPurpose::Normal,
-            rect: text_rect,
-            cursor_rect: Rect::from_min_size(text_rect.min, egui::vec2(1.0, 16.0)),
-            should_interrupt_composition: false,
-        });
+        o.ime = Some(egui::output::IMEOutput { purpose: egui::IMEPurpose::Normal, rect, cursor_rect: rect, should_interrupt_composition: interrupt });
     });
+}
+
+/// How far `text` advances as egui draws it in `font`: with the glyphs of fallback fonts, the
+/// replacement glyph for characters no font has, nothing for invisible ones. (egui's own
+/// `glyph_width` gives 0 for a missing character, and `has_glyph` is false for every character
+/// of the font that has the replacement glyph.)
+fn advance(ctx: &egui::Context, font: &FontId, text: &str) -> f32 {
+    ctx.fonts_mut(|f| {
+        let galley = f.layout_no_wrap(text.to_owned(), font.clone(), Color32::PLACEHOLDER);
+        galley.rows.first().map_or(0.0, |r| r.row.glyphs.iter().map(|g| g.advance_width).sum())
+    })
+}
+
+/// True for characters of right-to-left scripts (Hebrew, Arabic, Syriac, Thaana, N'Ko…).
+fn is_rtl(c: char) -> bool {
+    matches!(c as u32, 0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFE | 0x10800..=0x10FFF | 0x1E800..=0x1EFFF)
+}
+
+/// Where the clusters of `cells` start: user-perceived characters (a letter with its accents,
+/// a Hindi syllable, an emoji with its skin tone or joined emoji); tabs, control characters and
+/// invalid bytes stand alone.
+fn cluster_starts(cells: &[rows::Cell]) -> Vec<usize> {
+    use unicode_segmentation::UnicodeSegmentation;
+    if cells.iter().all(|c| c.ch.is_ascii()) {
+        return (0..cells.len()).collect();
+    }
+    let mut text = String::new();
+    let mut index = Vec::with_capacity(cells.len());
+    for (i, c) in cells.iter().enumerate() {
+        index.extend(std::iter::repeat_n(i, c.ch.len_utf8()));
+        text.push(c.ch);
+    }
+    let mut breaks = vec![false; cells.len()];
+    for (b, _) in text.grapheme_indices(true) {
+        breaks[index[b]] = true;
+    }
+    // A sign that stacks the next consonant under the one before (Myanmar, Khmer, Kannada…)
+    // joins their clusters, which Unicode's rules leave apart for these scripts: shaped apart,
+    // each would get a dotted circle.
+    let stacks = |c: char| matches!(c as u32, 0x0A4D | 0x0CCD | 0x1039 | 0x17D2 | 0x1A60 | 0x1B44 | 0x1BAB | 0xA9C0);
+    // Vowel signs the rules leave out of their syllable (Myanmar ာ, Tai Tham…), likewise.
+    let vowel = |c: char| matches!(c as u32, 0x102B | 0x102C | 0x1038 | 0x1062..=0x1064 | 0x1067..=0x106D | 0x1083 | 0x1087..=0x108C | 0x108F | 0x109A..=0x109C | 0x1A61 | 0x1A63 | 0x1A64 | 0xAA7B | 0xAA7D);
+    (0..cells.len())
+        .filter(|&i| i == 0 || (breaks[i] && !stacks(cells[i - 1].ch) && !vowel(cells[i].ch)) || cells[i].kind != CellKind::Normal || cells[i - 1].kind != CellKind::Normal)
+        .collect()
+}
+
+/// The loose clusters of a row (see [`Loose`]) as layout jobs, with the cell each starts at
+/// and how far right and down of its row: neighbours alike in width and colour go in one job,
+/// spaced out to their cells; each is centred in its cells, and one much wider than them (a
+/// Tamil letter, a circled number) is made smaller to fit. Colours come from the row's `job`;
+/// `fh` is the font's line height.
+fn loose_jobs(loose: &[Loose], job: &LayoutJob, font: &FontId, cw: f32, fh: f32) -> Vec<(u32, egui::Vec2, LayoutJob)> {
+    let color_at = |at: usize| {
+        let i = job.sections.partition_point(|s| s.byte_range.end.0 <= at);
+        job.sections.get(i).map_or(Color32::PLACEHOLDER, |s| s.format.color)
+    };
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < loose.len() {
+        let a = &loose[i];
+        let color = color_at(a.at);
+        let mut text = a.text.clone();
+        let mut j = i + 1;
+        while let Some(b) = loose.get(j).filter(|_| !a.alone) {
+            let prev = &loose[j - 1];
+            if b.alone || b.cell != prev.cell + prev.width || b.width != a.width || (b.adv - a.adv).abs() > 0.01 || color_at(b.at) != color {
+                break;
+            }
+            text.push_str(&b.text);
+            j += 1;
+        }
+        let slot = a.width as f32 * cw;
+        // A little wider may stick out; much wider shrinks, to no less than 60 %.
+        let scale = if a.adv > slot * 1.15 { (slot / a.adv).max(0.6) } else { 1.0 };
+        // The spacing goes between glyphs, not before the first.
+        let gap = slot - a.adv * scale;
+        let spacing = if j - i > 1 { gap } else { 0.0 };
+        let font_id = FontId::new(font.size * scale, font.family.clone());
+        let mut lj = LayoutJob::default();
+        lj.append(&text, 0.0, TextFormat { font_id, color, extra_letter_spacing: spacing, ..Default::default() });
+        out.push((a.cell, egui::vec2(gap / 2.0, fh * (1.0 - scale) / 2.0), lj));
+        i = j;
+    }
+    out
 }
 
 /// Input while a block selection is active. Returns true if the event was used; keys that
@@ -1233,6 +1429,15 @@ fn block_key(doc: &mut Document, ev: &Event, wrap: Option<usize>) -> bool {
 fn handle_keys(ui: &mut Ui, doc: &mut Document, wrap: Option<usize>, env: &mut ViewEnv) {
     let events = ui.input(|i| i.events.clone());
     for ev in events {
+        match &ev {
+            Event::Ime(egui::ImeEvent::Preedit { text, active_range_chars }) => {
+                let shown = doc.editable() && !text.is_empty();
+                doc.view.preedit = if shown { Preedit { text: text.clone(), cursor: active_range_chars.as_ref().map(|r| r.end), at: doc.view.caret } } else { Preedit::default() };
+                continue;
+            }
+            Event::Ime(egui::ImeEvent::Commit(_)) => doc.view.preedit = Preedit::default(),
+            _ => {}
+        }
         if block_key(doc, &ev, wrap) || handle_block_event(ui, doc, &ev) || crate::view::multi::handle_event(ui, doc, &ev, wrap) {
             continue;
         }
@@ -1311,7 +1516,7 @@ fn move_horizontal(doc: &Document, wrap: Option<usize>, right: bool, word: bool)
         if word {
             return word_boundary(doc, c, row.seg.content_end, true);
         }
-        doc.buf.next_char(c)
+        rows::next_stop(&doc.buf, c)
     } else {
         if c == row.seg.start && row.seg.line_start && c > 0 {
             if let Ok(Some(prev)) = rows::prev_seg(&doc.buf, &row.seg) {
@@ -1321,7 +1526,7 @@ fn move_horizontal(doc: &Document, wrap: Option<usize>, right: bool, word: bool)
         if word {
             return word_boundary(doc, c, row.seg.start, false);
         }
-        doc.buf.prev_char(c).max(doc.min_caret())
+        rows::prev_stop(&doc.buf, c).max(doc.min_caret())
     }
 }
 

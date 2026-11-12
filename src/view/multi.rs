@@ -190,7 +190,7 @@ pub fn handle_event(ui: &Ui, doc: &mut Document, ev: &Event, wrap: Option<usize>
                             let p = if right { a.max(c) } else { a.min(c) };
                             return (p, p);
                         }
-                        let n = if right { d.buf.next_char(c) } else { d.buf.prev_char(c).max(d.min_caret()) };
+                        let n = if right { rows::next_stop(&d.buf, c) } else { rows::prev_stop(&d.buf, c).max(d.min_caret()) };
                         (if shift { a } else { n }, n)
                     });
                 }

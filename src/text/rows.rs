@@ -216,6 +216,55 @@ pub struct Cell {
     pub kind: CellKind,
 }
 
+/// Cells a printable character takes, as in terminals: two for East Asian wide ones (Chinese,
+/// Japanese, Korean, most emoji), none for combining marks and invisible format characters
+/// (an accent, a Hindi vowel sign, a zero-width space: they share the place of the character
+/// before), one for the rest.
+pub fn char_cells(c: char) -> u32 {
+    // Nothing before the combining diacritics is wide or zero-width.
+    if (c as u32) < 0x300 {
+        return 1;
+    }
+    match unicode_width::UnicodeWidthChar::width(c) {
+        Some(w) => w.min(2) as u32,
+        None => 1,
+    }
+}
+
+/// True if the character at `off` takes no cell (see [`char_cells`]): a caret before it is in
+/// the same place as after it.
+fn zero_width_at(buf: &TextBuf, off: u64) -> bool {
+    match buf.read(off..(off + 4).min(buf.len())) {
+        Some(b) if !b.is_empty() => char_cells(buf.codec.decode_char(&b).0) == 0,
+        _ => false,
+    }
+}
+
+/// Where the caret goes from `off` one step right: the next character boundary, past the
+/// combining marks of the character it steps over, which are drawn on it.
+pub fn next_stop(buf: &TextBuf, off: u64) -> u64 {
+    let mut p = buf.next_char(off);
+    for _ in 0..32 {
+        if p >= buf.len() || !zero_width_at(buf, p) {
+            break;
+        }
+        p = buf.next_char(p);
+    }
+    p
+}
+
+/// Where the caret goes from `off` one step left (see [`next_stop`]).
+pub fn prev_stop(buf: &TextBuf, off: u64) -> u64 {
+    let mut p = buf.prev_char(off);
+    for _ in 0..32 {
+        if p == 0 || !zero_width_at(buf, p) {
+            break;
+        }
+        p = buf.prev_char(p);
+    }
+    p
+}
+
 /// Walks the characters of `bytes` (document offset `base`), assigning monospace cells from 0.
 /// Stops early when `f` returns false.
 pub fn for_each_cell(codec: &Codec, bytes: &[u8], base: u64, mut f: impl FnMut(Cell) -> bool) {
@@ -229,7 +278,7 @@ pub fn for_each_cell(codec: &Codec, bytes: &[u8], base: u64, mut f: impl FnMut(C
             '\u{FEFF}' if off == 0 => (CellKind::Hidden, 0),
             '\u{FFFD}' => (CellKind::Invalid, 1),
             c if (c as u32) < 0x20 || (0x7F..=0x9F).contains(&(c as u32)) => (CellKind::Control, 1),
-            _ => (CellKind::Normal, 1),
+            c => (CellKind::Normal, char_cells(c)),
         };
         if !f(Cell { off, len: l as u32, cell, width, ch: c, kind }) {
             return;
@@ -503,6 +552,40 @@ mod tests {
         assert_eq!(cell_of_offset(&t, &n, 19).unwrap(), 5);
         assert_eq!(offset_at_cell(&t, &n, 4).unwrap(), 18);
         assert_eq!(offset_at_cell(&t, &n, 99).unwrap(), 19);
+    }
+
+    #[test]
+    fn wide_characters_take_two_cells() {
+        // "a你好b": the caret after 你好 is at cell 5, not 3.
+        let (_f, t) = buf_with("a你好b\n".as_bytes(), Codec::utf8());
+        let r = row_at(&t, 0, None).unwrap();
+        assert_eq!(cell_of_offset(&t, &r, 7).unwrap(), 5);
+        assert_eq!(cell_width(&t.codec, "😀é".as_bytes(), 0), 3);
+        // Cells are the edges between characters; the middle of a wide one goes before it.
+        assert_eq!(offset_at_cell(&t, &r, 2).unwrap(), 1);
+        assert_eq!(offset_at_cell(&t, &r, 3).unwrap(), 4);
+        assert_eq!(offset_at_cell(&t, &r, 4).unwrap(), 4);
+        assert_eq!(offset_at_cell(&t, &r, 5).unwrap(), 7);
+        // Wrapping at 4 cells keeps a wide character whole.
+        let rows = rows_of_seg(&t, &r.seg, Some(4)).unwrap();
+        assert_eq!(rows.iter().map(|r| r.start).collect::<Vec<_>>(), vec![0, 4]);
+    }
+
+    #[test]
+    fn combining_marks_and_invisible_characters_take_no_cell() {
+        // e + ◌́ (decomposed é), a Hindi syllable with its vowel sign, a zero-width space.
+        let text = "e\u{301}x नमस्ते a\u{200B}b";
+        let (_f, t) = buf_with(text.as_bytes(), Codec::utf8());
+        assert_eq!(cell_width(&t.codec, text.as_bytes(), 0), 2 + 1 + 4 + 1 + 2);
+        let r = row_at(&t, 0, None).unwrap();
+        // The caret steps over the accent with its letter, and a click never lands between them.
+        assert_eq!((next_stop(&t, 0), prev_stop(&t, 3)), (3, 0));
+        assert_eq!(offset_at_cell(&t, &r, 1).unwrap(), 3);
+        let a = text.find('a').unwrap() as u64;
+        assert_eq!(next_stop(&t, a), a + 4);
+        assert_eq!(char_cells('中'), 2);
+        assert_eq!(char_cells('\u{05B8}'), 0);
+        assert_eq!(char_cells('ж'), 1);
     }
 
     #[test]

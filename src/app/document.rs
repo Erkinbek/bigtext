@@ -106,6 +106,10 @@ pub struct ViewState {
     pub indent_unit: Option<(u64, u32)>,
     /// Indent guides painted in the last frame (tests read it).
     pub guides: usize,
+    /// What an input method is composing, drawn at the caret.
+    pub preedit: crate::view::text_view::Preedit,
+    /// Where the input method's window was asked to go in the last frame (tests read it).
+    pub ime_rect: Option<egui::Rect>,
 }
 
 impl ViewState {
@@ -153,6 +157,8 @@ impl Default for ViewState {
             folds_version: 0,
             indent_unit: None,
             guides: 0,
+            preedit: Default::default(),
+            ime_rect: None,
         }
     }
 }
