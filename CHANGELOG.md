@@ -3,6 +3,19 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## 0.7.3 — 2026-11-12
+
+Linux packaging only; nothing changes on Windows and macOS.
+
+### Linux
+
+- **Starts on desktops without libxkbcommon-x11**: on X11 BigText needs the
+  `libxkbcommon-x11` library, which a desktop without Qt or GNOME programs may not have; it then
+  quit at start with “Library libxkbcommon-x11.so could not be loaded”. The AppImage now carries
+  it (with `libxkbcommon` and `libxcb-xkb`), and the `.deb` depends on the window libraries
+  BigText loads (X11, Wayland, OpenGL), so `apt` installs what is missing. With the tarball,
+  install your distribution's `libxkbcommon-x11` package.
+
 ## 0.7.2 — 2026-11-12
 
 ### Linux
