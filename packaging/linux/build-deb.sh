@@ -17,13 +17,17 @@ install -Dm644 "$here/../../LICENSE" "$root/usr/share/doc/bigtext/copyright"
 
 mkdir -p "$root/DEBIAN"
 size_kb="$(du -sk "$root/usr" | cut -f1)"
+# The newest glibc symbol version the binaries use: dpkg then refuses to install them on a
+# system they cannot start on, instead of leaving a menu entry that does nothing.
+glibc="$(objdump -T "$bin/bigtext" "$bin/bigtext-cli" | grep -o 'GLIBC_[0-9.]*' | cut -d_ -f2 | sort -uV | tail -n1)"
+echo "The binaries need glibc $glibc"
 cat > "$root/DEBIAN/control" <<EOF
 Package: bigtext
 Version: $version
 Section: editors
 Priority: optional
 Architecture: amd64
-Depends: libc6, libgl1, libxkbcommon0
+Depends: libc6 (>= $glibc), libgl1, libxkbcommon0
 Installed-Size: $size_kb
 Maintainer: Erkin Pardayev <erkin.pardayev@gmail.com>
 Homepage: https://github.com/Erkinbek/bigtext

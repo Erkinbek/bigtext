@@ -14,6 +14,11 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    # Linux builds in a container of the oldest Ubuntu LTS still supported, so the binaries need
+    # its glibc (2.35), not the runner's: built on ubuntu-latest (26.04, glibc 2.43) they do not
+    # start on Ubuntu 22.04/24.04 or Debian 12/13, and fail the AppImage catalog's test, which
+    # runs on the oldest supported LTS. Empty (no container) for Windows and macOS.
+    container: ${{ matrix.container }}
     strategy:
       fail-fast: false
       matrix:
@@ -24,6 +29,7 @@ jobs:
             test: true
           - name: linux-x64
             os: ubuntu-latest
+            container: ubuntu:22.04
             target: x86_64-unknown-linux-gnu
             test: true
           - name: macos-arm64
@@ -35,22 +41,28 @@ jobs:
             target: x86_64-apple-darwin
             test: false # cross-compiled on an arm64 runner
     steps:
+      # The container is a bare ubuntu:22.04 running as root (no sudo), so besides the libraries
+      # it needs the compiler, git for checkout, curl for rustup and appimagetool, zstd for the cache.
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential pkg-config git curl ca-certificates \
+            file zstd libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libgl1-mesa-dev libegl1-mesa-dev
+
       - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxkbcommon-dev libwayland-dev libxcb-render0-dev \
-            libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev libegl1-mesa-dev
-
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}
+          # Kept apart from the caches of the old Linux runner, whose build scripts need its glibc.
+          key: ${{ matrix.container && format('{0}-{1}', matrix.target, matrix.container) || matrix.target }}
 
       - name: Unit tests
         if: matrix.test
