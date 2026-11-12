@@ -355,6 +355,9 @@ pub fn refresh(ctx: &egui::Context, path: Option<&Path>) {
 /// characters comes first of those. Returns whether the font is monospaced.
 pub fn apply_font(ctx: &egui::Context, path: Option<&Path>) -> Result<bool, String> {
     let mut defs = egui::FontDefinitions::default();
+    // The built-in interface font (Ubuntu Light) has no arrows, so the → of "Help → Check for
+    // updates…" and other texts showed as a box; the built-in Hack has them.
+    defs.families.entry(egui::FontFamily::Proportional).or_default().push("Hack".into());
     let mut mono = true;
     if let Some(p) = path {
         let bytes = std::fs::read(p).map_err(|e| super::friendly_io(&e, p))?;
@@ -480,5 +483,17 @@ mod tests {
         let builtin = egui::FontDefinitions::default();
         assert_eq!(check_font(&builtin.font_data["Hack"].font), Ok(true));
         assert_eq!(check_font(&builtin.font_data["Ubuntu-Light"].font), Ok(false));
+    }
+
+    #[test]
+    fn interface_font_has_arrows() {
+        let ctx = egui::Context::default();
+        let width = |ctx: &egui::Context| {
+            ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
+            ctx.fonts_mut(|f| f.glyph_width(&egui::FontId::proportional(14.0), '→'))
+        };
+        assert_eq!(width(&ctx), 0.0, "egui's own interface font got arrows; the Hack fallback can go");
+        apply_font(&ctx, None).unwrap();
+        assert!(width(&ctx) > 0.0);
     }
 }

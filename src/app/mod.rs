@@ -584,6 +584,9 @@ impl BigTextApp {
         let ctx = cc.egui_ctx.clone();
         let waker: Waker = Arc::new(move || ctx.request_repaint());
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
+        // The built-in fonts with the interface's fallbacks; a saved text font or Chinese below
+        // applies them again.
+        let _ = fonts::apply_font(&cc.egui_ctx, None);
         let mut app = BigTextApp {
             docs: Vec::new(),
             active: 0,
