@@ -21,13 +21,18 @@ size_kb="$(du -sk "$root/usr" | cut -f1)"
 # system they cannot start on, instead of leaving a menu entry that does nothing.
 glibc="$(objdump -T "$bin/bigtext" "$bin/bigtext-cli" | grep -o 'GLIBC_[0-9.]*' | cut -d_ -f2 | sort -uV | tail -n1)"
 echo "The binaries need glibc $glibc"
+# The window libraries are loaded at run time, not linked, so they are listed by hand: those
+# for X11 (without libxkbcommon-x11, which a desktop without Qt or GNOME may lack, BigText
+# quits at start), those for Wayland, and OpenGL. The AUR package names the same ones.
+depends="libc6 (>= $glibc), libgcc-s1, libgl1, libegl1, libx11-6, libx11-xcb1, libxcursor1, libxi6"
+depends="$depends, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libwayland-egl1"
 cat > "$root/DEBIAN/control" <<EOF
 Package: bigtext
 Version: $version
 Section: editors
 Priority: optional
 Architecture: amd64
-Depends: libc6 (>= $glibc), libgl1, libxkbcommon0
+Depends: $depends
 Installed-Size: $size_kb
 Maintainer: Erkin Pardayev <erkin.pardayev@gmail.com>
 Homepage: https://github.com/Erkinbek/bigtext

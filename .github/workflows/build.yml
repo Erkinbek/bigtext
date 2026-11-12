@@ -42,7 +42,8 @@ jobs:
             test: false # cross-compiled on an arm64 runner
     steps:
       # The container is a bare ubuntu:22.04 running as root (no sudo), so besides the libraries
-      # it needs the compiler, git for checkout, curl for rustup and appimagetool, zstd for the cache.
+      # it needs the compiler, git for checkout, curl for rustup and appimagetool, zstd for the
+      # cache; patchelf and libxkbcommon-x11-0 are for the AppImage, which carries that library.
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         env:
@@ -50,8 +51,8 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends build-essential pkg-config git curl ca-certificates \
-            file zstd libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev \
-            libxcb-xfixes0-dev libgl1-mesa-dev libegl1-mesa-dev
+            file zstd patchelf libxkbcommon-x11-0 libxkbcommon-dev libwayland-dev libxcb-render0-dev \
+            libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev libegl1-mesa-dev
 
       - uses: actions/checkout@v7
 
