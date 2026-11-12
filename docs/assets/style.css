@@ -167,6 +167,13 @@ a.card.guide h3 { color: var(--text); }
   .gallery, .downloads { grid-template-columns: 1fr; }
 }
 
+@media (max-width: 560px) {
+  /* Eight languages do not fit beside the logo: they scroll sideways (the footer lists them too). */
+  .langs { overflow-x: auto; max-width: calc(100vw - 170px); scrollbar-width: none; }
+  .langs::-webkit-scrollbar { display: none; }
+  .langs a { flex: none; }
+}
+
 @media (max-width: 520px) {
   body { font-size: 16px; }
   .hero { padding-top: 48px; }

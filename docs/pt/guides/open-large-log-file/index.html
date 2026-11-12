@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Abrir um log de 10 GB sem travar — BigText</title>
+  <meta name="description" content="Abra na hora um log de qualquer tamanho e pesquise, filtre e acompanhe sem o editor travar: pular para um horário, filtrar por nível, um filtro como o grep, tail -F. Grátis, para Windows, Linux e macOS.">
+  <link rel="canonical" href="https://erkinbek.github.io/bigtext/pt/guides/open-large-log-file/">
+  <link rel="alternate" hreflang="en" href="https://erkinbek.github.io/bigtext/guides/open-large-log-file/">
+  <link rel="alternate" hreflang="ru" href="https://erkinbek.github.io/bigtext/ru/guides/open-large-log-file/">
+  <link rel="alternate" hreflang="uz" href="https://erkinbek.github.io/bigtext/uz/guides/open-large-log-file/">
+  <link rel="alternate" hreflang="zh" href="https://erkinbek.github.io/bigtext/zh/guides/open-large-log-file/">
+  <link rel="alternate" hreflang="es" href="https://erkinbek.github.io/bigtext/es/guides/open-large-log-file/">
+  <link rel="alternate" hreflang="pt" href="https://erkinbek.github.io/bigtext/pt/guides/open-large-log-file/">
+  <link rel="alternate" hreflang="de" href="https://erkinbek.github.io/bigtext/de/guides/open-large-log-file/">
+  <link rel="alternate" hreflang="tr" href="https://erkinbek.github.io/bigtext/tr/guides/open-large-log-file/">
+  <link rel="alternate" hreflang="x-default" href="https://erkinbek.github.io/bigtext/guides/open-large-log-file/">
+  <meta name="theme-color" content="#0b0f17">
+  <meta name="color-scheme" content="dark light">
+  <meta name="author" content="Erkin Pardayev">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="BigText">
+  <meta property="og:title" content="Abrir um arquivo de log de 10 GB sem travar">
+  <meta property="og:description" content="Abra na hora um log de qualquer tamanho e pesquise, filtre e acompanhe sem o editor travar: pular para um horário, filtrar por nível, um filtro como o grep, tail -F. Grátis, para Windows, Linux e macOS.">
+  <meta property="og:url" content="https://erkinbek.github.io/bigtext/pt/guides/open-large-log-file/">
+  <meta property="og:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="Abrir um arquivo de log de 10 GB sem travar">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:locale:alternate" content="en_US">
+  <meta property="og:locale:alternate" content="ru_RU">
+  <meta property="og:locale:alternate" content="uz_UZ">
+  <meta property="og:locale:alternate" content="zh_CN">
+  <meta property="og:locale:alternate" content="es_ES">
+  <meta property="og:locale:alternate" content="de_DE">
+  <meta property="og:locale:alternate" content="tr_TR">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Abrir um arquivo de log de 10 GB sem travar">
+  <meta name="twitter:description" content="Abra na hora um log de qualquer tamanho e pesquise, filtre e acompanhe sem o editor travar: pular para um horário, filtrar por nível, um filtro como o grep, tail -F. Grátis, para Windows, Linux e macOS.">
+  <meta name="twitter:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
+  <link rel="icon" href="../../../favicon.ico" sizes="48x48">
+  <link rel="icon" href="../../../img/logo.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../../../img/apple-touch-icon.png">
+  <link rel="manifest" href="../../../site.webmanifest">
+  <link rel="stylesheet" href="../../../assets/style.css">
+  <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Abrir um arquivo de log de 10 GB sem travar",
+ "description": "Abra na hora um log de qualquer tamanho e pesquise, filtre e acompanhe sem o editor travar: pular para um horário, filtrar por nível, um filtro como o grep, tail -F. Grátis, para Windows, Linux e macOS.",
+ "inLanguage": "pt",
+ "url": "https://erkinbek.github.io/bigtext/pt/guides/open-large-log-file/",
+ "dateModified": "2026-10-24",
+ "author": {
+  "@type": "Person",
+  "name": "Erkin Pardayev",
+  "url": "https://github.com/Erkinbek"
+ },
+ "about": {
+  "@type": "SoftwareApplication",
+  "name": "BigText",
+  "url": "https://erkinbek.github.io/bigtext/pt/",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Windows, Linux, macOS",
+  "offers": {
+   "@type": "Offer",
+   "price": "0",
+   "priceCurrency": "USD"
+  }
+ }
+}
+  </script>
+</head>
+<body>
+<a class="skip" href="#main">Ir para o conteúdo</a>
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="../../../pt/"><svg width="28" height="28" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><rect width="512" height="512" rx="112" fill="#0f172a"/><rect x="96" y="118" width="204" height="44" rx="22" fill="#2dd4bf"/><rect x="96" y="206" width="320" height="44" rx="22" fill="#e2e8f0"/><rect x="96" y="294" width="256" height="44" rx="22" fill="#f59e0b"/><rect x="96" y="382" width="160" height="44" rx="22" fill="#e2e8f0"/></svg><span>BigText</span></a>
+    <nav class="links" aria-label="BigText"><a href="../../../pt/#features">Recursos</a><a href="../../../pt/#performance">Desempenho</a><a href="../../../pt/#download">Download</a><a href="../../../pt/#faq">Perguntas</a><a href="https://github.com/Erkinbek/bigtext">GitHub</a></nav>
+    <nav class="langs" aria-label="Idioma"><a href="../../../guides/open-large-log-file/" hreflang="en" lang="en">EN</a><a href="../../../ru/guides/open-large-log-file/" hreflang="ru" lang="ru">RU</a><a href="../../../uz/guides/open-large-log-file/" hreflang="uz" lang="uz">UZ</a><a href="../../../zh/guides/open-large-log-file/" hreflang="zh" lang="zh">ZH</a><a href="../../../es/guides/open-large-log-file/" hreflang="es" lang="es">ES</a><a href="../../../pt/guides/open-large-log-file/" hreflang="pt" lang="pt" aria-current="true">PT</a><a href="../../../de/guides/open-large-log-file/" hreflang="de" lang="de">DE</a><a href="../../../tr/guides/open-large-log-file/" hreflang="tr" lang="tr">TR</a></nav>
+  </div>
+</header>
+<main id="main" class="section guide-page">
+  <article class="wrap narrow">
+    <p class="crumb"><a href="../../../pt/">Início do BigText</a> › <a href="../../../pt/#guides">Guias</a></p>
+    <h1>Abrir um arquivo de log de 10 GB sem travar</h1>
+    <p>O Notepad++ avisa que um arquivo com mais de 2 GB pode levar minutos para abrir, o VS Code mantém o arquivo inteiro na memória, e os dois podem travar com um log grande. O BigText lê só o que está na tela, então um log de 10 ou 50 GB abre na hora e usa cerca de 100 MB de memória.</p>
+    <h2>Passo a passo</h2>
+    <ol class="steps"><li><h3>Abra</h3><p>Use Arquivo → Abrir, arraste o arquivo para a janela ou execute <code>bigtext app.log</code> num terminal (<code>bigtext app.log:120</code> abre na linha 120). Logs em .gz e .zst abrem diretamente.</p></li><li><h3>Navegue</h3><p><code>Ctrl+End</code> vai para a última linha na hora. Ir para a linha (<code>Ctrl+G</code>) funciona antes de o índice de linhas terminar; até lá os números de linha levam um <code>~</code>. Ir para o horário (<code>Ctrl+Shift+T</code>) aceita <code>14:32:05</code> e leva à primeira linha com esse horário.</p></li><li><h3>Encontre os erros</h3><p>A barra de níveis acima de um log filtra as linhas ERROR, WARN, INFO e DEBUG, e <code>F8</code> pula para o próximo erro. <code>Ctrl+F</code> pesquisa o arquivo inteiro, com expressões regulares se quiser, e “Localizar todos” lista os resultados.</p></li><li><h3>Fique só com o que importa</h3><p>A visualização de filtro mostra só as linhas que correspondem, ou só as que não, como o grep sobre o arquivo inteiro, e as salva num arquivo novo.</p></li><li><h3>Acompanhe ao vivo</h3><p>O modo acompanhar (<code>bigtext -f app.log</code>, ou “Acompanhar alterações do arquivo (tail)” na paleta de comandos) adiciona as linhas novas como o <code>tail -F</code> e sobrevive à rotação de logs. Um log num servidor abre por SSH com suas chaves: <code>bigtext -f user@server:/var/log/syslog</code>.</p></li></ol>
+    <h2>Bom saber</h2>
+    <ul class="tips"><li>Vários logs podem ser mesclados por horário numa só visualização, ou dois logs rolados juntos pelo horário.</li><li>Pesquisa, filtro e salvamento rodam em segundo plano com barra de progresso e Cancelar, então a janela continua respondendo.</li></ul>
+    <p class="cta"><a class="btn primary" href="../../../pt/#download">Baixar o BigText grátis</a></p>
+    <h2>Mais guias</h2>
+    <ul class="more"><li><a href="../open-csv-larger-than-excel/">Abrir um arquivo CSV com mais linhas que as 1.048.576 do Excel</a></li><li><a href="../extract-table-from-mysqldump/">Extrair uma tabela de um arquivo mysqldump</a></li></ul>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <p>Feito por <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">licença MIT</a> · <a href="../../../pt/#privacy">Privacidade</a> · v0.7.3</p>
+    <p class="langs-foot"><a href="../../../guides/open-large-log-file/" hreflang="en" lang="en">English</a> · <a href="../../../ru/guides/open-large-log-file/" hreflang="ru" lang="ru">Русский</a> · <a href="../../../uz/guides/open-large-log-file/" hreflang="uz" lang="uz">O'zbekcha</a> · <a href="../../../zh/guides/open-large-log-file/" hreflang="zh" lang="zh">简体中文</a> · <a href="../../../es/guides/open-large-log-file/" hreflang="es" lang="es">Español</a> · <a href="../../../pt/guides/open-large-log-file/" hreflang="pt" lang="pt">Português</a> · <a href="../../../de/guides/open-large-log-file/" hreflang="de" lang="de">Deutsch</a> · <a href="../../../tr/guides/open-large-log-file/" hreflang="tr" lang="tr">Türkçe</a></p>
+  </div>
+</footer>
+</body>
+</html>

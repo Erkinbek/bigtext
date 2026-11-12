@@ -118,7 +118,9 @@ Unicode path).
 ## Website
 
 The project website ([erkinbek.github.io/bigtext](https://erkinbek.github.io/bigtext/)) lives in `docs/` and is served by
-GitHub Pages from the `main` branch. It is generated in English, Russian and Uzbek by
+GitHub Pages from the `main` branch. It is generated in the program's eight languages
+(English, Russian and Uzbek in the script, Chinese, Spanish, Portuguese, German and Turkish in
+`scripts/site_<lang>.py`; a check stops the build when a text is missing in one of them) by
 `python scripts/build-site.py` (needs Pillow), which also converts the screenshots in
 `target/shots` to WebP and draws the logo, favicons and the social preview image. The guides
 (`docs/guides/…`, step-by-step pages for common searches) have their texts in

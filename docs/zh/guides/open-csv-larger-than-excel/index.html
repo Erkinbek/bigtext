@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>打开超过 1,048,576 行（Excel 上限）的 CSV — BigText</title>
+  <meta name="description" content="Excel 最多只能显示 1,048,576 行。用 BigText 免费把任意大小的 CSV 完整地以表格打开：排序、筛选、分组、透视，或拆分成 Excel 能载入的几部分。">
+  <link rel="canonical" href="https://erkinbek.github.io/bigtext/zh/guides/open-csv-larger-than-excel/">
+  <link rel="alternate" hreflang="en" href="https://erkinbek.github.io/bigtext/guides/open-csv-larger-than-excel/">
+  <link rel="alternate" hreflang="ru" href="https://erkinbek.github.io/bigtext/ru/guides/open-csv-larger-than-excel/">
+  <link rel="alternate" hreflang="uz" href="https://erkinbek.github.io/bigtext/uz/guides/open-csv-larger-than-excel/">
+  <link rel="alternate" hreflang="zh" href="https://erkinbek.github.io/bigtext/zh/guides/open-csv-larger-than-excel/">
+  <link rel="alternate" hreflang="es" href="https://erkinbek.github.io/bigtext/es/guides/open-csv-larger-than-excel/">
+  <link rel="alternate" hreflang="pt" href="https://erkinbek.github.io/bigtext/pt/guides/open-csv-larger-than-excel/">
+  <link rel="alternate" hreflang="de" href="https://erkinbek.github.io/bigtext/de/guides/open-csv-larger-than-excel/">
+  <link rel="alternate" hreflang="tr" href="https://erkinbek.github.io/bigtext/tr/guides/open-csv-larger-than-excel/">
+  <link rel="alternate" hreflang="x-default" href="https://erkinbek.github.io/bigtext/guides/open-csv-larger-than-excel/">
+  <meta name="theme-color" content="#0b0f17">
+  <meta name="color-scheme" content="dark light">
+  <meta name="author" content="Erkin Pardayev">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="BigText">
+  <meta property="og:title" content="打开超过 Excel 1,048,576 行上限的 CSV 文件">
+  <meta property="og:description" content="Excel 最多只能显示 1,048,576 行。用 BigText 免费把任意大小的 CSV 完整地以表格打开：排序、筛选、分组、透视，或拆分成 Excel 能载入的几部分。">
+  <meta property="og:url" content="https://erkinbek.github.io/bigtext/zh/guides/open-csv-larger-than-excel/">
+  <meta property="og:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="打开超过 Excel 1,048,576 行上限的 CSV 文件">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:locale:alternate" content="en_US">
+  <meta property="og:locale:alternate" content="ru_RU">
+  <meta property="og:locale:alternate" content="uz_UZ">
+  <meta property="og:locale:alternate" content="es_ES">
+  <meta property="og:locale:alternate" content="pt_BR">
+  <meta property="og:locale:alternate" content="de_DE">
+  <meta property="og:locale:alternate" content="tr_TR">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="打开超过 Excel 1,048,576 行上限的 CSV 文件">
+  <meta name="twitter:description" content="Excel 最多只能显示 1,048,576 行。用 BigText 免费把任意大小的 CSV 完整地以表格打开：排序、筛选、分组、透视，或拆分成 Excel 能载入的几部分。">
+  <meta name="twitter:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
+  <link rel="icon" href="../../../favicon.ico" sizes="48x48">
+  <link rel="icon" href="../../../img/logo.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../../../img/apple-touch-icon.png">
+  <link rel="manifest" href="../../../site.webmanifest">
+  <link rel="stylesheet" href="../../../assets/style.css">
+  <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "打开超过 Excel 1,048,576 行上限的 CSV 文件",
+ "description": "Excel 最多只能显示 1,048,576 行。用 BigText 免费把任意大小的 CSV 完整地以表格打开：排序、筛选、分组、透视，或拆分成 Excel 能载入的几部分。",
+ "inLanguage": "zh",
+ "url": "https://erkinbek.github.io/bigtext/zh/guides/open-csv-larger-than-excel/",
+ "dateModified": "2026-10-24",
+ "author": {
+  "@type": "Person",
+  "name": "Erkin Pardayev",
+  "url": "https://github.com/Erkinbek"
+ },
+ "about": {
+  "@type": "SoftwareApplication",
+  "name": "BigText",
+  "url": "https://erkinbek.github.io/bigtext/zh/",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Windows, Linux, macOS",
+  "offers": {
+   "@type": "Offer",
+   "price": "0",
+   "priceCurrency": "USD"
+  }
+ }
+}
+  </script>
+</head>
+<body>
+<a class="skip" href="#main">跳到正文</a>
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="../../../zh/"><svg width="28" height="28" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><rect width="512" height="512" rx="112" fill="#0f172a"/><rect x="96" y="118" width="204" height="44" rx="22" fill="#2dd4bf"/><rect x="96" y="206" width="320" height="44" rx="22" fill="#e2e8f0"/><rect x="96" y="294" width="256" height="44" rx="22" fill="#f59e0b"/><rect x="96" y="382" width="160" height="44" rx="22" fill="#e2e8f0"/></svg><span>BigText</span></a>
+    <nav class="links" aria-label="BigText"><a href="../../../zh/#features">功能</a><a href="../../../zh/#performance">性能</a><a href="../../../zh/#download">下载</a><a href="../../../zh/#faq">常见问题</a><a href="https://github.com/Erkinbek/bigtext">GitHub</a></nav>
+    <nav class="langs" aria-label="语言"><a href="../../../guides/open-csv-larger-than-excel/" hreflang="en" lang="en">EN</a><a href="../../../ru/guides/open-csv-larger-than-excel/" hreflang="ru" lang="ru">RU</a><a href="../../../uz/guides/open-csv-larger-than-excel/" hreflang="uz" lang="uz">UZ</a><a href="../../../zh/guides/open-csv-larger-than-excel/" hreflang="zh" lang="zh" aria-current="true">ZH</a><a href="../../../es/guides/open-csv-larger-than-excel/" hreflang="es" lang="es">ES</a><a href="../../../pt/guides/open-csv-larger-than-excel/" hreflang="pt" lang="pt">PT</a><a href="../../../de/guides/open-csv-larger-than-excel/" hreflang="de" lang="de">DE</a><a href="../../../tr/guides/open-csv-larger-than-excel/" hreflang="tr" lang="tr">TR</a></nav>
+  </div>
+</header>
+<main id="main" class="section guide-page">
+  <article class="wrap narrow">
+    <p class="crumb"><a href="../../../zh/">BigText 首页</a> › <a href="../../../zh/#guides">使用指南</a></p>
+    <h1>打开超过 Excel 1,048,576 行上限的 CSV 文件</h1>
+    <p>Excel 的表格到第 1,048,576 行就结束了。打开更大的 CSV 时，它会提示数据过大，超出上限的行在保存时会丢失。日志、订单或数据库表的导出文件往往比这更大。</p><p>BigText 可以即刻把任意大小的 CSV 以表格打开，且从不载入内存：5000 万行的文件和 50 行的文件滚动起来一样快。它免费，可在 Windows、Linux 和 macOS 上运行。</p>
+    <h2>操作步骤</h2>
+    <ol class="steps"><li><h3>打开文件</h3><p>下载 BigText，通过“文件 → 打开”或把 .csv/.tsv 文件拖到窗口上打开。它会以表格形式打开：分隔符（逗号、分号、制表符或竖线）从前几行自动识别，第一行成为固定的表头。<code>Ctrl+T</code> 可在表格和文本之间切换。</p></li><li><h3>在文件中浏览</h3><p>滚动浏览，按 <code>Ctrl+G</code> 跳到某一行，或按 <code>Ctrl+F</code> 搜索整个文件；“查找全部”会列出每处匹配及其行号。无需等待加载，因为文件根本不会被载入。</p></li><li><h3>不用 Excel 也能分析</h3><p>右键点击列标题：“统计…”（行数、空值和不同值、求和、平均值、最小值、最大值和最常见的值）、按此列筛选行、“按此列分组行…”并对另一列求和，以及“按此列透视…”。排序适用于 1 GB 以内的文件。</p></li><li><h3>或者拆分给 Excel</h3><p>“文件 → 拆分文件…”会把 CSV 按指定行数（例如每份 1,000,000 行）切成 <code>name.part001.csv</code>、<code>name.part002.csv</code>……，总是在换行处切分。表头只在第一部分中，如果你的工具需要，请把它复制到其他部分。若只需要部分行，先筛选（“按条件筛选行…”），再把结果另存为一个更小的新 CSV。</p></li></ol>
+    <h2>小贴士</h2>
+    <ul class="tips"><li>“视图 → 检查表格行…”会列出字段数不对、引号多余或数字列中混有文本的记录，并给出行号。</li><li>同样的工具也可以在脚本中通过 <code>bigtext-cli</code> 使用，例如 <code>bigtext-cli pivot</code>。</li></ul>
+    <p class="cta"><a class="btn primary" href="../../../zh/#download">免费下载 BigText</a></p>
+    <h2>更多指南</h2>
+    <ul class="more"><li><a href="../open-large-log-file/">打开 10 GB 的日志文件而不卡顿</a></li><li><a href="../extract-table-from-mysqldump/">从 mysqldump 文件中提取单个表</a></li></ul>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <p>作者 <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">MIT 许可证</a> · <a href="../../../zh/#privacy">隐私</a> · v0.7.3</p>
+    <p class="langs-foot"><a href="../../../guides/open-csv-larger-than-excel/" hreflang="en" lang="en">English</a> · <a href="../../../ru/guides/open-csv-larger-than-excel/" hreflang="ru" lang="ru">Русский</a> · <a href="../../../uz/guides/open-csv-larger-than-excel/" hreflang="uz" lang="uz">O'zbekcha</a> · <a href="../../../zh/guides/open-csv-larger-than-excel/" hreflang="zh" lang="zh">简体中文</a> · <a href="../../../es/guides/open-csv-larger-than-excel/" hreflang="es" lang="es">Español</a> · <a href="../../../pt/guides/open-csv-larger-than-excel/" hreflang="pt" lang="pt">Português</a> · <a href="../../../de/guides/open-csv-larger-than-excel/" hreflang="de" lang="de">Deutsch</a> · <a href="../../../tr/guides/open-csv-larger-than-excel/" hreflang="tr" lang="tr">Türkçe</a></p>
+  </div>
+</footer>
+</body>
+</html>

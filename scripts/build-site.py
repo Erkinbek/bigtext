@@ -3,7 +3,9 @@
 
     python scripts/build-site.py [--shots target/shots] [--no-images]
 
-Writes docs/index.html (English), docs/ru/ and docs/uz/, sitemap.xml and 404.html. Unless
+Writes docs/index.html (English) and docs/<lang>/ for the other seven languages (ru and uz
+here, zh, es, pt, de and tr in site_<lang>.py), the guides (site_guides.py), sitemap.xml and
+404.html. Unless
 --no-images is given it also converts the app screenshots (made with
 `bigtext --screenshots target/shots testdata/random-lines-10g.txt`) to WebP and draws the
 logo, favicons, the social preview image and the app icons in assets/ (bigtext.ico for the
@@ -548,6 +550,29 @@ T = {
     },
 }
 
+# The other languages, one module each (scripts/site_zh.py and so on) with the texts, the guides
+# and their labels, in the order of the program's own language menu.
+import site_de, site_es, site_pt, site_tr, site_zh  # noqa: E402
+
+for _m in (site_zh, site_es, site_pt, site_de, site_tr):
+    LANGS.append(_m.CODE)
+    LOCALE[_m.CODE] = _m.LOCALE
+    LANG_NAME[_m.CODE] = _m.NAME
+    T[_m.CODE] = _m.T
+    GUIDES[_m.CODE] = _m.GUIDES
+    GUIDE_LABELS[_m.CODE] = _m.LABELS
+
+# Every language has every text, with lists as long as the English ones.
+for _l in LANGS:
+    assert set(T[_l]) == set(T["en"]), (_l, set(T["en"]) ^ set(T[_l]))
+    for _k, _v in T["en"].items():
+        if isinstance(_v, (list, tuple, dict)):
+            assert len(T[_l][_k]) == len(_v), (_l, _k)
+    assert set(GUIDE_LABELS[_l]) == set(GUIDE_LABELS["en"]), _l
+    assert [g["slug"] for g in GUIDES[_l]] == [g["slug"] for g in GUIDES["en"]], _l
+    for _g, _ge in zip(GUIDES[_l], GUIDES["en"]):
+        assert set(_g) == set(_ge), (_l, _g["slug"])
+
 AUTHOR = "Erkin Pardayev"
 AUTHOR_LINKS = [
     ("GitHub", "https://github.com/Erkinbek"),
@@ -925,11 +950,12 @@ def guide_page(lang, g):
 def not_found():
     t = T["en"]
     p = "/bigtext/"
+    others = " · ".join(f'<a href="{p}{l}/" hreflang="{l}" lang="{l}">{e(T[l]["nf_home"])}</a>' for l in LANGS if l != "en")
     body = f"""<main id="main" class="section">
   <div class="wrap narrow">
     <h1>{e(t['nf_title'])}</h1>
-    <p>{e(t['nf_text'])} <a href="{p}">{e(t['nf_home'])}</a> ·
-      <a href="{p}ru/">{e(T['ru']['nf_home'])}</a> · <a href="{p}uz/">{e(T['uz']['nf_home'])}</a></p>
+    <p>{e(t['nf_text'])} <a href="{p}">{e(t['nf_home'])}</a></p>
+    <p>{others}</p>
   </div>
 </main>
 """

@@ -11,7 +11,7 @@ and never loads a whole file into memory: a free alternative to EmEditor and Ult
 Windows, Linux and macOS. Written in Rust, it is one self-contained binary with no runtime
 dependencies.
 
-**[Download](#download)** · [Website](https://erkinbek.github.io/bigtext/) · [All features](FEATURES.md) · [Usage](USAGE.md) · [Русский](https://erkinbek.github.io/bigtext/ru/) · [O'zbekcha](https://erkinbek.github.io/bigtext/uz/)
+**[Download](#download)** · [Website](https://erkinbek.github.io/bigtext/) · [All features](FEATURES.md) · [Usage](USAGE.md) · [Русский](https://erkinbek.github.io/bigtext/ru/) · [O'zbekcha](https://erkinbek.github.io/bigtext/uz/) · [中文](https://erkinbek.github.io/bigtext/zh/) · [Español](https://erkinbek.github.io/bigtext/es/) · [Português](https://erkinbek.github.io/bigtext/pt/) · [Deutsch](https://erkinbek.github.io/bigtext/de/) · [Türkçe](https://erkinbek.github.io/bigtext/tr/)
 
 ![BigText opens a 50 GB log file at once, jumps to its end and its middle, searches it with a regular expression while the matches come in, and follows a growing log](docs/img/demo.gif)
 
