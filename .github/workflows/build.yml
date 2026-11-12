@@ -159,9 +159,9 @@ jobs:
           (cd out && sha256sum * > SHA256SUMS.txt)
           ls -l out
           # The opening lines of the notes; "What's new" is written by hand afterwards
-          # (CONTRIBUTING.md → Releasing). SignPath's terms want "Code signing policy" here.
+          # (CONTRIBUTING.md → Releasing).
           notes="**BigText** is a free, open-source desktop text editor for **huge files** (1–50+ GB) that never loads a whole file into memory and never freezes.
-          Website: [erkinbek.github.io/bigtext](https://erkinbek.github.io/bigtext/) · [Русский](https://erkinbek.github.io/bigtext/ru/) · [O'zbekcha](https://erkinbek.github.io/bigtext/uz/) · [Code signing policy](https://github.com/Erkinbek/bigtext#code-signing-policy)"
+          Website: [erkinbek.github.io/bigtext](https://erkinbek.github.io/bigtext/) · [Русский](https://erkinbek.github.io/bigtext/ru/) · [O'zbekcha](https://erkinbek.github.io/bigtext/uz/) · [Privacy](https://github.com/Erkinbek/bigtext#privacy)"
           gh release create "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" \
             --title "BigText $GITHUB_REF_NAME" --notes "$notes" --generate-notes
 

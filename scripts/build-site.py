@@ -150,7 +150,8 @@ T = {
         "dl_h2": "Download BigText",
         "dl_intro": "Free for personal and commercial use. No account, no telemetry, one executable.",
         "dl": [
-            ("Windows 10 / 11", "Installer with “Open with” and Explorer context-menu integration, or a portable build.",
+            ("Windows 10 / 11", "Installer with “Open with” and Explorer context-menu integration, or a portable build. "
+             "The programs are not signed: if SmartScreen asks, choose More info → Run anyway.",
              [("Installer (.exe)", "bigtext-setup-windows-x64.exe"), ("Portable (.zip)", "bigtext-windows-x64.zip")]),
             ("Linux x64", "An AppImage that runs on most distributions, a .deb package for Debian and Ubuntu, or a portable .tar.gz.",
              [("AppImage", "bigtext-linux-x64.AppImage"), (".deb", "bigtext-linux-x64.deb"), (".tar.gz", "bigtext-linux-x64.tar.gz")]),
@@ -193,13 +194,8 @@ T = {
              "BigText is free and open source under the MIT license. Windows 10 and 11 is the main, fully tested "
              "platform; Linux and macOS (Apple Silicon and Intel) builds are made and tested by CI on every change."),
         ],
-        "csp_signed": "The Windows programs (bigtext.exe, bigtext-cli.exe and the installer) are signed once the project "
-                      "is accepted. Only files built from the public repository are signed: GitHub Actions builds them "
-                      "from a release tag, and every signing request is approved by hand.",
-        "csp_roles": [("Committers and reviewers", "changes from anyone else are reviewed before they are merged"),
-                      ("Approvers", "")],
-        "csp_privacy": "Privacy",
-        "csp_privacy_items": [
+        "privacy": "Privacy",
+        "privacy_items": [
             "Update check: only when you ask for it (Help → Check for updates…), or once a day if you agreed to "
             "automatic checks when BigText first started. The request goes to GitHub's API and carries BigText's "
             "version; nothing about you or your files.",
@@ -315,7 +311,8 @@ T = {
         "dl_h2": "Скачать BigText",
         "dl_intro": "Бесплатно для личного и коммерческого использования. Без аккаунта, без телеметрии, один исполняемый файл.",
         "dl": [
-            ("Windows 10 / 11", "Установщик с пунктом «Открыть с помощью» и контекстным меню Проводника или портативная версия.",
+            ("Windows 10 / 11", "Установщик с пунктом «Открыть с помощью» и контекстным меню Проводника или портативная версия. "
+             "Программы не подписаны: если SmartScreen спросит, выберите «Подробнее» → «Выполнить в любом случае».",
              [("Установщик (.exe)", "bigtext-setup-windows-x64.exe"), ("Портативная (.zip)", "bigtext-windows-x64.zip")]),
             ("Linux x64", "AppImage для большинства дистрибутивов, пакет .deb для Debian и Ubuntu или портативный архив .tar.gz.",
              [("AppImage", "bigtext-linux-x64.AppImage"), (".deb", "bigtext-linux-x64.deb"), (".tar.gz", "bigtext-linux-x64.tar.gz")]),
@@ -358,13 +355,8 @@ T = {
              "BigText бесплатный, с открытым кодом под лицензией MIT. Основная, полностью протестированная платформа — "
              "Windows 10 и 11; сборки для Linux и macOS (Apple Silicon и Intel) собираются и тестируются в CI при каждом изменении."),
         ],
-        "csp_signed": "Программы для Windows (bigtext.exe, bigtext-cli.exe и установщик) подписываются после того, как "
-                      "проект будет принят. Подписываются только файлы, собранные из открытого репозитория: их собирает "
-                      "GitHub Actions по тегу релиза, и каждый запрос на подпись подтверждается вручную.",
-        "csp_roles": [("Коммиттеры и рецензенты", "изменения от других людей проверяются перед слиянием"),
-                      ("Утверждающие", "")],
-        "csp_privacy": "Конфиденциальность",
-        "csp_privacy_items": [
+        "privacy": "Конфиденциальность",
+        "privacy_items": [
             "Проверка обновлений: только по вашей просьбе (Справка → Проверить обновления…) или раз в день, если вы "
             "согласились на автоматическую проверку при первом запуске. Запрос уходит в API GitHub и содержит только "
             "версию BigText — ничего о вас и ваших файлах.",
@@ -480,7 +472,8 @@ T = {
         "dl_h2": "BigText'ni yuklab olish",
         "dl_intro": "Shaxsiy va tijorat maqsadlarida bepul. Akkaunt yo'q, telemetriya yo'q, bitta ishga tushiriladigan fayl.",
         "dl": [
-            ("Windows 10 / 11", "«Open with» va Explorer kontekst menyusi bilan o'rnatuvchi yoki portativ versiya.",
+            ("Windows 10 / 11", "«Open with» va Explorer kontekst menyusi bilan o'rnatuvchi yoki portativ versiya. "
+             "Dasturlar imzolanmagan: SmartScreen so'rasa, «More info» → «Run anyway» ni tanlang.",
              [("O'rnatuvchi (.exe)", "bigtext-setup-windows-x64.exe"), ("Portativ (.zip)", "bigtext-windows-x64.zip")]),
             ("Linux x64", "Ko'pchilik distributivlarda ishlaydigan AppImage, Debian va Ubuntu uchun .deb paket yoki portativ .tar.gz arxiv.",
              [("AppImage", "bigtext-linux-x64.AppImage"), (".deb", "bigtext-linux-x64.deb"), (".tar.gz", "bigtext-linux-x64.tar.gz")]),
@@ -523,13 +516,8 @@ T = {
              "BigText bepul va MIT litsenziyasi ostida ochiq kodli. Asosiy, to'liq sinovdan o'tgan platforma — Windows 10 "
              "va 11; Linux va macOS (Apple Silicon va Intel) yig'malari har bir o'zgarishda CI tomonidan yig'iladi va sinanadi."),
         ],
-        "csp_signed": "Windows dasturlari (bigtext.exe, bigtext-cli.exe va o'rnatuvchi) loyiha qabul qilingach imzolanadi. "
-                      "Faqat ochiq repozitoriydan yig'ilgan fayllar imzolanadi: ularni GitHub Actions reliz tegidan "
-                      "yig'adi, har bir imzolash so'rovi esa qo'lda tasdiqlanadi.",
-        "csp_roles": [("Kod mualliflari va ko'rib chiquvchilar", "boshqalarning o'zgarishlari qo'shilishidan oldin ko'rib chiqiladi"),
-                      ("Tasdiqlovchilar", "")],
-        "csp_privacy": "Maxfiylik",
-        "csp_privacy_items": [
+        "privacy": "Maxfiylik",
+        "privacy_items": [
             "Yangilanishni tekshirish: faqat siz so'raganda (Yordam → Yangilanishlarni tekshirish…) yoki birinchi "
             "ishga tushishda avtomatik tekshiruvga rozi bo'lgan bo'lsangiz, kuniga bir marta. So'rov GitHub API'siga "
             "boradi va faqat BigText versiyasini o'z ichiga oladi; siz yoki fayllaringiz haqida hech narsa yo'q.",
@@ -774,7 +762,7 @@ def page(lang):
     <h2>{e(t['dl_h2'])}</h2>
     <p class="intro">{e(t['dl_intro'])}</p>
     <div class="grid downloads">{dl}</div>
-    <p class="all"><a href="{REPO}/releases">{e(t['dl_all'])}</a> · <a href="#code-signing-policy">Code signing policy</a></p>
+    <p class="all"><a href="{REPO}/releases">{e(t['dl_all'])}</a> · <a href="#privacy">{e(t['privacy'])}</a></p>
     <h3 class="src">{e(t['dl_pm'])}</h3>
     <p>{e(t['dl_pm_scoop'])}</p>
     <pre><code>scoop bucket add bigtext https://github.com/Erkinbek/scoop-bigtext
@@ -800,19 +788,10 @@ cargo build --release</code></pre>
   </div>
 </section>
 """)
-    # SignPath Foundation's terms ask for this section, its title and the two English sentences
-    # word for word on the home page.
-    author = f'<a href="https://github.com/Erkinbek">{e(AUTHOR)}</a>'
-    roles = "".join(f"<li>{e(r)}: {author}{' (' + e(note) + ')' if note else ''}</li>" for r, note in t["csp_roles"])
-    privacy = "".join(f"<li>{e(x)}</li>" for x in t["csp_privacy_items"])
-    out.append(f"""<section id="code-signing-policy" class="section">
+    privacy = "".join(f"<li>{e(x)}</li>" for x in t["privacy_items"])
+    out.append(f"""<section id="privacy" class="section">
   <div class="wrap narrow">
-    <h2>Code signing policy</h2>
-    <p>Free code signing provided by <a href="https://about.signpath.io/">SignPath.io</a>, certificate by <a href="https://signpath.org/">SignPath Foundation</a>.</p>
-    <p>{e(t['csp_signed'])}</p>
-    <ul>{roles}</ul>
-    <h3>{e(t['csp_privacy'])}</h3>
-    <p>This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.</p>
+    <h2>{e(t['privacy'])}</h2>
     <ul>{privacy}</ul>
   </div>
 </section>
@@ -824,7 +803,7 @@ cargo build --release</code></pre>
 
 
 def footer(lang, t, p, home=""):
-    """Site footer; `home` prefixes the link to the code signing policy on other pages."""
+    """Site footer; `home` prefixes the link to the privacy section on other pages."""
     links = " · ".join(f'<a href="{h}">{e(n)}</a>' for n, h in AUTHOR_LINKS)
     langs = " · ".join(
         f'<a href="{p}{"" if l == "en" else l + "/"}" hreflang="{l}" lang="{l}">{LANG_NAME[l]}</a>' for l in LANGS
@@ -832,7 +811,7 @@ def footer(lang, t, p, home=""):
     return f"""<footer class="foot">
   <div class="wrap">
     <p>{e(t['made_by'])} <strong>{AUTHOR}</strong> · {links}</p>
-    <p><a href="{REPO}">github.com/Erkinbek/bigtext</a> · <a href="{REPO}/blob/main/LICENSE">{e(t['license'])}</a> · <a href="{home}#code-signing-policy">Code signing policy</a> · v{VERSION}</p>
+    <p><a href="{REPO}">github.com/Erkinbek/bigtext</a> · <a href="{REPO}/blob/main/LICENSE">{e(t['license'])}</a> · <a href="{home}#privacy">{e(t['privacy'])}</a> · v{VERSION}</p>
     <p class="langs-foot">{langs}</p>
   </div>
 </footer>

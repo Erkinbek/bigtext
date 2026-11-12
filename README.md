@@ -57,11 +57,11 @@ Every feature is described in [FEATURES.md](FEATURES.md).
 
 ## Download
 
-Latest release: [all files and release notes](https://github.com/Erkinbek/bigtext/releases/latest) · [changelog](CHANGELOG.md) · [Code signing policy](#code-signing-policy)
+Latest release: [all files and release notes](https://github.com/Erkinbek/bigtext/releases/latest) · [changelog](CHANGELOG.md) · [Privacy](#privacy)
 
 | Platform | Download |
 | --- | --- |
-| Windows 10 / 11 | [Installer](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-setup-windows-x64.exe) (adds “Open with” and an Explorer context-menu entry) · [portable .zip](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-windows-x64.zip) |
+| Windows 10 / 11 | [Installer](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-setup-windows-x64.exe) (adds “Open with” and an Explorer context-menu entry) · [portable .zip](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-windows-x64.zip) (unsigned: SmartScreen may ask, **More info → Run anyway**) |
 | Linux x64 | [AppImage](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.AppImage) · [.deb](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.deb) (Debian, Ubuntu) · [.tar.gz](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.tar.gz) |
 | macOS | BigText.app for [Apple Silicon](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-arm64.app.zip) · [Intel](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-x64.app.zip); plain binaries: [Apple Silicon](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-arm64.tar.gz) · [Intel](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-x64.tar.gz) (unsigned: right-click → Open on first launch) |
 
@@ -174,23 +174,7 @@ from `bigtext-bench`. Raw reports: `scripts/bench.ps1` reproduces them.
 - [CONTRIBUTING.md](CONTRIBUTING.md): building, architecture, tests, the website and releasing.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release.
 
-## Code signing policy
-
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
-[SignPath Foundation](https://signpath.org/).
-
-The Windows programs (`bigtext.exe`, `bigtext-cli.exe` and the installer
-`bigtext-setup-windows-x64.exe`) are signed once the project is accepted. Only files built from
-this repository are signed: GitHub Actions builds them from a release tag
-([build.yml](.github/workflows/build.yml)), and every signing request is approved by hand.
-
-Team roles:
-
-- Committers and reviewers: [Erkin Pardayev](https://github.com/Erkinbek). Changes from anyone
-  else (pull requests) are reviewed by a committer before they are merged.
-- Approvers: [Erkin Pardayev](https://github.com/Erkinbek).
-
-### Privacy
+## Privacy
 
 This program will not transfer any information to other networked systems unless specifically
 requested by the user or the person installing or operating it.

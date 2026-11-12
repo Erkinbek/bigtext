@@ -33,8 +33,7 @@ Linux packaging only; nothing changes on Windows and macOS.
   automatically?”; until you agree, BigText sends nothing on its own (Help → Check for updates…
   works either way, and Help → Check for updates automatically changes the answer). A check
   turned off in an earlier version stays off; one left on by the old default is asked about
-  once. The README and the website have a code signing policy with what the update check and
-  remote files send.
+  once. The README and the website say what the update check and remote files send (Privacy).
 
 ### Fixes
 
