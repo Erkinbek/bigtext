@@ -1,7 +1,7 @@
 {
   "name": "BigText",
   "short_name": "BigText",
-  "description": "Open, search and edit 1 GB, 10 GB or 50 GB text and log files instantly. Free, open-source editor for Windows, Linux and macOS that never freezes.",
+  "description": "Open, search and edit 1 GB, 10 GB or 50 GB text and log files instantly. A free, open-source alternative to EmEditor and UltraEdit for Windows, Linux and macOS that never freezes.",
   "start_url": "/bigtext/",
   "display": "browser",
   "background_color": "#0b0f17",

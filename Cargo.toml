@@ -2,7 +2,7 @@
 name = "bigtext"
 version = "0.7.3"
 edition = "2021"
-description = "Fast text editor for huge files (1-50+ GB): opens instantly, never freezes, streaming search/replace and atomic save"
+description = "Free editor for huge text and log files (1-50+ GB): opens instantly, never freezes, 2.5 GB/s search, atomic save"
 authors = ["Erkin Pardayev <erkin.pardayev@gmail.com>"]
 repository = "https://github.com/Erkinbek/bigtext"
 homepage = "https://erkinbek.github.io/bigtext/"

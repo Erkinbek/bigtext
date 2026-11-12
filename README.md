@@ -1,4 +1,4 @@
-# BigText — fast text editor for huge files (1–50+ GB)
+# BigText — open 50 GB text and log files instantly, free
 
 [![build](https://github.com/Erkinbek/bigtext/actions/workflows/build.yml/badge.svg)](https://github.com/Erkinbek/bigtext/actions/workflows/build.yml)
 [![release](https://img.shields.io/github/v/release/Erkinbek/bigtext?sort=semver)](https://github.com/Erkinbek/bigtext/releases/latest)
@@ -6,9 +6,10 @@
 [![website](https://img.shields.io/badge/website-erkinbek.github.io%2Fbigtext-2dd4bf)](https://erkinbek.github.io/bigtext/)
 
 **Open, search and edit 1 GB, 10 GB and 50 GB text and log files instantly.** BigText is a free,
-open-source desktop text editor for **huge files** — logs, CSV exports, SQL dumps, JSON — that
-never freezes and never loads a whole file into memory. Written in Rust, it is one
-self-contained binary with no runtime dependencies, for Windows, Linux and macOS.
+open-source editor for **huge files** — logs, CSV exports, SQL dumps, JSON — that never freezes
+and never loads a whole file into memory: a free alternative to EmEditor and UltraEdit, for
+Windows, Linux and macOS. Written in Rust, it is one self-contained binary with no runtime
+dependencies.
 
 **[Download](#download)** · [Website](https://erkinbek.github.io/bigtext/) · [All features](FEATURES.md) · [Usage](USAGE.md) · [Русский](https://erkinbek.github.io/bigtext/ru/) · [O'zbekcha](https://erkinbek.github.io/bigtext/uz/)
 
@@ -30,25 +31,14 @@ self-contained binary with no runtime dependencies, for Windows, Linux and macOS
   joins. JSON gets a structure view, folding and queries over JSON Lines.
 - **Compare, hex and archives.** A streaming diff of two huge files, a hex view, and `.gz`,
   `.zst`, `.xz`, `.bz2`, `.zip` and `.tar` files opened without unpacking them by hand.
-- **Code in colour.** Python, JavaScript, TypeScript, Java, Kotlin, Swift, Dart, C#, C/C++, Go,
-  Rust, PHP, Ruby, Lua, PowerShell and shell scripts, as well as CSS/SCSS, Markdown, YAML,
-  Dockerfiles and Makefiles, are highlighted, with comments and strings followed over lines, and
-  only the rows on screen are coloured.
-- **Code looks like it does in a code editor.** Code files open in One Dark colours (One Light
-  on the light theme) on a softer background, with roomier rows, the current line number lit
-  and thin indent guides at each level. Spaces and tabs are plain space in code, with no dots
-  or arrows; **View → Show whitespace** is switched for code apart from logs and other text.
-  **View → Theme → Code colours** offers Monokai, GitHub Dark/Light and Solarized Dark/Light too.
-- **Editor tools for code.** **Ctrl+P** finds a file in the open folder from a few letters of its
-  name, **Ctrl+R** lists the functions and classes of a file, **Ctrl+/** comments lines out and
-  back in, and brackets and quotes close themselves.
-- **Folder side bar.** **File → Open folder…** (Ctrl+Shift+O) shows a folder's files in a tree
-  on the left, as in Sublime Text: a click opens a file, folders are read only when expanded,
-  names can be filtered, and the folder comes back with the session. Right-click to create,
-  rename or move files to the Recycle Bin.
 - **Logs on servers.** Open `user@server:/var/log/app.log` over SSH with your keys, or its last
   megabytes followed like `tail -F` (`bigtext -f user@server:/var/log/syslog`); `https://` and
   public `s3://` files are downloaded with progress (**Ctrl+Shift+U**).
+- **Also a comfortable code editor.** Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust,
+  PHP, shell scripts, YAML and more are highlighted in One Dark, Monokai, GitHub or Solarized
+  colours with indent guides; a folder side bar works as in Sublime Text; **Ctrl+P** finds a
+  file, **Ctrl+R** lists functions and classes, **Ctrl+/** comments lines out, and brackets close
+  themselves. Only the rows on screen are coloured, so a huge file stays just as fast.
 - **Eight interface languages.** English, Russian, Uzbek, Chinese, Spanish, Portuguese, German
   and Turkish; a first start picks the system's language.
 

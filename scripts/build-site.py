@@ -52,17 +52,17 @@ def url(lang):
 
 T = {
     "en": {
-        "title": "BigText — Fast Text Editor for Huge Files (1–50+ GB)",
-        "description": "Open, search and edit 1 GB, 10 GB or 50 GB text and log files instantly. "
-        "Free, open-source editor for Windows, Linux and macOS that never freezes.",
+        "title": "BigText — Free Editor for Huge Text and Log Files (1–50+ GB)",
+        "description": "Open, search and edit 1 GB, 10 GB or 50 GB text and log files instantly. A free, "
+        "open-source alternative to EmEditor and UltraEdit for Windows, Linux and macOS that never freezes.",
         "og_title": "BigText — open 50 GB text files instantly",
         "skip": "Skip to content",
         "nav": ["Features", "Performance", "Download", "FAQ"],
-        "h1": "Open huge text files instantly",
-        "sub": "1 GB, 10 GB, 50 GB and beyond — no freezing, no waiting.",
-        "lead": "BigText is a free, open-source desktop editor for log files, CSV exports, database dumps "
-        "and any other file that is too big for ordinary editors. It never loads the whole file into "
-        "memory: a 10 GB log opens in milliseconds and uses about 100 MB of RAM.",
+        "h1": "Open 50 GB text files instantly",
+        "sub": "Free and open source, for Windows, Linux and macOS. No freezing and no waiting, whatever the size.",
+        "lead": "BigText is an editor for log files, CSV exports, database dumps and any other file that is "
+        "too big for ordinary editors, and a free alternative to EmEditor and UltraEdit. It never loads the "
+        "whole file into memory: a 10 GB log opens in milliseconds and uses about 100 MB of RAM.",
         "cta": "Download free",
         "cta2": "Source on GitHub",
         "note": "Windows · Linux · macOS · MIT license · Written in Rust",
@@ -110,9 +110,7 @@ T = {
             ("Archives and big edits", "Files inside zip and tar archives, .xz and .bz2 files shown while they unpack, saving straight to .gz or .zst, multiple cursors, a column editor, and sort, de-duplicate or run any command on a file of any size."),
             ("Find in files and scripts", "Search a whole folder with file:line results, and use bigtext-cli for count, head, tail, slice, replace, CSV tools and JSON output in scripts. Sessions, portable mode, and a second launch opens in the running window."),
             ("Comfortable for everyone", "High-contrast and colour-blind-safe themes, interface scaling, screen reader support, zen mode, wrapping at a column with a ruler, a clickable status bar, and settings remembered for each file."),
-            ("Code in colour", "Python, JavaScript, TypeScript, Java, Kotlin, Swift, Dart, C#, C/C++, Go, Rust, PHP, Ruby, Lua, PowerShell and shell scripts, as well as CSS, Markdown, YAML, Dockerfiles and Makefiles, are highlighted: keywords, strings, comments, types and function calls, with comments and strings followed over lines, in One Dark, Monokai, GitHub or Solarized colours with indent guides instead of whitespace dots, like a code editor. Only the rows on screen are coloured, so a huge file opens and scrolls just as fast."),
-            ("Folder side bar", "Open folder shows a folder as a tree on the left, as in Sublime Text: folders are read only when expanded, names can be filtered, and a right-click creates, renames or moves files to the Recycle Bin."),
-            ("Editor tools for code", "Ctrl+P finds a file in the open folder from a few letters of its name, Ctrl+R lists the functions and classes of a file, Ctrl+/ comments lines out and back in, and brackets and quotes close themselves."),
+            ("Also a comfortable code editor", "Syntax colours for Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell scripts, YAML and more, in One Dark, Monokai, GitHub or Solarized; a folder side bar as in Sublime Text; Ctrl+P to find a file, Ctrl+R for the functions and classes of a file, Ctrl+/ to comment lines out, and brackets that close themselves. Only the rows on screen are coloured, so a huge file stays just as fast."),
             ("Logs on servers", "Open user@server:/var/log/app.log over SSH with your keys, or follow its last megabytes like tail -F. https:// and public s3:// files are downloaded with progress."),
         ],
         "gallery_h2": "Screenshots",
@@ -173,6 +171,10 @@ T = {
              "Install BigText and open the file with File → Open, by dragging it onto the window, or with right-click → "
              "“Open with BigText”. The first screen appears in about 40 ms whatever the size; scrolling and go to line "
              "work while the line index is built in the background."),
+            ("Is BigText an alternative to EmEditor or UltraEdit?",
+             "For large files, yes. Like them, BigText opens multi-gigabyte files without loading them into memory and "
+             "searches, edits and saves them; unlike them, it is free and open source and runs on Windows, Linux and "
+             "macOS. It has no macros or plug-ins: its effort goes into huge files, logs and tables."),
             ("Does BigText load the whole file into memory?",
              "No. It maps only the part on screen and streams everything else in the background. With a 50 GB file "
              "open it uses about 107 MB of RAM, most of which is the user interface itself."),
@@ -212,17 +214,17 @@ T = {
         "nf_home": "Go to the BigText home page",
     },
     "ru": {
-        "title": "BigText — редактор больших текстовых файлов (1–50+ ГБ)",
+        "title": "BigText — бесплатный редактор огромных текстовых и лог-файлов (1–50+ ГБ)",
         "description": "Мгновенно открывайте, ищите и редактируйте текстовые и лог-файлы на 1, 10 и 50 ГБ. "
-        "Бесплатный редактор с открытым кодом для Windows, Linux и macOS.",
+        "Бесплатная альтернатива EmEditor и UltraEdit с открытым кодом для Windows, Linux и macOS.",
         "og_title": "BigText — открывайте файлы на 50 ГБ мгновенно",
         "skip": "Перейти к содержимому",
         "nav": ["Возможности", "Скорость", "Скачать", "Вопросы"],
-        "h1": "Мгновенно открывайте огромные текстовые файлы",
-        "sub": "1 ГБ, 10 ГБ, 50 ГБ и больше — без зависаний и ожидания.",
-        "lead": "BigText — бесплатный редактор с открытым кодом для лог-файлов, выгрузок CSV, дампов баз данных и "
-        "любых файлов, которые слишком велики для обычных редакторов. Он никогда не загружает файл в память "
-        "целиком: лог на 10 ГБ открывается за миллисекунды и занимает около 100 МБ ОЗУ.",
+        "h1": "Открывайте текстовые файлы на 50 ГБ мгновенно",
+        "sub": "Бесплатно и с открытым кодом, для Windows, Linux и macOS. Без зависаний и ожидания, какого бы размера ни был файл.",
+        "lead": "BigText — редактор для лог-файлов, выгрузок CSV, дампов баз данных и любых файлов, которые "
+        "слишком велики для обычных редакторов, и бесплатная альтернатива EmEditor и UltraEdit. Он никогда не "
+        "загружает файл в память целиком: лог на 10 ГБ открывается за миллисекунды и занимает около 100 МБ ОЗУ.",
         "cta": "Скачать бесплатно",
         "cta2": "Исходный код на GitHub",
         "note": "Windows · Linux · macOS · Лицензия MIT · Написан на Rust",
@@ -271,9 +273,7 @@ T = {
             ("Архивы и большие правки", "Файлы внутри архивов zip и tar, файлы .xz и .bz2, видимые ещё во время распаковки, сохранение сразу в .gz или .zst, несколько курсоров, редактор столбцов, сортировка, удаление повторов и любая команда над файлом любого размера."),
             ("Поиск в файлах и скрипты", "Поиск по всей папке с результатами file:line и bigtext-cli для count, head, tail, slice, replace, работы с CSV и вывода JSON в скриптах. Сеансы, портативный режим, а повторный запуск открывает файл в уже запущенном окне."),
             ("Удобно каждому", "Высококонтрастные темы и темы для людей с нарушением цветового зрения, масштаб интерфейса, поддержка экранного диктора, режим дзен, перенос по столбцу с линейкой, кликабельная строка состояния и настройки, запоминаемые для каждого файла."),
-            ("Код в цвете", "Подсветка Python, JavaScript, TypeScript, Java, Kotlin, Swift, Dart, C#, C/C++, Go, Rust, PHP, Ruby, Lua, PowerShell и shell-скриптов, а также CSS, Markdown, YAML, Dockerfile и Makefile: ключевые слова, строки, комментарии, типы и вызовы функций, а комментарии и строки отслеживаются через несколько строк; цвета One Dark, Monokai, GitHub или Solarized и направляющие отступов вместо точек на месте пробелов, как в редакторе кода. Раскрашиваются только строки на экране, поэтому огромный файл открывается и прокручивается так же быстро."),
-            ("Боковая панель папки", "«Открыть папку» показывает папку деревом слева, как в Sublime Text: папки читаются только при раскрытии, имена можно отфильтровать, а правый щелчок создаёт и переименовывает файлы или перемещает их в корзину."),
-            ("Инструменты для кода", "Ctrl+P находит файл в открытой папке по нескольким буквам имени, Ctrl+R показывает функции и классы файла, Ctrl+/ закомментирует и раскомментирует строки, а скобки и кавычки закрываются сами."),
+            ("И удобный редактор кода", "Подсветка Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell-скриптов, YAML и других языков в цветах One Dark, Monokai, GitHub или Solarized; боковая панель папки, как в Sublime Text; Ctrl+P для поиска файла, Ctrl+R для функций и классов файла, Ctrl+/ для комментирования строк и автозакрытие скобок. Раскрашиваются только строки на экране, поэтому огромный файл остаётся таким же быстрым."),
             ("Логи на серверах", "Открывайте user@server:/var/log/app.log по SSH с вашими ключами или следите за его последними мегабайтами, как tail -F. Файлы по https:// и публичные s3:// скачиваются с индикатором хода."),
         ],
         "gallery_h2": "Скриншоты",
@@ -334,6 +334,10 @@ T = {
              "Установите BigText и откройте файл через Файл → Открыть, перетащив его в окно или через правый щелчок → "
              "«Открыть в BigText». Первый экран появляется примерно за 40 мс при любом размере; прокрутка и переход к "
              "строке работают, пока индекс строится в фоне."),
+            ("BigText — альтернатива EmEditor или UltraEdit?",
+             "Для больших файлов — да. Как и они, BigText открывает файлы на несколько гигабайт, не загружая их в "
+             "память, ищет, редактирует и сохраняет их; в отличие от них, он бесплатный, с открытым кодом и работает в "
+             "Windows, Linux и macOS. Макросов и плагинов в нём нет: он сосредоточен на огромных файлах, логах и таблицах."),
             ("BigText загружает весь файл в память?",
              "Нет. Он отображает в память только видимую часть, а остальное читает потоком в фоне. С открытым файлом на "
              "50 ГБ он занимает около 107 МБ ОЗУ, и большая часть этого — сам интерфейс."),
@@ -373,17 +377,18 @@ T = {
         "nf_home": "На главную BigText",
     },
     "uz": {
-        "title": "BigText — katta matn fayllari uchun tezkor muharrir (1–50+ GB)",
+        "title": "BigText — ulkan matn va log fayllar uchun bepul muharrir (1–50+ GB)",
         "description": "1, 10 va 50 GB hajmdagi matn va log fayllarni bir zumda oching, qidiring va tahrirlang. "
-        "Windows, Linux va macOS uchun bepul, ochiq kodli muharrir.",
+        "Windows, Linux va macOS uchun EmEditor va UltraEdit'ning bepul, ochiq kodli muqobili.",
         "og_title": "BigText — 50 GB matn fayllarini bir zumda oching",
         "skip": "Asosiy qismga o'tish",
         "nav": ["Imkoniyatlar", "Tezlik", "Yuklab olish", "Savollar"],
-        "h1": "Ulkan matn fayllarini bir zumda oching",
-        "sub": "1 GB, 10 GB, 50 GB va undan katta — qotishsiz va kutishsiz.",
+        "h1": "50 GB matn fayllarini bir zumda oching",
+        "sub": "Bepul va ochiq kodli, Windows, Linux va macOS uchun. Fayl qanchalik katta bo'lmasin, qotishsiz va kutishsiz.",
         "lead": "BigText — log fayllar, CSV eksportlar, ma'lumotlar bazasi damplari va oddiy muharrirlar uchun juda "
-        "katta bo'lgan har qanday fayl uchun bepul, ochiq kodli muharrir. U faylni hech qachon xotiraga to'liq "
-        "yuklamaydi: 10 GB log millisekundlarda ochiladi va taxminan 100 MB operativ xotira ishlatadi.",
+        "katta bo'lgan har qanday fayl uchun muharrir, EmEditor va UltraEdit'ning bepul muqobili. U faylni hech "
+        "qachon xotiraga to'liq yuklamaydi: 10 GB log millisekundlarda ochiladi va taxminan 100 MB operativ xotira "
+        "ishlatadi.",
         "cta": "Bepul yuklab olish",
         "cta2": "GitHub'dagi manba kodi",
         "note": "Windows · Linux · macOS · MIT litsenziyasi · Rust tilida yozilgan",
@@ -432,9 +437,7 @@ T = {
             ("Arxivlar va katta tahrirlar", "zip va tar arxivlari ichidagi fayllar, ochilayotgan paytdayoq ko'rinadigan .xz va .bz2 fayllar, to'g'ridan-to'g'ri .gz yoki .zst'ga saqlash, bir nechta kursor, ustun muharriri, istalgan hajmdagi faylda saralash, takrorlarni olib tashlash yoki istalgan buyruqni bajarish."),
             ("Fayllar ichida qidiruv va skriptlar", "Butun papka bo'ylab file:line natijali qidiruv va skriptlar uchun bigtext-cli: count, head, tail, slice, replace, CSV vositalari va JSON chiqishi. Seanslar, portativ rejim, ikkinchi ishga tushirish esa faylni ochiq oynada ochadi."),
             ("Hamma uchun qulay", "Yuqori kontrastli va ranglarni ajratishda qiynaladiganlar uchun mavzular, interfeys masshtabi, ekran o'quvchi qo'llab-quvvatlashi, zen rejimi, belgilangan ustunda o'rash va chizg'ich, bosiladigan holat qatori va har bir fayl uchun eslab qolinadigan sozlamalar."),
-            ("Rangli kod", "Python, JavaScript, TypeScript, Java, Kotlin, Swift, Dart, C#, C/C++, Go, Rust, PHP, Ruby, Lua, PowerShell va shell skriptlari, shuningdek CSS, Markdown, YAML, Dockerfile va Makefile rangli ko'rinadi: kalit so'zlar, matnlar, izohlar, turlar va funksiya chaqiruvlari; bir necha satrga cho'zilgan izoh va matnlar ham to'g'ri bo'yaladi; kod muharriridagidek One Dark, Monokai, GitHub yoki Solarized ranglari, bo'shliqlar o'rnida nuqtalar emas, indent chiziqlari. Faqat ekrandagi satrlar bo'yaladi, shuning uchun ulkan fayl ham avvalgidek tez ochiladi va aylantiriladi."),
-            ("Papka paneli", "«Papkani ochish» papkani Sublime Text'dagidek chap tomonda daraxt ko'rinishida ko'rsatadi: papkalar faqat ochilganda o'qiladi, nomlarni filtrlash mumkin, o'ng tugma bilan esa fayl yaratish, nomini o'zgartirish yoki savatchaga o'tkazish mumkin."),
-            ("Kod uchun vositalar", "Ctrl+P ochiq papkadagi faylni nomining bir necha harfi bo'yicha topadi, Ctrl+R fayldagi funksiya va klasslarni ko'rsatadi, Ctrl+/ satrlarni izohga oladi va izohdan chiqaradi, qavs va qo'shtirnoqlar esa o'zi yopiladi."),
+            ("Qulay kod muharriri ham", "Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell skriptlar, YAML va boshqa tillar One Dark, Monokai, GitHub yoki Solarized ranglarida; Sublime Text'dagidek papka paneli; faylni topish uchun Ctrl+P, fayldagi funksiya va klasslar uchun Ctrl+R, satrlarni izohga aylantirish uchun Ctrl+/ va o'zi yopiladigan qavslar. Faqat ekrandagi satrlar bo'yaladi, shuning uchun ulkan fayl ham xuddi shunday tez qoladi."),
             ("Serverdagi loglar", "user@server:/var/log/app.log faylini kalitlaringiz bilan SSH orqali oching yoki uning oxirgi megabaytlarini tail -F kabi kuzatib boring. https:// va ochiq s3:// fayllar yuklanish jarayoni ko'rsatilgan holda yuklab olinadi."),
         ],
         "gallery_h2": "Skrinshotlar",
@@ -495,6 +498,10 @@ T = {
              "BigText'ni o'rnating va faylni File → Open orqali, oynaga sudrab tashlab yoki o'ng tugma → «Open with "
              "BigText» bilan oching. Hajmidan qat'i nazar birinchi ekran taxminan 40 ms da chiqadi; indeks fonda "
              "qurilayotganda ham aylantirish va satrga o'tish ishlaydi."),
+            ("BigText EmEditor yoki UltraEdit'ning muqobilimi?",
+             "Katta fayllar uchun — ha. Ular kabi BigText ham bir necha gigabaytli fayllarni xotiraga yuklamasdan ochadi, "
+             "qidiradi, tahrirlaydi va saqlaydi; ulardan farqli o'laroq, u bepul, ochiq kodli va Windows, Linux va macOS'da "
+             "ishlaydi. Makros va plaginlar yo'q: u ulkan fayllar, loglar va jadvallarga e'tibor qaratadi."),
             ("BigText butun faylni xotiraga yuklaydimi?",
              "Yo'q. U faqat ekrandagi qismni akslantiradi, qolganini fonda oqim bilan o'qiydi. 50 GB fayl ochiq "
              "turganda taxminan 107 MB operativ xotira ishlatadi, uning katta qismi interfeysning o'zi."),
