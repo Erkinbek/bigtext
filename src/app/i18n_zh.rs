@@ -1196,4 +1196,11 @@ pub static ZH: &[(&str, &str)] = &[
     ("{name} or {3} is a column; + - * / on numbers, & joins text, = <> < > compare, and / or / not; upper, lower, trim, len, substr(t, start, n), replace(t, a, b), regex(t, \"id=([0-9]+)\"), if(c, a, b), num, abs, round(x, digits).", "{name} 或 {3} 表示一列；数字可用 + - * /，& 连接文本，= <> < > 比较，and / or / not；upper、lower、trim、len、substr(t, start, n)、replace(t, a, b)、regex(t, \"id=([0-9]+)\")、if(c, a, b)、num、abs、round(x, digits)。"),
     ("Filter JSON Lines by fields: .level == \"error\" and .duration > 500 (also ==, !=, <, >, contains, ~ regex, exists, missing)", "按字段筛选 JSON Lines：.level == \"error\" and .duration > 500（还有 ==、!=、<、>、contains、~ 正则、exists、missing）"),
     ("No JSON objects found: one per line (JSON Lines), or the items of a JSON array.", "未找到 JSON 对象：应每行一个（JSON Lines），或为 JSON 数组的元素。"),
+    ("A text editor for huge files: it opens 1–50+ GB at once and never freezes.", "专为超大文件打造的文本编辑器：1–50+ GB 的文件即刻打开，从不卡顿。"),
+    ("No big file at hand? BigText can write a 1 GB sample log to try it on.", "手边没有大文件？BigText 可以写一个 1 GB 的示例日志供你试用。"),
+    ("Create a 1 GB sample log", "创建 1 GB 示例日志"),
+    ("It goes to {dir} and opens when it is written.", "它会保存在 {dir}，写完后自动打开。"),
+    ("Writing the sample log… {p}%", "正在写入示例日志… {p}%"),
+    ("Or just start typing: this page goes away by itself.", "或者直接开始输入：此页面会自动消失。"),
+    ("Could not write the sample log: {e}", "无法写入示例日志：{e}"),
 ];

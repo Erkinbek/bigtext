@@ -395,6 +395,12 @@ keyboard shortcuts.
 - **Per-file memory**: an encoding chosen with Reopen with encoding, Highlight as, table, hex,
   follow, read-only and wrap, and a table's delimiter, header switch, dragged column widths and
   scroll come back whenever the file opens again (Open recent, a session, the command line).
+- **First start**: over the empty document a page offers Open, Open folder and Open remote
+  file, the recent files, the main keys (as you have bound them) and **Create a 1 GB sample
+  log**: a web-service log written to the temporary folder on a worker, with a progress bar,
+  and opened when it is complete (the next time it opens at once). Typing or opening a file
+  makes the page go away. After an update, a note shows what changed in the new version, from
+  the changelog built into the program, with a link to the full release notes.
 - **Updates**: Help → Check for updates asks GitHub for a newer release. Checking by itself
   once a day happens only if you agree when BigText first starts (Help → Check for updates
   automatically changes it); until then nothing goes out on its own. A dialog shows the

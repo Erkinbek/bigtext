@@ -1375,4 +1375,12 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["GitHub Light", "GitHub Light", "GitHub Light"],
     ["Solarized Dark", "Solarized Dark", "Solarized Dark"],
     ["Solarized Light", "Solarized Light", "Solarized Light"],
+    // The page over an empty start.
+    ["A text editor for huge files: it opens 1–50+ GB at once and never freezes.", "Редактор для огромных файлов: открывает 1–50+ ГБ сразу и никогда не зависает.", "Ulkan fayllar uchun matn muharriri: 1–50+ GB faylni darhol ochadi va hech qachon qotib qolmaydi."],
+    ["No big file at hand? BigText can write a 1 GB sample log to try it on.", "Нет под рукой большого файла? BigText может записать пробный лог на 1 ГБ, чтобы попробовать.", "Qo'lingizda katta fayl yo'qmi? BigText sinab ko'rish uchun 1 GB namunaviy log yozib bera oladi."],
+    ["Create a 1 GB sample log", "Создать пробный лог на 1 ГБ", "1 GB namunaviy log yaratish"],
+    ["It goes to {dir} and opens when it is written.", "Он сохранится в {dir} и откроется, когда будет записан.", "U {dir} papkasiga yoziladi va tayyor bo'lgach ochiladi."],
+    ["Writing the sample log… {p}%", "Запись пробного лога… {p}%", "Namunaviy log yozilmoqda… {p}%"],
+    ["Or just start typing: this page goes away by itself.", "Или просто начните печатать: эта страница исчезнет сама.", "Yoki shunchaki yozishni boshlang: bu sahifa o'zi yo'qoladi."],
+    ["Could not write the sample log: {e}", "Не удалось записать пробный лог: {e}", "Namunaviy logni yozib bo'lmadi: {e}"],
 ];

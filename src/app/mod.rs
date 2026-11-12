@@ -71,6 +71,7 @@ pub mod text_tools;
 pub mod time_range;
 pub mod timeline;
 pub mod update;
+pub mod welcome;
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -301,6 +302,8 @@ pub struct BigTextApp {
     pending_replace: Option<(u64, Arc<Matcher>, Template, std::ops::Range<u64>)>,
     preview: Option<(u64, Vec<(u64, String, String)>, Vec<u64>)>,
     pub update: update::UpdateUi,
+    /// The page over an empty start and the note after an update.
+    pub welcome: welcome::Welcome,
     pub tasks: Vec<tasks::Task>,
     next_task: u64,
     pub notice: Option<tasks::Notice>,
@@ -614,6 +617,7 @@ impl BigTextApp {
             pending_replace: None,
             preview: None,
             update: update::UpdateUi::default(),
+            welcome: welcome::Welcome::default(),
             tasks: Vec::new(),
             next_task: 0,
             notice: None,
@@ -685,6 +689,8 @@ impl BigTextApp {
         if persist {
             let mut state = extras::load();
             app.update.restore(&state);
+            app.welcome.enabled = true;
+            app.welcome.after_start(state.loaded, state.seen_version.as_deref());
             update::cleanup_in_background();
             jobs::spawn("cleanup-unpacked", bigtext::decompress::cleanup_old);
             app.settings.marks = std::mem::take(&mut state.marks);
@@ -1896,7 +1902,8 @@ impl eframe::App for BigTextApp {
         }
 
         self.update_tick();
-        let modal_open = self.run_cmd.open || self.goto.is_some() || self.clips.open.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.quick_open.is_some() || self.file_ops.dialog.is_some() || self.remote.open || self.symbols_open() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open();
+        self.welcome_tick();
+        let modal_open = self.run_cmd.open || self.goto.is_some() || self.clips.open.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.quick_open.is_some() || self.file_ops.dialog.is_some() || self.remote.open || self.symbols_open() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open() || self.welcome.whats_new.is_some();
         if !modal_open {
             self.shortcuts(&ctx);
             // The mouse's back and forward buttons.
@@ -1993,6 +2000,11 @@ impl eframe::App for BigTextApp {
             egui::Panel::left("fields").resizable(true).default_size(300.0).show(ui, |ui| self.fields_panel(ui));
         }
 
+        // Over the empty document of a fresh start; typing goes on to the document below.
+        if self.welcome_visible() {
+            let editor = ui.available_rect_before_wrap();
+            self.welcome_ui(&ctx, editor);
+        }
         let mut actions = Vec::new();
         let mut table_actions = Vec::new();
         let hl = self.view_highlights(ui.visuals().dark_mode);
@@ -2096,6 +2108,7 @@ impl eframe::App for BigTextApp {
 
         self.dialogs(&ctx);
         self.update_dialog(&ctx);
+        self.whats_new_ui(&ctx);
         self.marks_window(&ctx);
         self.export_windows(&ctx);
         self.csv_windows(&ctx);

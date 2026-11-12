@@ -567,6 +567,55 @@ impl SelfTest {
             Ok(()) => Step::Next,
             Err(e) => Step::Fail(e.to_string()),
         }));
+        s("first start: the page over the empty document, gone while it has text", Box::new(|app, c| {
+            if c.first() {
+                app.welcome.enabled = true;
+                if !app.welcome_visible() {
+                    return Step::Fail("not shown on the empty start".into());
+                }
+                // Outside the page, which sits in the middle.
+                c.click(pos(app, 0, 1.0), NONE);
+                c.typed("x");
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if app.welcome_visible() {
+                    return Step::Fail(format!("still shown with text {:?}", text(app)));
+                }
+                c.mark = 1;
+                c.key(Key::Z, CTRL);
+                return Step::Wait;
+            }
+            check(app.welcome_visible(), "not shown again once the text was undone")
+        }));
+        s("screenshot: first start page", shot_step("selftest-welcome.png"));
+        s("first start: the sample log (2 MB here) is written and opened", Box::new(|app, c| {
+            let sample = c.file("sample.log");
+            if c.first() {
+                let _ = std::fs::remove_file(&sample);
+                app.welcome.sample_size = 2 << 20;
+                app.welcome.sample_path = Some(sample);
+                app.start_sample();
+                return if app.welcome.sample.is_some() { Step::Wait } else { Step::Fail("not started".into()) };
+            }
+            let Some(d) = app.docs.iter().find(|d| d.title == "sample.log") else { return Step::Wait };
+            if !d.is_ready() || !d.buf.index.is_done() {
+                return Step::Wait;
+            }
+            let (lines, _) = d.buf.line_count();
+            let (id, size) = (d.id, d.buf.len());
+            let shown = app.welcome_visible();
+            // Back to one empty document for the steps that follow.
+            app.close_tab(id, true);
+            app.welcome.enabled = false;
+            check(lines > 10_000 && size >= 2 << 20 && !shown && app.docs.len() == 1, format!("{lines} lines, {size} bytes, page shown {shown}, {} tabs", app.docs.len()))
+        }));
+        s("after an update: what changed in this version", Box::new(|app, _c| {
+            app.welcome.after_start(true, Some("0.0.1"));
+            let Some((v, notes)) = app.welcome.whats_new.take() else { return Step::Fail("no note after an update".into()) };
+            app.welcome.after_start(true, Some(&v.to_string()));
+            check(v == bigtext::update::Version::current() && !notes.is_empty() && app.welcome.whats_new.is_none(), format!("{v} with {} blocks", notes.len()))
+        }));
         s("open edit.txt", open_step("edit.txt"));
         s("screenshot: initial view", Box::new(|_app, c| {
             if c.first() {

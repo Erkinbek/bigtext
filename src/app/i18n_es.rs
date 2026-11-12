@@ -1199,4 +1199,11 @@ pub static ES: &[(&str, &str)] = &[
     ("{name} or {3} is a column; + - * / on numbers, & joins text, = <> < > compare, and / or / not; upper, lower, trim, len, substr(t, start, n), replace(t, a, b), regex(t, \"id=([0-9]+)\"), if(c, a, b), num, abs, round(x, digits).", "{name} o {3} es una columna; + - * / con números, & une texto, = <> < > comparan, and / or / not; upper, lower, trim, len, substr(t, start, n), replace(t, a, b), regex(t, \"id=([0-9]+)\"), if(c, a, b), num, abs, round(x, digits)."),
     ("Filter JSON Lines by fields: .level == \"error\" and .duration > 500 (also ==, !=, <, >, contains, ~ regex, exists, missing)", "Filtrar JSON Lines por campos: .level == \"error\" and .duration > 500 (también ==, !=, <, >, contains, ~ regex, exists, missing)"),
     ("No JSON objects found: one per line (JSON Lines), or the items of a JSON array.", "No se encontraron objetos JSON: uno por línea (JSON Lines), o los elementos de un array JSON."),
+    ("A text editor for huge files: it opens 1–50+ GB at once and never freezes.", "Un editor de texto para archivos enormes: abre de 1 a 50+ GB al instante y nunca se congela."),
+    ("No big file at hand? BigText can write a 1 GB sample log to try it on.", "¿No tienes un archivo grande a mano? BigText puede escribir un log de ejemplo de 1 GB para probarlo."),
+    ("Create a 1 GB sample log", "Crear un log de ejemplo de 1 GB"),
+    ("It goes to {dir} and opens when it is written.", "Se guarda en {dir} y se abre cuando termina de escribirse."),
+    ("Writing the sample log… {p}%", "Escribiendo el log de ejemplo… {p}%"),
+    ("Or just start typing: this page goes away by itself.", "O simplemente empieza a escribir: esta página desaparece sola."),
+    ("Could not write the sample log: {e}", "No se pudo escribir el log de ejemplo: {e}"),
 ];

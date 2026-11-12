@@ -52,6 +52,10 @@ pub struct Persisted {
     pub skip_version: Option<String>,
     /// Unix time of the last update check.
     pub update_checked: Option<u64>,
+    /// The version that saved the settings (after an update, BigText says what changed).
+    pub seen_version: Option<String>,
+    /// Read from a settings file, so not a first start.
+    pub loaded: bool,
     pub marks: Vec<super::marks::Mark>,
     /// Search history, newest first.
     pub history: Vec<String>,
@@ -288,7 +292,7 @@ pub fn state_file() -> Option<PathBuf> {
 pub fn load() -> Persisted {
     let Some(path) = state_file() else { return Persisted::default() };
     match std::fs::read_to_string(path) {
-        Ok(text) => parse(&text),
+        Ok(text) => Persisted { loaded: true, ..parse(&text) },
         Err(_) => Persisted::default(),
     }
 }
@@ -316,6 +320,7 @@ pub(super) fn parse(text: &str) -> Persisted {
             "update_check" => p.update_check = Some(v == "1"),
             "update_asked" => p.update_asked = Some(v == "1"),
             "skip_version" => p.skip_version = Some(v.to_string()),
+            "seen_version" => p.seen_version = Some(v.to_string()),
             "update_checked" => p.update_checked = v.parse().ok(),
             "mark" => p.marks.extend(parse_mark(v)),
             "saved" => p.saved.extend(parse_saved(v)),
@@ -428,6 +433,9 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(v) = &p.skip_version {
         s.push_str(&format!("skip_version={v}\n"));
+    }
+    if let Some(v) = &p.seen_version {
+        s.push_str(&format!("seen_version={v}\n"));
     }
     if let Some(f) = &p.font {
         s.push_str(&format!("font={}\n", f.display()));
@@ -790,6 +798,8 @@ impl BigTextApp {
             update_asked: Some(self.update.asked),
             skip_version: self.update.skipped.map(|v| v.to_string()),
             update_checked: Some(self.update.last_check).filter(|&t| t > 0),
+            seen_version: Some(bigtext::update::Version::current().to_string()),
+            loaded: false,
             marks: self.settings.marks.clone(),
             history: self.search.history.clone(),
             lang: Some(super::i18n::lang().code().to_string()),
@@ -1455,6 +1465,8 @@ mod tests {
             update_asked: Some(true),
             skip_version: Some("0.2.0".into()),
             update_checked: Some(1_761_550_000),
+            seen_version: Some("0.7.2".into()),
+            loaded: false,
             marks: vec![super::super::marks::Mark {
                 query: bigtext::search::Query { pattern: r"id=\d+|x".into(), regex: true, case_sensitive: true, whole_word: false, dot_all: false },
                 color: 3,
@@ -1517,6 +1529,7 @@ mod tests {
         assert_eq!(parse(&serialize(&p)).file_opts, p.file_opts);
         assert_eq!(parse(&serialize(&p)).status, p.status);
         assert_eq!(parse(&serialize(&p)).gutter, Some(false));
+        assert_eq!(q0.seen_version.as_deref(), Some("0.7.2"));
         assert_eq!((q0.wrap_column, q0.ruler, q0.json_crumb), (Some(Some(100)), Some(None), Some(false)));
         assert_eq!((&q0.tools, &q0.commands, q0.shell.as_deref()), (&p.tools, &p.commands, Some("git-bash")));
         assert_eq!((q0.theme, q0.cvd, q0.scale, q0.dark), (p.theme, Some(true), Some(150), Some(false)));

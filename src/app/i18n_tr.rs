@@ -1199,4 +1199,11 @@ pub static TR: &[(&str, &str)] = &[
     ("{name} or {3} is a column; + - * / on numbers, & joins text, = <> < > compare, and / or / not; upper, lower, trim, len, substr(t, start, n), replace(t, a, b), regex(t, \"id=([0-9]+)\"), if(c, a, b), num, abs, round(x, digits).", "{name} veya {3} bir sütundur; sayılarda + - * /, & metinleri birleştirir, = <> < > karşılaştırır, and / or / not; upper, lower, trim, len, substr(t, start, n), replace(t, a, b), regex(t, \"id=([0-9]+)\"), if(c, a, b), num, abs, round(x, digits)."),
     ("Filter JSON Lines by fields: .level == \"error\" and .duration > 500 (also ==, !=, <, >, contains, ~ regex, exists, missing)", "JSON Lines'ı alanlara göre filtrele: .level == \"error\" and .duration > 500 (ayrıca ==, !=, <, >, contains, ~ regex, exists, missing)"),
     ("No JSON objects found: one per line (JSON Lines), or the items of a JSON array.", "JSON nesnesi bulunamadı: satır başına bir tane (JSON Lines) ya da bir JSON dizisinin öğeleri olmalı."),
+    ("A text editor for huge files: it opens 1–50+ GB at once and never freezes.", "Devasa dosyalar için bir metin düzenleyici: 1–50+ GB'ı anında açar ve asla donmaz."),
+    ("No big file at hand? BigText can write a 1 GB sample log to try it on.", "Elinizde büyük bir dosya yok mu? BigText denemeniz için 1 GB'lık örnek bir log yazabilir."),
+    ("Create a 1 GB sample log", "1 GB'lık örnek log oluştur"),
+    ("It goes to {dir} and opens when it is written.", "{dir} klasörüne kaydedilir ve yazılınca açılır."),
+    ("Writing the sample log… {p}%", "Örnek log yazılıyor… %{p}"),
+    ("Or just start typing: this page goes away by itself.", "Ya da hemen yazmaya başlayın: bu sayfa kendiliğinden kaybolur."),
+    ("Could not write the sample log: {e}", "Örnek log yazılamadı: {e}"),
 ];

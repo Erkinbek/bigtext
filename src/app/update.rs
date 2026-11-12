@@ -483,7 +483,7 @@ fn notes_ui(ui: &mut egui::Ui, o: &Offer) {
     ui.hyperlink_to(tr("Full release notes on GitHub"), &o.page);
 }
 
-fn block_ui(ui: &mut egui::Ui, b: &Block) {
+pub(super) fn block_ui(ui: &mut egui::Ui, b: &Block) {
     match b {
         Block::Heading(spans) => {
             ui.add_space(4.0);
