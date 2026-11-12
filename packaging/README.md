@@ -8,6 +8,7 @@ The release workflow (`.github/workflows/build.yml`) builds these from the relea
 | `bigtext-linux-x64.deb` | `linux/build-deb.sh` | Debian / Ubuntu package: `/usr/bin/bigtext`, `bigtext-cli`, menu entry, icon |
 | `bigtext-linux-x64.AppImage` | `linux/build-appimage.sh` | One file that runs on most Linux systems |
 | `bigtext-macos-arm64.app.zip`, `…-x64.app.zip` | `macos/build-app.sh` | `BigText.app` for the Applications folder (unsigned) |
+| `bigtext-vscode.vsix` | `vscode/` (`vsce package`) | The VS Code extension "Open in BigText", for installing by hand |
 | `SHA256SUMS.txt` | the release job | Checksums of all files |
 
 `linux/bigtext.desktop` is the menu entry (also in the Linux tarball, with `icon-256.png`). The
@@ -49,3 +50,25 @@ the AUR when the repository variable `AUR_PUBLISH` is `true` and the secret
    half of an SSH key (`ssh-keygen -t ed25519 -f aur -C bigtext-aur`) under *My Account*.
 2. `gh secret set AUR_SSH_PRIVATE_KEY < aur` and `gh variable set AUR_PUBLISH --body true`.
 3. Run the `aur` workflow by hand once: the first push creates the package.
+
+## VS Code extension
+
+`vscode/` is the extension "Open in BigText": Open in BigText in the Explorer, on a tab and in the
+editor (at the caret's line), Open Folder in BigText, and an offer to open files over 50 MB in
+BigText. It finds BigText where the installers and package managers put it, or uses the
+`bigtext.path` setting. Plain JavaScript, no build step; `find.js` (where BigText is) has unit
+tests: `cd packaging/vscode && node --test test/*.test.js`. CI packages it on every change and
+the release carries `bigtext-vscode.vsix` (install with `code --install-extension`).
+
+Publishing it is done by hand, once a publisher exists (its id must be `erkinbek`, as in
+`package.json`, or change `publisher` there):
+
+1. **VS Code Marketplace**: create the publisher at
+   [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage), make a
+   personal access token in Azure DevOps with the *Marketplace → Manage* scope, then in
+   `packaging/vscode`: `npx @vscode/vsce login erkinbek` and `npx @vscode/vsce publish`.
+2. **Open VSX** (VSCodium, Cursor, Windsurf): sign in at [open-vsx.org](https://open-vsx.org) with
+   GitHub, sign the publisher agreement, create the `erkinbek` namespace and a token, then
+   `npx ovsx publish bigtext-vscode.vsix -p <token>`.
+
+A new version: raise `version` in `package.json`, add it to `CHANGELOG.md`, publish again.

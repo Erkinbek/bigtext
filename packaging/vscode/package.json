@@ -1,0 +1,106 @@
+{
+  "name": "bigtext",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.1.0",
+  "publisher": "erkinbek",
+  "license": "MIT",
+  "icon": "icon.png",
+  "homepage": "https://erkinbek.github.io/bigtext/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Erkinbek/bigtext"
+  },
+  "bugs": {
+    "url": "https://github.com/Erkinbek/bigtext/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "large files",
+    "big files",
+    "huge files",
+    "log viewer",
+    "log files",
+    "csv",
+    "file too large"
+  ],
+  "main": "./extension.js",
+  "l10n": "./l10n",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "bigtext.open",
+        "title": "%command.open%",
+        "category": "BigText"
+      },
+      {
+        "command": "bigtext.openFolder",
+        "title": "%command.openFolder%",
+        "category": "BigText"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "bigtext.open",
+          "when": "resourceScheme == file && !explorerResourceIsFolder",
+          "group": "navigation@90"
+        },
+        {
+          "command": "bigtext.openFolder",
+          "when": "resourceScheme == file && explorerResourceIsFolder",
+          "group": "navigation@90"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "bigtext.open",
+          "when": "resourceScheme == file",
+          "group": "1_open@90"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "bigtext.open",
+          "when": "resourceScheme == file",
+          "group": "z_bigtext"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "bigtext.openFolder",
+          "when": "workspaceFolderCount > 0"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "BigText",
+      "properties": {
+        "bigtext.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "%config.path%"
+        },
+        "bigtext.suggestAboveMB": {
+          "type": "number",
+          "default": 50,
+          "minimum": 0,
+          "markdownDescription": "%config.suggest%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "package": "npx --yes @vscode/vsce@3 package"
+  }
+}

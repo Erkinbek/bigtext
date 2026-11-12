@@ -1,0 +1,10 @@
+{
+  "Download": "Скачать",
+  "Set path": "Указать путь",
+  "BigText was not found. Install it, or set its path in the bigtext.path setting.": "BigText не найден. Установите его или укажите путь в настройке bigtext.path.",
+  "Could not start BigText: {0}": "Не удалось запустить BigText: {0}",
+  "Open in BigText": "Открыть в BigText",
+  "Don't ask again": "Больше не спрашивать",
+  "{0} is {1}. BigText opens it at once and never loads it into memory.": "{0} весит {1}. BigText откроет его сразу и не будет загружать в память.",
+  "Open a file that is on disk first.": "Сначала откройте файл, который лежит на диске."
+}

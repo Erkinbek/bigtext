@@ -1,0 +1,8 @@
+{
+  "displayName": "Open in BigText",
+  "description": "在 BigText 中打开 VS Code 里的超大文件和日志——这款免费编辑器能即刻打开 50 GB 的文件。",
+  "command.open": "在 BigText 中打开",
+  "command.openFolder": "在 BigText 中打开文件夹",
+  "config.path": "BigText 程序的路径（Windows 上为 `bigtext.exe`）。留空则自动查找已安装的程序。",
+  "config.suggest": "当 VS Code 打开大于此兆字节数的文件时，建议在 BigText 中打开。设为 `0` 则不再建议。"
+}

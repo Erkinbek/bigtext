@@ -1,0 +1,10 @@
+{
+  "Download": "下载",
+  "Set path": "设置路径",
+  "BigText was not found. Install it, or set its path in the bigtext.path setting.": "未找到 BigText。请安装它，或在 bigtext.path 设置中指定路径。",
+  "Could not start BigText: {0}": "无法启动 BigText：{0}",
+  "Open in BigText": "在 BigText 中打开",
+  "Don't ask again": "不再询问",
+  "{0} is {1}. BigText opens it at once and never loads it into memory.": "{0} 大小为 {1}。BigText 能即刻打开它，且从不将其载入内存。",
+  "Open a file that is on disk first.": "请先打开一个磁盘上的文件。"
+}

@@ -1,0 +1,10 @@
+{
+  "Download": "Descargar",
+  "Set path": "Indicar ruta",
+  "BigText was not found. Install it, or set its path in the bigtext.path setting.": "No se encontró BigText. Instálalo o indica su ruta en el ajuste bigtext.path.",
+  "Could not start BigText: {0}": "No se pudo iniciar BigText: {0}",
+  "Open in BigText": "Abrir en BigText",
+  "Don't ask again": "No volver a preguntar",
+  "{0} is {1}. BigText opens it at once and never loads it into memory.": "{0} ocupa {1}. BigText lo abre al instante y nunca lo carga en memoria.",
+  "Open a file that is on disk first.": "Abre primero un archivo que esté en el disco."
+}

@@ -133,11 +133,37 @@ jobs:
             dist/*setup*.exe
           if-no-files-found: error
 
+  # The VS Code extension (packaging/vscode): its tests and the .vsix, which the release carries.
+  vscode:
+    name: vscode-extension
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packaging/vscode
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Unit tests
+        run: node --test test/*.test.js
+
+      - name: Package .vsix
+        run: npx --yes @vscode/vsce@3 package -o bigtext-vscode.vsix
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bigtext-vscode
+          path: packaging/vscode/bigtext-vscode.vsix
+          if-no-files-found: error
+
   # A pushed tag (v0.1.0, ...) publishes a GitHub release. Asset names carry no version so the
   # website can link to releases/latest/download/<name>.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, vscode]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -155,7 +181,7 @@ jobs:
           cp dist/bigtext-windows-x64/*setup*.exe out/bigtext-setup-windows-x64.exe
           (cd dist/bigtext-windows-x64 && zip -qr ../../out/bigtext-windows-x64.zip bigtext-windows-x64)
           cp dist/bigtext-*/bigtext-*.tar.gz out/
-          find dist -maxdepth 2 \( -name '*.deb' -o -name '*.AppImage' -o -name '*.app.zip' \) -exec cp {} out/ \;
+          find dist -maxdepth 2 \( -name '*.deb' -o -name '*.AppImage' -o -name '*.app.zip' -o -name '*.vsix' \) -exec cp {} out/ \;
           (cd out && sha256sum * > SHA256SUMS.txt)
           ls -l out
           # The opening lines of the notes; "What's new" is written by hand afterwards

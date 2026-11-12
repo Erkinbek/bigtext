@@ -1,0 +1,8 @@
+{
+  "displayName": "Open in BigText",
+  "description": "VS Code'daki devasa dosyaları ve logları, 50 GB'ı anında açan ücretsiz düzenleyici BigText'te açın.",
+  "command.open": "BigText'te aç",
+  "command.openFolder": "Klasörü BigText'te aç",
+  "config.path": "BigText programının yolu (Windows'ta `bigtext.exe`). Kurulu olanı bulması için boş bırakın.",
+  "config.suggest": "VS Code bu kadar megabayttan büyük bir dosya açtığında, onu BigText'te açmayı öner. `0` öneriyi kapatır."
+}

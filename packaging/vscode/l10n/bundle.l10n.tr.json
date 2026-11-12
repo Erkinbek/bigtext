@@ -1,0 +1,10 @@
+{
+  "Download": "İndir",
+  "Set path": "Yolu ayarla",
+  "BigText was not found. Install it, or set its path in the bigtext.path setting.": "BigText bulunamadı. Kurun ya da yolunu bigtext.path ayarında belirtin.",
+  "Could not start BigText: {0}": "BigText başlatılamadı: {0}",
+  "Open in BigText": "BigText'te aç",
+  "Don't ask again": "Bir daha sorma",
+  "{0} is {1}. BigText opens it at once and never loads it into memory.": "{0} boyutu {1}. BigText onu anında açar ve asla belleğe yüklemez.",
+  "Open a file that is on disk first.": "Önce diskteki bir dosyayı açın."
+}
