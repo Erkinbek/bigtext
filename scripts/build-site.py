@@ -22,6 +22,8 @@ BASE = "https://erkinbek.github.io/bigtext/"
 REPO = "https://github.com/Erkinbek/bigtext"
 RELEASES = REPO + "/releases/latest"
 VERSION = "0.7.3"
+# When the demo animation (docs/img/demo.mp4) was last recorded.
+DEMO_DATE = "2026-11-12"
 UPDATED = "2026-10-24"
 LANGS = ["en", "ru", "uz"]
 LOCALE = {"en": "en_US", "ru": "ru_RU", "uz": "uz_UZ"}
@@ -64,8 +66,8 @@ T = {
         "cta": "Download free",
         "cta2": "Source on GitHub",
         "note": "Windows · Linux · macOS · MIT license · Written in Rust",
-        "hero_alt": "BigText showing line 45,357,933 of a 10 GB log file with log highlighting; the "
-        "performance overlay reports 99 MB of private memory",
+        "demo_alt": "BigText opens a 50 GB log file at once, jumps to its end and its middle, searches it with a "
+                    "regular expression while the matches come in, and follows a growing log.",
         "stats": [
             ("41 ms", "to the first screen of a 50 GB file"),
             ("2.5 GB/s", "full-text search speed"),
@@ -224,8 +226,8 @@ T = {
         "cta": "Скачать бесплатно",
         "cta2": "Исходный код на GitHub",
         "note": "Windows · Linux · macOS · Лицензия MIT · Написан на Rust",
-        "hero_alt": "BigText показывает строку 45 357 933 лог-файла на 10 ГБ с подсветкой; панель производительности "
-        "показывает 99 МБ занятой памяти",
+        "demo_alt": "BigText сразу открывает лог-файл на 50 ГБ, переходит в его конец и середину, ищет по "
+                    "регулярному выражению, пока приходят совпадения, и следит за растущим логом.",
         "stats": [
             ("41 мс", "до первого экрана файла на 50 ГБ"),
             ("2,5 ГБ/с", "скорость полнотекстового поиска"),
@@ -385,8 +387,8 @@ T = {
         "cta": "Bepul yuklab olish",
         "cta2": "GitHub'dagi manba kodi",
         "note": "Windows · Linux · macOS · MIT litsenziyasi · Rust tilida yozilgan",
-        "hero_alt": "BigText 10 GB log faylning 45 357 933-satrini rangli ko'rinishda ko'rsatmoqda; unumdorlik "
-        "paneli 99 MB xotira ishlatilganini ko'rsatadi",
+        "demo_alt": "BigText 50 GB log faylni darhol ochadi, uning oxiri va o'rtasiga o'tadi, mosliklar kelib "
+                    "turganda regex bilan qidiradi va o'sib borayotgan logni kuzatadi.",
         "stats": [
             ("41 ms", "50 GB faylning birinchi ekranigacha"),
             ("2,5 GB/s", "to'liq matnli qidiruv tezligi"),
@@ -633,6 +635,17 @@ def json_ld(lang, t):
             "dateModified": UPDATED,
             "about": {"@id": BASE + "#app"},
             "primaryImageOfPage": BASE + "img/hero.webp",
+            "video": {"@id": BASE + "#demo"},
+        },
+        {
+            "@type": "VideoObject",
+            "@id": BASE + "#demo",
+            "name": "BigText: a 50 GB log file",
+            "description": t["demo_alt"],
+            "thumbnailUrl": BASE + "img/demo-poster.webp",
+            "contentUrl": BASE + "img/demo.mp4",
+            "uploadDate": DEMO_DATE,
+            "duration": "PT28S",
         },
         {
             "@type": "FAQPage",
@@ -685,6 +698,16 @@ def picture(p, name, alt, w=1200, h=800, eager=False):
     return f'<img src="{p}img/{name}.webp" width="{w}" height="{h}" alt="{e(alt)}" {load}>'
 
 
+def demo_video(p, label):
+    """The demo animation (scripts/make-demo.py), muted and looping; with reduced motion asked
+    for, it does not play by itself and gets its controls instead."""
+    return (f'<video src="{p}img/demo.mp4" poster="{p}img/demo-poster.webp" width="1280" height="720" '
+            f'autoplay muted loop playsinline preload="metadata" aria-label="{e(label)}"></video>'
+            "<script>if(matchMedia('(prefers-reduced-motion: reduce)').matches)"
+            "document.querySelectorAll('video[autoplay]').forEach(v=>{v.removeAttribute('autoplay');v.pause();v.controls=true})"
+            "</script>")
+
+
 def page(lang):
     t = T[lang]
     p = "" if lang == "en" else "../"
@@ -701,7 +724,7 @@ def page(lang):
       <a class="btn" href="{REPO}">{e(t['cta2'])}</a>
     </div>
     <p class="note">{e(t['note'])}</p>
-    <figure class="shot hero-shot">{picture(p, 'hero', t['hero_alt'], eager=True)}</figure>
+    <figure class="shot hero-shot">{demo_video(p, t['demo_alt'])}</figure>
     <ul class="stats">{stats}</ul>
   </div>
 </section>

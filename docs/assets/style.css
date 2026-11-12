@@ -86,7 +86,8 @@ h1 { font-size: clamp(34px, 5.4vw, 60px); line-height: 1.08; letter-spacing: -.0
 .note { color: var(--muted); font-size: 14px; margin: 16px 0 40px; }
 
 .shot { margin: 0; }
-.shot img { border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--shadow); }
+.shot img, .shot video { border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--shadow); }
+.shot video { width: 100%; height: auto; display: block; background: #0d0f14; }
 .hero-shot { max-width: 1040px; margin: 0 auto; }
 
 .stats { list-style: none; padding: 0; margin: 44px auto 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; max-width: 1040px; }

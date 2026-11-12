@@ -124,7 +124,20 @@
    "about": {
     "@id": "https://erkinbek.github.io/bigtext/#app"
    },
-   "primaryImageOfPage": "https://erkinbek.github.io/bigtext/img/hero.webp"
+   "primaryImageOfPage": "https://erkinbek.github.io/bigtext/img/hero.webp",
+   "video": {
+    "@id": "https://erkinbek.github.io/bigtext/#demo"
+   }
+  },
+  {
+   "@type": "VideoObject",
+   "@id": "https://erkinbek.github.io/bigtext/#demo",
+   "name": "BigText: a 50 GB log file",
+   "description": "BigText сразу открывает лог-файл на 50 ГБ, переходит в его конец и середину, ищет по регулярному выражению, пока приходят совпадения, и следит за растущим логом.",
+   "thumbnailUrl": "https://erkinbek.github.io/bigtext/img/demo-poster.webp",
+   "contentUrl": "https://erkinbek.github.io/bigtext/img/demo.mp4",
+   "uploadDate": "2026-11-12",
+   "duration": "PT28S"
   },
   {
    "@type": "FAQPage",
@@ -221,7 +234,7 @@
       <a class="btn" href="https://github.com/Erkinbek/bigtext">Исходный код на GitHub</a>
     </div>
     <p class="note">Windows · Linux · macOS · Лицензия MIT · Написан на Rust</p>
-    <figure class="shot hero-shot"><img src="../img/hero.webp" width="1200" height="800" alt="BigText показывает строку 45 357 933 лог-файла на 10 ГБ с подсветкой; панель производительности показывает 99 МБ занятой памяти" fetchpriority="high" decoding="async"></figure>
+    <figure class="shot hero-shot"><video src="../img/demo.mp4" poster="../img/demo-poster.webp" width="1280" height="720" autoplay muted loop playsinline preload="metadata" aria-label="BigText сразу открывает лог-файл на 50 ГБ, переходит в его конец и середину, ищет по регулярному выражению, пока приходят совпадения, и следит за растущим логом."></video><script>if(matchMedia('(prefers-reduced-motion: reduce)').matches)document.querySelectorAll('video[autoplay]').forEach(v=>{v.removeAttribute('autoplay');v.pause();v.controls=true})</script></figure>
     <ul class="stats"><li><strong>41 мс</strong><span>до первого экрана файла на 50 ГБ</span></li><li><strong>2,5 ГБ/с</strong><span>скорость полнотекстового поиска</span></li><li><strong>107 МБ</strong><span>ОЗУ с открытым файлом на 50 ГБ</span></li><li><strong>&lt; 3 мс</strong><span>время кадра интерфейса во время индексации</span></li></ul>
   </div>
 </section>

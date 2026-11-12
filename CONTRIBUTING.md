@@ -127,6 +127,19 @@ target/release/bigtext --screenshots target/shots testdata/random-lines-10g.txt
 python scripts/build-site.py
 ```
 
+The demo animation at the top of the README (`docs/img/demo.gif`) and the website
+(`docs/img/demo.mp4`) is recorded by the app itself: `--demo` plays a scripted tour with
+captions over a 50 GB file (the 10 GB test file copied five times), takes a frame every 66 ms
+and writes them to `target/demo/frames`; `scripts/make-demo.py` (needs ffmpeg) turns them into
+the GIF, the video and its poster. Set `DEMO_DATE` in `scripts/build-site.py` when you record a
+new one.
+
+```
+copy /b testdata\random-lines-10g.txt+testdata\random-lines-10g.txt+testdata\random-lines-10g.txt+testdata\random-lines-10g.txt+testdata\random-lines-10g.txt testdata\random-lines-50g.txt
+target/release/bigtext --demo target/demo testdata/random-lines-50g.txt
+python scripts/make-demo.py
+```
+
 ## Releasing
 
 1. Bump the version in `Cargo.toml`, `installer/bigtext.iss` and `scripts/build-site.py`, add

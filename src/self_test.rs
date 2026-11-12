@@ -42,6 +42,13 @@ pub struct Ctx {
     pending_shot: Option<PathBuf>,
     /// Theme to switch to on the next frame.
     theme: Option<crate::app::theme::Theme>,
+    /// Demo recording (`--demo`): frames are captured while this is on.
+    recording: bool,
+    /// Demo recording: the caption over the window, or a title card that covers it.
+    caption: Option<String>,
+    card: Option<(String, String)>,
+    /// Demo recording: stops the writer of the followed log.
+    live_stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 type StepFn = Box<dyn FnMut(&mut BigTextApp, &mut Ctx) -> Step>;
@@ -60,6 +67,7 @@ pub struct SelfTest {
     mods: Modifiers,
     skip_frame: bool,
     shot_log: Vec<String>,
+    recorder: Option<Recorder>,
 }
 
 const ORIGINAL: &str = "alpha beta gamma\n    indented line\nthird line here\nfoo bar foo baz\nlast line\n";
@@ -349,6 +357,151 @@ fn shot_step(file: &'static str) -> StepFn {
             Step::Wait
         }
     })
+}
+
+/// Demo recording: the start of the line `off` is in, so the view starts at column 1.
+fn line_start_before(d: &Document, off: u64) -> u64 {
+    let from = off.saturating_sub(64 * 1024);
+    let snap = d.buf.snapshot();
+    match snap.read(from..off) {
+        Some(b) => b.iter().rposition(|&x| x == b'\n').map_or(off, |i| from + i as u64 + 1),
+        None => off,
+    }
+}
+
+/// Demo recording: whether the scene started at `mark_time` should stay on screen longer.
+fn held(c: &Ctx, ms: u64) -> bool {
+    c.mark_time.elapsed() < Duration::from_millis(ms)
+}
+
+/// Demo recording: the start of the log that [`live_log`] keeps writing.
+fn setup_demo_files(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    let mut sim = LogSim::new();
+    let history: String = (0..400).map(|_| sim.next().0).collect();
+    std::fs::write(dir.join("live.log"), history)
+}
+
+/// Demo recording: appends a log line to `path` every 90-260 ms until `stop` is set.
+fn live_log(path: PathBuf, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+    std::thread::spawn(move || {
+        let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(&path) else { return };
+        let mut sim = LogSim::new();
+        // Carries on after the 400 lines already written.
+        (0..400).for_each(|_| drop(sim.next()));
+        while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+            let (line, pause) = sim.next();
+            let _ = f.write_all(line.as_bytes());
+            std::thread::sleep(Duration::from_millis(pause));
+        }
+    });
+}
+
+/// Plausible web-service log lines, with a clock that moves on with each one.
+struct LogSim {
+    seed: u64,
+    ms: u64,
+    id: u64,
+}
+
+impl LogSim {
+    fn new() -> LogSim {
+        LogSim { seed: 0x2545_F491_4F6C_DD1D, ms: (14 * 3600 + 7 * 60) * 1000, id: 48_000 }
+    }
+
+    fn rand(&mut self, n: u64) -> u64 {
+        self.seed ^= self.seed << 13;
+        self.seed ^= self.seed >> 7;
+        self.seed ^= self.seed << 17;
+        self.seed % n
+    }
+
+    /// The next line and how long to wait before writing the one after it, in milliseconds.
+    fn next(&mut self) -> (String, u64) {
+        let pause = 90 + self.rand(170);
+        self.ms += pause + self.rand(40);
+        self.id += 1 + self.rand(3);
+        let (t, id) = (self.ms, self.id);
+        let ts = format!("2026-11-12 {:02}:{:02}:{:02}.{:03}", t / 3_600_000 % 24, t / 60_000 % 60, t / 1000 % 60, t % 1000);
+        let line = match self.rand(100) {
+            0..=4 => format!("{ts} ERROR payment gateway timeout order={id} retry={}\n", 1 + self.rand(3)),
+            5..=14 => format!("{ts} WARN  slow query {}ms table=orders id={id}\n", 400 + self.rand(900)),
+            15..=29 => format!("{ts} DEBUG cache hit key=user:{} ttl={}s\n", self.rand(90_000), 30 + self.rand(300)),
+            r => {
+                let path = ["/api/orders", "/api/users", "/api/cart", "/health", "/api/search"][(r % 5) as usize];
+                format!("{ts} INFO  GET {path}/{id} 200 {}ms\n", 3 + self.rand(60))
+            }
+        };
+        (line, pause)
+    }
+}
+
+/// How often the demo recording asks for a frame (15 a second).
+const FRAME_EVERY: Duration = Duration::from_millis(66);
+
+/// The frames of the demo recording: a screenshot every [`FRAME_EVERY`], written as PNGs by a
+/// worker, with an ffconcat list that keeps their real timing.
+struct Recorder {
+    t0: Option<Instant>,
+    asked: Option<Instant>,
+    waiting: bool,
+    frames: usize,
+    tx: Option<std::sync::mpsc::Sender<(Duration, std::sync::Arc<egui::ColorImage>)>>,
+    worker: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Recorder {
+    fn new(dir: PathBuf) -> Recorder {
+        let (tx, rx) = std::sync::mpsc::channel::<(Duration, std::sync::Arc<egui::ColorImage>)>();
+        let worker = std::thread::spawn(move || {
+            let _ = std::fs::remove_dir_all(&dir);
+            let _ = std::fs::create_dir_all(&dir);
+            let mut times = Vec::new();
+            for (i, (t, img)) in rx.into_iter().enumerate() {
+                let rgba: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_srgba_unmultiplied()).collect();
+                let _ = crate::bench_ui::write_png(&dir.join(format!("f{i:05}.png")), img.size[0] as u32, img.size[1] as u32, &rgba);
+                times.push(t);
+            }
+            let mut list = String::from("ffconcat version 1.0\n");
+            for (i, t) in times.iter().enumerate() {
+                let next = times.get(i + 1).copied().unwrap_or(*t + FRAME_EVERY);
+                list.push_str(&format!("file f{i:05}.png\nduration {:.3}\n", next.saturating_sub(*t).as_secs_f64()));
+            }
+            let _ = std::fs::write(dir.join("frames.ffconcat"), list);
+        });
+        Recorder { t0: None, asked: None, waiting: false, frames: 0, tx: Some(tx), worker: Some(worker) }
+    }
+
+    /// Whether to ask for the next frame: the last one is in (or got lost) and its time is up.
+    fn due(&self) -> bool {
+        match self.asked {
+            None => true,
+            Some(a) => a.elapsed() >= if self.waiting { Duration::from_secs(1) } else { FRAME_EVERY },
+        }
+    }
+
+    fn asked(&mut self) {
+        let now = Instant::now();
+        self.t0.get_or_insert(now);
+        self.asked = Some(now);
+        self.waiting = true;
+    }
+
+    fn received(&mut self, img: std::sync::Arc<egui::ColorImage>) {
+        let (Some(t0), Some(at), Some(tx)) = (self.t0, self.asked, &self.tx) else { return };
+        if std::mem::take(&mut self.waiting) && tx.send((at - t0, img)).is_ok() {
+            self.frames += 1;
+        }
+    }
+
+    /// Waits until the worker has written the last frame and the list; returns the frame count.
+    fn finish(&mut self) -> usize {
+        self.tx = None;
+        if let Some(w) = self.worker.take() {
+            let _ = w.join();
+        }
+        self.frames
+    }
 }
 
 /// Demo files for the screenshot tour: two logs cut from the big file that differ in a few
@@ -5023,12 +5176,205 @@ impl SelfTest {
         SelfTest::build(steps, report, dir, Some(shot_dir))
     }
 
+    /// Demo recording for the README and the website: `bigtext --demo DIR [BIG_FILE]`. Opens a
+    /// huge file, jumps through it, searches it and follows a growing log, with captions, and
+    /// writes the frames to DIR/frames for `scripts/make-demo.py` (the GIF and the video).
+    pub fn demo(out: PathBuf, big: PathBuf) -> SelfTest {
+        use crate::view::highlight::Lang;
+        use std::sync::atomic::AtomicBool;
+        use std::sync::Arc;
+        const PATTERN: &str = r"\[ERROR\] id=7777\d\b";
+        let dir = std::env::current_dir().unwrap_or_default().join("target").join("demo-data");
+        let mut steps: Vec<(&'static str, StepFn)> = Vec::new();
+        let mut s = |name: &'static str, f: StepFn| steps.push((name, f));
+
+        s("demo files and window size", Box::new(|app, c| {
+            if c.first() {
+                if let Err(e) = setup_demo_files(&c.dir) {
+                    return Step::Fail(e.to_string());
+                }
+                if let Some(ctx) = app.test_ctx() {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(1280.0, 720.0)));
+                }
+                return Step::Wait;
+            }
+            if c.waited() < Duration::from_millis(800) {
+                Step::Wait
+            } else {
+                Step::Next
+            }
+        }));
+        s("intro", Box::new(|_app, c| {
+            if c.first() {
+                c.recording = true;
+                c.caption = Some("BigText: a free editor for huge text and log files".into());
+                c.mark_time = Instant::now();
+            }
+            if held(c, 1800) {
+                Step::Wait
+            } else {
+                Step::Next
+            }
+        }));
+        s("open the big file", Box::new(move |app, c| {
+            if c.first() {
+                let size = std::fs::metadata(&big).map(|m| m.len()).unwrap_or(0);
+                c.caption = Some(format!("Opening a {} log file…", bigtext::jobs::human_bytes(size)));
+                app.open_path(big.clone());
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let d = doc(app);
+                if d.view.first_paint.is_none() {
+                    return Step::Wait;
+                }
+                d.lang = Some(Lang::Log);
+                // No number: the time the app takes to paint is not when the screen shows it
+                // (the first document frame of a window takes 90-200 ms to present).
+                c.caption = Some("Open at once: only what is on screen is read, the file never goes into memory".into());
+                c.mark = 1;
+                c.mark_time = Instant::now();
+            }
+            if held(c, 3200) {
+                Step::Wait
+            } else {
+                Step::Next
+            }
+        }));
+        s("jump to the end", Box::new(|app, c| {
+            if c.first() {
+                c.caption = Some("Ctrl+End: the last line, at once".into());
+                let d = doc(app);
+                let end = d.buf.len();
+                d.goto_offset(end);
+                c.mark_time = Instant::now();
+            }
+            if held(c, 2200) {
+                Step::Wait
+            } else {
+                Step::Next
+            }
+        }));
+        s("the middle, then scroll", Box::new(|app, c| {
+            if c.first() {
+                c.caption = Some("Jump anywhere: no loading bar, no waiting".into());
+                let d = doc(app);
+                let mid = line_start_before(d, d.buf.len() / 2);
+                d.goto_offset(mid);
+                c.mark_time = Instant::now();
+                return Step::Wait;
+            }
+            let t = c.mark_time.elapsed();
+            if t > Duration::from_millis(900) && t < Duration::from_millis(2700) {
+                if c.mark == 0 {
+                    let p = pos(app, 12, 40.0);
+                    c.event(Event::PointerMoved(p), NONE);
+                    c.mark = 1;
+                }
+                c.event(Event::MouseWheel { unit: MouseWheelUnit::Line, delta: egui::vec2(0.0, -2.0), phase: TouchPhase::Move, modifiers: NONE }, NONE);
+            }
+            if held(c, 3100) {
+                Step::Wait
+            } else {
+                Step::Next
+            }
+        }));
+        s("regex Find All", Box::new(|app, c| {
+            if c.first() {
+                c.caption = Some("Regex search through the whole file".into());
+                app.search.query = bigtext::search::Query { pattern: String::new(), regex: true, case_sensitive: true, whole_word: false, dot_all: false };
+                app.search.open = true;
+                c.mark_time = Instant::now();
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                // Typed at about 14 characters a second.
+                let n = PATTERN.chars().count();
+                let t = c.mark_time.elapsed().as_millis() as usize;
+                let typed = (t.saturating_sub(500) / 70).min(n);
+                app.search.query.pattern = PATTERN.chars().take(typed).collect();
+                if typed == n && t > 500 + 70 * n + 400 {
+                    app.find_all();
+                    c.caption = Some("Find All: matches come in while it reads the rest of the file".into());
+                    c.mark = 1;
+                    c.mark_time = Instant::now();
+                }
+                return Step::Wait;
+            }
+            if held(c, 6500) {
+                Step::Wait
+            } else {
+                Step::Next
+            }
+        }));
+        s("follow a growing log", Box::new(|app, c| {
+            if c.first() {
+                app.search.open = false;
+                app.search.show_results = false;
+                let stop = Arc::new(AtomicBool::new(false));
+                live_log(c.file("live.log"), stop.clone());
+                c.live_stop = Some(stop);
+                app.open_path(c.file("live.log"));
+                c.caption = Some("Follow mode: a growing log, like tail -f, with its levels in colour".into());
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                if !wait_ready(app) {
+                    return Step::Wait;
+                }
+                let d = doc(app);
+                d.lang = Some(Lang::Log);
+                d.follow = true;
+                let end = d.buf.len();
+                d.goto_offset(end);
+                c.mark = 1;
+                c.mark_time = Instant::now();
+            }
+            if held(c, 5500) {
+                Step::Wait
+            } else {
+                Step::Next
+            }
+        }));
+        s("title card", Box::new(|_app, c| {
+            if c.first() {
+                c.caption = None;
+                c.card = Some(("BigText".into(), "Free and open source · Windows, Linux, macOS\nerkinbek.github.io/bigtext".into()));
+                c.mark_time = Instant::now();
+            }
+            if held(c, 2800) {
+                return Step::Wait;
+            }
+            c.recording = false;
+            Step::Next
+        }));
+        let mut t = SelfTest::build(steps, out.join("demo-report.txt"), dir, None);
+        t.recorder = Some(Recorder::new(out.join("frames")));
+        t
+    }
+
     fn build(steps: Vec<(&'static str, StepFn)>, report: PathBuf, dir: PathBuf, shot_dir: Option<PathBuf>) -> SelfTest {
         SelfTest {
             steps,
             idx: 0,
             settle: 0,
-            ctx: Ctx { queue: VecDeque::new(), copied: Vec::new(), dir, frames: 0, t0: Instant::now(), mark: 0, mark_time: Instant::now(), log: Vec::new(), shot: shot_dir, pending_shot: None, theme: None },
+            ctx: Ctx {
+                queue: VecDeque::new(),
+                copied: Vec::new(),
+                dir,
+                frames: 0,
+                t0: Instant::now(),
+                mark: 0,
+                mark_time: Instant::now(),
+                log: Vec::new(),
+                shot: shot_dir,
+                pending_shot: None,
+                theme: None,
+                recording: false,
+                caption: None,
+                card: None,
+                live_stop: None,
+            },
             report,
             results: Vec::new(),
             finished: false,
@@ -5038,6 +5384,7 @@ impl SelfTest {
             mods: NONE,
             skip_frame: false,
             shot_log: Vec::new(),
+            recorder: None,
         }
     }
 
@@ -5087,12 +5434,20 @@ impl SelfTest {
             })
         });
         if let Some(img) = shot {
-            self.shot_log.push(format!("screenshot event {}x{}", img.size[0], img.size[1]));
             if let Some(path) = self.shot_path.take() {
+                self.shot_log.push(format!("screenshot event {}x{}", img.size[0], img.size[1]));
                 let rgba: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_srgba_unmultiplied()).collect();
                 let r = crate::bench_ui::write_png(&path, img.size[0] as u32, img.size[1] as u32, &rgba);
                 self.skip_frame = true; // PNG encoding is test-harness work
                 self.shot_log.push(format!("saved {} -> {:?}", path.display(), r.err()));
+            } else if let Some(r) = &mut self.recorder {
+                r.received(img);
+            }
+        }
+        if let Some(r) = &mut self.recorder {
+            if self.ctx.recording && self.shot_path.is_none() && r.due() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+                r.asked();
             }
         }
         if !self.ctx.queue.is_empty() {
@@ -5135,6 +5490,7 @@ impl SelfTest {
     }
 
     pub fn after_frame(&mut self, ctx: &egui::Context, frame_ms: f32) {
+        self.draw_caption(ctx);
         if !std::mem::take(&mut self.skip_frame) {
             self.max_frame_ms = self.max_frame_ms.max(frame_ms);
         }
@@ -5150,8 +5506,52 @@ impl SelfTest {
         self.ctx.copied.extend(copied);
     }
 
+    /// The demo's caption over the bottom of the window, or its title card over all of it.
+    fn draw_caption(&self, ctx: &egui::Context) {
+        use egui::{vec2, Color32, FontId, Rect, Stroke};
+        if self.ctx.caption.is_none() && self.ctx.card.is_none() {
+            return;
+        }
+        let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("demo-caption")));
+        let screen = ctx.content_rect();
+        let accent = Color32::from_rgb(45, 212, 191);
+        if let Some((title, sub)) = &self.ctx.card {
+            painter.rect_filled(screen, 0.0, Color32::from_rgba_unmultiplied(12, 14, 20, 240));
+            let title = painter.layout_no_wrap(title.clone(), FontId::proportional(64.0), Color32::WHITE);
+            let subs: Vec<_> = sub.lines().map(|l| painter.layout_no_wrap(l.to_owned(), FontId::proportional(26.0), Color32::from_gray(215))).collect();
+            let gap = 12.0;
+            let rule = 28.0;
+            let height = title.size().y + rule + subs.iter().map(|g| g.size().y + gap).sum::<f32>();
+            let mut y = screen.center().y - height / 2.0;
+            let x = |w: f32| screen.center().x - w / 2.0;
+            painter.galley(Pos2::new(x(title.size().x), y), title.clone(), Color32::WHITE);
+            y += title.size().y + rule / 2.0;
+            painter.hline(x(120.0)..=x(-120.0), y, Stroke::new(2.0, accent));
+            y += rule / 2.0;
+            for g in subs {
+                let h = g.size().y;
+                painter.galley(Pos2::new(x(g.size().x), y), g, Color32::WHITE);
+                y += h + gap;
+            }
+        } else if let Some(text) = &self.ctx.caption {
+            let g = painter.layout(text.clone(), FontId::proportional(22.0), Color32::WHITE, screen.width() - 160.0);
+            let size = g.size() + vec2(40.0, 22.0);
+            let rect = Rect::from_center_size(Pos2::new(screen.center().x, screen.bottom() - 64.0 - size.y / 2.0), size);
+            painter.rect_filled(rect, 10.0, Color32::from_rgba_unmultiplied(16, 20, 28, 242));
+            painter.rect_stroke(rect, 10.0, Stroke::new(1.5, accent), egui::StrokeKind::Inside);
+            painter.galley(rect.min + vec2(20.0, 11.0), g, Color32::WHITE);
+        }
+    }
+
     fn finish(&mut self, ctx: &egui::Context) {
         self.finished = true;
+        if let Some(stop) = self.ctx.live_stop.take() {
+            stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        if let Some(r) = &mut self.recorder {
+            let n = r.finish();
+            self.shot_log.push(format!("demo: {n} frames"));
+        }
         let pass = self.results.iter().filter(|r| r.1 == "PASS").count();
         let fail = self.results.iter().filter(|r| r.1 == "FAIL").count();
         let skip = self.results.iter().filter(|r| r.1 == "SKIP").count();

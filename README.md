@@ -12,7 +12,7 @@ self-contained binary with no runtime dependencies, for Windows, Linux and macOS
 
 **[Download](#download)** · [Website](https://erkinbek.github.io/bigtext/) · [All features](FEATURES.md) · [Usage](USAGE.md) · [Русский](https://erkinbek.github.io/bigtext/ru/) · [O'zbekcha](https://erkinbek.github.io/bigtext/uz/)
 
-![BigText with a 10 GB log file open at line 45,357,933, log highlighting and the performance overlay showing 99 MB of memory](docs/img/hero.webp)
+![BigText opens a 50 GB log file at once, jumps to its end and its middle, searches it with a regular expression while the matches come in, and follows a growing log](docs/img/demo.gif)
 
 ## Highlights
 

@@ -124,7 +124,20 @@
    "about": {
     "@id": "https://erkinbek.github.io/bigtext/#app"
    },
-   "primaryImageOfPage": "https://erkinbek.github.io/bigtext/img/hero.webp"
+   "primaryImageOfPage": "https://erkinbek.github.io/bigtext/img/hero.webp",
+   "video": {
+    "@id": "https://erkinbek.github.io/bigtext/#demo"
+   }
+  },
+  {
+   "@type": "VideoObject",
+   "@id": "https://erkinbek.github.io/bigtext/#demo",
+   "name": "BigText: a 50 GB log file",
+   "description": "BigText opens a 50 GB log file at once, jumps to its end and its middle, searches it with a regular expression while the matches come in, and follows a growing log.",
+   "thumbnailUrl": "https://erkinbek.github.io/bigtext/img/demo-poster.webp",
+   "contentUrl": "https://erkinbek.github.io/bigtext/img/demo.mp4",
+   "uploadDate": "2026-11-12",
+   "duration": "PT28S"
   },
   {
    "@type": "FAQPage",
@@ -221,7 +234,7 @@
       <a class="btn" href="https://github.com/Erkinbek/bigtext">Source on GitHub</a>
     </div>
     <p class="note">Windows · Linux · macOS · MIT license · Written in Rust</p>
-    <figure class="shot hero-shot"><img src="img/hero.webp" width="1200" height="800" alt="BigText showing line 45,357,933 of a 10 GB log file with log highlighting; the performance overlay reports 99 MB of private memory" fetchpriority="high" decoding="async"></figure>
+    <figure class="shot hero-shot"><video src="img/demo.mp4" poster="img/demo-poster.webp" width="1280" height="720" autoplay muted loop playsinline preload="metadata" aria-label="BigText opens a 50 GB log file at once, jumps to its end and its middle, searches it with a regular expression while the matches come in, and follows a growing log."></video><script>if(matchMedia('(prefers-reduced-motion: reduce)').matches)document.querySelectorAll('video[autoplay]').forEach(v=>{v.removeAttribute('autoplay');v.pause();v.controls=true})</script></figure>
     <ul class="stats"><li><strong>41 ms</strong><span>to the first screen of a 50 GB file</span></li><li><strong>2.5 GB/s</strong><span>full-text search speed</span></li><li><strong>107 MB</strong><span>of RAM with a 50 GB file open</span></li><li><strong>&lt; 3 ms</strong><span>UI frame time while indexing</span></li></ul>
   </div>
 </section>
