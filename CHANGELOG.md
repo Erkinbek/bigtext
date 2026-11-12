@@ -3,6 +3,32 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## 0.7.2 — 2026-11-12
+
+### Linux
+
+- **Starts on older systems again**: the Linux downloads of 0.5.0 to 0.7.1 (the AppImage, the
+  `.deb` and the tarball) were built on Ubuntu 26.04 and needed its C library, glibc 2.43, so on
+  Ubuntu 22.04 and 24.04, Debian 12 and 13, Linux Mint 22, Fedora 43 and the like BigText quit
+  at once with “GLIBC_2.43 not found”. They are built on Ubuntu 22.04 now and need glibc 2.35:
+  Ubuntu 22.04, Debian 12, Fedora 36 and later. The `.deb` states the glibc it needs, so it no
+  longer installs where it cannot start.
+
+### Updates
+
+- **Asks before checking for updates**: the first start asks “Check for updates
+  automatically?”; until you agree, BigText sends nothing on its own (Help → Check for updates…
+  works either way, and Help → Check for updates automatically changes the answer). A check
+  turned off in an earlier version stays off; one left on by the old default is asked about
+  once. The README and the website have a code signing policy with what the update check and
+  remote files send.
+
+### Fixes
+
+- **Arrows in the interface**: the → in texts such as “Help → Check for updates…”, “JSON array
+  → JSON Lines…” and “View → Word wrap” showed as a box, because the built-in interface font
+  has no arrows; the built-in monospaced font now fills in for it.
+
 ## 0.7.1 — 2026-11-12
 
 ### Chinese input and other scripts
