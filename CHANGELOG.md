@@ -3,6 +3,29 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## 0.7.1 — 2026-11-12
+
+### Chinese input and other scripts
+
+- **Typing Chinese with an input method** (Microsoft Pinyin and others): the caret no longer
+  falls behind into the middle of the characters, the candidate window opens at the caret
+  instead of at the bottom of the window, and the pinyin being composed is shown at the caret,
+  underlined, until a candidate is picked. Moving the caret or the focus ends the composition.
+  ([#2](https://github.com/Erkinbek/bigtext/issues/2))
+- **Every script on the cell grid**: Chinese, Japanese and Korean characters and most emoji take
+  two columns, accents and other combining marks none, as in terminals. A letter with its marks,
+  a Hindi syllable or an emoji sequence is drawn as one, and each fills its own cells, so the
+  caret, the selection and the text after it stay in step with Arabic, Hebrew, Hindi, Thai,
+  decomposed Vietnamese, emoji sequences and zero-width characters too. Glyphs much wider than
+  their cells (Tamil, circled numbers) are drawn smaller to fit. Left and Right step over a
+  letter's marks with it, and the column in the status bar counts columns as they are shown.
+- **System fonts for other scripts**: characters the built-in fonts lack (Arabic, Hebrew, Hindi
+  and the other Indian scripts, Thai, Khmer, Myanmar, Korean, Japanese, Vietnamese, Ethiopic,
+  Tibetan, symbols…) get a system font that has them (Segoe UI, Nirmala UI, Leelawadee UI,
+  Malgun Gothic, Yu Gothic, Noto…), found on a worker the first time such a character is on
+  screen, so starting up reads no big font files. Chinese text now shows in every interface
+  language, not only in Chinese. Right-to-left text is still shown left to right, unjoined.
+
 ## 0.7.0 — 2026-11-11
 
 ### Working with code
