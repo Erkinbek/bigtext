@@ -14,7 +14,13 @@ import argparse
 import html
 import json
 import os
+import re
+import sys
 from pathlib import Path
+
+# Importing the guides would leave a __pycache__ folder in scripts/.
+sys.dont_write_bytecode = True
+from site_guides import GUIDES, LABELS as GUIDE_LABELS  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
@@ -556,15 +562,17 @@ def e(s):
     return html.escape(s, quote=True)
 
 
-def head(lang, t, path_prefix, canonical, noindex=False):
+def head(lang, t, path_prefix, canonical, noindex=False, alternates=None, og_type="website"):
+    """`alternates`: the URL of this page in each language (the home pages when not given)."""
+    alternates = alternates or {l: url(l) for l in LANGS}
     og_alt = "".join(f'  <meta property="og:locale:alternate" content="{LOCALE[l]}">\n' for l in LANGS if l != lang)
     if noindex:
         # Error pages: no canonical or language alternates, only a noindex.
         links = '  <meta name="robots" content="noindex">\n'
     else:
         links = f'  <link rel="canonical" href="{canonical}">\n'
-        links += "".join(f'  <link rel="alternate" hreflang="{l}" href="{url(l)}">\n' for l in LANGS)
-        links += f'  <link rel="alternate" hreflang="x-default" href="{BASE}">\n'
+        links += "".join(f'  <link rel="alternate" hreflang="{l}" href="{alternates[l]}">\n' for l in LANGS)
+        links += f'  <link rel="alternate" hreflang="x-default" href="{alternates["en"]}">\n'
     return f"""<!doctype html>
 <html lang="{lang}">
 <head>
@@ -575,7 +583,7 @@ def head(lang, t, path_prefix, canonical, noindex=False):
 {links}  <meta name="theme-color" content="#0b0f17">
   <meta name="color-scheme" content="dark light">
   <meta name="author" content="{AUTHOR}">
-  <meta property="og:type" content="website">
+  <meta property="og:type" content="{og_type}">
   <meta property="og:site_name" content="BigText">
   <meta property="og:title" content="{e(t['og_title'])}">
   <meta property="og:description" content="{e(t['description'])}">
@@ -676,16 +684,16 @@ def logo_svg_inline(size):
             f'<rect width="512" height="512" rx="112" fill="{LOGO_BG}"/>{lines}</svg>')
 
 
-def lang_switch(lang, t, p):
+def lang_switch(lang, t, p, suffix=""):
     items = []
     for l in LANGS:
-        href = p + ("" if l == "en" else f"{l}/")
+        href = p + ("" if l == "en" else f"{l}/") + suffix
         cur = ' aria-current="true"' if l == lang else ""
         items.append(f'<a href="{href}" hreflang="{l}" lang="{l}"{cur}>{l.upper()}</a>')
     return f'<nav class="langs" aria-label="{e(t["lang_label"])}">{"".join(items)}</nav>'
 
 
-def header(lang, t, p, home=""):
+def header(lang, t, p, home="", suffix=""):
     """Site header; `home` prefixes the section links on pages other than the home page."""
     n = t["nav"]
     links = "".join(f'<a href="{home}#{a}">{e(b)}</a>' for a, b in zip(["features", "performance", "download", "faq"], n))
@@ -694,7 +702,7 @@ def header(lang, t, p, home=""):
   <div class="wrap bar">
     <a class="brand" href="{p}{'' if lang == 'en' else lang + '/'}">{logo_svg_inline(28)}<span>BigText</span></a>
     <nav class="links" aria-label="BigText">{links}<a href="{REPO}">GitHub</a></nav>
-    {lang_switch(lang, t, p)}
+    {lang_switch(lang, t, p, suffix)}
   </div>
 </header>
 """
@@ -810,6 +818,16 @@ cargo build --release</code></pre>
   </div>
 </section>
 """)
+    gl = GUIDE_LABELS[lang]
+    guides = "".join(f'<a class="card guide" href="guides/{g["slug"]}/"><h3>{e(g["h1"])}</h3><p>{e(g["card"])}</p></a>' for g in GUIDES[lang])
+    out.append(f"""<section id="guides" class="section">
+  <div class="wrap">
+    <h2>{e(gl['guides_h2'])}</h2>
+    <p class="intro">{e(gl['guides_intro'])}</p>
+    <div class="grid cards">{guides}</div>
+  </div>
+</section>
+""")
     faq = "".join(f"<details><summary>{e(q)}</summary><p>{e(a)}</p></details>" for q, a in t["faq"])
     out.append(f"""<section id="faq" class="section alt">
   <div class="wrap narrow">
@@ -832,11 +850,11 @@ cargo build --release</code></pre>
     return "".join(out)
 
 
-def footer(lang, t, p, home=""):
+def footer(lang, t, p, home="", suffix=""):
     """Site footer; `home` prefixes the link to the privacy section on other pages."""
     links = " · ".join(f'<a href="{h}">{e(n)}</a>' for n, h in AUTHOR_LINKS)
     langs = " · ".join(
-        f'<a href="{p}{"" if l == "en" else l + "/"}" hreflang="{l}" lang="{l}">{LANG_NAME[l]}</a>' for l in LANGS
+        f'<a href="{p}{"" if l == "en" else l + "/"}{suffix}" hreflang="{l}" lang="{l}">{LANG_NAME[l]}</a>' for l in LANGS
     )
     return f"""<footer class="foot">
   <div class="wrap">
@@ -846,6 +864,62 @@ def footer(lang, t, p, home=""):
   </div>
 </footer>
 """
+
+
+def guide_url(lang, slug):
+    return f"{url(lang)}guides/{slug}/"
+
+
+def rich(s):
+    """Escapes `s` and shows the {{code}} parts as code."""
+    return re.sub(r"\{\{(.+?)\}\}", r"<code>\1</code>", e(s))
+
+
+def guide_page(lang, g):
+    t = T[lang]
+    gl = GUIDE_LABELS[lang]
+    p = "../../" if lang == "en" else "../../../"
+    home = p + ("" if lang == "en" else lang + "/")
+    suffix = f"guides/{g['slug']}/"
+    alternates = {l: guide_url(l, g["slug"]) for l in LANGS}
+    tg = dict(t, title=g["title"], description=g["description"], og_title=g["h1"])
+    data = {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "headline": g["h1"],
+        "description": g["description"],
+        "inLanguage": lang,
+        "url": alternates[lang],
+        "dateModified": UPDATED,
+        "author": {"@type": "Person", "name": AUTHOR, "url": "https://github.com/Erkinbek"},
+        "about": {"@type": "SoftwareApplication", "name": "BigText", "url": url(lang),
+                  "applicationCategory": "DeveloperApplication", "operatingSystem": "Windows, Linux, macOS",
+                  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}},
+    }
+    ld = json.dumps(data, ensure_ascii=False, indent=1).replace("</", "<\\/")
+    intro = "".join(f"<p>{rich(x)}</p>" for x in g["intro"])
+    steps = "".join(f"<li><h3>{rich(a)}</h3><p>{rich(b)}</p></li>" for a, b in g["steps"])
+    tips = "".join(f"<li>{rich(x)}</li>" for x in g["tips"])
+    others = "".join(f'<li><a href="../{o["slug"]}/">{e(o["h1"])}</a></li>' for o in GUIDES[lang] if o["slug"] != g["slug"])
+    body = f"""<main id="main" class="section guide-page">
+  <article class="wrap narrow">
+    <p class="crumb"><a href="{home}">{e(gl['home'])}</a> › <a href="{home}#guides">{e(gl['guides_h2'])}</a></p>
+    <h1>{e(g['h1'])}</h1>
+    {intro}
+    <h2>{e(gl['steps'])}</h2>
+    <ol class="steps">{steps}</ol>
+    <h2>{e(gl['tips'])}</h2>
+    <ul class="tips">{tips}</ul>
+    <p class="cta"><a class="btn primary" href="{home}#download">{e(gl['cta'])}</a></p>
+    <h2>{e(gl['more'])}</h2>
+    <ul class="more">{others}</ul>
+  </article>
+</main>
+"""
+    return (head(lang, tg, p, alternates[lang], alternates=alternates, og_type="article")
+            + f'  <script type="application/ld+json">\n{ld}\n  </script>\n'
+            + "</head>\n<body>\n" + header(lang, t, p, home=home, suffix=suffix) + body
+            + footer(lang, t, p, home=home, suffix=suffix) + "</body>\n</html>\n")
 
 
 def not_found():
@@ -870,6 +944,14 @@ def sitemap():
         f"""  <url>
     <loc>{url(l)}</loc>
     <lastmod>{UPDATED}</lastmod>{alts}
+  </url>
+""" for l in LANGS)
+    for g in GUIDES["en"]:
+        galts = "".join(f'\n    <xhtml:link rel="alternate" hreflang="{l}" href="{guide_url(l, g["slug"])}"/>' for l in LANGS)
+        galts += f'\n    <xhtml:link rel="alternate" hreflang="x-default" href="{guide_url("en", g["slug"])}"/>'
+        urls += "".join(f"""  <url>
+    <loc>{guide_url(l, g["slug"])}</loc>
+    <lastmod>{UPDATED}</lastmod>{galts}
   </url>
 """ for l in LANGS)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -1013,6 +1095,10 @@ def main():
         d = DOCS if lang == "en" else DOCS / lang
         d.mkdir(parents=True, exist_ok=True)
         (d / "index.html").write_text(page(lang), encoding="utf-8", newline="\n")
+        for g in GUIDES[lang]:
+            gd = d / "guides" / g["slug"]
+            gd.mkdir(parents=True, exist_ok=True)
+            (gd / "index.html").write_text(guide_page(lang, g), encoding="utf-8", newline="\n")
     (DOCS / "404.html").write_text(not_found(), encoding="utf-8", newline="\n")
     (DOCS / "sitemap.xml").write_text(sitemap(), encoding="utf-8", newline="\n")
     (DOCS / "site.webmanifest").write_text(manifest(), encoding="utf-8", newline="\n")

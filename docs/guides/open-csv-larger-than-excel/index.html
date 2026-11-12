@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open a CSV With More Than 1,048,576 Rows (Excel&#x27;s Limit) — BigText</title>
+  <meta name="description" content="Excel stops at 1,048,576 rows. Open the whole CSV, any size, as a table in BigText, free: sort, filter, group and pivot it, or split it into parts Excel can load.">
+  <link rel="canonical" href="https://erkinbek.github.io/bigtext/guides/open-csv-larger-than-excel/">
+  <link rel="alternate" hreflang="en" href="https://erkinbek.github.io/bigtext/guides/open-csv-larger-than-excel/">
+  <link rel="alternate" hreflang="ru" href="https://erkinbek.github.io/bigtext/ru/guides/open-csv-larger-than-excel/">
+  <link rel="alternate" hreflang="uz" href="https://erkinbek.github.io/bigtext/uz/guides/open-csv-larger-than-excel/">
+  <link rel="alternate" hreflang="x-default" href="https://erkinbek.github.io/bigtext/guides/open-csv-larger-than-excel/">
+  <meta name="theme-color" content="#0b0f17">
+  <meta name="color-scheme" content="dark light">
+  <meta name="author" content="Erkin Pardayev">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="BigText">
+  <meta property="og:title" content="Open a CSV file bigger than Excel&#x27;s 1,048,576 rows">
+  <meta property="og:description" content="Excel stops at 1,048,576 rows. Open the whole CSV, any size, as a table in BigText, free: sort, filter, group and pivot it, or split it into parts Excel can load.">
+  <meta property="og:url" content="https://erkinbek.github.io/bigtext/guides/open-csv-larger-than-excel/">
+  <meta property="og:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="Open a CSV file bigger than Excel&#x27;s 1,048,576 rows">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="ru_RU">
+  <meta property="og:locale:alternate" content="uz_UZ">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Open a CSV file bigger than Excel&#x27;s 1,048,576 rows">
+  <meta name="twitter:description" content="Excel stops at 1,048,576 rows. Open the whole CSV, any size, as a table in BigText, free: sort, filter, group and pivot it, or split it into parts Excel can load.">
+  <meta name="twitter:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
+  <link rel="icon" href="../../favicon.ico" sizes="48x48">
+  <link rel="icon" href="../../img/logo.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../../img/apple-touch-icon.png">
+  <link rel="manifest" href="../../site.webmanifest">
+  <link rel="stylesheet" href="../../assets/style.css">
+  <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Open a CSV file bigger than Excel's 1,048,576 rows",
+ "description": "Excel stops at 1,048,576 rows. Open the whole CSV, any size, as a table in BigText, free: sort, filter, group and pivot it, or split it into parts Excel can load.",
+ "inLanguage": "en",
+ "url": "https://erkinbek.github.io/bigtext/guides/open-csv-larger-than-excel/",
+ "dateModified": "2026-10-24",
+ "author": {
+  "@type": "Person",
+  "name": "Erkin Pardayev",
+  "url": "https://github.com/Erkinbek"
+ },
+ "about": {
+  "@type": "SoftwareApplication",
+  "name": "BigText",
+  "url": "https://erkinbek.github.io/bigtext/",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Windows, Linux, macOS",
+  "offers": {
+   "@type": "Offer",
+   "price": "0",
+   "priceCurrency": "USD"
+  }
+ }
+}
+  </script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><svg width="28" height="28" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><rect width="512" height="512" rx="112" fill="#0f172a"/><rect x="96" y="118" width="204" height="44" rx="22" fill="#2dd4bf"/><rect x="96" y="206" width="320" height="44" rx="22" fill="#e2e8f0"/><rect x="96" y="294" width="256" height="44" rx="22" fill="#f59e0b"/><rect x="96" y="382" width="160" height="44" rx="22" fill="#e2e8f0"/></svg><span>BigText</span></a>
+    <nav class="links" aria-label="BigText"><a href="../../#features">Features</a><a href="../../#performance">Performance</a><a href="../../#download">Download</a><a href="../../#faq">FAQ</a><a href="https://github.com/Erkinbek/bigtext">GitHub</a></nav>
+    <nav class="langs" aria-label="Language"><a href="../../guides/open-csv-larger-than-excel/" hreflang="en" lang="en" aria-current="true">EN</a><a href="../../ru/guides/open-csv-larger-than-excel/" hreflang="ru" lang="ru">RU</a><a href="../../uz/guides/open-csv-larger-than-excel/" hreflang="uz" lang="uz">UZ</a></nav>
+  </div>
+</header>
+<main id="main" class="section guide-page">
+  <article class="wrap narrow">
+    <p class="crumb"><a href="../../">BigText home</a> › <a href="../../#guides">Guides</a></p>
+    <h1>Open a CSV file bigger than Excel&#x27;s 1,048,576 rows</h1>
+    <p>Excel&#x27;s grid ends at 1,048,576 rows. With a bigger CSV it warns that the data set is too large for the grid, and the rows past the limit are lost if you save. Exports of logs, orders or database tables are often bigger than that.</p><p>BigText opens a CSV of any size as a table at once and never loads it into memory, so a file with 50 million rows scrolls as fast as one with fifty. It is free and runs on Windows, Linux and macOS.</p>
+    <h2>Step by step</h2>
+    <ol class="steps"><li><h3>Open the file</h3><p>Download BigText and open the .csv or .tsv with File → Open, or drag it onto the window. It opens as a table: the delimiter (comma, semicolon, tab or pipe) is found from the first lines and the first row becomes a pinned header. <code>Ctrl+T</code> switches between the table and the text.</p></li><li><h3>Find your way around</h3><p>Scroll, press <code>Ctrl+G</code> to go to a row, or <code>Ctrl+F</code> to search the whole file; Find All lists every match with its line. Nothing waits for the file to load, because it is never loaded.</p></li><li><h3>Analyse it without Excel</h3><p>Right-click a column header: Statistics… (rows, empty and distinct values, sum, mean, min, max and the most frequent values), Filter rows by this column, Group rows by this column… with sums of another column, and Pivot by this column…. Sorting works on files up to 1 GB.</p></li><li><h3>Or make it fit Excel</h3><p>File → Split file… cuts the CSV into <code>name.part001.csv</code>, <code>name.part002.csv</code>… of a given number of lines, say 1,000,000, always at line breaks. The header row is only in the first part, so copy it to the others if your tool needs it. To keep only some rows, filter them (Filter rows by conditions…) and save the result as a new, smaller CSV.</p></li></ol>
+    <h2>Good to know</h2>
+    <ul class="tips"><li>View → Check table rows… lists the records with the wrong number of fields, a stray quote or text in a number column, with their line numbers.</li><li>The same tools work from scripts with <code>bigtext-cli</code>, for example <code>bigtext-cli pivot</code>.</li></ul>
+    <p class="cta"><a class="btn primary" href="../../#download">Download BigText free</a></p>
+    <h2>More guides</h2>
+    <ul class="more"><li><a href="../open-large-log-file/">Open a 10 GB log file without freezing</a></li><li><a href="../extract-table-from-mysqldump/">Extract one table from a mysqldump file</a></li></ul>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <p>Made by <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">MIT license</a> · <a href="../../#privacy">Privacy</a> · v0.7.3</p>
+    <p class="langs-foot"><a href="../../guides/open-csv-larger-than-excel/" hreflang="en" lang="en">English</a> · <a href="../../ru/guides/open-csv-larger-than-excel/" hreflang="ru" lang="ru">Русский</a> · <a href="../../uz/guides/open-csv-larger-than-excel/" hreflang="uz" lang="uz">O'zbekcha</a></p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Как извлечь одну таблицу из дампа mysqldump — BigText</title>
+  <meta name="description" content="Найдите таблицу в SQL-дампе на несколько гигабайт и запишите её в отдельный файл за несколько шагов, не загружая дамп в память. Бесплатно, для Windows, Linux и macOS.">
+  <link rel="canonical" href="https://erkinbek.github.io/bigtext/ru/guides/extract-table-from-mysqldump/">
+  <link rel="alternate" hreflang="en" href="https://erkinbek.github.io/bigtext/guides/extract-table-from-mysqldump/">
+  <link rel="alternate" hreflang="ru" href="https://erkinbek.github.io/bigtext/ru/guides/extract-table-from-mysqldump/">
+  <link rel="alternate" hreflang="uz" href="https://erkinbek.github.io/bigtext/uz/guides/extract-table-from-mysqldump/">
+  <link rel="alternate" hreflang="x-default" href="https://erkinbek.github.io/bigtext/guides/extract-table-from-mysqldump/">
+  <meta name="theme-color" content="#0b0f17">
+  <meta name="color-scheme" content="dark light">
+  <meta name="author" content="Erkin Pardayev">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="BigText">
+  <meta property="og:title" content="Как извлечь одну таблицу из дампа mysqldump">
+  <meta property="og:description" content="Найдите таблицу в SQL-дампе на несколько гигабайт и запишите её в отдельный файл за несколько шагов, не загружая дамп в память. Бесплатно, для Windows, Linux и macOS.">
+  <meta property="og:url" content="https://erkinbek.github.io/bigtext/ru/guides/extract-table-from-mysqldump/">
+  <meta property="og:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="Как извлечь одну таблицу из дампа mysqldump">
+  <meta property="og:locale" content="ru_RU">
+  <meta property="og:locale:alternate" content="en_US">
+  <meta property="og:locale:alternate" content="uz_UZ">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Как извлечь одну таблицу из дампа mysqldump">
+  <meta name="twitter:description" content="Найдите таблицу в SQL-дампе на несколько гигабайт и запишите её в отдельный файл за несколько шагов, не загружая дамп в память. Бесплатно, для Windows, Linux и macOS.">
+  <meta name="twitter:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
+  <link rel="icon" href="../../../favicon.ico" sizes="48x48">
+  <link rel="icon" href="../../../img/logo.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../../../img/apple-touch-icon.png">
+  <link rel="manifest" href="../../../site.webmanifest">
+  <link rel="stylesheet" href="../../../assets/style.css">
+  <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Как извлечь одну таблицу из дампа mysqldump",
+ "description": "Найдите таблицу в SQL-дампе на несколько гигабайт и запишите её в отдельный файл за несколько шагов, не загружая дамп в память. Бесплатно, для Windows, Linux и macOS.",
+ "inLanguage": "ru",
+ "url": "https://erkinbek.github.io/bigtext/ru/guides/extract-table-from-mysqldump/",
+ "dateModified": "2026-10-24",
+ "author": {
+  "@type": "Person",
+  "name": "Erkin Pardayev",
+  "url": "https://github.com/Erkinbek"
+ },
+ "about": {
+  "@type": "SoftwareApplication",
+  "name": "BigText",
+  "url": "https://erkinbek.github.io/bigtext/ru/",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Windows, Linux, macOS",
+  "offers": {
+   "@type": "Offer",
+   "price": "0",
+   "priceCurrency": "USD"
+  }
+ }
+}
+  </script>
+</head>
+<body>
+<a class="skip" href="#main">Перейти к содержимому</a>
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="../../../ru/"><svg width="28" height="28" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><rect width="512" height="512" rx="112" fill="#0f172a"/><rect x="96" y="118" width="204" height="44" rx="22" fill="#2dd4bf"/><rect x="96" y="206" width="320" height="44" rx="22" fill="#e2e8f0"/><rect x="96" y="294" width="256" height="44" rx="22" fill="#f59e0b"/><rect x="96" y="382" width="160" height="44" rx="22" fill="#e2e8f0"/></svg><span>BigText</span></a>
+    <nav class="links" aria-label="BigText"><a href="../../../ru/#features">Возможности</a><a href="../../../ru/#performance">Скорость</a><a href="../../../ru/#download">Скачать</a><a href="../../../ru/#faq">Вопросы</a><a href="https://github.com/Erkinbek/bigtext">GitHub</a></nav>
+    <nav class="langs" aria-label="Язык"><a href="../../../guides/extract-table-from-mysqldump/" hreflang="en" lang="en">EN</a><a href="../../../ru/guides/extract-table-from-mysqldump/" hreflang="ru" lang="ru" aria-current="true">RU</a><a href="../../../uz/guides/extract-table-from-mysqldump/" hreflang="uz" lang="uz">UZ</a></nav>
+  </div>
+</header>
+<main id="main" class="section guide-page">
+  <article class="wrap narrow">
+    <p class="crumb"><a href="../../../ru/">Главная BigText</a> › <a href="../../../ru/#guides">Руководства</a></p>
+    <h1>Как извлечь одну таблицу из дампа mysqldump</h1>
+    <p>Полный mysqldump базы может весить десятки гигабайт, а нужна из него часто одна таблица: восстановить её, проверить данные или отправить коллеге. BigText открывает дамп сразу, не загружая его в память, а «Экспорт строк…» записывает любой диапазон строк в новый файл.</p>
+    <h2>По шагам</h2>
+    <ol class="steps"><li><h3>Откройте дамп</h3><p>Откройте .sql через «Файл → Открыть» или перетащите в окно. Дамп в .sql.gz тоже открывается напрямую.</p></li><li><h3>Получите список таблиц</h3><p>mysqldump отмечает каждую таблицу комментарием вида <code>-- Table structure for table `orders`</code>. Найдите <code>-- Table structure for table</code> и нажмите «Найти все»: в результатах будут все таблицы дампа с номерами строк.</p></li><li><h3>Найдите начало и конец таблицы</h3><p>Щёлкните нужную таблицу в результатах — номер её строки виден в строке состояния. Конец таблицы там, где начинается комментарий следующей: <code>F3</code> переходит к нему.</p></li><li><h3>Запишите её в файл</h3><p>«Файл → Экспорт строк…» записывает диапазон строк в новый файл: от первой строки таблицы до строки перед следующей таблицей. Получится небольшой .sql с CREATE TABLE и строками INSERT этой таблицы.</p></li></ol>
+    <h2>Полезно знать</h2>
+    <ul class="tips"><li>Дамп начинается со строк SET (кодировка, проверка внешних ключей). Скопируйте их в начало нового файла, если они нужны таблице.</li><li>В дампе, сделанном с <code>--skip-comments</code>, таких комментариев нет: ищите <code>CREATE TABLE `orders`</code> и следующий <code>DROP TABLE IF EXISTS</code>.</li><li>Только данные: режим фильтра с <code>INSERT INTO `orders`</code> покажет лишь строки INSERT этой таблицы и сохранит их в новый файл.</li></ul>
+    <p class="cta"><a class="btn primary" href="../../../ru/#download">Скачать BigText бесплатно</a></p>
+    <h2>Другие руководства</h2>
+    <ul class="more"><li><a href="../open-csv-larger-than-excel/">Как открыть CSV-файл больше 1 048 576 строк Excel</a></li><li><a href="../open-large-log-file/">Как открыть лог-файл на 10 ГБ без зависаний</a></li></ul>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <p>Автор: <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">Лицензия MIT</a> · <a href="../../../ru/#privacy">Конфиденциальность</a> · v0.7.3</p>
+    <p class="langs-foot"><a href="../../../guides/extract-table-from-mysqldump/" hreflang="en" lang="en">English</a> · <a href="../../../ru/guides/extract-table-from-mysqldump/" hreflang="ru" lang="ru">Русский</a> · <a href="../../../uz/guides/extract-table-from-mysqldump/" hreflang="uz" lang="uz">O'zbekcha</a></p>
+  </div>
+</footer>
+</body>
+</html>

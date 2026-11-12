@@ -135,6 +135,25 @@ code { font-family: ui-monospace, "Cascadia Code", Consolas, "DejaVu Sans Mono",
 .faq details[open] summary { color: var(--accent); }
 .faq details p { margin: 0 0 18px; color: var(--muted); }
 
+a.card.guide { display: block; color: inherit; text-decoration: none; }
+a.card.guide:hover { border-color: var(--accent); }
+a.card.guide h3 { color: var(--text); }
+
+.guide-page h1 { font-size: clamp(30px, 4.2vw, 44px); line-height: 1.15; letter-spacing: -.01em; margin: 10px 0 20px; }
+.guide-page h2 { font-size: clamp(22px, 2.6vw, 28px); margin: 40px 0 14px; }
+.guide-page p { margin: 0 0 14px; }
+.crumb { color: var(--muted); font-size: 14px; }
+.crumb a { color: var(--muted); }
+.steps { padding-left: 24px; margin: 0; }
+.steps li { margin: 0 0 20px; padding-left: 4px; }
+.steps li::marker { color: var(--accent); font-weight: 700; }
+.steps h3 { margin: 0 0 6px; }
+.steps p { margin: 0; color: var(--muted); }
+.tips li, .more li { margin: 0 0 10px; }
+.tips li { color: var(--muted); }
+.guide-page .cta { margin: 32px 0 0; }
+.guide-page code { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-size: .92em; overflow-wrap: anywhere; }
+
 .foot { padding: 36px 0 44px; color: var(--muted); font-size: 15px; text-align: center; }
 .foot p { margin: 6px 0; }
 .foot strong { color: var(--text); }

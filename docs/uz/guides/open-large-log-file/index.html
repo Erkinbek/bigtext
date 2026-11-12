@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>10 GB log faylni qotmasdan ochish — BigText</title>
+  <meta name="description" content="Har qanday hajmdagi logni darhol oching, muharrir qotmasdan qidiring, filtrlang va kuzating: vaqtga o&#x27;tish, daraja bo&#x27;yicha filtr, grep kabi filtr, tail -F. Bepul, Windows, Linux va macOS uchun.">
+  <link rel="canonical" href="https://erkinbek.github.io/bigtext/uz/guides/open-large-log-file/">
+  <link rel="alternate" hreflang="en" href="https://erkinbek.github.io/bigtext/guides/open-large-log-file/">
+  <link rel="alternate" hreflang="ru" href="https://erkinbek.github.io/bigtext/ru/guides/open-large-log-file/">
+  <link rel="alternate" hreflang="uz" href="https://erkinbek.github.io/bigtext/uz/guides/open-large-log-file/">
+  <link rel="alternate" hreflang="x-default" href="https://erkinbek.github.io/bigtext/guides/open-large-log-file/">
+  <meta name="theme-color" content="#0b0f17">
+  <meta name="color-scheme" content="dark light">
+  <meta name="author" content="Erkin Pardayev">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="BigText">
+  <meta property="og:title" content="10 GB log faylni qotmasdan ochish">
+  <meta property="og:description" content="Har qanday hajmdagi logni darhol oching, muharrir qotmasdan qidiring, filtrlang va kuzating: vaqtga o&#x27;tish, daraja bo&#x27;yicha filtr, grep kabi filtr, tail -F. Bepul, Windows, Linux va macOS uchun.">
+  <meta property="og:url" content="https://erkinbek.github.io/bigtext/uz/guides/open-large-log-file/">
+  <meta property="og:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="10 GB log faylni qotmasdan ochish">
+  <meta property="og:locale" content="uz_UZ">
+  <meta property="og:locale:alternate" content="en_US">
+  <meta property="og:locale:alternate" content="ru_RU">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="10 GB log faylni qotmasdan ochish">
+  <meta name="twitter:description" content="Har qanday hajmdagi logni darhol oching, muharrir qotmasdan qidiring, filtrlang va kuzating: vaqtga o&#x27;tish, daraja bo&#x27;yicha filtr, grep kabi filtr, tail -F. Bepul, Windows, Linux va macOS uchun.">
+  <meta name="twitter:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
+  <link rel="icon" href="../../../favicon.ico" sizes="48x48">
+  <link rel="icon" href="../../../img/logo.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../../../img/apple-touch-icon.png">
+  <link rel="manifest" href="../../../site.webmanifest">
+  <link rel="stylesheet" href="../../../assets/style.css">
+  <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "10 GB log faylni qotmasdan ochish",
+ "description": "Har qanday hajmdagi logni darhol oching, muharrir qotmasdan qidiring, filtrlang va kuzating: vaqtga o'tish, daraja bo'yicha filtr, grep kabi filtr, tail -F. Bepul, Windows, Linux va macOS uchun.",
+ "inLanguage": "uz",
+ "url": "https://erkinbek.github.io/bigtext/uz/guides/open-large-log-file/",
+ "dateModified": "2026-10-24",
+ "author": {
+  "@type": "Person",
+  "name": "Erkin Pardayev",
+  "url": "https://github.com/Erkinbek"
+ },
+ "about": {
+  "@type": "SoftwareApplication",
+  "name": "BigText",
+  "url": "https://erkinbek.github.io/bigtext/uz/",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Windows, Linux, macOS",
+  "offers": {
+   "@type": "Offer",
+   "price": "0",
+   "priceCurrency": "USD"
+  }
+ }
+}
+  </script>
+</head>
+<body>
+<a class="skip" href="#main">Asosiy qismga o&#x27;tish</a>
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="../../../uz/"><svg width="28" height="28" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><rect width="512" height="512" rx="112" fill="#0f172a"/><rect x="96" y="118" width="204" height="44" rx="22" fill="#2dd4bf"/><rect x="96" y="206" width="320" height="44" rx="22" fill="#e2e8f0"/><rect x="96" y="294" width="256" height="44" rx="22" fill="#f59e0b"/><rect x="96" y="382" width="160" height="44" rx="22" fill="#e2e8f0"/></svg><span>BigText</span></a>
+    <nav class="links" aria-label="BigText"><a href="../../../uz/#features">Imkoniyatlar</a><a href="../../../uz/#performance">Tezlik</a><a href="../../../uz/#download">Yuklab olish</a><a href="../../../uz/#faq">Savollar</a><a href="https://github.com/Erkinbek/bigtext">GitHub</a></nav>
+    <nav class="langs" aria-label="Til"><a href="../../../guides/open-large-log-file/" hreflang="en" lang="en">EN</a><a href="../../../ru/guides/open-large-log-file/" hreflang="ru" lang="ru">RU</a><a href="../../../uz/guides/open-large-log-file/" hreflang="uz" lang="uz" aria-current="true">UZ</a></nav>
+  </div>
+</header>
+<main id="main" class="section guide-page">
+  <article class="wrap narrow">
+    <p class="crumb"><a href="../../../uz/">BigText bosh sahifasi</a> › <a href="../../../uz/#guides">Qo&#x27;llanmalar</a></p>
+    <h1>10 GB log faylni qotmasdan ochish</h1>
+    <p>Notepad++ 2 GB dan katta fayl ochilishi bir necha daqiqa olishi mumkinligini ogohlantiradi, VS Code butun faylni xotirada ushlaydi, ikkalasi ham katta logda qotib qolishi mumkin. BigText faqat ekrandagini o&#x27;qiydi, shuning uchun 10 yoki 50 GB lik log darhol ochiladi va taxminan 100 MB xotira oladi.</p>
+    <h2>Qadamma-qadam</h2>
+    <ol class="steps"><li><h3>Oching</h3><p>«Fayl → Ochish», oynaga tortish yoki terminalda <code>bigtext app.log</code> buyrug&#x27;i bilan (<code>bigtext app.log:120</code> 120-qatorda ochadi). .gz va .zst dagi loglar to&#x27;g&#x27;ridan-to&#x27;g&#x27;ri ochiladi.</p></li><li><h3>Fayl bo&#x27;ylab yuring</h3><p><code>Ctrl+End</code> darhol oxirgi qatorga o&#x27;tadi. Qatorga o&#x27;tish (<code>Ctrl+G</code>) indekslash tugamasdan ishlaydi; ungacha qator raqamlari oldida <code>~</code> turadi. Vaqtga o&#x27;tish (<code>Ctrl+Shift+T</code>) <code>14:32:05</code> ni qabul qiladi va o&#x27;sha vaqtdagi birinchi qatorga qo&#x27;yadi.</p></li><li><h3>Xatolarni toping</h3><p>Log ustidagi darajalar paneli ERROR, WARN, INFO va DEBUG qatorlarini filtrlaydi, <code>F8</code> esa keyingi xatoga o&#x27;tadi. <code>Ctrl+F</code> butun fayl bo&#x27;yicha qidiradi, xohlasangiz regex bilan, «Hammasini topish» mosliklar ro&#x27;yxatini beradi.</p></li><li><h3>Faqat keraklisini qoldiring</h3><p>Filtr rejimi faqat mos keladigan yoki aksincha, mos kelmaydigan qatorlarni ko&#x27;rsatadi, xuddi butun faylda grep kabi, va ularni yangi faylga saqlaydi.</p></li><li><h3>Jonli kuzating</h3><p>Kuzatish rejimi (<code>bigtext -f app.log</code> yoki buyruqlar palitrasidagi «Faylni kuzatish (tail)») yangi qatorlarni <code>tail -F</code> kabi qo&#x27;shib boradi va log almashtirilganda ham davom etadi. Serverdagi log SSH orqali kalitlaringiz bilan ochiladi: <code>bigtext -f user@server:/var/log/syslog</code>.</p></li></ol>
+    <h2>Bilib qo&#x27;ying</h2>
+    <ul class="tips"><li>Bir nechta logni vaqt bo&#x27;yicha bitta oynaga birlashtirish yoki ikki logni vaqt bo&#x27;yicha birga aylantirish mumkin.</li><li>Qidiruv, filtr va saqlash fonda, progress va bekor qilish tugmasi bilan ishlaydi, oyna javob berishdan to&#x27;xtamaydi.</li></ul>
+    <p class="cta"><a class="btn primary" href="../../../uz/#download">BigText&#x27;ni bepul yuklab olish</a></p>
+    <h2>Boshqa qo&#x27;llanmalar</h2>
+    <ul class="more"><li><a href="../open-csv-larger-than-excel/">Excel&#x27;ning 1 048 576 qatoridan katta CSV faylni ochish</a></li><li><a href="../extract-table-from-mysqldump/">mysqldump faylidan bitta jadvalni ajratib olish</a></li></ul>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <p>Muallif: <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">MIT litsenziyasi</a> · <a href="../../../uz/#privacy">Maxfiylik</a> · v0.7.3</p>
+    <p class="langs-foot"><a href="../../../guides/open-large-log-file/" hreflang="en" lang="en">English</a> · <a href="../../../ru/guides/open-large-log-file/" hreflang="ru" lang="ru">Русский</a> · <a href="../../../uz/guides/open-large-log-file/" hreflang="uz" lang="uz">O'zbekcha</a></p>
+  </div>
+</footer>
+</body>
+</html>

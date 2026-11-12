@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Extract One Table From a mysqldump File — BigText</title>
+  <meta name="description" content="Find a table in a multi-gigabyte SQL dump and write it to its own file in a few steps, without loading the dump into memory. Free, for Windows, Linux and macOS.">
+  <link rel="canonical" href="https://erkinbek.github.io/bigtext/guides/extract-table-from-mysqldump/">
+  <link rel="alternate" hreflang="en" href="https://erkinbek.github.io/bigtext/guides/extract-table-from-mysqldump/">
+  <link rel="alternate" hreflang="ru" href="https://erkinbek.github.io/bigtext/ru/guides/extract-table-from-mysqldump/">
+  <link rel="alternate" hreflang="uz" href="https://erkinbek.github.io/bigtext/uz/guides/extract-table-from-mysqldump/">
+  <link rel="alternate" hreflang="x-default" href="https://erkinbek.github.io/bigtext/guides/extract-table-from-mysqldump/">
+  <meta name="theme-color" content="#0b0f17">
+  <meta name="color-scheme" content="dark light">
+  <meta name="author" content="Erkin Pardayev">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="BigText">
+  <meta property="og:title" content="Extract one table from a mysqldump file">
+  <meta property="og:description" content="Find a table in a multi-gigabyte SQL dump and write it to its own file in a few steps, without loading the dump into memory. Free, for Windows, Linux and macOS.">
+  <meta property="og:url" content="https://erkinbek.github.io/bigtext/guides/extract-table-from-mysqldump/">
+  <meta property="og:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="Extract one table from a mysqldump file">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="ru_RU">
+  <meta property="og:locale:alternate" content="uz_UZ">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Extract one table from a mysqldump file">
+  <meta name="twitter:description" content="Find a table in a multi-gigabyte SQL dump and write it to its own file in a few steps, without loading the dump into memory. Free, for Windows, Linux and macOS.">
+  <meta name="twitter:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
+  <link rel="icon" href="../../favicon.ico" sizes="48x48">
+  <link rel="icon" href="../../img/logo.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../../img/apple-touch-icon.png">
+  <link rel="manifest" href="../../site.webmanifest">
+  <link rel="stylesheet" href="../../assets/style.css">
+  <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Extract one table from a mysqldump file",
+ "description": "Find a table in a multi-gigabyte SQL dump and write it to its own file in a few steps, without loading the dump into memory. Free, for Windows, Linux and macOS.",
+ "inLanguage": "en",
+ "url": "https://erkinbek.github.io/bigtext/guides/extract-table-from-mysqldump/",
+ "dateModified": "2026-10-24",
+ "author": {
+  "@type": "Person",
+  "name": "Erkin Pardayev",
+  "url": "https://github.com/Erkinbek"
+ },
+ "about": {
+  "@type": "SoftwareApplication",
+  "name": "BigText",
+  "url": "https://erkinbek.github.io/bigtext/",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Windows, Linux, macOS",
+  "offers": {
+   "@type": "Offer",
+   "price": "0",
+   "priceCurrency": "USD"
+  }
+ }
+}
+  </script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="../../"><svg width="28" height="28" viewBox="0 0 512 512" aria-hidden="true" focusable="false"><rect width="512" height="512" rx="112" fill="#0f172a"/><rect x="96" y="118" width="204" height="44" rx="22" fill="#2dd4bf"/><rect x="96" y="206" width="320" height="44" rx="22" fill="#e2e8f0"/><rect x="96" y="294" width="256" height="44" rx="22" fill="#f59e0b"/><rect x="96" y="382" width="160" height="44" rx="22" fill="#e2e8f0"/></svg><span>BigText</span></a>
+    <nav class="links" aria-label="BigText"><a href="../../#features">Features</a><a href="../../#performance">Performance</a><a href="../../#download">Download</a><a href="../../#faq">FAQ</a><a href="https://github.com/Erkinbek/bigtext">GitHub</a></nav>
+    <nav class="langs" aria-label="Language"><a href="../../guides/extract-table-from-mysqldump/" hreflang="en" lang="en" aria-current="true">EN</a><a href="../../ru/guides/extract-table-from-mysqldump/" hreflang="ru" lang="ru">RU</a><a href="../../uz/guides/extract-table-from-mysqldump/" hreflang="uz" lang="uz">UZ</a></nav>
+  </div>
+</header>
+<main id="main" class="section guide-page">
+  <article class="wrap narrow">
+    <p class="crumb"><a href="../../">BigText home</a> › <a href="../../#guides">Guides</a></p>
+    <h1>Extract one table from a mysqldump file</h1>
+    <p>A full mysqldump of a database can be tens of gigabytes, and often you need one table from it: to restore it, to check its data or to send it to someone. BigText opens the dump at once without loading it into memory, and Export lines… writes any range of lines to a new file.</p>
+    <h2>Step by step</h2>
+    <ol class="steps"><li><h3>Open the dump</h3><p>Open the .sql file with File → Open or by dragging it onto the window. A .sql.gz dump opens directly too.</p></li><li><h3>List the tables</h3><p>mysqldump marks each table with a comment such as <code>-- Table structure for table `orders`</code>. Search for <code>-- Table structure for table</code> and press Find All: the results list every table in the dump with its line number.</p></li><li><h3>Find where the table starts and ends</h3><p>Click the table you need in the results; its line number is in the status bar. The next table&#x27;s comment is where it ends: <code>F3</code> jumps to it.</p></li><li><h3>Write it to a file</h3><p>File → Export lines… writes a range of lines to a new file: from the first line of the table to the line before the next table. You get a small .sql file with the CREATE TABLE statement and the table&#x27;s INSERT lines.</p></li></ol>
+    <h2>Good to know</h2>
+    <ul class="tips"><li>The dump starts with SET lines (character set, foreign key checks). Copy them to the top of the new file if the table needs them.</li><li>A dump made with <code>--skip-comments</code> has no such comments: search for <code>CREATE TABLE `orders`</code> and the next <code>DROP TABLE IF EXISTS</code> instead.</li><li>Only the data: the filter view with <code>INSERT INTO `orders`</code> shows just that table&#x27;s INSERT lines and saves them to a new file.</li></ul>
+    <p class="cta"><a class="btn primary" href="../../#download">Download BigText free</a></p>
+    <h2>More guides</h2>
+    <ul class="more"><li><a href="../open-csv-larger-than-excel/">Open a CSV file bigger than Excel&#x27;s 1,048,576 rows</a></li><li><a href="../open-large-log-file/">Open a 10 GB log file without freezing</a></li></ul>
+  </article>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <p>Made by <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">MIT license</a> · <a href="../../#privacy">Privacy</a> · v0.7.3</p>
+    <p class="langs-foot"><a href="../../guides/extract-table-from-mysqldump/" hreflang="en" lang="en">English</a> · <a href="../../ru/guides/extract-table-from-mysqldump/" hreflang="ru" lang="ru">Русский</a> · <a href="../../uz/guides/extract-table-from-mysqldump/" hreflang="uz" lang="uz">O'zbekcha</a></p>
+  </div>
+</footer>
+</body>
+</html>
