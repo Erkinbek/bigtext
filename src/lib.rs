@@ -43,6 +43,7 @@ pub mod remote;
 pub mod replace;
 pub mod save;
 pub mod split;
+pub mod sqldump;
 pub mod search;
 pub mod setdiff;
 pub mod settings_file;

@@ -54,6 +54,7 @@ pub mod patterns_window;
 pub mod log_report;
 pub mod log_sources;
 pub mod alerts;
+pub mod sql_dump;
 pub mod notify;
 pub mod pivot;
 pub mod portable;
@@ -343,6 +344,7 @@ pub struct BigTextApp {
     pub log_report: log_report::ReportUi,
     pub log_sources: log_sources::SourcesUi,
     pub alerts: alerts::AlertsUi,
+    pub sql_dump: sql_dump::DumpUi,
     pub nav: nav::NavHistory,
     pub values: Option<match_values::ValuesDialog>,
     pub problems: problems_panel::ProblemsUi,
@@ -657,6 +659,7 @@ impl BigTextApp {
             log_report: log_report::ReportUi::default(),
             log_sources: log_sources::SourcesUi::default(),
             alerts: alerts::AlertsUi::default(),
+            sql_dump: sql_dump::DumpUi::default(),
             nav: nav::NavHistory::default(),
             values: None,
             problems: problems_panel::ProblemsUi::default(),
@@ -2175,6 +2178,7 @@ impl eframe::App for BigTextApp {
         self.remote_window(&ctx);
         self.log_sources_window(&ctx);
         self.alerts_window(&ctx);
+        self.sql_dump_window(&ctx);
         self.symbols_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);
@@ -2199,6 +2203,7 @@ impl eframe::App for BigTextApp {
                 || d.gaps.as_ref().is_some_and(|g| g.is_running())
                 || d.patterns.as_ref().is_some_and(|p| p.is_running())
                 || d.log_report.as_ref().is_some_and(|r| r.is_running())
+                || d.sql_dump.as_ref().is_some_and(|r| r.is_running())
                 || d.problems.as_ref().is_some_and(|p| p.is_running())
                 || d.chart.as_ref().is_some_and(|c| c.is_running())
                 || d.json_check.as_ref().is_some_and(|j| j.is_running())

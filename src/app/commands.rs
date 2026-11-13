@@ -55,6 +55,7 @@ pub enum Cmd {
     ArrayToLines,
     LinesToArray,
     LogfmtTable,
+    SqlDump,
     Undo,
     Redo,
     SelectAll,
@@ -160,7 +161,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 124] = [
+    pub const ALL: [Cmd; 125] = [
         Cmd::New,
         Cmd::Open,
         Cmd::OpenFolder,
@@ -199,6 +200,7 @@ impl Cmd {
         Cmd::ArrayToLines,
         Cmd::LinesToArray,
         Cmd::LogfmtTable,
+        Cmd::SqlDump,
         Cmd::Undo,
         Cmd::Redo,
         Cmd::SelectAll,
@@ -366,6 +368,7 @@ impl Cmd {
             Cmd::ArrayToLines => "JSON array → JSON Lines…",
             Cmd::LinesToArray => "JSON Lines → JSON array…",
             Cmd::LogfmtTable => "Open log as table",
+            Cmd::SqlDump => "SQL dump tables…",
             Cmd::Undo => "Undo",
             Cmd::Redo => "Redo",
             Cmd::SelectAll => "Select all",
@@ -467,7 +470,7 @@ impl Cmd {
     /// Menu the command lives in (shown in the palette).
     pub fn group(self) -> &'static str {
         match self {
-            Cmd::New | Cmd::Open | Cmd::OpenFolder | Cmd::OpenRemote | Cmd::OpenLogSource | Cmd::CloseFolder | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::CompareSaved | Cmd::CompareBackup | Cmd::ApplyPatch | Cmd::Properties | Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault | Cmd::MergeLogs | Cmd::JoinTables | Cmd::CompareJson | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable => "File",
+            Cmd::New | Cmd::Open | Cmd::OpenFolder | Cmd::OpenRemote | Cmd::OpenLogSource | Cmd::CloseFolder | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::CompareSaved | Cmd::CompareBackup | Cmd::ApplyPatch | Cmd::Properties | Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault | Cmd::MergeLogs | Cmd::JoinTables | Cmd::CompareJson | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable | Cmd::SqlDump => "File",
             Cmd::Undo
             | Cmd::Redo
             | Cmd::SelectAll
@@ -750,6 +753,7 @@ impl BigTextApp {
             Cmd::ArrayToLines => self.array_to_lines(),
             Cmd::LinesToArray => self.lines_to_array(),
             Cmd::LogfmtTable => self.open_log_table(),
+            Cmd::SqlDump => self.open_sql_dump(),
             Cmd::Undo => doc(self).into_iter().for_each(|d| d.undo()),
             Cmd::Redo => doc(self).into_iter().for_each(|d| d.redo()),
             Cmd::SelectAll => {
@@ -1202,7 +1206,7 @@ impl BigTextApp {
                 for c in [Cmd::RevealFile, Cmd::OpenTerminal, Cmd::OpenWithDefault] {
                     run = run.or(self.item(ui, c));
                 }
-                for c in [Cmd::CompareJson, Cmd::MergeLogs, Cmd::JoinTables, Cmd::ArrayToLines, Cmd::LinesToArray, Cmd::LogfmtTable] {
+                for c in [Cmd::CompareJson, Cmd::MergeLogs, Cmd::JoinTables, Cmd::ArrayToLines, Cmd::LinesToArray, Cmd::LogfmtTable, Cmd::SqlDump] {
                     run = run.or(self.item(ui, c));
                 }
                 let table = self.docs.get(self.active).is_some_and(|d| d.table && d.is_ready() && d.table_state.dialect.is_some());

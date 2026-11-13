@@ -159,6 +159,17 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         N); or one of them in full as CSV: --urls (requests, 4xx, 5xx, bytes
         and times per URL), --minutes (requests, 4xx and 5xx per minute),
         --slow (the 1,000 slowest requests with their line numbers).
+  sqldump FILE [tables | extract TABLE[,TABLE...] | split] [-o OUT] [--out-dir DIR]
+          [--no-settings]
+        A SQL dump (mysqldump, pg_dump's plain format, SQLite's .dump), read in
+        one pass: tables lists its tables with their rows and bytes as CSV;
+        extract writes those tables (CREATE, rows, keys, indexes, triggers and
+        for PostgreSQL their sequences) with the dump's opening and closing
+        settings, so the file restores on its own (--no-settings: without
+        them); split writes into --out-dir (the dump's folder) the files that
+        restore the dump in the order of their names: NAME.0-before-tables.sql
+        (functions, types), NAME.1-TABLE.sql per table, NAME.2-after-tables.sql
+        (views, routines, foreign keys added after the data).
   values FIELD FILE [-o OUT]
         The values of a JSON Lines or logfmt (key=value) field with how many
         lines have each and their first and last time, as CSV, most frequent
@@ -178,7 +189,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 32] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "report", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format", "sort", "uniq", "head", "tail", "slice", "grep", "replace", "saved", "csv"];
+const COMMANDS: [&str; 33] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "report", "sqldump", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format", "sort", "uniq", "head", "tail", "slice", "grep", "replace", "saved", "csv"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -747,6 +758,53 @@ fn cmd_report(args: &[String], out: &mut dyn Write) -> Res<i32> {
         Ok(())
     })?;
     Ok(if r.requests > 0 { 0 } else { 1 })
+}
+
+fn cmd_sqldump(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["--no-settings"], &["-o", "--output", "--out-dir"])?;
+    let (file, action, names) = match &a.rest[..] {
+        [f] => (f, "tables", None),
+        [f, act] => (f, act.as_str(), None),
+        [f, act, n] => (f, act.as_str(), Some(n.as_str())),
+        _ => return fail("needs FILE [tables | extract TABLE | split]"),
+    };
+    let (buf, _) = open(Path::new(file))?;
+    let cancel = CancelToken::new();
+    let dump = crate::sqldump::scan(&buf, &cancel, None, |_| {})?.unwrap_or_default();
+    let settings = !a.flag(&["--no-settings"]);
+    match (action, names) {
+        ("tables", None) => {
+            with_output(a.opt(&["-o", "--output"]), out, |w| Ok(crate::sqldump::tables_csv(&dump, &mut &mut *w)?))?;
+            Ok(if dump.tables.is_empty() { 1 } else { 0 })
+        }
+        ("extract", Some(names)) => {
+            let mut which = Vec::new();
+            for n in names.split(',').map(str::trim).filter(|n| !n.is_empty()) {
+                match dump.find(n) {
+                    Some(i) => which.push(i),
+                    None => return fail(format!("no table {n} in {file} (bigtext-cli sqldump {file} tables lists them)")),
+                }
+            }
+            with_output(a.opt(&["-o", "--output"]), out, |w| {
+                crate::sqldump::write_tables(&buf, &dump, &which, if settings { crate::sqldump::Extract::WHOLE } else { crate::sqldump::Extract::BARE }, &mut &mut *w, &cancel, None)?;
+                Ok(())
+            })?;
+            Ok(0)
+        }
+        ("split", None) => {
+            let path = Path::new(file);
+            let dir = a.opt(&["--out-dir"]).map(PathBuf::from).or_else(|| path.parent().map(Path::to_path_buf)).unwrap_or_default();
+            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let stem = name.trim_end_matches(".gz").trim_end_matches(".zst").trim_end_matches(".xz").trim_end_matches(".bz2").trim_end_matches(".sql").to_string();
+            std::fs::create_dir_all(&dir)?;
+            let files = crate::sqldump::split(&buf, &dump, &dir, &stem, settings, &cancel, None)?.unwrap_or_default();
+            for (p, n) in &files {
+                writeln!(out, "{}\t{}", p.display(), human_bytes(*n))?;
+            }
+            Ok(if files.is_empty() { 1 } else { 0 })
+        }
+        _ => fail("needs tables, extract TABLE[,TABLE...] or split"),
+    }
 }
 
 fn cmd_values(args: &[String], out: &mut dyn Write) -> Res<i32> {
@@ -1773,6 +1831,7 @@ fn run_command(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32
         "merge" => cmd_merge(rest, out),
         "convert" => cmd_convert(rest, out),
         "report" => cmd_report(rest, out),
+        "sqldump" => cmd_sqldump(rest, out),
         "values" => cmd_values(rest, out),
         "gaps" => cmd_gaps(rest, out),
         "patterns" => cmd_patterns(rest, out),

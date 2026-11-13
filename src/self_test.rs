@@ -199,6 +199,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("app.logfmt"), "level=info msg=ok\nlevel=error msg=\"bad x\" code=7\n")?;
     std::fs::write(dir.join("access.log"), access_log())?;
     std::fs::write(dir.join("alerts.log"), "INFO start\nERROR old\n")?;
+    std::fs::write(dir.join("shop.sql"), SHOP_SQL)?;
     std::fs::write(dir.join("excel.csv"), "sep=;\n# exported\nname;qty\nann;1\nbob;2\n")?;
     std::fs::write(dir.join("numbers.csv"), "1,2\n3,4\n5,6\n")?;
     std::fs::write(dir.join("semi.txt"), "id;note\n1;a,b\n2;c,d\n")?;
@@ -404,6 +405,47 @@ fn log_source_step(env: &'static str, tab: crate::app::log_sources::Tab, follow:
         Step::Wait
     })
 }
+
+/// A small mysqldump: two tables (one with rows in two INSERTs and a semicolon in a string)
+/// and a view.
+const SHOP_SQL: &str = "-- MySQL dump 10.13  Distrib 8.4.0, for Linux (x86_64)
+/*!40101 SET NAMES utf8mb4 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+
+--
+-- Table structure for table `customers`
+--
+
+DROP TABLE IF EXISTS `customers`;
+CREATE TABLE `customers` (
+  `id` int NOT NULL,
+  `name` varchar(100) DEFAULT NULL
+) ENGINE=InnoDB;
+
+LOCK TABLES `customers` WRITE;
+INSERT INTO `customers` VALUES (1,'Ann; the first'),(2,'Bob');
+INSERT INTO `customers` VALUES (3,'Dan');
+UNLOCK TABLES;
+
+--
+-- Table structure for table `orders`
+--
+
+DROP TABLE IF EXISTS `orders`;
+CREATE TABLE `orders` (
+  `id` int NOT NULL,
+  `customer_id` int DEFAULT NULL
+) ENGINE=InnoDB;
+
+LOCK TABLES `orders` WRITE;
+INSERT INTO `orders` VALUES (10,1),(11,2),(12,3),(13,1);
+UNLOCK TABLES;
+/*!50001 DROP VIEW IF EXISTS `totals`*/;
+/*!50001 CREATE VIEW `totals` AS select 1 AS `n` */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+
+-- Dump completed on 2026-11-13 10:00:00
+";
 
 fn open_step(name: &'static str) -> StepFn {
     Box::new(move |app, c| {
@@ -3800,6 +3842,61 @@ impl SelfTest {
             let gone = doc(app).alerts.is_none();
             doc(app).follow = false;
             check(gone, "alerts still there")
+        }));
+        s("open shop.sql", open_step("shop.sql"));
+        s("SQL dump tables: the tables of a mysqldump with their rows", Box::new(|app, c| {
+            if c.first() {
+                app.open_sql_dump();
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).sql_dump.as_ref() else { return Step::Fail("no dump".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return if c.waited() > Duration::from_secs(10) { Step::Fail("still reading".into()) } else { Step::Wait };
+            }
+            let Some(d) = g.d.as_ref() else { return Step::Fail(format!("no result: {:?}", g.error)) };
+            let tables: Vec<(String, u64, bool)> = d.tables.iter().map(|t| (t.name.clone(), t.rows, t.created)).collect();
+            check(
+                d.dialect == bigtext::sqldump::Dialect::MySql && tables == [("customers".to_string(), 3, true), ("orders".to_string(), 4, true)] && !d.other.is_empty(),
+                format!("{:?} {tables:?}, other {}", d.dialect, d.other.len()),
+            )
+        }));
+        s("SQL dump tables: a click goes to the table's CREATE TABLE", Box::new(|app, c| {
+            let first = doc(app).sql_dump.as_ref().and_then(|r| r.data.lock().unwrap().d.as_ref().map(|d| d.tables[1].first));
+            let Some(off) = first else { return Step::Fail("no table".into()) };
+            if c.first() {
+                doc(app).goto_offset(off);
+                return Step::Wait;
+            }
+            let caret = doc(app).view.caret;
+            check(SHOP_SQL[caret as usize..].starts_with("CREATE TABLE `orders`"), format!("caret {caret}"))
+        }));
+        s("screenshot: SQL dump tables", shot_step("selftest-sql-dump.png"));
+        s("SQL dump tables: a table opens in a tab of its own, with the dump's settings", Box::new(|app, c| {
+            if c.first() {
+                app.save_dump_tables(vec!["orders".into()], true);
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let d = doc(app);
+                if d.title != "orders (shop)" || !d.is_ready() {
+                    return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("active tab {:?}", d.title)) } else { Step::Wait };
+                }
+                let t = text(app);
+                let ok = t.starts_with("-- MySQL dump") && t.contains("SET NAMES utf8mb4") && t.contains("CREATE TABLE `orders`") && t.contains("(10,1),(11,2),(12,3),(13,1);") && !t.contains("customers") && !t.contains("VIEW") && t.trim_end().ends_with("Dump completed on 2026-11-13 10:00:00");
+                if !ok {
+                    return Step::Fail(format!("text {t:?}"));
+                }
+                c.key(Key::W, CTRL);
+                c.mark = 1;
+                return Step::Wait;
+            }
+            if app.docs.iter().any(|d| d.title == "orders (shop)") {
+                return Step::Wait;
+            }
+            c.mark = 0;
+            app.sql_dump.open = false;
+            Step::Next
         }));
         s("container and service logs: a command's output and errors in one followed tab", Box::new(|app, c| {
             if c.first() {

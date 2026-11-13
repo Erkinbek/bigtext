@@ -34,6 +34,9 @@ dependencies.
   2 seconds); a click shows the requests behind a number.
 - **Tables and JSON.** CSV and TSV files open as tables with sorting, statistics, pivots and
   joins. JSON gets a structure view, folding and queries over JSON Lines.
+- **SQL dumps.** **File → SQL dump tables…** lists the tables of a mysqldump, pg_dump or SQLite
+  dump with their rows and sizes (a 1 GB dump in about a second), saves one table or several as
+  a file that restores on its own, and splits the dump into a file per table.
 - **Compare, hex and archives.** A streaming diff of two huge files, a hex view, and `.gz`,
   `.zst`, `.xz`, `.bz2`, `.zip` and `.tar` files opened without unpacking them by hand.
 - **Logs on servers, without downloading them.** Open `user@server:/var/log/app.log` over SSH

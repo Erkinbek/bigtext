@@ -5,6 +5,18 @@ All notable changes to BigText. Each release on
 
 ## Unreleased
 
+### SQL dumps
+
+- **File → SQL dump tables…** lists the tables of a mysqldump (MySQL, MariaDB), a pg_dump in
+  plain format or an SQLite `.dump` with their rows and sizes, read in one pass (a 1 GB dump in
+  about a second); a click goes to a table's CREATE TABLE. One table or several are saved as a
+  file that restores on its own (with the dump's settings, and for PostgreSQL the sequences and
+  the functions they need), or opened in a tab; **Split into a file per table…** writes files
+  that restore the whole dump in the order of their names. `bigtext-cli sqldump FILE tables`,
+  `extract TABLE` and `split` do the same in scripts. Checked against real MySQL 8.4 and
+  PostgreSQL 16 dumps: every table restores on its own, and the split files restore the same
+  database.
+
 ### Alerts on new lines
 
 - **View → Alerts on new lines…**: patterns for a followed log (text or regex). Each line added

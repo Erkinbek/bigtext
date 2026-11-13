@@ -201,6 +201,7 @@ mod tests {
         "app" / "log_report.rs",
         "app" / "log_sources.rs",
         "app" / "alerts.rs",
+        "app" / "sql_dump.rs",
         "app" / "pivot.rs",
         "app" / "portable.rs",
         "app" / "properties.rs",
@@ -242,6 +243,10 @@ mod tests {
 
     /// Texts translated through a variable rather than a literal at the call.
     const DYNAMIC: &[&str] = &[
+        "MySQL / MariaDB dump",
+        "PostgreSQL dump",
+        "SQLite dump",
+        "SQL dump",
         "nginx / Apache access log",
         "AWS Application Load Balancer log",
         "AWS Classic Load Balancer log",

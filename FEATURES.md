@@ -340,6 +340,19 @@ keyboard shortcuts.
   it is found from checkpoints one background pass records every 8 MB.
 - **Field queries over JSON Lines** (the search bar's **{}**): `.level == "error" and
   .duration > 500` in the filter view (`bigtext-cli jsonl -q`).
+- **SQL dump tables** (File → SQL dump tables…): a mysqldump (MySQL, MariaDB), a pg_dump in
+  plain format or an SQLite `.dump`, read in one pass (about 1 GB a second): its tables with
+  their rows (INSERT rows or COPY lines) and sizes, in the dump's order or largest first. A
+  click goes to a table's CREATE TABLE. **Save this table as…** (or several checked tables as
+  one file) writes everything of those tables — DROP and CREATE, the rows, the keys and indexes,
+  the triggers, and for PostgreSQL the sequences they own and the foreign keys added after the
+  data — with the dump's opening and closing settings and what it defines before its tables
+  (a trigger's function, a column's type), so the file restores on its own; or opens it in a
+  tab. **Split into a file per table…** writes files that restore the whole dump in the order of
+  their names: `NAME.0-before-tables.sql`, `NAME.1-TABLE.sql` per table,
+  `NAME.2-after-tables.sql` (views, routines, events, foreign keys). Strings, quoted names,
+  comments, MySQL's `/*!…*/` and `DELIMITER`, PostgreSQL's dollar quotes and COPY blocks are
+  understood, so a `;` in a string ends nothing (`bigtext-cli sqldump`).
 - **Convert**: a JSON array to JSON Lines and back, and logfmt (`key=value`) logs to a table
   (File → Open log as table, `bigtext-cli convert`).
 - **Check JSON** (Search): strict checking of a JSON document or of JSON Lines line by line, with
