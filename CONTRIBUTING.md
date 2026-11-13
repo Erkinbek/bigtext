@@ -80,14 +80,29 @@ Key decisions (details in [PLAN.md](PLAN.md)):
 - Undo history is cleared after a save (the old mapping it refers to is released). Undoing
   back to the last saved state clears the modified marker.
 
+## Code style
+
+The code is formatted with rustfmt's default settings and has no clippy warnings. CI checks both
+on every push and pull request:
+
+```
+cargo fmt                                   # formats the code (cargo fmt --check only checks)
+cargo clippy --all-targets -- -D warnings   # any warning fails
+```
+
+The translation tables (`src/app/i18n_*.rs`) and the keyword lists
+(`src/view/highlight/words.rs`) are marked `#[rustfmt::skip]`, so they keep one entry per line.
+The code was formatted in one commit; `git config blame.ignoreRevsFile .git-blame-ignore-revs`
+makes `git blame` look past it (GitHub does this by itself).
+
 ## Tests and benchmarks
 
 ```
-cargo test --lib --bins              # 80 unit tests: index, piece table, rows, search, replace, save,
-                                     # encodings, diff, highlighting, session file, updates, CSV
+cargo test --lib --bins              # 371 unit tests: index, piece table, rows, search, replace, save,
+                                     # encodings, diff, highlighting, log formats, SQL dumps, CSV, ...
 cargo test --lib update -- --ignored # downloads and unpacks the latest release (needs the network)
 target/release/bigtext --self-test --report report.txt [--screenshot shots/x.png]
-                                     # 59 GUI checks with synthetic mouse/keyboard/clipboard input
+                                     # 261 GUI checks with synthetic mouse/keyboard/clipboard input
 scripts/gen-testfiles.ps1            # or scripts/gen-testfiles.sh; -SkipBig / --skip-big avoids the 10 GB file
 BIGTEXT_SSH_CONFIG=test/ssh_config BIGTEXT_SELFTEST_SSH=root@test-host:/var/log/app/big.log \
 target/release/bigtext --self-test ... # also reads a file in place over SSH and searches it on the server

@@ -59,11 +59,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+          components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@v2
         with:
           # Kept apart from the caches of the old Linux runner, whose build scripts need its glibc.
           key: ${{ matrix.container && format('{0}-{1}', matrix.target, matrix.container) || matrix.target }}
+
+      # The code is formatted with rustfmt's default settings and has no clippy warnings
+      # (CONTRIBUTING.md). Formatting is the same everywhere, so it is checked once; clippy runs
+      # on each tested platform, since each has code of its own.
+      - name: Formatting
+        if: runner.os == 'Linux'
+        run: cargo fmt --check
+
+      - name: Clippy
+        if: matrix.test
+        run: cargo clippy --all-targets --target ${{ matrix.target }} -- -D warnings
 
       - name: Unit tests
         if: matrix.test
