@@ -3,6 +3,29 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## Unreleased
+
+### At home on your system
+
+- **Light or dark like the system**: **View → Theme → Same as the system** is the default for a
+  new installation: BigText is light or dark as Windows, macOS or the Linux desktop is set, and
+  switches with Windows and macOS. A theme you chose before is kept.
+- **Updates the way it was installed**: a copy installed with Scoop, Homebrew, the AUR or the
+  `.deb` package is told the command that updates it (`scoop update bigtext`,
+  `brew upgrade bigtext`, …), so the package manager keeps knowing the version; before, BigText
+  replaced its own file behind the manager's back.
+- **"What's new" covers every version you skipped**: after an update from 0.7.x, the note also
+  shows what 0.8.0 brought.
+
+### Linux
+
+- **The AppImage updates itself**: **Update now** failed in the AppImage, which runs from a
+  read-only mount; it now replaces the AppImage file.
+- **AppImageUpdate**: the AppImage carries update information, and the release a `.zsync` file,
+  so AppImageUpdate and similar tools download only what changed.
+- **A description and screenshots for software centres**: the AppImage and the `.deb` carry
+  AppStream metadata.
+
 ## 0.8.0 — 2026-11-13
 
 ### A first start that explains itself
