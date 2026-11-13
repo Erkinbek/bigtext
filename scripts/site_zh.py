@@ -76,8 +76,9 @@ T = {
         ("也是顺手的代码编辑器", "为 Python、JavaScript、TypeScript、Java、C#、C/C++、Go、Rust、PHP、Shell 脚本、YAML 等"
          "提供 One Dark、Monokai、GitHub 或 Solarized 配色的语法高亮；类似 Sublime Text 的文件夹侧边栏；Ctrl+P 查找文件，"
          "Ctrl+R 列出文件中的函数和类，Ctrl+/ 注释行，括号自动闭合。只给屏幕上的行着色，所以超大文件依旧飞快。"),
-        ("服务器上的日志", "用你的密钥通过 SSH 打开 user@server:/var/log/app.log，或像 tail -F 一样跟踪它的最后几 MB。"
-         "https:// 和公开的 s3:// 文件会显示下载进度。"),
+        ("服务器上的日志", "用你的密钥通过 SSH 打开 user@server:/var/log/app.log，或打开 https:// 和公开的 s3:// 文件，无需下载："
+         "只传输屏幕上的部分，通过 SSH 时搜索在服务器上运行。也可以像 tail -F 一样跟踪日志的最后几 MB。"),
+        ("Web 服务器日志", "nginx 和 Apache 访问日志、AWS 负载均衡器和 IIS 日志以及 syslog 都能以表格打开，每个字段一列。Web 日志报告一次遍历即可给出热门 URL、每分钟的 5xx 错误和最慢的请求：1 GB 日志不到 2 秒。"),
     ],
     "gallery_h2": "截图",
     "gallery": {

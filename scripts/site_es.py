@@ -93,8 +93,10 @@ T = {
          "lateral de carpeta como en Sublime Text; Ctrl+P para encontrar un archivo, Ctrl+R para las funciones y clases "
          "de un archivo, Ctrl+/ para comentar líneas y corchetes que se cierran solos. Solo se colorean las filas en "
          "pantalla, así que un archivo enorme sigue igual de rápido."),
-        ("Logs en servidores", "Abre user@server:/var/log/app.log por SSH con tus claves, o sigue sus últimos megabytes "
-         "como tail -F. Los archivos https:// y s3:// públicos se descargan mostrando el progreso."),
+        ("Logs en servidores", "Abre user@server:/var/log/app.log por SSH con tus claves, o un archivo https:// o s3:// público, "
+         "sin descargarlo: solo llega lo que está en pantalla, y por SSH las búsquedas se ejecutan en el servidor. "
+         "O sigue los últimos megabytes de un log como tail -F."),
+        ("Logs de servidores web", "Los logs de acceso de nginx y Apache, los de los balanceadores de carga de AWS y de IIS, y syslog se abren como una tabla con una columna por campo. El informe del log web da en una pasada las URL principales, los errores 5xx por minuto y las solicitudes más lentas: un log de 1 GB en menos de 2 segundos."),
     ],
     "gallery_h2": "Capturas",
     "gallery": {

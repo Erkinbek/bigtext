@@ -88,8 +88,10 @@ T = {
          "Text'teki gibi bir klasör kenar çubuğu; dosya bulmak için Ctrl+P, bir dosyanın işlev ve sınıfları için Ctrl+R, "
          "satırları yorum yapmak için Ctrl+/ ve kendiliğinden kapanan parantezler. Yalnızca ekrandaki satırlar renklenir, "
          "böylece devasa bir dosya da aynı hızda kalır."),
-        ("Sunuculardaki loglar", "user@server:/var/log/app.log'u anahtarlarınızla SSH üzerinden açın ya da son "
-         "megabaytlarını tail -F gibi izleyin. https:// ve herkese açık s3:// dosyaları ilerleme göstergesiyle indirilir."),
+        ("Sunuculardaki loglar", "user@server:/var/log/app.log'u anahtarlarınızla SSH üzerinden ya da bir https:// veya herkese açık s3:// "
+         "dosyasını indirmeden açın: yalnızca ekrandaki kısım gelir, SSH üzerinden aramalar sunucuda çalışır. "
+         "Ya da bir logun son megabaytlarını tail -F gibi izleyin."),
+        ("Web sunucusu logları", "nginx ve Apache erişim logları, AWS yük dengeleyici ve IIS logları ile syslog, her alan için bir sütunu olan bir tablo olarak açılır. Web log raporu tek geçişte en çok istenen URL'leri, dakika başına 5xx hatalarını ve en yavaş istekleri verir: 1 GB'lık bir log 2 saniyeden kısa sürede."),
     ],
     "gallery_h2": "Ekran görüntüleri",
     "gallery": {

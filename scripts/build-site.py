@@ -29,7 +29,7 @@ DOCS = ROOT / "docs"
 BASE = "https://erkinbek.github.io/bigtext/"
 REPO = "https://github.com/Erkinbek/bigtext"
 RELEASES = REPO + "/releases/latest"
-VERSION = "0.8.1"
+VERSION = "0.9.0"
 # When the demo animation (docs/img/demo.mp4) was last recorded.
 DEMO_DATE = "2026-11-12"
 UPDATED = "2026-10-24"
@@ -121,7 +121,8 @@ T = {
             ("Find in files and scripts", "Search a whole folder with file:line results, and use bigtext-cli for count, head, tail, slice, replace, CSV tools and JSON output in scripts. Sessions, portable mode, and a second launch opens in the running window."),
             ("Comfortable for everyone", "High-contrast and colour-blind-safe themes, interface scaling, screen reader support, zen mode, wrapping at a column with a ruler, a clickable status bar, and settings remembered for each file."),
             ("Also a comfortable code editor", "Syntax colours for Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell scripts, YAML and more, in One Dark, Monokai, GitHub or Solarized; a folder side bar as in Sublime Text; Ctrl+P to find a file, Ctrl+R for the functions and classes of a file, Ctrl+/ to comment lines out, and brackets that close themselves. Only the rows on screen are coloured, so a huge file stays just as fast."),
-            ("Logs on servers", "Open user@server:/var/log/app.log over SSH with your keys, or follow its last megabytes like tail -F. https:// and public s3:// files are downloaded with progress."),
+            ("Logs on servers", "Open user@server:/var/log/app.log over SSH with your keys, or an https:// or public s3:// file, without downloading it: only what is on screen comes over, and over SSH searches run on the server. Or follow a log's last megabytes like tail -F."),
+            ("Web server logs", "nginx and Apache access logs, AWS load balancer and IIS logs, and syslog open as a table with a column per field. The web log report gives the top URLs, the 5xx errors per minute and the slowest requests from one pass: a 1 GB log in under 2 seconds."),
         ],
         "gallery_h2": "Screenshots",
         "gallery": {
@@ -284,7 +285,8 @@ T = {
             ("Поиск в файлах и скрипты", "Поиск по всей папке с результатами file:line и bigtext-cli для count, head, tail, slice, replace, работы с CSV и вывода JSON в скриптах. Сеансы, портативный режим, а повторный запуск открывает файл в уже запущенном окне."),
             ("Удобно каждому", "Высококонтрастные темы и темы для людей с нарушением цветового зрения, масштаб интерфейса, поддержка экранного диктора, режим дзен, перенос по столбцу с линейкой, кликабельная строка состояния и настройки, запоминаемые для каждого файла."),
             ("И удобный редактор кода", "Подсветка Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell-скриптов, YAML и других языков в цветах One Dark, Monokai, GitHub или Solarized; боковая панель папки, как в Sublime Text; Ctrl+P для поиска файла, Ctrl+R для функций и классов файла, Ctrl+/ для комментирования строк и автозакрытие скобок. Раскрашиваются только строки на экране, поэтому огромный файл остаётся таким же быстрым."),
-            ("Логи на серверах", "Открывайте user@server:/var/log/app.log по SSH с вашими ключами или следите за его последними мегабайтами, как tail -F. Файлы по https:// и публичные s3:// скачиваются с индикатором хода."),
+            ("Логи на серверах", "Открывайте user@server:/var/log/app.log по SSH с вашими ключами или файл по https:// и публичный s3://, не скачивая его: передаётся только то, что на экране, а по SSH поиск выполняется на сервере. Или следите за последними мегабайтами лога, как tail -F."),
+            ("Логи веб-серверов", "Логи доступа nginx и Apache, логи балансировщиков AWS и IIS, а также syslog открываются таблицей со столбцом на каждое поле. Отчёт по веб-логу за один проход даёт топ URL, ошибки 5xx по минутам и самые медленные запросы: лог в 1 ГБ меньше чем за 2 секунды."),
         ],
         "gallery_h2": "Скриншоты",
         "gallery": {
@@ -448,7 +450,8 @@ T = {
             ("Fayllar ichida qidiruv va skriptlar", "Butun papka bo'ylab file:line natijali qidiruv va skriptlar uchun bigtext-cli: count, head, tail, slice, replace, CSV vositalari va JSON chiqishi. Seanslar, portativ rejim, ikkinchi ishga tushirish esa faylni ochiq oynada ochadi."),
             ("Hamma uchun qulay", "Yuqori kontrastli va ranglarni ajratishda qiynaladiganlar uchun mavzular, interfeys masshtabi, ekran o'quvchi qo'llab-quvvatlashi, zen rejimi, belgilangan ustunda o'rash va chizg'ich, bosiladigan holat qatori va har bir fayl uchun eslab qolinadigan sozlamalar."),
             ("Qulay kod muharriri ham", "Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell skriptlar, YAML va boshqa tillar One Dark, Monokai, GitHub yoki Solarized ranglarida; Sublime Text'dagidek papka paneli; faylni topish uchun Ctrl+P, fayldagi funksiya va klasslar uchun Ctrl+R, satrlarni izohga aylantirish uchun Ctrl+/ va o'zi yopiladigan qavslar. Faqat ekrandagi satrlar bo'yaladi, shuning uchun ulkan fayl ham xuddi shunday tez qoladi."),
-            ("Serverdagi loglar", "user@server:/var/log/app.log faylini kalitlaringiz bilan SSH orqali oching yoki uning oxirgi megabaytlarini tail -F kabi kuzatib boring. https:// va ochiq s3:// fayllar yuklanish jarayoni ko'rsatilgan holda yuklab olinadi."),
+            ("Serverdagi loglar", "user@server:/var/log/app.log faylini kalitlaringiz bilan SSH orqali yoki https:// va ochiq s3:// faylni yuklab olmasdan oching: faqat ekrandagi qism keladi, SSH orqali esa qidiruv serverning o'zida bajariladi. Yoki logning oxirgi megabaytlarini tail -F kabi kuzatib boring."),
+            ("Veb-server loglari", "nginx va Apache kirish loglari, AWS load balancer va IIS loglari hamda syslog har bir maydon alohida ustunda bo'lgan jadval bo'lib ochiladi. Veb-log hisoboti bir o'tishda eng ko'p so'ralgan URL'lar, daqiqalik 5xx xatolari va eng sekin so'rovlarni beradi: 1 GB log 2 soniyadan kamroq vaqtda."),
         ],
         "gallery_h2": "Skrinshotlar",
         "gallery": {

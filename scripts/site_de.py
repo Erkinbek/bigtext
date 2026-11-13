@@ -97,9 +97,10 @@ T = {
          "wie in Sublime Text; Strg+P findet eine Datei, Strg+R die Funktionen und Klassen einer Datei, Strg+/ "
          "kommentiert Zeilen aus, und Klammern schließen sich selbst. Eingefärbt werden nur die Zeilen auf dem "
          "Bildschirm, darum bleibt eine riesige Datei genauso schnell."),
-        ("Logs auf Servern", "user@server:/var/log/app.log über SSH mit Ihren Schlüsseln öffnen oder seine letzten "
-         "Megabytes wie tail -F verfolgen. Dateien unter https:// und öffentlichem s3:// werden mit Fortschrittsanzeige "
-         "heruntergeladen."),
+        ("Logs auf Servern", "user@server:/var/log/app.log über SSH mit Ihren Schlüsseln öffnen, oder eine Datei unter https:// oder "
+         "öffentlichem s3://, ohne sie herunterzuladen: Nur das Angezeigte wird übertragen, und über SSH laufen Suchen "
+         "auf dem Server. Oder die letzten Megabytes eines Logs wie tail -F verfolgen."),
+        ("Webserver-Logs", "Zugriffslogs von nginx und Apache, Logs von AWS Load Balancern und IIS sowie syslog öffnen sich als Tabelle mit einer Spalte je Feld. Der Web-Log-Bericht liefert in einem Durchgang die Top-URLs, die 5xx-Fehler pro Minute und die langsamsten Anfragen: ein 1-GB-Log in unter 2 Sekunden."),
     ],
     "gallery_h2": "Screenshots",
     "gallery": {

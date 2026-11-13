@@ -3,7 +3,7 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
-## Unreleased
+## 0.9.0 — 2026-11-13
 
 ### Web server logs, summed up
 
