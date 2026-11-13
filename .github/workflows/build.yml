@@ -265,6 +265,44 @@ jobs:
           gh release create "$GITHUB_REF_NAME" out/* --repo "$GITHUB_REPOSITORY" \
             --title "BigText $GITHUB_REF_NAME" --notes "$notes" --generate-notes
 
+  # Where each release file came from: a signed build provenance attestation ties its SHA-256 to
+  # this workflow run, the tag and the commit (`gh attestation verify FILE --repo
+  # Erkinbek/bigtext`), and a CycloneDX SBOM lists the Rust libraries (from Cargo.lock). A job of
+  # its own, after the release: if it fails, the release, crates.io and winget still go out.
+  provenance:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download the release files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir out
+
+      - name: SBOM
+        uses: anchore/sbom-action@v0.24.3
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: out/bigtext-sbom.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-path: out/*
+
+      - name: Add the SBOM to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" out/bigtext-sbom.cdx.json --repo "$GITHUB_REPOSITORY"
+
   # Publishes the crate with crates.io trusted publishing (no stored token). Enabled once
   # the repository variable CRATES_IO_PUBLISH is "true"; see README → Releasing.
   crates-io:
