@@ -27,6 +27,10 @@ pub struct ResultsData {
     pub done: bool,
     pub end: Option<SearchEnd>,
     pub elapsed: Option<Duration>,
+    /// grep ran on the SSH server (no read speed to show).
+    pub server: bool,
+    /// What went wrong on the server.
+    pub error: Option<String>,
 }
 
 pub struct SearchResults {
@@ -183,8 +187,45 @@ impl BigTextApp {
         };
         d.results = Some(results);
         self.search.show_results = true;
-        let snap = d.buf.snapshot();
         let waker = self.waker.clone();
+        // A file read in place over SSH is searched where it is.
+        if let Some(file) = d.remote_ssh.clone().filter(|_| bigtext::remote::server_can_search(&self.search.query, &d.buf.codec)) {
+            let (q, whole) = (self.search.query.clone(), range == (0..d.buf.len()));
+            data.lock().unwrap().server = true;
+            jobs::spawn("find-all-server", move || {
+                use bigtext::remote::{grep_script, run_grep, ssh_script, Pick};
+                let started = Instant::now();
+                let part = (!whole).then_some((range.start, range.end));
+                let cmd = ssh_script(&file, &grep_script(&file.path, &q, part, Pick::All));
+                let (mut batch, mut count, mut capped) = (Vec::with_capacity(4096), 0usize, false);
+                let mut throttle = Throttle::new(Duration::from_millis(50));
+                let r = run_grep(cmd, range.start, &cancel, |s, e| {
+                    if count >= RESULT_CAP {
+                        capped = true;
+                        return false;
+                    }
+                    batch.push((s, e));
+                    count += 1;
+                    progress.set_done(e - range.start);
+                    if batch.len() >= 4096 || throttle.ready() {
+                        data.lock().unwrap().matches.append(&mut batch);
+                        waker();
+                    }
+                    true
+                });
+                let mut g = data.lock().unwrap();
+                g.matches.append(&mut batch);
+                g.capped = capped;
+                g.done = true;
+                g.end = Some(if cancel.is_cancelled() { SearchEnd::Cancelled } else { SearchEnd::Completed });
+                g.error = r.err();
+                g.elapsed = Some(started.elapsed());
+                drop(g);
+                waker();
+            });
+            return;
+        }
+        let snap = d.buf.snapshot();
         jobs::spawn("find-all", move || {
             let started = Instant::now();
             let mut batch: Vec<(u64, u64)> = Vec::with_capacity(4096);
@@ -281,6 +322,50 @@ impl BigTextApp {
         let tx = self.tx.clone();
         let waker = self.waker.clone();
         let sel_is_empty = s == e;
+        // Over SSH: grep on the server finds the next match from the caret.
+        if let Some(file) = d.remote_ssh.clone().filter(|_| bigtext::remote::server_can_search(&self.search.query, &snap.codec)) {
+            let q = self.search.query.clone();
+            jobs::spawn("find-next-server", move || {
+                use bigtext::remote::{grep_script, run_grep, ssh_script, Pick};
+                let len = snap.len();
+                let mut error = None;
+                let mut one = |range: (u64, u64), pick: Pick| {
+                    let mut f = None;
+                    if range.1 > range.0 {
+                        let cmd = ssh_script(&file, &grep_script(&file.path, &q, Some(range), pick));
+                        if let Err(e) = run_grep(cmd, range.0, &cancel, |a, b| {
+                            f = Some((a, b));
+                            pick == Pick::Last
+                        }) {
+                            error = Some(e);
+                        }
+                    }
+                    f
+                };
+                let mut wrapped = false;
+                let found = if forward {
+                    one((from, len), Pick::First).or_else(|| {
+                        wrapped = true;
+                        one((0, from), Pick::First)
+                    })
+                } else {
+                    one((0, from), Pick::Last).or_else(|| {
+                        wrapped = true;
+                        one((from, len), Pick::Last)
+                    })
+                };
+                if cancel.is_cancelled() {
+                    return;
+                }
+                if let Some(e) = error.filter(|_| found.is_none()) {
+                    let _ = tx.send(Msg::Error(e));
+                }
+                let _ = tx.send(Msg::Found { doc: id, version, found, wrapped });
+                waker();
+            });
+            self.search.status = tr("Searching on the server…").into();
+            return;
+        }
         jobs::spawn("find-next", move || {
             let len = snap.len();
             let mut wrapped = false;
@@ -496,9 +581,9 @@ impl BigTextApp {
         let font = FontId::monospace(self.settings.font_size.min(14.0));
         let Some(d) = self.docs.get_mut(self.active) else { return };
         let Some(r) = &d.results else { return };
-        let (n, capped, done, elapsed, end) = {
+        let (n, capped, done, elapsed, end, server, error) = {
             let g = r.data.lock().unwrap();
-            (g.matches.len(), g.capped, g.done, g.elapsed, g.end)
+            (g.matches.len(), g.capped, g.done, g.elapsed, g.end, g.server, g.error.clone())
         };
         let mut close = false;
         let mut jump = None;
@@ -510,9 +595,19 @@ impl BigTextApp {
                 s.push_str(&trf(" (capped at {n} — more exist)", &[("n", &super::filter_panel::fmt_count(RESULT_CAP as u64))]));
             }
             ui.strong(s);
-            if !done {
+            if !done && server {
+                // grep on the server says nothing until it finds something.
+                ui.add(egui::Spinner::new());
+                ui.label(tr("searching on the server"));
+                ui.ctx().request_repaint_after(Duration::from_millis(100));
+            } else if !done {
                 ui.add(egui::ProgressBar::new(r.progress.fraction()).desired_width(160.0).text(format!("{} {:.0}%", tr("searching"), r.progress.fraction() * 100.0)));
                 ui.ctx().request_repaint_after(Duration::from_millis(50));
+            } else if let Some(e) = &error {
+                ui.colored_label(ui.visuals().error_fg_color, e).on_hover_text(e);
+            } else if let (Some(t), true) = (elapsed, server) {
+                let note = if end == Some(SearchEnd::Cancelled) { tr(" (cancelled)") } else { "" };
+                ui.label(format!("{} {:.2}s{note}", tr("on the server in"), t.as_secs_f64()));
             } else if let Some(t) = elapsed {
                 let mb = (r.range.end - r.range.start) as f64 / (1024.0 * 1024.0);
                 let note = if end == Some(SearchEnd::Cancelled) { tr(" (cancelled)") } else { "" };

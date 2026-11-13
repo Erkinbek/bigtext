@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bigtext::jobs::{human_bytes, CancelToken, Progress};
+use bigtext::remote::{quote, ssh_base, SshFile};
 
 use super::i18n::{tr, trf};
 use super::tasks::TaskOutcome;
@@ -89,24 +90,10 @@ pub fn parse(addr: &str) -> Option<Source> {
     Some(Source::Ssh { target: target.into(), port: None, path: path.into() })
 }
 
-/// `s` quoted for the remote POSIX shell; a leading `~/` stays outside the quotes to expand.
-fn quote(s: &str) -> String {
-    let (home, rest) = match s.strip_prefix("~/") {
-        Some(r) => ("~/", r),
-        None => ("", s),
-    };
-    format!("{home}'{}'", rest.replace('\'', r"'\''"))
-}
-
 /// The `ssh` command that sends the file: all of it, or its last `tail` bytes, then (when
 /// `follow`) whatever is added to it.
 pub fn ssh_command(target: &str, port: Option<u16>, path: &str, tail: Option<u64>, follow: bool) -> Command {
-    let mut c = Command::new("ssh");
-    // No password prompt (there is no terminal to type it in): keys and agents only.
-    c.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=30"]);
-    if let Some(p) = port {
-        c.arg("-p").arg(p.to_string());
-    }
+    let mut c = ssh_base(target, port);
     let q = quote(path);
     let remote = match (tail, follow) {
         (None, false) => format!("cat -- {q}"),
@@ -114,26 +101,15 @@ pub fn ssh_command(target: &str, port: Option<u16>, path: &str, tail: Option<u64
         (Some(n), true) => format!("tail -c {n} -F -- {q}"),
         (Some(n), false) => format!("tail -c {n} -- {q}"),
     };
-    c.arg(target).arg("--").arg(remote);
+    c.arg(remote);
     c.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        // A console program started from a window would open a console of its own.
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        c.creation_flags(CREATE_NO_WINDOW);
-    }
     c
 }
 
-/// What went wrong with `ssh`, in words a user can act on.
+/// What went wrong with `ssh`, with the hint about signing in in the interface's language.
 fn ssh_error(stderr: &str, code: Option<i32>) -> String {
-    let s = stderr.trim();
-    let mut msg = if s.is_empty() { format!("ssh exited with code {}", code.unwrap_or(-1)) } else { s.lines().last().unwrap_or(s).to_string() };
-    if s.contains("Permission denied") || s.contains("Host key verification failed") {
-        msg = format!("{msg}\n{}", tr("BigText signs in with your SSH keys or agent (and known hosts); password sign-in is not supported."));
-    }
-    msg
+    const HINT: &str = "BigText signs in with your SSH keys or agent (and known hosts); password sign-in is not supported.";
+    bigtext::remote::ssh_error(stderr, code).replace(HINT, tr(HINT))
 }
 
 fn spawn_ssh(mut c: Command) -> Result<Child, String> {
@@ -233,12 +209,32 @@ impl Drop for Follow {
     }
 }
 
+/// How a remote file opens.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum How {
+    /// Read in parts as they are needed: what is shown, what a search reaches (a web server
+    /// that sends only whole files gets a download instead).
+    InPlace,
+    /// Downloaded whole into a temporary copy.
+    Whole,
+    /// Its last MB, then what is added (SSH).
+    Tail(u32),
+}
+
+/// The choice in the dialog.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Choice {
+    InPlace,
+    Whole,
+    Tail,
+}
+
 /// The Open remote dialog and the followed files.
 pub struct RemoteUi {
     pub open: bool,
     pub addr: String,
-    /// Read the last [`Self::tail_mb`] MB and follow (SSH only).
-    pub tail: bool,
+    pub choice: Choice,
+    /// Megabytes of the end that [`Choice::Tail`] reads.
     pub tail_mb: u32,
     pub error: Option<String>,
     focus: bool,
@@ -247,7 +243,7 @@ pub struct RemoteUi {
 
 impl Default for RemoteUi {
     fn default() -> Self {
-        RemoteUi { open: false, addr: String::new(), tail: false, tail_mb: 1, error: None, focus: false, follows: Vec::new() }
+        RemoteUi { open: false, addr: String::new(), choice: Choice::InPlace, tail_mb: 1, error: None, focus: false, follows: Vec::new() }
     }
 }
 
@@ -258,6 +254,54 @@ pub struct RemoteDone {
     pub bytes: u64,
 }
 
+/// A remote file ready to be read in place.
+pub struct RemoteOpened {
+    pub source: Arc<bigtext::file::Source>,
+    pub detected: bigtext::encoding::Detected,
+    /// Line counts of the whole 64 KB blocks of its first megabyte (an index prefix: line
+    /// numbers further on are estimated from its average line length).
+    pub prefix: Vec<u64>,
+    pub ssh: Option<SshFile>,
+}
+
+/// Why a remote file could not be read in place.
+#[derive(Debug)]
+pub enum RemoteFail {
+    /// The web server sends only whole files.
+    NoRanges,
+    Error(String),
+}
+
+/// Connects to `src`, learns its size and reads its first megabyte (for the encoding and the
+/// length of its lines); nothing else is read until it is needed.
+fn open_parts(src: &Source) -> Result<Box<RemoteOpened>, RemoteFail> {
+    use bigtext::remote::{HttpOpen, HttpRange, SshRange};
+    let (reader, len, ssh): (Box<dyn bigtext::file::RangeRead>, u64, Option<SshFile>) = match src {
+        Source::Http { url } => match HttpRange::open(url).map_err(RemoteFail::Error)? {
+            HttpOpen::Ranges(r, len) => (Box::new(r), len, None),
+            HttpOpen::NoRanges => return Err(RemoteFail::NoRanges),
+        },
+        Source::Ssh { target, port, path } => {
+            let file = SshFile { target: target.clone(), port: *port, path: path.clone() };
+            let (r, len) = SshRange::open(&file).map_err(|e| RemoteFail::Error(e.replace("ssh was not found. Install the OpenSSH client (on Windows: Settings → System → Optional features).", tr("ssh was not found. Install the OpenSSH client (on Windows: Settings → System → Optional features)."))))?;
+            (Box::new(r), len, Some(file))
+        }
+    };
+    let source = Arc::new(bigtext::file::Source::remote(reader, len, None));
+    let n = len.min(1 << 20);
+    let sample = source.read(0..n).map_err(|e| RemoteFail::Error(e.to_string()))?;
+    let detected = bigtext::encoding::detect(&sample, n == len);
+    let block = bigtext::index::BLOCK;
+    let blocks = if n == len { len.div_ceil(block) } else { n / block };
+    let mut prefix = vec![0u64];
+    for k in 0..blocks {
+        let (s, e) = (k * block, ((k + 1) * block).min(len));
+        let before = *prefix.last().unwrap_or(&0);
+        prefix.push(before + detected.codec.count_nl(&sample[s as usize..e as usize], s));
+    }
+    Ok(Box::new(RemoteOpened { source, detected, prefix, ssh }))
+}
+
 impl BigTextApp {
     /// File → Open remote file or URL…
     pub(crate) fn open_remote_dialog(&mut self) {
@@ -266,13 +310,17 @@ impl BigTextApp {
         self.remote.error = None;
     }
 
-    /// Opens `addr`: downloads it whole, or (SSH, `tail_mb`) follows its last megabytes.
-    pub(crate) fn open_remote(&mut self, addr: &str, tail_mb: Option<u32>) -> Result<(), String> {
+    /// Opens `addr` as `how` says.
+    pub(crate) fn open_remote(&mut self, addr: &str, how: How) -> Result<(), String> {
         let src = parse(addr).ok_or_else(|| tr("Not an address BigText can open.").to_string())?;
         let title = src.title();
+        if how == How::InPlace {
+            self.open_in_place(src);
+            return Ok(());
+        }
         let (path, mut file) = temp_file(&src)?;
-        match (&src, tail_mb) {
-            (Source::Ssh { target, port, path: rpath }, Some(mb)) => {
+        match (&src, how) {
+            (Source::Ssh { target, port, path: rpath }, How::Tail(mb)) => {
                 let cmd = ssh_command(target, *port, rpath, Some(mb.max(1) as u64 * 1024 * 1024), true);
                 self.follow_with(cmd, title, path, file)?;
             }
@@ -294,6 +342,78 @@ impl BigTextApp {
             }
         }
         Ok(())
+    }
+
+    /// A tab for `src` read in place; it fills when the connection is made and the first
+    /// megabyte is read.
+    fn open_in_place(&mut self, src: Source) {
+        if let Some(i) = self.docs.iter().position(|d| d.path.is_none() && d.temporary && d.title == src.title() && d.buf.source.is_remote()) {
+            self.active = i;
+            return;
+        }
+        // Replace a pristine untitled tab.
+        if self.docs.len() == 1 && self.docs[0].path.is_none() && !self.docs[0].is_modified() && self.docs[0].buf.is_empty() && !self.docs[0].temporary {
+            self.docs.clear();
+        }
+        let id = self.alloc_id();
+        let mut d = super::document::Document::loading(id, PathBuf::new());
+        d.path = None;
+        d.title = src.title();
+        d.temporary = true;
+        d.read_only = true;
+        d.file_read_only = true;
+        self.docs.push(d);
+        self.active = self.docs.len() - 1;
+        let (tx, waker) = (self.tx.clone(), self.waker.clone());
+        bigtext::jobs::spawn("remote-open", move || {
+            let result = open_parts(&src);
+            let _ = tx.send(super::Msg::RemoteOpened { doc: id, src, result });
+            waker();
+        });
+    }
+
+    /// The remote file of tab `doc` is open to be read in place, or falls back to a download,
+    /// or failed.
+    pub(super) fn remote_opened(&mut self, doc: u64, src: Source, result: Result<Box<RemoteOpened>, RemoteFail>) {
+        let waker = self.waker.clone();
+        match result {
+            Ok(o) => {
+                let Some(d) = self.doc_mut(doc) else { return };
+                let ssh = o.ssh.is_some();
+                d.install(o.source, o.detected, Some(o.prefix), waker);
+                d.remote_ssh = o.ssh;
+                d.banner = Some(super::document::Banner::Info(
+                    if ssh {
+                        tr("Read in place over SSH: only what is shown is transferred, and searches run on the server. Line numbers past the start are estimates (~). Read-only.")
+                    } else {
+                        tr("Read in place from the web: only what is shown is downloaded, and a search reads the file as it goes. Line numbers past the start are estimates (~). Read-only.")
+                    }
+                    .into(),
+                ));
+            }
+            Err(fail) => {
+                if self.doc_mut(doc).is_some() {
+                    self.close_tab(doc, true);
+                } else {
+                    // The tab was closed while connecting.
+                    return;
+                }
+                let name = src.title();
+                match fail {
+                    RemoteFail::NoRanges => {
+                        self.notify(trf("{name}: this server sends only whole files, so it is downloaded.", &[("name", &name)]), None);
+                        let addr = match &src {
+                            Source::Http { url } => url.clone(),
+                            Source::Ssh { .. } => return,
+                        };
+                        if let Err(e) = self.open_remote(&addr, How::Whole) {
+                            self.error = Some(e);
+                        }
+                    }
+                    RemoteFail::Error(e) => self.error = Some(format!("{}: {e}", trf("Could not open {name}", &[("name", &name)]))),
+                }
+            }
+        }
     }
 
     /// Runs `cmd` (an `ssh … tail -F`), opens `path` followed and read-only, and keeps adding
@@ -398,14 +518,18 @@ impl BigTextApp {
             }
             ui.weak(tr("user@server:/var/log/app.log, ssh://user@server:2222/path, https://example.com/big.log or s3://bucket/key (public)"));
             ui.add_space(4.0);
+            ui.radio_value(&mut r.choice, Choice::InPlace, if ssh { tr("Read only what is shown; searches run on the server") } else { tr("Read only what is shown, without downloading it") });
+            ui.radio_value(&mut r.choice, Choice::Whole, tr("The whole file"));
             ui.add_enabled_ui(ssh, |ui| {
-                ui.radio_value(&mut r.tail, false, tr("The whole file"));
                 ui.horizontal(|ui| {
-                    ui.radio_value(&mut r.tail, true, tr("Its last"));
+                    ui.radio_value(&mut r.choice, Choice::Tail, tr("Its last"));
                     ui.add(egui::DragValue::new(&mut r.tail_mb).range(1..=4096).suffix(" MB"));
                     ui.label(tr("then follow what is added (like tail -F)"));
                 });
             });
+            if !ssh && r.choice == Choice::Tail {
+                r.choice = Choice::InPlace;
+            }
             if ssh {
                 ui.weak(tr("SSH uses your keys or agent, as the ssh command does."));
             }
@@ -422,8 +546,13 @@ impl BigTextApp {
             self.remote.open = false;
         } else if go && !self.remote.addr.trim().is_empty() {
             let addr = self.remote.addr.clone();
-            let tail = (ssh && self.remote.tail).then_some(self.remote.tail_mb);
-            match self.open_remote(&addr, tail) {
+            let how = match self.remote.choice {
+                Choice::InPlace => How::InPlace,
+                Choice::Whole => How::Whole,
+                Choice::Tail if ssh => How::Tail(self.remote.tail_mb),
+                Choice::Tail => How::InPlace,
+            };
+            match self.open_remote(&addr, how) {
                 Ok(()) => self.remote.open = false,
                 Err(e) => self.remote.error = Some(e),
             }

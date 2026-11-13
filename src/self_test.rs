@@ -3460,7 +3460,7 @@ impl SelfTest {
                         let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 18\r\nConnection: close\r\n\r\nserved 1\nserved 2\n");
                     }
                 });
-                if let Err(e) = app.open_remote(&format!("http://127.0.0.1:{port}/logs/served.log"), None) {
+                if let Err(e) = app.open_remote(&format!("http://127.0.0.1:{port}/logs/served.log"), crate::app::remote::How::Whole) {
                     return Step::Fail(e);
                 }
                 return Step::Wait;
@@ -3474,6 +3474,162 @@ impl SelfTest {
             }
             if c.waited() > Duration::from_secs(8) {
                 return Step::Fail(format!("doc {:?}", app.active_doc().map(|d| (d.title.clone(), d.is_ready()))));
+            }
+            Step::Wait
+        }));
+        s("remote in place: a 24 MB web file opens with its first megabyte read, and its end with a block more", Box::new({
+            // The file is written and served on a thread (24 MB would hold up a frame).
+            let mut served: Option<std::sync::mpsc::Receiver<Result<String, String>>> = None;
+            move |app, c| {
+            const TOTAL: u64 = 24 << 20;
+            if c.first() {
+                // Lines of 64 bytes: line n starts at n * 64.
+                let path = c.file("remote-in-place.log");
+                let (tx, rx) = std::sync::mpsc::channel();
+                served = Some(rx);
+                std::thread::spawn(move || {
+                    let r = (|| -> Result<String, String> {
+                        if std::fs::metadata(&path).map(|m| m.len()).ok() != Some(TOTAL) {
+                            let mut w = std::io::BufWriter::new(std::fs::File::create(&path).map_err(|e| e.to_string())?);
+                            for n in 0..TOTAL / 64 {
+                                writeln!(w, "{:<63}", format!("line {n:07} of the remote file")).map_err(|e| e.to_string())?;
+                            }
+                            w.flush().map_err(|e| e.to_string())?;
+                        }
+                        bigtext::remote::serve_for_test(path, true).map_err(|e| e.to_string())
+                    })();
+                    let _ = tx.send(r);
+                });
+                return Step::Wait;
+            }
+            if let Some(rx) = &served {
+                let url = match rx.try_recv() {
+                    Ok(Ok(u)) => u,
+                    Ok(Err(e)) => return Step::Fail(e),
+                    Err(_) => return Step::Wait,
+                };
+                served = None;
+                if let Err(e) = app.open_remote(&url, crate::app::remote::How::InPlace) {
+                    return Step::Fail(e);
+                }
+                return Step::Wait;
+            }
+            let waited = c.waited();
+            let Some(d) = app.active_doc() else { return Step::Wait };
+            if !d.is_ready() || !d.buf.source.is_remote() {
+                return if waited > Duration::from_secs(10) { Step::Fail(format!("doc {:?} ready {} remote {}", d.title, d.is_ready(), d.buf.source.is_remote())) } else { Step::Wait };
+            }
+            if c.mark == 0 {
+                // Opened with its first megabyte read (the encoding, the length of its lines).
+                let read = d.buf.source.bytes_read();
+                if read > 1 << 20 || !d.read_only || d.title != "remote-in-place.log" || d.buf.index.is_done() || d.banner.is_none() || d.buf.len() != TOTAL {
+                    return Step::Fail(format!("read {read}, read-only {}, title {:?}, indexed {}, len {}", d.read_only, d.title, d.buf.index.is_done(), d.buf.len()));
+                }
+                let len = d.buf.len();
+                d.set_caret(len, false);
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let len = d.buf.len();
+            let Some(end) = d.buf.read(len - 64..len).map(|b| b.into_owned()) else {
+                return if waited > Duration::from_secs(10) { Step::Fail("the end never came".into()) } else { Step::Wait };
+            };
+            let read = d.buf.source.bytes_read();
+            let last = format!("{:<63}\n", format!("line {:07} of the remote file", TOTAL / 64 - 1));
+            c.mark = 0;
+            check(end == last.as_bytes() && read <= (1 << 20) + 2 * bigtext::file::REMOTE_BLOCK, format!("{read} bytes read of {TOTAL}; end {:?}", String::from_utf8_lossy(&end)))
+            }
+        }));
+        s("screenshot: a web file read in place", shot_step("selftest-remote.png"));
+        s("remote in place: Find next reads the web file as it goes and finds a line in its middle", Box::new(|app, c| {
+            const LINE: u64 = 196_608;
+            if c.first() {
+                if !app.active_doc().is_some_and(|d| d.buf.source.is_remote()) {
+                    return Step::Fail("no remote document".into());
+                }
+                app.search.query.pattern = format!("line {LINE:07} of");
+                app.search.query.regex = false;
+                doc(app).set_caret(0, false);
+                app.find_next(true);
+                return Step::Wait;
+            }
+            let (s, e) = doc(app).selection();
+            if s == LINE * 64 && e == s + 15 {
+                let read = doc(app).buf.source.bytes_read();
+                let id = doc(app).id;
+                app.test_close(id);
+                return check(read >= LINE * 64, format!("found at {s}, {read} bytes read"));
+            }
+            if c.waited() > Duration::from_secs(20) {
+                return Step::Fail(format!("selection {s}..{e}, status {:?}", app.search.status));
+            }
+            Step::Wait
+        }));
+        s("remote in place over SSH: opens with its first megabyte, and Find All runs on the server (needs BIGTEXT_SELFTEST_SSH)", Box::new(|app, c| {
+            // An address like root@test-host:/var/log/app/big.log, with keys and known hosts set up.
+            let Ok(addr) = std::env::var("BIGTEXT_SELFTEST_SSH") else { return Step::Skip("BIGTEXT_SELFTEST_SSH is not set".into()) };
+            if c.first() {
+                if let Err(e) = app.open_remote(&addr, crate::app::remote::How::InPlace) {
+                    return Step::Fail(e);
+                }
+                return Step::Wait;
+            }
+            let waited = c.waited();
+            if let Some(e) = app.test_error() {
+                return Step::Fail(e);
+            }
+            let Some(d) = app.active_doc() else { return Step::Wait };
+            if !d.is_ready() || d.remote_ssh.is_none() {
+                return if waited > Duration::from_secs(20) { Step::Fail(format!("doc {:?} ready {}", d.title, d.is_ready())) } else { Step::Wait };
+            }
+            if c.mark == 0 {
+                let read = d.buf.source.bytes_read();
+                if read > 1 << 20 {
+                    return Step::Fail(format!("{read} bytes read at open"));
+                }
+                app.search.query.pattern = "ERROR".into();
+                app.search.query.regex = false;
+                app.find_all();
+                c.mark = 1;
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).results.as_ref() else { return Step::Fail("no results".into()) };
+            let (done, server, n, error) = {
+                let g = r.data.lock().unwrap();
+                (g.done, g.server, g.matches.len(), g.error.clone())
+            };
+            if !done {
+                return if waited > Duration::from_secs(60) { Step::Fail("the search never finished".into()) } else { Step::Wait };
+            }
+            let read = doc(app).buf.source.bytes_read();
+            let id = doc(app).id;
+            app.test_close(id);
+            c.mark = 0;
+            check(server && error.is_none() && n > 0 && read < 4 << 20, format!("{n} matches on the server, error {error:?}, {read} bytes read"))
+        }));
+        s("remote in place: a web server that sends only whole files gets a download", Box::new(|app, c| {
+            if c.first() {
+                let path = c.file("whole-only.log");
+                if std::fs::write(&path, "only whole\nfiles here\n").is_err() {
+                    return Step::Fail("could not write the file".into());
+                }
+                let url = match bigtext::remote::serve_for_test(path, false) {
+                    Ok(u) => u,
+                    Err(e) => return Step::Skip(format!("no local server: {e}")),
+                };
+                if let Err(e) = app.open_remote(&url, crate::app::remote::How::InPlace) {
+                    return Step::Fail(e);
+                }
+                return Step::Wait;
+            }
+            let done = app.active_doc().is_some_and(|d| d.is_ready() && d.title == "whole-only.log" && !d.buf.source.is_remote() && d.temporary);
+            if done && text(app) == "only whole\nfiles here\n" {
+                let id = doc(app).id;
+                app.test_close(id);
+                return Step::Next;
+            }
+            if c.waited() > Duration::from_secs(10) {
+                return Step::Fail(format!("doc {:?}", app.active_doc().map(|d| (d.title.clone(), d.is_ready(), d.buf.source.is_remote()))));
             }
             Step::Wait
         }));

@@ -23,8 +23,10 @@ use crate::jobs::{self, Waker};
 
 /// Block size of the chunked-read cache.
 pub const CHUNK_BLOCK: u64 = 64 * 1024;
-/// Maximum number of cached blocks (64 MB).
-const CACHE_BLOCKS: usize = 1024;
+/// Block size for a remote file: every request costs a round trip, so fewer, larger ones.
+pub const REMOTE_BLOCK: u64 = 256 * 1024;
+/// Bytes the block cache keeps (64 MB).
+const CACHE_BYTES: u64 = 64 * 1024 * 1024;
 /// Reads larger than this bypass the block cache (workers streaming through the file).
 const DIRECT_READ_MIN: u64 = 1024 * 1024;
 /// Mapped views start every `VIEW_STRIDE` bytes and extend `VIEW_OVERLAP` beyond the next start,
@@ -145,6 +147,19 @@ enum Backing {
     Chunked(Chunked),
 }
 
+/// Positional reads of a file's bytes: a local file, or a remote one fetched in parts (HTTP
+/// ranges, an SSH session).
+pub trait RangeRead: Send + Sync {
+    /// Fills `buf` with the bytes from `offset`.
+    fn read_at(&self, offset: u64, buf: &mut [u8]) -> io::Result<()>;
+}
+
+impl RangeRead for File {
+    fn read_at(&self, offset: u64, buf: &mut [u8]) -> io::Result<()> {
+        read_exact_at(self, buf, offset)
+    }
+}
+
 /// An immutable view of a file's bytes as they were when it was opened.
 pub struct Source {
     path: Option<PathBuf>,
@@ -180,11 +195,32 @@ impl Source {
             match m.view(0) {
                 Ok(_) => return Ok(Source { path: path_buf, len, backing: Backing::Mapped(m), modified }),
                 Err(_) => {
-                    return Ok(Source { path: path_buf, len, backing: Backing::Chunked(Chunked::new(m.file, len)), modified })
+                    return Ok(Source { path: path_buf, len, backing: Backing::Chunked(Chunked::new(Box::new(m.file), len, CHUNK_BLOCK, false)), modified })
                 }
             }
         }
-        Ok(Source { path: path_buf, len, backing: Backing::Chunked(Chunked::new(file, len)), modified })
+        Ok(Source { path: path_buf, len, backing: Backing::Chunked(Chunked::new(Box::new(file), len, CHUNK_BLOCK, false)), modified })
+    }
+
+    /// A remote file of `len` bytes, read in parts through `reader` as they are needed (what is
+    /// on screen, what a search reaches); nothing is downloaded up front.
+    pub fn remote(reader: Box<dyn RangeRead>, len: u64, modified: Option<SystemTime>) -> Source {
+        let backing = if len == 0 { Backing::Empty } else { Backing::Chunked(Chunked::new(reader, len, REMOTE_BLOCK, true)) };
+        Source { path: None, len, backing, modified }
+    }
+
+    /// A remote file read in parts ([`Source::remote`]): whole-file scans such as the line
+    /// index would download all of it, so they do not start on their own.
+    pub fn is_remote(&self) -> bool {
+        matches!(&self.backing, Backing::Chunked(c) if c.inner.remote)
+    }
+
+    /// Bytes read from the file so far (for a remote file: downloaded).
+    pub fn bytes_read(&self) -> u64 {
+        match &self.backing {
+            Backing::Chunked(c) => c.inner.bytes_read.load(Ordering::Relaxed),
+            _ => 0,
+        }
     }
 
     pub fn len(&self) -> u64 {
@@ -269,7 +305,7 @@ impl Source {
         match &self.backing {
             Backing::Empty => Ok(()),
             Backing::Mapped(m) => read_exact_at(&m.file, buf, offset),
-            Backing::Chunked(c) => read_exact_at(&c.inner.file, buf, offset),
+            Backing::Chunked(c) => c.inner.read_direct(offset, buf),
         }
     }
 
@@ -308,9 +344,9 @@ impl BlockCache {
             e.0.clone()
         })
     }
-    fn insert(&mut self, b: u64, data: Arc<Vec<u8>>) {
+    fn insert(&mut self, b: u64, data: Arc<Vec<u8>>, capacity: usize) {
         self.tick += 1;
-        if self.map.len() >= CACHE_BLOCKS {
+        if self.map.len() >= capacity {
             if let Some((&oldest, _)) = self.map.iter().min_by_key(|(_, e)| e.1) {
                 self.map.remove(&oldest);
             }
@@ -320,29 +356,55 @@ impl BlockCache {
 }
 
 struct ChunkedInner {
-    file: File,
+    reader: Box<dyn RangeRead>,
     len: u64,
+    /// Block size of the cache ([`CHUNK_BLOCK`], [`REMOTE_BLOCK`]).
+    block: u64,
+    /// Blocks the cache keeps.
+    capacity: usize,
+    remote: bool,
     cache: Mutex<BlockCache>,
     pending: Mutex<HashSet<u64>>,
     waker: Mutex<Option<Waker>>,
     failed: AtomicBool,
     reads: AtomicU64,
+    bytes_read: AtomicU64,
 }
 
 impl ChunkedInner {
     fn block_range(&self, b: u64) -> Range<u64> {
-        let s = b * CHUNK_BLOCK;
-        s..(s + CHUNK_BLOCK).min(self.len)
+        let s = b * self.block;
+        s..(s + self.block).min(self.len)
+    }
+
+    /// Reads `buf` from `offset` past the cache (large reads of workers streaming the file).
+    fn read_direct(&self, offset: u64, buf: &mut [u8]) -> io::Result<()> {
+        self.reader.read_at(offset, buf)?;
+        self.bytes_read.fetch_add(buf.len() as u64, Ordering::Relaxed);
+        Ok(())
     }
 
     fn load_block(&self, b: u64) -> io::Result<Arc<Vec<u8>>> {
-        let r = self.block_range(b);
-        let mut buf = vec![0u8; (r.end - r.start) as usize];
-        read_exact_at(&self.file, &mut buf, r.start)?;
+        self.load_blocks(b, b).map(|mut v| v.remove(0))
+    }
+
+    /// Loads blocks `first..=last` with one read (one request for a remote file) and caches
+    /// them.
+    fn load_blocks(&self, first: u64, last: u64) -> io::Result<Vec<Arc<Vec<u8>>>> {
+        let start = self.block_range(first).start;
+        let end = self.block_range(last).end;
+        let mut buf = vec![0u8; (end - start) as usize];
+        self.read_direct(start, &mut buf)?;
         self.reads.fetch_add(1, Ordering::Relaxed);
-        let data = Arc::new(buf);
-        self.cache.lock().unwrap().insert(b, data.clone());
-        Ok(data)
+        let mut cache = self.cache.lock().unwrap();
+        let mut out = Vec::with_capacity((last - first + 1) as usize);
+        for b in first..=last {
+            let r = self.block_range(b);
+            let data = Arc::new(buf[(r.start - start) as usize..(r.end - start) as usize].to_vec());
+            cache.insert(b, data.clone(), self.capacity);
+            out.push(data);
+        }
+        Ok(out)
     }
 }
 
@@ -352,15 +414,19 @@ struct Chunked {
 }
 
 impl Chunked {
-    fn new(file: File, len: u64) -> Chunked {
+    fn new(reader: Box<dyn RangeRead>, len: u64, block: u64, remote: bool) -> Chunked {
         let inner = Arc::new(ChunkedInner {
-            file,
+            reader,
             len,
+            block,
+            capacity: (CACHE_BYTES / block) as usize,
+            remote,
             cache: Mutex::new(BlockCache { map: HashMap::new(), tick: 0 }),
             pending: Mutex::new(HashSet::new()),
             waker: Mutex::new(None),
             failed: AtomicBool::new(false),
             reads: AtomicU64::new(0),
+            bytes_read: AtomicU64::new(0),
         });
         let (tx, rx) = mpsc::channel::<u64>();
         let worker = inner.clone();
@@ -372,7 +438,7 @@ impl Chunked {
         let n = (r.end - r.start) as usize;
         if r.end - r.start >= DIRECT_READ_MIN {
             let mut buf = vec![0u8; n];
-            read_exact_at(&self.inner.file, &mut buf, r.start).inspect_err(|_| {
+            self.inner.read_direct(r.start, &mut buf).inspect_err(|_| {
                 self.inner.failed.store(true, Ordering::Relaxed);
             })?;
             return Ok(buf);
@@ -381,8 +447,8 @@ impl Chunked {
         if n == 0 {
             return Ok(out);
         }
-        let first = r.start / CHUNK_BLOCK;
-        let last = (r.end - 1) / CHUNK_BLOCK;
+        let first = r.start / self.inner.block;
+        let last = (r.end - 1) / self.inner.block;
         for b in first..=last {
             let cached = self.inner.cache.lock().unwrap().get(b);
             let data = match cached {
@@ -404,8 +470,8 @@ impl Chunked {
         if n == 0 {
             return Some(Vec::new());
         }
-        let first = r.start / CHUNK_BLOCK;
-        let last = (r.end - 1) / CHUNK_BLOCK;
+        let first = r.start / self.inner.block;
+        let last = (r.end - 1) / self.inner.block;
         let mut blocks = Vec::with_capacity((last - first + 1) as usize);
         let mut missing = Vec::new();
         {
@@ -445,12 +511,30 @@ fn loader_loop(inner: Arc<ChunkedInner>, rx: Receiver<u64>) {
             batch.push(more);
         }
         batch.sort_unstable();
-        for b in batch {
-            let already = inner.cache.lock().unwrap().map.contains_key(&b);
-            if !already && inner.load_block(b).is_err() {
+        batch.dedup();
+        let asked = batch.clone();
+        {
+            let cache = inner.cache.lock().unwrap();
+            batch.retain(|b| !cache.map.contains_key(b));
+        }
+        // Runs of neighbouring blocks load with one read: one request instead of many for a
+        // remote file (a screen that straddles blocks, a jump that needs two).
+        let mut i = 0;
+        while i < batch.len() {
+            let mut j = i;
+            while j + 1 < batch.len() && batch[j + 1] == batch[j] + 1 && j - i < 15 {
+                j += 1;
+            }
+            if inner.load_blocks(batch[i], batch[j]).is_err() {
                 inner.failed.store(true, Ordering::Relaxed);
             }
-            inner.pending.lock().unwrap().remove(&b);
+            i = j + 1;
+        }
+        {
+            let mut pending = inner.pending.lock().unwrap();
+            for b in &asked {
+                pending.remove(b);
+            }
         }
         if let Some(w) = inner.waker.lock().unwrap().as_ref() {
             w();
@@ -634,6 +718,68 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         assert_eq!(got.unwrap(), &data[70_000..140_000]);
+    }
+
+    /// A remote file in memory that counts the requests made to it.
+    struct Counting(Vec<u8>, Arc<Mutex<Vec<Range<u64>>>>);
+
+    impl RangeRead for Counting {
+        fn read_at(&self, offset: u64, buf: &mut [u8]) -> io::Result<()> {
+            self.1.lock().unwrap().push(offset..offset + buf.len() as u64);
+            buf.copy_from_slice(&self.0[offset as usize..offset as usize + buf.len()]);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_remote_file_is_read_only_where_asked() {
+        let data: Vec<u8> = (0..5_000_000u32).map(|i| (i % 253) as u8).collect();
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let s = Source::remote(Box::new(Counting(data.clone(), asked.clone())), data.len() as u64, None);
+        assert!(s.is_remote() && s.kind_name() == "chunked" && s.path().is_none());
+        // The UI asks without blocking: queued, then served from the cache.
+        let mid = 2_600_000u64;
+        let mut got = None;
+        for _ in 0..400 {
+            if let Some(v) = s.try_read(mid..mid + 4000) {
+                got = Some(v.into_owned());
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(got.unwrap(), &data[mid as usize..mid as usize + 4000]);
+        // One block around the middle was fetched, nothing else.
+        assert_eq!(asked.lock().unwrap().len(), 1);
+        assert_eq!(s.bytes_read(), REMOTE_BLOCK);
+        // A read across two blocks fetches both with one request.
+        asked.lock().unwrap().clear();
+        let edge = 3 * REMOTE_BLOCK - 100;
+        assert_eq!(s.read(edge..edge + 200).unwrap().into_owned(), &data[edge as usize..edge as usize + 200]);
+        assert_eq!(s.read(edge..edge + 200).unwrap().len(), 200);
+        assert_eq!(asked.lock().unwrap().len(), 2, "two blocks the first time, none the second");
+        // Workers' large reads go straight to the reader.
+        let mut buf = vec![0u8; 2 << 20];
+        s.read_into(1000, &mut buf).unwrap();
+        assert_eq!(&buf[..], &data[1000..1000 + (2 << 20)]);
+        assert!(s.bytes_read() < data.len() as u64);
+        assert!(!Source::open(&std::env::current_exe().unwrap(), OpenMode::Chunked).unwrap().is_remote());
+    }
+
+    #[test]
+    fn neighbouring_blocks_load_with_one_request() {
+        let data = vec![7u8; 3 << 20];
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let s = Source::remote(Box::new(Counting(data, asked.clone())), 3 << 20, None);
+        // A screen that straddles four blocks.
+        let r = REMOTE_BLOCK / 2..REMOTE_BLOCK * 3 + 10;
+        for _ in 0..400 {
+            if s.try_read(r.clone()).is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let asked = asked.lock().unwrap();
+        assert_eq!((asked.len(), asked.first().cloned()), (1, Some(0..REMOTE_BLOCK * 4)));
     }
 
     #[test]

@@ -365,8 +365,15 @@ keyboard shortcuts.
 - **Remote files and URLs** (File → Open remote file or URL…, Ctrl+Shift+U, or on the command
   line): `user@server:/var/log/app.log` or `ssh://user@server:2222/path` is read with the
   system's `ssh` and your keys or agent (no password prompts); `https://…` and public
-  `s3://bucket/key` addresses are downloaded. A whole file downloads as a task with progress and
-  Cancel in the status bar and opens read-only; **its last N MB, then follow** (SSH) opens at once
+  `s3://bucket/key` addresses over the web. **Read only what is shown** (the default) downloads
+  nothing up front: a 50 GB file opens with its first megabyte read, and jumping to its end or
+  middle fetches the 256 KB blocks around it (the status bar counts what was read). Over the
+  web BigText uses range requests (a server that sends only whole files gets a download); over
+  SSH one session sends the parts asked for, and **Find, Find next and Find all run on the
+  server** with `grep` (UTF-8 files; Rust regex syntax goes to `grep -P` where it exists), so
+  only the matches come over. Line numbers past the first megabyte are estimates (~), since
+  counting them would read the whole file. **The whole file** downloads as a task with progress
+  and Cancel in the status bar and opens read-only; **its last N MB, then follow** (SSH) opens at once
   and keeps adding what `tail -F` on the server sends, like a local log in follow mode
   (`bigtext -f user@server:/var/log/syslog` does the same). The copies are temporary and go
   away with their tabs; closing a followed tab ends its `ssh`, and errors (a refused key, a

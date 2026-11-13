@@ -214,6 +214,8 @@ pub struct Document {
     /// `path` is a temporary copy (unpacked archive, standard input): Save means Save As, and
     /// the copy is deleted when the tab closes.
     pub temporary: bool,
+    /// A file on an SSH server read in place: searches run there with grep.
+    pub remote_ssh: Option<bigtext::remote::SshFile>,
     /// Progress and cancellation of the open job (shown while a compressed file is unpacked).
     pub unpacking: Option<(bigtext::jobs::Progress, CancelToken)>,
     /// The rest of an unpacked copy that is open already is still being unpacked.
@@ -371,6 +373,7 @@ impl Document {
             unpacked_from: None,
             member: None,
             temporary: false,
+            remote_ssh: None,
             unpacking: None,
             growing: None,
             sel_chars: std::cell::Cell::new(None),
@@ -431,7 +434,9 @@ impl Document {
             Some(p) => LineIndex::with_prefix(source.len(), p),
             None => LineIndex::new(source.len()),
         };
-        if !index.is_done() {
+        // A remote file read in parts is not indexed: that would download all of it. Line
+        // numbers past the prefix it came with are estimates.
+        if !index.is_done() && !source.is_remote() {
             index::spawn_indexer(source.clone(), det.codec, index.clone(), self.index_cancel.clone(), waker);
         }
         self.buf = TextBuf::new(source, index, det.codec);
@@ -529,7 +534,9 @@ impl Document {
         self.index_cancel = CancelToken::new();
         source.set_waker(waker.clone());
         let index = LineIndex::new(source.len());
-        index::spawn_indexer(source.clone(), self.buf.codec, index.clone(), self.index_cancel.clone(), waker);
+        if !source.is_remote() {
+            index::spawn_indexer(source.clone(), self.buf.codec, index.clone(), self.index_cancel.clone(), waker);
+        }
         self.buf = self.buf.with_source(source, index);
         self.last_indexed = 0;
         self.state = DocState::Ready;

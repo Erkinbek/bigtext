@@ -31,9 +31,10 @@ dependencies.
   joins. JSON gets a structure view, folding and queries over JSON Lines.
 - **Compare, hex and archives.** A streaming diff of two huge files, a hex view, and `.gz`,
   `.zst`, `.xz`, `.bz2`, `.zip` and `.tar` files opened without unpacking them by hand.
-- **Logs on servers.** Open `user@server:/var/log/app.log` over SSH with your keys, or its last
-  megabytes followed like `tail -F` (`bigtext -f user@server:/var/log/syslog`); `https://` and
-  public `s3://` files are downloaded with progress (**Ctrl+Shift+U**).
+- **Logs on servers, without downloading them.** Open `user@server:/var/log/app.log` over SSH
+  with your keys, or an `https://` or public `s3://` file (**Ctrl+Shift+U**): only what is on
+  screen comes over, and over SSH searches run on the server. Or follow a log's last megabytes
+  like `tail -F` (`bigtext -f user@server:/var/log/syslog`).
 - **Also a comfortable code editor.** Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust,
   PHP, shell scripts, YAML and more are highlighted in One Dark, Monokai, GitHub or Solarized
   colours with indent guides; a folder side bar works as in Sublime Text; **Ctrl+P** finds a

@@ -323,7 +323,16 @@ impl BigTextApp {
                             }
                         }
                     });
-                    if d.is_ready() && !d.buf.index.is_done() && !d.buf.is_empty() {
+                    if d.is_ready() && d.buf.source.is_remote() {
+                        // Read in place: how much of the remote file came over so far.
+                        ui.separator();
+                        let read = d.buf.source.bytes_read();
+                        ui.label(trf("{read} of {size} read", &[("read", &human_bytes(read)), ("size", &human_bytes(d.buf.source.len()))]))
+                            .on_hover_text(tr("A remote file read in place: only what is shown, and what a search reaches, is downloaded."));
+                        if d.buf.source.has_io_error() {
+                            ui.colored_label(ui.visuals().error_fg_color, tr("read failed"));
+                        }
+                    } else if d.is_ready() && !d.buf.index.is_done() && !d.buf.is_empty() {
                         ui.separator();
                         ui.add(egui::ProgressBar::new(d.buf.index.progress()).desired_width(120.0).text(format!("{} {:.0}%", tr("Indexing"), d.buf.index.progress() * 100.0)));
                     } else if let Some(t) = d.buf.index.finished_after().filter(|t| fields.index_time && *t > Duration::ZERO) {

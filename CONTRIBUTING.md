@@ -89,10 +89,22 @@ cargo test --lib update -- --ignored # downloads and unpacks the latest release 
 target/release/bigtext --self-test --report report.txt [--screenshot shots/x.png]
                                      # 59 GUI checks with synthetic mouse/keyboard/clipboard input
 scripts/gen-testfiles.ps1            # or scripts/gen-testfiles.sh; -SkipBig / --skip-big avoids the 10 GB file
+BIGTEXT_SSH_CONFIG=test/ssh_config BIGTEXT_SELFTEST_SSH=root@test-host:/var/log/app/big.log \
+target/release/bigtext --self-test ... # also reads a file in place over SSH and searches it on the server
+BIGTEXT_SSH_LIVE="root@127.0.0.1 2222 /var/log/app/big.log KEY KNOWN_HOSTS" \
+cargo test --lib ssh_live -- --ignored   # the SSH range reader and grep against a real server
 target/release/bigtext-bench FILE    # core benchmarks (open, first screen, go-to, index, search, replace, memory)
 target/release/bigtext --bench-ui FILE --report out.txt [--screenshot out.png]
         [--scenario search:TEXT|edit|view|wrap|hex|close-search|close-replace]
 ```
+
+For the **SSH checks**, a throwaway server is enough: an `ubuntu:22.04` container with
+`openssh-server`, a test key in `/root/.ssh/authorized_keys`, port 22 published on
+127.0.0.1:2222, and a test log of 64-byte lines (`printf "%-63s\n"` of `line NNNNNNN of the
+remote file`, with ` ERROR disk full` on every thousandth line from line 7). `BIGTEXT_SSH_CONFIG`
+points BigText's `ssh` at a config of its own (`ssh -F`), with a `Host test-host` entry naming
+the port, the key, `UserKnownHostsFile` and `StrictHostKeyChecking accept-new`, so your own
+`~/.ssh` is not touched.
 
 The **GUI self-test** drives the real window through `App::raw_input_hook`: clicks, drags,
 double/triple clicks, shift-click, keys and shortcuts, typing, copy/paste, Ctrl+wheel. It checks

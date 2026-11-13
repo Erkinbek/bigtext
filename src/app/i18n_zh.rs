@@ -1206,4 +1206,17 @@ pub static ZH: &[(&str, &str)] = &[
     ("Writing the sample log… {p}%", "正在写入示例日志… {p}%"),
     ("Or just start typing: this page goes away by itself.", "或者直接开始输入：此页面会自动消失。"),
     ("Could not write the sample log: {e}", "无法写入示例日志：{e}"),
+    // Remote files read in place.
+    ("A remote file read in place: only what is shown, and what a search reaches, is downloaded.", "就地读取的远程文件：只下载显示的部分和搜索读到的部分。"),
+    ("Could not open {name}", "无法打开 {name}"),
+    ("Read in place from the web: only what is shown is downloaded, and a search reads the file as it goes. Line numbers past the start are estimates (~). Read-only.", "从网络就地读取：只下载显示的部分，搜索边进行边读取文件。开头之后的行号是估计值（~）。只读。"),
+    ("Read in place over SSH: only what is shown is transferred, and searches run on the server. Line numbers past the start are estimates (~). Read-only.", "通过 SSH 就地读取：只传输显示的部分，搜索在服务器上运行。开头之后的行号是估计值（~）。只读。"),
+    ("Read only what is shown, without downloading it", "只读取显示的部分，不下载"),
+    ("Read only what is shown; searches run on the server", "只读取显示的部分；搜索在服务器上运行"),
+    ("Searching on the server…", "正在服务器上搜索…"),
+    ("on the server in", "在服务器上用时"),
+    ("read failed", "读取失败"),
+    ("searching on the server", "正在服务器上搜索"),
+    ("{name}: this server sends only whole files, so it is downloaded.", "{name}：此服务器只发送整个文件，因此将下载它。"),
+    ("{read} of {size} read", "已读取 {read} / {size}"),
 ];

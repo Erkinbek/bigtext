@@ -1209,4 +1209,17 @@ pub static PT: &[(&str, &str)] = &[
     ("Writing the sample log… {p}%", "Gravando o log de exemplo… {p}%"),
     ("Or just start typing: this page goes away by itself.", "Ou simplesmente comece a digitar: esta página some sozinha."),
     ("Could not write the sample log: {e}", "Não foi possível gravar o log de exemplo: {e}"),
+    // Remote files read in place.
+    ("A remote file read in place: only what is shown, and what a search reaches, is downloaded.", "Um arquivo remoto lido no lugar: só é baixado o que aparece na tela e o que uma busca alcança."),
+    ("Could not open {name}", "Não foi possível abrir {name}"),
+    ("Read in place from the web: only what is shown is downloaded, and a search reads the file as it goes. Line numbers past the start are estimates (~). Read-only.", "Lido no lugar a partir da web: só é baixado o que aparece na tela, e uma busca lê o arquivo conforme avança. Os números de linha depois do início são estimativas (~). Somente leitura."),
+    ("Read in place over SSH: only what is shown is transferred, and searches run on the server. Line numbers past the start are estimates (~). Read-only.", "Lido no lugar via SSH: só é transferido o que aparece na tela, e as buscas rodam no servidor. Os números de linha depois do início são estimativas (~). Somente leitura."),
+    ("Read only what is shown, without downloading it", "Ler só o que aparece na tela, sem baixar o arquivo"),
+    ("Read only what is shown; searches run on the server", "Ler só o que aparece na tela; as buscas rodam no servidor"),
+    ("Searching on the server…", "Buscando no servidor…"),
+    ("on the server in", "no servidor em"),
+    ("read failed", "falha na leitura"),
+    ("searching on the server", "buscando no servidor"),
+    ("{name}: this server sends only whole files, so it is downloaded.", "{name}: este servidor só envia arquivos inteiros, então ele é baixado."),
+    ("{read} of {size} read", "{read} de {size} lidos"),
 ];

@@ -37,6 +37,7 @@ pub mod merge;
 pub mod patch;
 pub mod pipe;
 pub mod patterns;
+pub mod remote;
 pub mod replace;
 pub mod save;
 pub mod split;

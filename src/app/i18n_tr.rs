@@ -1209,4 +1209,17 @@ pub static TR: &[(&str, &str)] = &[
     ("Writing the sample log… {p}%", "Örnek log yazılıyor… %{p}"),
     ("Or just start typing: this page goes away by itself.", "Ya da hemen yazmaya başlayın: bu sayfa kendiliğinden kaybolur."),
     ("Could not write the sample log: {e}", "Örnek log yazılamadı: {e}"),
+    // Remote files read in place.
+    ("A remote file read in place: only what is shown, and what a search reaches, is downloaded.", "Yerinde okunan uzak dosya: yalnızca gösterilen kısım ve aramanın ulaştığı yer indirilir."),
+    ("Could not open {name}", "{name} açılamadı"),
+    ("Read in place from the web: only what is shown is downloaded, and a search reads the file as it goes. Line numbers past the start are estimates (~). Read-only.", "Web'den yerinde okunuyor: yalnızca gösterilen kısım indirilir, arama dosyayı ilerledikçe okur. Baştan sonraki satır numaraları tahminidir (~). Salt okunur."),
+    ("Read in place over SSH: only what is shown is transferred, and searches run on the server. Line numbers past the start are estimates (~). Read-only.", "SSH üzerinden yerinde okunuyor: yalnızca gösterilen kısım aktarılır, aramalar sunucuda çalışır. Baştan sonraki satır numaraları tahminidir (~). Salt okunur."),
+    ("Read only what is shown, without downloading it", "Yalnızca gösterileni oku, indirmeden"),
+    ("Read only what is shown; searches run on the server", "Yalnızca gösterileni oku; aramalar sunucuda çalışır"),
+    ("Searching on the server…", "Sunucuda aranıyor…"),
+    ("on the server in", "sunucuda,"),
+    ("read failed", "okuma başarısız"),
+    ("searching on the server", "sunucuda aranıyor"),
+    ("{name}: this server sends only whole files, so it is downloaded.", "{name}: bu sunucu yalnızca dosyanın tamamını gönderiyor, bu yüzden indiriliyor."),
+    ("{read} of {size} read", "{size} içinden {read} okundu"),
 ];

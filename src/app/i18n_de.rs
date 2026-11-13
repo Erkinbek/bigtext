@@ -1209,4 +1209,17 @@ pub static DE: &[(&str, &str)] = &[
     ("Writing the sample log… {p}%", "Beispiel-Log wird geschrieben… {p} %"),
     ("Or just start typing: this page goes away by itself.", "Oder einfach lostippen: Diese Seite verschwindet von selbst."),
     ("Could not write the sample log: {e}", "Das Beispiel-Log konnte nicht geschrieben werden: {e}"),
+    // Remote files read in place.
+    ("A remote file read in place: only what is shown, and what a search reaches, is downloaded.", "Eine entfernte Datei, an Ort und Stelle gelesen: Nur das Angezeigte und was eine Suche erreicht, wird heruntergeladen."),
+    ("Could not open {name}", "{name} konnte nicht geöffnet werden"),
+    ("Read in place from the web: only what is shown is downloaded, and a search reads the file as it goes. Line numbers past the start are estimates (~). Read-only.", "Direkt aus dem Netz gelesen: Nur das Angezeigte wird heruntergeladen, und eine Suche liest die Datei, während sie vorankommt. Zeilennummern nach dem Anfang sind Schätzungen (~). Schreibgeschützt."),
+    ("Read in place over SSH: only what is shown is transferred, and searches run on the server. Line numbers past the start are estimates (~). Read-only.", "Über SSH direkt gelesen: Nur das Angezeigte wird übertragen, und Suchen laufen auf dem Server. Zeilennummern nach dem Anfang sind Schätzungen (~). Schreibgeschützt."),
+    ("Read only what is shown, without downloading it", "Nur das Angezeigte lesen, ohne die Datei herunterzuladen"),
+    ("Read only what is shown; searches run on the server", "Nur das Angezeigte lesen; Suchen laufen auf dem Server"),
+    ("Searching on the server…", "Suche auf dem Server…"),
+    ("on the server in", "auf dem Server in"),
+    ("read failed", "Lesen fehlgeschlagen"),
+    ("searching on the server", "Suche auf dem Server"),
+    ("{name}: this server sends only whole files, so it is downloaded.", "{name}: Dieser Server sendet nur ganze Dateien, deshalb wird sie heruntergeladen."),
+    ("{read} of {size} read", "{read} von {size} gelesen"),
 ];

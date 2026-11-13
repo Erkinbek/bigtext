@@ -3,6 +3,20 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## Unreleased
+
+### Remote files without downloading them
+
+- **Read only what is shown**: a file on the web (`https://…`, public `s3://…`) or on an SSH
+  server opens without being downloaded: a 50 GB log opens with its first megabyte read, and
+  jumping to its end or middle fetches only the parts around it. The status bar shows how much
+  was read. A web server that sends only whole files gets a download, as before.
+- **Searches run on the SSH server**: Find, Find next and Find all on a file read over SSH run
+  `grep` on the server, so only the matches come over.
+- The whole file and "its last N MB, then follow" are still in File → Open remote file or URL…
+  Line numbers past the first megabyte are estimates (~), since counting them would read the
+  whole file.
+
 ## 0.8.1 — 2026-11-13
 
 ### At home on your system

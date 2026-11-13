@@ -1386,4 +1386,17 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Writing the sample log… {p}%", "Запись пробного лога… {p}%", "Namunaviy log yozilmoqda… {p}%"],
     ["Or just start typing: this page goes away by itself.", "Или просто начните печатать: эта страница исчезнет сама.", "Yoki shunchaki yozishni boshlang: bu sahifa o'zi yo'qoladi."],
     ["Could not write the sample log: {e}", "Не удалось записать пробный лог: {e}", "Namunaviy logni yozib bo'lmadi: {e}"],
+    // Remote files read in place.
+    ["A remote file read in place: only what is shown, and what a search reaches, is downloaded.", "Удалённый файл читается на месте: скачивается только то, что видно, и то, до чего доходит поиск.", "Masofadagi fayl joyida o'qilmoqda: faqat ko'rinayotgan qism va qidiruv yetgan joy yuklab olinadi."],
+    ["Could not open {name}", "Не удалось открыть {name}", "{name} ni ochib bo'lmadi"],
+    ["Read in place from the web: only what is shown is downloaded, and a search reads the file as it goes. Line numbers past the start are estimates (~). Read-only.", "Читается на месте из сети: скачивается только то, что видно, а поиск читает файл по мере продвижения. Номера строк дальше начала приблизительные (~). Только чтение.", "Internetdan joyida o'qilmoqda: faqat ko'rinayotgan qism yuklab olinadi, qidiruv esa faylni borgan sari o'qiydi. Boshidan keyingi qator raqamlari taxminiy (~). Faqat o'qish uchun."],
+    ["Read in place over SSH: only what is shown is transferred, and searches run on the server. Line numbers past the start are estimates (~). Read-only.", "Читается на месте по SSH: передаётся только то, что видно, а поиск выполняется на сервере. Номера строк дальше начала приблизительные (~). Только чтение.", "SSH orqali joyida o'qilmoqda: faqat ko'rinayotgan qism uzatiladi, qidiruv esa serverning o'zida bajariladi. Boshidan keyingi qator raqamlari taxminiy (~). Faqat o'qish uchun."],
+    ["Read only what is shown, without downloading it", "Читать только то, что видно, без скачивания", "Faqat ko'rinayotgan qismni o'qish, yuklab olmasdan"],
+    ["Read only what is shown; searches run on the server", "Читать только то, что видно; поиск на сервере", "Faqat ko'rinayotgan qismni o'qish; qidiruv serverda bajariladi"],
+    ["Searching on the server…", "Поиск на сервере…", "Serverda qidirilmoqda…"],
+    ["on the server in", "на сервере за", "serverda,"],
+    ["read failed", "ошибка чтения", "o'qib bo'lmadi"],
+    ["searching on the server", "поиск на сервере", "serverda qidirilmoqda"],
+    ["{name}: this server sends only whole files, so it is downloaded.", "{name}: этот сервер отдаёт только файл целиком, поэтому он скачивается.", "{name}: bu server faqat butun faylni beradi, shuning uchun u yuklab olinmoqda."],
+    ["{read} of {size} read", "прочитано {read} из {size}", "{size} dan {read} o'qildi"],
 ];

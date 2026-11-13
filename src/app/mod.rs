@@ -154,6 +154,10 @@ pub enum Msg {
     BracketJump(Box<match_bracket::BracketJump>),
     Json(Box<json_panel::JsonDone>),
     TimeRange(Box<time_range::RangeDone>),
+    /// A remote file opened to be read in place (or why it could not be).
+    RemoteOpened { doc: u64, src: remote::Source, result: Result<Box<remote::RemoteOpened>, remote::RemoteFail> },
+    /// Something a worker could not do, for the error dialog.
+    Error(String),
 }
 
 pub struct Settings {
@@ -775,7 +779,8 @@ impl BigTextApp {
             // user@host:/path, ssh://…, https://… (with --follow: the end of a remote log, followed).
             let addr = path.to_string_lossy().into_owned();
             if !path.exists() && remote::parse(&addr).is_some() {
-                if let Err(e) = self.open_remote(&addr, follow.then_some(1)) {
+                let how = if follow { remote::How::Tail(1) } else { remote::How::InPlace };
+                if let Err(e) = self.open_remote(&addr, how) {
                     self.error = Some(e);
                 }
                 continue;
@@ -1168,6 +1173,8 @@ impl BigTextApp {
                     Err(e) => self.error = Some(e),
                 },
                 Msg::Update(e) => self.on_update_event(e),
+                Msg::RemoteOpened { doc, src, result } => self.remote_opened(doc, src, result),
+                Msg::Error(e) => self.error = Some(e),
                 Msg::ColumnsDeleted(c) => self.on_columns_deleted(*c),
                 Msg::TaskDone { id, outcome } => self.on_task_done(id, outcome),
                 Msg::TextOp(r) => self.on_text_op(*r),
@@ -2158,7 +2165,7 @@ impl eframe::App for BigTextApp {
 
         // Keep repainting while background work is visible in the UI.
         let busy = self.docs.iter().any(|d| {
-            (d.is_ready() && !d.buf.index.is_done())
+            (d.is_ready() && !d.buf.index.is_done() && !d.buf.source.is_remote())
                 || matches!(d.state, DocState::Loading | DocState::Finalizing(_))
                 || d.save_job.is_some()
                 || d.find_job.is_some()
