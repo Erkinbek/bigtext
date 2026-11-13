@@ -206,6 +206,19 @@ fn sample_rows<'a>(
     out
 }
 
+/// The first records of `sample` (a quoted field may hold line breaks), at most `max`, as
+/// (start, content without the line break, where the next starts). A record cut off by the
+/// end of the sample is included only when `whole`.
+pub fn records_in<'a>(
+    codec: &Codec,
+    d: Dialect,
+    sample: &'a [u8],
+    whole: bool,
+    max: usize,
+) -> Vec<(usize, &'a [u8], usize)> {
+    sample_rows(codec, Some(d), sample, whole, max)
+}
+
 /// The records of `sample` for dialect `d`, or its lines when fewer than two records come out
 /// (a quote opened early and never closed would otherwise hide the whole sample).
 fn sample_records<'a>(

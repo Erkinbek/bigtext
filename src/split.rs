@@ -148,8 +148,9 @@ impl Parts<'_> {
 }
 
 /// Splits the document into part files in `dir` named after `name` (see [`part_path`]),
-/// compressed with `pack` when given. A part never ends inside a line; documents with a byte
-/// order mark get it at the start of every part. Returns the files written, or `None` when
+/// compressed with `pack` when given. A part never ends inside a line, and with `csv` never
+/// inside a record (a quoted field may hold line breaks; `SplitBy::Lines` then counts
+/// records); documents with a byte order mark get it at the start of every part. Returns the files written, or `None` when
 /// cancelled (the parts are then removed, as they are on an error).
 #[allow(clippy::too_many_arguments)]
 pub fn split_to_files(
@@ -158,10 +159,12 @@ pub fn split_to_files(
     dir: &Path,
     name: &str,
     pack: Option<Kind>,
+    csv: Option<crate::csv::Dialect>,
     cancel: &CancelToken,
     progress: &Progress,
 ) -> io::Result<Option<Vec<PathBuf>>> {
     let codec = buf.codec;
+    let mut csv_state = crate::csv::State::FieldStart;
     let unit = codec.unit() as u64;
     let bom = codec.bom_len as u64;
     let len = buf.len();
@@ -191,8 +194,9 @@ pub fn split_to_files(
                 let base = pos + i as u64;
                 let rest = &b[i..];
                 // Index into `rest` just past the line break that ends the current part, if any.
-                let cut = match by {
-                    SplitBy::Lines(n) => {
+                let cut = match (csv, by) {
+                    (Some(d), _) => record_cut(&mut csv_state, d, codec, rest, by, &mut parts),
+                    (None, SplitBy::Lines(n)) => {
                         let want = n.max(1) - parts.lines;
                         match codec.nth_nl(rest, base, want) {
                             Some(k) => Some(k + unit as usize),
@@ -202,7 +206,7 @@ pub fn split_to_files(
                             }
                         }
                     }
-                    SplitBy::Bytes(n) => {
+                    (None, SplitBy::Bytes(n)) => {
                         let from = n
                             .saturating_sub(parts.bytes)
                             .saturating_sub(1)
@@ -243,6 +247,38 @@ pub fn split_to_files(
     }
 }
 
+/// Where in `rest` the current part ends for a CSV: just past the line break of the record that
+/// makes it `n` records long, or the first record that ends past `n` bytes. Counts the records
+/// it passes in `parts.lines`; `st` carries the quote state between calls.
+fn record_cut(
+    st: &mut crate::csv::State,
+    d: crate::csv::Dialect,
+    codec: crate::encoding::Codec,
+    rest: &[u8],
+    by: SplitBy,
+    parts: &mut Parts,
+) -> Option<usize> {
+    let unit = codec.unit();
+    let nl = crate::csv::nl_value(&codec);
+    let mut j = 0;
+    while j + unit <= rest.len() {
+        let c = crate::csv::unit_at(codec.enc, rest, j);
+        j += unit;
+        if st.step(c, d, nl) != crate::csv::Step::RecordEnd {
+            continue;
+        }
+        parts.lines += 1;
+        let done = match by {
+            SplitBy::Lines(n) => parts.lines >= n.max(1),
+            SplitBy::Bytes(n) => parts.bytes + j as u64 >= n,
+        };
+        if done {
+            return Some(j);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,6 +296,48 @@ mod tests {
         let mut t = TextBuf::new(src, idx, codec);
         t.blocking = true;
         (f, t)
+    }
+
+    #[test]
+    fn csv_parts_end_between_records() {
+        let data = b"id,note\n1,\"a\nb\"\n2,c\n3,\"d\ne\nf\"\n4,g\n";
+        let (_f, t) = buf_with(data, Codec::utf8());
+        let dir = tempfile::tempdir().unwrap();
+        let files = split_to_files(
+            &t,
+            SplitBy::Lines(2),
+            dir.path(),
+            "t.csv",
+            None,
+            Some(crate::csv::Dialect::new(b',')),
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap()
+        .unwrap();
+        let parts: Vec<String> = files
+            .iter()
+            .map(|f| String::from_utf8(fs::read(f).unwrap()).unwrap())
+            .collect();
+        assert_eq!(
+            parts,
+            ["id,note\n1,\"a\nb\"\n", "2,c\n3,\"d\ne\nf\"\n", "4,g\n"]
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let files = split_to_files(
+            &t,
+            SplitBy::Bytes(12),
+            dir.path(),
+            "t.csv",
+            None,
+            Some(crate::csv::Dialect::new(b',')),
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap()
+        .unwrap();
+        let first = String::from_utf8(fs::read(&files[0]).unwrap()).unwrap();
+        assert_eq!(first, "id,note\n1,\"a\nb\"\n");
     }
 
     #[test]
@@ -282,6 +360,7 @@ mod tests {
             by,
             dir.path(),
             "app.log",
+            None,
             None,
             &CancelToken::new(),
             &Progress::default(),
@@ -335,6 +414,7 @@ mod tests {
             dir.path(),
             "app.log",
             Some(Kind::Zstd),
+            None,
             &CancelToken::new(),
             &Progress::default(),
         )
@@ -389,6 +469,7 @@ mod tests {
             SplitBy::Lines(1),
             dir.path(),
             "x.txt",
+            None,
             None,
             &CancelToken::new(),
             &Progress::default(),

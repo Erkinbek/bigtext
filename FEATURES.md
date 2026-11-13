@@ -242,7 +242,8 @@ keyboard shortcuts.
 - **Export and split** (File menu): **Export lines…** writes a line range (say 100,000–200,000)
   to a new file, **Save selection as…** writes the selection, and **Split file…** cuts the
   document into `name.part001.ext`, `name.part002.ext`, … of a given size in MB or number of
-  lines, always at line breaks (UTF-16 parts each get the byte order mark). All of them
+  lines, always at line breaks (UTF-16 parts each get the byte order mark); a CSV shown as a
+  table is cut only between records, and its number of lines counts records. All of them
   stream on a worker with progress and Cancel in the status bar.
 - **CSV column tools** (right-click a column header in the table view): sort rows ascending or
   descending (numbers numerically, text ignoring case, empty values last, header kept; files

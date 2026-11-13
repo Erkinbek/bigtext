@@ -13,6 +13,11 @@ All notable changes to BigText. Each release on
   scrolling, jumping and the scrollbar work from any point of a huge file.
 - The delimiter, the lines before the table and the header row are detected from records
   too, so a file whose first records hold line breaks no longer takes its header for a title.
+- **Split file…** cuts a CSV shown as a table only between records, so no part ends inside a
+  quoted field, and a number of lines counts records; `bigtext-cli split` does this for
+  `.csv` and `.tsv` files (or with `--csv`). Column names, the Add column preview and the
+  header that Row checks writes with the problem rows read the first record, not the first
+  line.
 
 ## 0.10.0 — 2026-11-13
 

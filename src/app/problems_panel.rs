@@ -5,6 +5,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use bigtext::csv;
 use bigtext::csv_check::{self, Checked, Kind, Problem};
 use bigtext::jobs::{self, CancelToken, Progress, Throttle};
 
@@ -278,6 +279,7 @@ impl BigTextApp {
             .map(|p| (p.start, p.next))
             .collect();
         let (snap, header, name) = (d.buf.snapshot(), d.table_state.header, d.title.clone());
+        let dialect = d.table_state.dialect.unwrap_or(csv::Dialect::new(b','));
         let Some(target) = self.pick_output_file(tr("Save rows"), &format!("{name}.problems.csv"))
         else {
             return;
@@ -292,7 +294,14 @@ impl BigTextApp {
                         bigtext::filter::write_range_to(&snap, 0..bom, w, cancel, None)?;
                     }
                     if header {
-                        let first = bigtext::filter::line_end_at(&snap, bom).unwrap_or(bom);
+                        // The header record, which may span lines.
+                        let sample = snap.read(bom..(bom + 64 * 1024).min(snap.len()));
+                        let first = sample
+                            .and_then(|b| {
+                                let recs = csv::records_in(&snap.codec, dialect, &b, true, 1);
+                                recs.first().map(|r| bom + r.2 as u64)
+                            })
+                            .unwrap_or(bom);
                         if rows.first().is_none_or(|r| r.0 > bom) {
                             bigtext::filter::write_range_to(&snap, bom..first, w, cancel, None)?;
                         }

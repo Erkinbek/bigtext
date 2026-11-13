@@ -199,6 +199,8 @@ impl BigTextApp {
             return;
         };
         let snap = d.buf.snapshot();
+        // A CSV shown as a table is cut between records, never inside a quoted field.
+        let csv = d.table_state.dialect.filter(|_| d.table);
         let mut dlg = rfd::FileDialog::new().set_title(tr("Folder for the parts"));
         if let Some(dir) = d
             .unpacked_from
@@ -213,7 +215,7 @@ impl BigTextApp {
         self.spawn_task(
             tr("Splitting").into(),
             move |progress, cancel| match split::split_to_files(
-                &snap, by, &dir, &name, pack, cancel, progress,
+                &snap, by, &dir, &name, pack, csv, cancel, progress,
             ) {
                 Ok(Some(files)) => TaskOutcome::Done {
                     message: trf(

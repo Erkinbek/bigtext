@@ -211,9 +211,9 @@ impl BigTextApp {
             return Vec::new();
         };
         let codec = d.buf.codec;
-        let end = codec.find_nl(&b, start).unwrap_or(b.len());
-        let line = &b[..end];
-        let line = line.strip_suffix(codec.cr_unit()).unwrap_or(line);
+        // The first record: a quoted header cell may hold a line break.
+        let first = csv::records_in(&codec, dialect, &b, true, 1);
+        let line = first.first().map_or(&[][..], |r| r.1);
         let mut fields = Vec::new();
         csv::split_fields(&codec, dialect, line, &mut fields);
         fields

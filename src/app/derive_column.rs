@@ -45,33 +45,32 @@ impl BigTextApp {
             return Vec::new();
         };
         let codec = d.buf.codec;
-        let mut from = d.view.top.max(dialect.first(&d.buf)).max(d.min_caret());
-        if d.table_state.header && from == dialect.first(&d.buf).max(d.min_caret()) {
-            from = bigtext::filter::line_end_at(&d.buf, from).unwrap_or(from);
+        let len = d.buf.len();
+        let start = dialect.first(&d.buf).max(d.min_caret());
+        let mut from = d.view.top.max(start);
+        if d.table_state.header && from == start {
+            // After the header record, which may span lines.
+            let Some(b) = d.buf.read(start..(start + 64 * 1024).min(len)) else {
+                return Vec::new();
+            };
+            from = csv::records_in(&codec, dialect, &b, true, 1)
+                .first()
+                .map_or(start, |r| start + r.2 as u64);
         }
-        let Some(b) = d.buf.read(from..(from + 64 * 1024).min(d.buf.len())) else {
+        let Some(b) = d.buf.read(from..(from + 64 * 1024).min(len)) else {
             return Vec::new();
         };
-        let mut rows = Vec::new();
-        let mut at = 0;
         let mut fields = Vec::new();
-        while rows.len() < PREVIEW_ROWS && at < b.len() {
-            let end = codec
-                .find_nl(&b[at..], from + at as u64)
-                .map(|i| at + i)
-                .unwrap_or(b.len());
-            let line = &b[at..end];
-            let line = line.strip_suffix(codec.cr_unit()).unwrap_or(line);
-            csv::split_fields(&codec, dialect, line, &mut fields);
-            rows.push(
+        csv::records_in(&codec, dialect, &b, true, PREVIEW_ROWS)
+            .into_iter()
+            .map(|(_, rec, _)| {
+                csv::split_fields(&codec, dialect, rec, &mut fields);
                 fields
                     .iter()
-                    .map(|f| csv::field_value(&codec, dialect, &line[f.clone()]))
-                    .collect(),
-            );
-            at = end + codec.unit();
-        }
-        rows
+                    .map(|f| csv::field_value(&codec, dialect, &rec[f.clone()]))
+                    .collect()
+            })
+            .collect()
     }
 
     pub(super) fn derive_window(&mut self, ctx: &egui::Context) {

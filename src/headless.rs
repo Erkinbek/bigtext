@@ -781,12 +781,20 @@ fn cmd_split(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let pack = crate::decompress::Kind::ALL
         .into_iter()
         .find(|k| a.flag(&[&format!("--{}", k.extension())]));
+    // A .csv or .tsv file (or --csv) is cut between records; --lines then counts records.
+    let lower = file.to_ascii_lowercase();
+    let csv = if a.flag(&["--csv"]) || lower.ends_with(".csv") || lower.ends_with(".tsv") {
+        Some(table_of(&buf, file, &a)?.dialect)
+    } else {
+        None
+    };
     let parts = split::split_to_files(
         &buf,
         by,
         &dir,
         &name,
         pack,
+        csv,
         &CancelToken::new(),
         &Progress::default(),
     )?
