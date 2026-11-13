@@ -94,6 +94,7 @@ pub enum Cmd {
     Timeline,
     TimeGaps,
     Patterns,
+    LogReport,
     CheckJson,
     MatchBracket,
     WordWrap,
@@ -157,7 +158,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 121] = [
+    pub const ALL: [Cmd; 122] = [
         Cmd::New,
         Cmd::Open,
         Cmd::OpenFolder,
@@ -235,6 +236,7 @@ impl Cmd {
         Cmd::Timeline,
         Cmd::TimeGaps,
         Cmd::Patterns,
+        Cmd::LogReport,
         Cmd::CheckJson,
         Cmd::MatchBracket,
         Cmd::WordWrap,
@@ -358,7 +360,7 @@ impl Cmd {
             Cmd::CompareJson => "Compare JSON with…",
             Cmd::ArrayToLines => "JSON array → JSON Lines…",
             Cmd::LinesToArray => "JSON Lines → JSON array…",
-            Cmd::LogfmtTable => "Open logfmt as table",
+            Cmd::LogfmtTable => "Open log as table",
             Cmd::Undo => "Undo",
             Cmd::Redo => "Redo",
             Cmd::SelectAll => "Select all",
@@ -407,6 +409,7 @@ impl Cmd {
             Cmd::Timeline => "Time histogram",
             Cmd::TimeGaps => "Find time gaps…",
             Cmd::Patterns => "Message patterns…",
+            Cmd::LogReport => "Web log report…",
             Cmd::CheckJson => "Check JSON",
             Cmd::MatchBracket => "Go to matching bracket",
             Cmd::WordWrap => "Word wrap",
@@ -478,7 +481,7 @@ impl Cmd {
             | Cmd::ReadOnly
             | Cmd::RunCommand
             | Cmd::Text(_) => "Edit",
-            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::NextDiff | Cmd::PrevDiff | Cmd::OnlyIn | Cmd::GotoFile | Cmd::GotoSymbol | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::TimeAllTabs | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::CheckJson | Cmd::MatchBracket => "Search",
+            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::NextDiff | Cmd::PrevDiff | Cmd::OnlyIn | Cmd::GotoFile | Cmd::GotoSymbol | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::TimeAllTabs | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::LogReport | Cmd::CheckJson | Cmd::MatchBracket => "Search",
             Cmd::Palette | Cmd::Shortcuts | Cmd::ExportSettings | Cmd::ImportSettings | Cmd::Portable | Cmd::UnpackDir | Cmd::CheckUpdates | Cmd::About => "Help",
             _ => "View",
         }
@@ -739,7 +742,7 @@ impl BigTextApp {
             Cmd::CompareJson => self.compare_json_dialog(),
             Cmd::ArrayToLines => self.array_to_lines(),
             Cmd::LinesToArray => self.lines_to_array(),
-            Cmd::LogfmtTable => self.open_logfmt_table(),
+            Cmd::LogfmtTable => self.open_log_table(),
             Cmd::Undo => doc(self).into_iter().for_each(|d| d.undo()),
             Cmd::Redo => doc(self).into_iter().for_each(|d| d.redo()),
             Cmd::SelectAll => {
@@ -815,6 +818,7 @@ impl BigTextApp {
             Cmd::MatchBracket => self.goto_matching_bracket(),
             Cmd::TimeGaps => self.open_gaps(),
             Cmd::Patterns => self.open_patterns(),
+            Cmd::LogReport => self.open_log_report(),
             Cmd::CheckJson => self.check_json(None),
             Cmd::Timeline => {
                 if self.is_on(Cmd::Timeline) {
@@ -1239,7 +1243,7 @@ impl BigTextApp {
                     run = run.or(self.item(ui, c));
                 }
                 ui.separator();
-                for c in [Cmd::NextDiff, Cmd::PrevDiff, Cmd::OnlyIn, Cmd::NavBack, Cmd::NavForward, Cmd::GotoFile, Cmd::GotoSymbol, Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::TimeAllTabs, Cmd::MatchBracket, Cmd::Timeline, Cmd::TimeGaps, Cmd::Patterns, Cmd::CheckJson] {
+                for c in [Cmd::NextDiff, Cmd::PrevDiff, Cmd::OnlyIn, Cmd::NavBack, Cmd::NavForward, Cmd::GotoFile, Cmd::GotoSymbol, Cmd::GotoLine, Cmd::GotoOffset, Cmd::GotoTime, Cmd::TimeAllTabs, Cmd::MatchBracket, Cmd::Timeline, Cmd::TimeGaps, Cmd::Patterns, Cmd::LogReport, Cmd::CheckJson] {
                     run = run.or(self.item(ui, c));
                 }
             });

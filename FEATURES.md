@@ -278,6 +278,22 @@ keyboard shortcuts.
   timestamps dropped, numbers, hex ids, UUIDs, IPs and paths replaced by `<n>`, `<hex>`,
   `<uuid>`, `<ip>`, `<path>` — with counts and levels, most lines first (the noise) or rarest
   first (the anomalies); a click shows only that template's lines.
+- **Web server and syslog formats**: nginx and Apache access logs (the common and combined
+  formats, also with a virtual host first or more fields after them; a number of seconds there,
+  as nginx's `$request_time`, is the request time), AWS Application and Classic Load Balancer
+  logs, IIS logs (W3C extended: the `#Fields:` lines name the columns, also when they change in
+  the middle of a file) and syslog (RFC 3164, also with RFC 3339 times as rsyslog writes them,
+  and RFC 5424) are recognised from their first lines. **File → Open log as table** splits such
+  a log into a table with a column per field — method, URL, status, user agent, AWS's
+  processing times, syslog's facility and severity — with access log times as ISO 8601, ready
+  for sorting, statistics and pivots (`bigtext-cli convert FILE --to csv`).
+- **Web log report** (Search → Web log report…): one pass over an nginx / Apache, AWS load
+  balancer or IIS log gives the requests by status code, the **top URLs** (requests, share, 4xx,
+  5xx, bytes sent, mean and longest time), the **requests and 5xx errors per minute** with a
+  chart, and the **1,000 slowest requests** with their times and clients. A URL filters the
+  file to its requests, a minute or a slow request goes to its line, and each report opens as a
+  table or is saved as CSV. A 1 GB log takes under 2 seconds (`bigtext-cli report FILE`, or
+  `--urls`, `--minutes`, `--slow` for one report as CSV).
 - **Time gaps** (Search → Find time gaps…): every place where the next timestamp is at least N
   seconds later — or earlier, when the clock went back — largest first; click one to go there.
   The status bar shows **Δ** since the previous timestamped line for the caret's line.
@@ -315,7 +331,7 @@ keyboard shortcuts.
 - **Field queries over JSON Lines** (the search bar's **{}**): `.level == "error" and
   .duration > 500` in the filter view (`bigtext-cli jsonl -q`).
 - **Convert**: a JSON array to JSON Lines and back, and logfmt (`key=value`) logs to a table
-  (File menu, `bigtext-cli convert`).
+  (File → Open log as table, `bigtext-cli convert`).
 - **Check JSON** (Search): strict checking of a JSON document or of JSON Lines line by line, with
   the problems listed and clickable (`bigtext-cli validate`).
 - **JSON fields…** (View): every key path of JSON records with types, counts, nulls, number

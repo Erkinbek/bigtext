@@ -49,7 +49,8 @@ bigtext-cli transform --op upper|lower|trim|tabs FILE          text operations, 
 bigtext-cli format FILE --json pretty|minify                   JSON formatting, streamed
 bigtext-cli stats FILE...                                      size, lines, encoding, first/last time
 bigtext-cli merge FILE FILE... [-o OUT]                        logs merged by time
-bigtext-cli convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]  tables (and JSON Lines → CSV)
+bigtext-cli convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]  tables (JSON Lines, logfmt, web and syslog logs → CSV)
+bigtext-cli report FILE [--urls | --minutes | --slow] [--top N]  web log: top URLs, 5xx per minute, slowest
 bigtext-cli validate FILE [--no-header] [--numeric 3,5]        malformed CSV / TSV rows
 bigtext-cli csv FILE cut|drop COLS | sort --by COL | where COND... | stats COL | group COL
 bigtext-cli values FIELD FILE [-o OUT]                         a JSON Lines / logfmt field's values

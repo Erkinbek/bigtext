@@ -5,6 +5,19 @@ All notable changes to BigText. Each release on
 
 ## Unreleased
 
+### Web server logs, summed up
+
+- **Logs split into columns**: nginx and Apache access logs, AWS Application and Classic Load
+  Balancer logs, IIS logs and syslog (RFC 3164 and RFC 5424) are recognised from their first
+  lines, and **File → Open log as table** (Open logfmt as table before, which it still is for
+  logfmt) splits them into a table with a column per field.
+- **Web log report** (Search → Web log report…): the top URLs, the requests and 5xx errors per
+  minute with a chart, and the slowest requests, from one pass over the log (a 1 GB log in under
+  2 seconds). A URL filters the file to its requests, a minute or a slow request goes to its
+  line, and each report opens as a table or is saved as CSV.
+- **`bigtext-cli report FILE`** prints the reports (`--urls`, `--minutes` or `--slow` gives one
+  of them as CSV), and `bigtext-cli convert FILE --to csv` converts these logs.
+
 ### Remote files without downloading them
 
 - **Read only what is shown**: a file on the web (`https://…`, public `s3://…`) or on an SSH

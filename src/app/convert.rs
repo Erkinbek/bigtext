@@ -1,8 +1,9 @@
-//! File → JSON array → JSON Lines…, JSON Lines → JSON array…, and Open logfmt as table: the
+//! File → JSON array → JSON Lines…, JSON Lines → JSON array…, and Open log as table: the
 //! active document converted in one streaming pass.
 
 use bigtext::jobs::{CancelToken, Progress};
 use bigtext::json;
+use bigtext::logformat;
 
 use super::filter_panel::{file_name, fmt_count};
 use super::i18n::{tr, trf};
@@ -51,35 +52,46 @@ impl BigTextApp {
         });
     }
 
-    /// Opens the document's logfmt lines (key=value pairs) as a table.
-    pub(crate) fn open_logfmt_table(&mut self) {
+    /// Opens the document as a table: a web server or syslog log split into its fields, or
+    /// logfmt lines (key=value pairs) with a column per key.
+    pub(crate) fn open_log_table(&mut self) {
         let Some(d) = self.docs.get(self.active).filter(|d| d.is_ready()) else { return };
         let snap = d.buf.snapshot();
         let stem = std::path::Path::new(&d.title).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "log".into());
         let target = bigtext::decompress::temp_file(&format!("{stem}.csv"));
         let title = trf("{name} (table)", &[("name", &d.title)]);
-        self.spawn_task(tr("Reading logfmt").into(), move |progress: &Progress, cancel: &CancelToken| {
+        self.spawn_task(tr("Splitting the log into columns").into(), move |progress: &Progress, cancel: &CancelToken| {
             let r = (|| {
+                let format = logformat::detect(&snap)?;
                 if let Some(dir) = target.parent() {
                     std::fs::create_dir_all(dir)?;
                 }
                 let mut w = std::io::BufWriter::with_capacity(8 << 20, std::fs::File::options().write(true).create_new(true).open(&target)?);
-                let st = bigtext::fields::logfmt_to_csv(&snap, &mut w, cancel, Some(progress))?;
+                let st = match &format {
+                    Some(f) => logformat::to_csv(&snap, f, &mut w, cancel, Some(progress))?.map(|(rows, other)| (rows, f.columns.len(), other)),
+                    None => bigtext::fields::logfmt_to_csv(&snap, &mut w, cancel, Some(progress))?,
+                };
                 std::io::Write::flush(&mut w)?;
-                Ok::<_, std::io::Error>(st)
+                Ok::<_, std::io::Error>(st.map(|s| (s, format)))
             })();
             match r {
-                Ok(Some((rows, cols, skipped))) if rows > 0 => {
+                Ok(Some(((rows, cols, skipped), format))) if rows > 0 => {
                     let mut message = trf("{rows} rows, {cols} columns.", &[("rows", &fmt_count(rows)), ("cols", &cols.to_string())]);
+                    if let Some(f) = &format {
+                        message = format!("{}: {message}", tr(f.kind.name()));
+                    }
                     if skipped > 0 {
                         message.push(' ');
-                        message.push_str(&trf("{n} lines without key=value pairs were left out.", &[("n", &fmt_count(skipped))]));
+                        message.push_str(&match format {
+                            Some(_) => trf("{n} lines in another format were left out.", &[("n", &fmt_count(skipped))]),
+                            None => trf("{n} lines without key=value pairs were left out.", &[("n", &fmt_count(skipped))]),
+                        });
                     }
                     TaskOutcome::TempTable(Box::new(tasks::TempTable { path: target, title, message }))
                 }
                 Ok(Some(_)) => {
                     bigtext::decompress::remove_temp(&target);
-                    TaskOutcome::Failed(tr("No line has key=value pairs (logfmt).").into())
+                    TaskOutcome::Failed(tr("This log is in none of the known formats: nginx / Apache, AWS load balancer, IIS, syslog or logfmt (key=value).").into())
                 }
                 Ok(None) => {
                     bigtext::decompress::remove_temp(&target);

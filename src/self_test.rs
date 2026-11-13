@@ -197,6 +197,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("broken.csv"), "id,qty\n1,2\n2\n3,x\n")?;
     std::fs::write(dir.join("cities.csv"), "city,country\nTashkent,UZ\nBukhara,UZ\n")?;
     std::fs::write(dir.join("app.logfmt"), "level=info msg=ok\nlevel=error msg=\"bad x\" code=7\n")?;
+    std::fs::write(dir.join("access.log"), access_log())?;
     std::fs::write(dir.join("excel.csv"), "sep=;\n# exported\nname;qty\nann;1\nbob;2\n")?;
     std::fs::write(dir.join("numbers.csv"), "1,2\n3,4\n5,6\n")?;
     std::fs::write(dir.join("semi.txt"), "id;note\n1;a,b\n2;c,d\n")?;
@@ -317,6 +318,19 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("times-b.log"), times(14))?;
     std::fs::write(dir.join("cmp-saved.txt"), (0..300).map(|i| format!("entry {i}\n")).collect::<String>())?;
     Ok(())
+}
+
+/// An nginx access log: 180 requests in three minutes to three URLs, every seventh a 502, and
+/// line 100 the slowest.
+fn access_log() -> String {
+    (0..180)
+        .map(|i| {
+            let url = ["/", "/api/items?page=1", "/login"][i % 3];
+            let status = if i % 7 == 3 { 502 } else { 200 };
+            let secs = if i == 99 { 4.25 } else { 0.010 + (i % 5) as f64 / 100.0 };
+            format!("10.0.0.{} - - [01/May/2024:10:{:02}:{:02} +0500] \"GET {url} HTTP/1.1\" {status} {} \"-\" \"curl/8.0\" {secs:.3}\n", i % 9, i / 60, i % 60, 100 + i)
+        })
+        .collect()
 }
 
 fn open_step(name: &'static str) -> StepFn {
@@ -4040,7 +4054,7 @@ impl SelfTest {
         s("open app.logfmt", open_step("app.logfmt"));
         s("logfmt lines as a table", Box::new(|app, c| {
             if c.first() {
-                app.open_logfmt_table();
+                app.open_log_table();
                 return Step::Wait;
             }
             if c.mark == 0 {
@@ -4057,6 +4071,97 @@ impl SelfTest {
                 return Step::Wait;
             }
             if app.docs.iter().any(|d| d.title == "app.logfmt (table)") {
+                return Step::Wait;
+            }
+            c.mark = 0;
+            Step::Next
+        }));
+        s("open access.log", open_step("access.log"));
+        s("web log report: top URLs, 5xx per minute, slowest requests", Box::new(|app, c| {
+            if c.first() {
+                app.log_report.tab = crate::app::log_report::Tab::Minutes;
+                app.open_log_report();
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).log_report.as_ref() else { return Step::Fail("no report".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return if c.waited() > Duration::from_secs(10) { Step::Fail("still running".into()) } else { Step::Wait };
+            }
+            if let Some(e) = &g.error {
+                return Step::Fail(e.clone());
+            }
+            let (Some(r), Some(f)) = (g.r.as_ref(), g.format.as_ref()) else { return Step::Fail("no result".into()) };
+            let urls: Vec<(&str, u64)> = r.urls.iter().map(|u| (u.url.as_str(), u.requests)).collect();
+            let minutes: Vec<(String, u64, u64)> = r.minutes.iter().map(|m| (m.label(), m.requests, m.server_errors)).collect();
+            let slow = r.slow.first().map(|s| (s.line, s.secs, s.url.clone()));
+            check(
+                f.kind == bigtext::logformat::Kind::Access && r.requests == 180 && r.server_errors == 26 && urls == [("/", 60), ("/api/items", 60), ("/login", 60)] && minutes.len() == 3 && minutes[0] == ("2024-05-01 10:00".into(), 60, 9) && slow == Some((100, 4.25, "/".into())),
+                format!("{:?} {} requests, {} 5xx, urls {urls:?}, minutes {minutes:?}, slowest {slow:?}", f.kind, r.requests, r.server_errors),
+            )
+        }));
+        s("screenshot: the web log report", shot_step("selftest-weblog.png"));
+        s("a URL of the report filters its requests", Box::new(|app, c| {
+            if c.first() {
+                app.filter_by_url("/");
+                return Step::Wait;
+            }
+            let Some(r) = doc(app).filter.as_ref() else { return Step::Fail("no filter".into()) };
+            let g = r.data.lock().unwrap();
+            if !g.done {
+                return Step::Wait;
+            }
+            let n = g.lines.len();
+            drop(g);
+            if let Some(r) = doc(app).filter.take() {
+                r.cancel.cancel();
+            }
+            check(n == 60, format!("{n} lines"))
+        }));
+        s("the slowest requests open as a table", Box::new(|app, c| {
+            if c.first() {
+                app.report_csv(crate::app::log_report::Tab::Slow, false);
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let d = doc(app);
+                if d.title != "Slowest requests (access.log)" || !d.is_ready() {
+                    return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("active tab {:?}", d.title)) } else { Step::Wait };
+                }
+                let t = text(app);
+                if !t.starts_with("seconds,time,status,method,url,client,line\n4.250,2024-05-01 10:01:39,200,GET,/,10.0.0.0,100\n") {
+                    return Step::Fail(format!("text {:?}", &t[..t.len().min(200)]));
+                }
+                c.key(Key::W, CTRL);
+                c.mark = 1;
+                return Step::Wait;
+            }
+            if app.docs.iter().any(|d| d.title == "Slowest requests (access.log)") {
+                return Step::Wait;
+            }
+            c.mark = 0;
+            app.log_report.open = false;
+            Step::Next
+        }));
+        s("an access log as a table: a column per field", Box::new(|app, c| {
+            if c.first() {
+                app.open_log_table();
+                return Step::Wait;
+            }
+            if c.mark == 0 {
+                let d = doc(app);
+                if d.title != "access.log (table)" || !d.is_ready() {
+                    return if c.waited() > Duration::from_secs(5) { Step::Fail(format!("active tab {:?}", d.title)) } else { Step::Wait };
+                }
+                let t = text(app);
+                if !t.starts_with("client,ident,user,time,method,url,protocol,status,bytes,referer,user_agent,request_time\n10.0.0.0,-,-,2024-05-01T10:00:00+05:00,GET,/,HTTP/1.1,200,100,-,curl/8.0,0.010\n") || t.lines().count() != 181 {
+                    return Step::Fail(format!("text {:?}", &t[..t.len().min(300)]));
+                }
+                c.key(Key::W, CTRL);
+                c.mark = 1;
+                return Step::Wait;
+            }
+            if app.docs.iter().any(|d| d.title == "access.log (table)") {
                 return Step::Wait;
             }
             c.mark = 0;

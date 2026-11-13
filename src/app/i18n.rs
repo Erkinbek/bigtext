@@ -198,6 +198,7 @@ mod tests {
         "app" / "only_in.rs",
         "app" / "ops.rs",
         "app" / "patterns_window.rs",
+        "app" / "log_report.rs",
         "app" / "pivot.rs",
         "app" / "portable.rs",
         "app" / "properties.rs",
@@ -239,6 +240,15 @@ mod tests {
 
     /// Texts translated through a variable rather than a literal at the call.
     const DYNAMIC: &[&str] = &[
+        "nginx / Apache access log",
+        "AWS Application Load Balancer log",
+        "AWS Classic Load Balancer log",
+        "IIS log (W3C)",
+        "syslog",
+        "syslog (RFC 5424)",
+        "Top URLs",
+        "5xx per minute",
+        "Slowest requests",
         "Count rows",
         "Sum",
         "Mean",

@@ -32,6 +32,7 @@ pub mod json_diff;
 pub mod json_fields;
 pub mod jsonq;
 pub mod lines;
+pub mod logformat;
 pub mod loglevel;
 pub mod merge;
 pub mod patch;

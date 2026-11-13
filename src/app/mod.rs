@@ -51,6 +51,7 @@ pub mod nav;
 pub mod only_in;
 pub mod ops;
 pub mod patterns_window;
+pub mod log_report;
 pub mod pivot;
 pub mod portable;
 pub mod properties;
@@ -334,6 +335,7 @@ pub struct BigTextApp {
     pub gaps: gaps_panel::GapsUi,
     pub range: time_range::TimeRangeUi,
     pub patterns: patterns_window::PatternsUi,
+    pub log_report: log_report::ReportUi,
     pub nav: nav::NavHistory,
     pub values: Option<match_values::ValuesDialog>,
     pub problems: problems_panel::ProblemsUi,
@@ -645,6 +647,7 @@ impl BigTextApp {
             gaps: gaps_panel::GapsUi::default(),
             range: time_range::TimeRangeUi::default(),
             patterns: patterns_window::PatternsUi::default(),
+            log_report: log_report::ReportUi::default(),
             nav: nav::NavHistory::default(),
             values: None,
             problems: problems_panel::ProblemsUi::default(),
@@ -2133,6 +2136,7 @@ impl eframe::App for BigTextApp {
         self.id_patterns_window(&ctx);
         self.time_range_window(&ctx);
         self.patterns_window(&ctx);
+        self.log_report_window(&ctx);
         self.values_window(&ctx);
         self.join_window(&ctx);
         self.table_compare_window(&ctx);
@@ -2174,6 +2178,7 @@ impl eframe::App for BigTextApp {
                 || d.timeline.as_ref().is_some_and(|t| t.is_running())
                 || d.gaps.as_ref().is_some_and(|g| g.is_running())
                 || d.patterns.as_ref().is_some_and(|p| p.is_running())
+                || d.log_report.as_ref().is_some_and(|r| r.is_running())
                 || d.problems.as_ref().is_some_and(|p| p.is_running())
                 || d.chart.as_ref().is_some_and(|c| c.is_running())
                 || d.json_check.as_ref().is_some_and(|j| j.is_running())

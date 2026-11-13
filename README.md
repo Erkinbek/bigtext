@@ -27,6 +27,10 @@ dependencies.
   atomically, and a recovery journal brings unsaved edits back after a crash.
 - **Made for logs.** Follow mode like `tail -F`, go to a time, a level bar, a time histogram,
   logs merged by time, and message patterns that group lines by template.
+- **Web server logs, summed up.** nginx and Apache access logs, AWS load balancer logs, IIS logs
+  and syslog open as a table with a column per field, and **Search → Web log report…** gives the
+  top URLs, the 5xx errors per minute and the slowest requests from one pass (a 1 GB log in under
+  2 seconds); a click shows the requests behind a number.
 - **Tables and JSON.** CSV and TSV files open as tables with sorting, statistics, pivots and
   joins. JSON gets a structure view, folding and queries over JSON Lines.
 - **Compare, hex and archives.** A streaming diff of two huge files, a hex view, and `.gz`,

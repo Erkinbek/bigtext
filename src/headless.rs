@@ -152,6 +152,13 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         columns (1-based). JSON files (or --json) are checked strictly as
         one value, JSON Lines (or --lines) line by line. Prints
         line: problem; exit code 1 when any.
+  report FILE [--urls | --minutes | --slow] [--top N] [-o OUT]
+        Reports of a web server log (nginx / Apache, AWS ALB or Classic ELB,
+        IIS): requests by status, the top URLs, the minutes with the most 5xx
+        errors and the slowest requests, as text (the first 10 of each, or
+        N); or one of them in full as CSV: --urls (requests, 4xx, 5xx, bytes
+        and times per URL), --minutes (requests, 4xx and 5xx per minute),
+        --slow (the 1,000 slowest requests with their line numbers).
   values FIELD FILE [-o OUT]
         The values of a JSON Lines or logfmt (key=value) field with how many
         lines have each and their first and last time, as CSV, most frequent
@@ -160,8 +167,9 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         A CSV / TSV table as JSON, JSON Lines, Markdown or Excel (.xlsx needs
         -o); JSON Lines as CSV or one JSON array; a JSON array (or the one at
         --path, or the first under the top object) as JSON Lines; logfmt
-        (key=value) lines as CSV. --from json|jsonl|logfmt|csv when the
-        kind is not what it looks like. The header and lines before the table
+        (key=value) lines, and nginx / Apache, AWS load balancer (ALB, Classic),
+        IIS and syslog logs, as CSV with a column per field. --from
+        json|jsonl|logfmt|log|csv when the kind is not what it looks like. The header and lines before the table
         (sep=;, comments) are detected; --header / --no-header, --skip N and
         --quote ' override that (also for validate).
 
@@ -170,7 +178,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 31] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format", "sort", "uniq", "head", "tail", "slice", "grep", "replace", "saved", "csv"];
+const COMMANDS: [&str; 32] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "report", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format", "sort", "uniq", "head", "tail", "slice", "grep", "replace", "saved", "csv"];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -643,6 +651,7 @@ fn sniff_kind(buf: &TextBuf) -> &'static str {
         Some(b'[') => "json",
         Some(b'{') if lines.len() > 1 && lines.iter().all(|l| l.first() == Some(&b'{') && l.last() == Some(&b'}')) => "jsonl",
         Some(b'{') => "json",
+        _ if crate::logformat::Format::guess(&lines).is_some() => "log",
         _ if lines.iter().filter(|l| crate::fields::line_fields(&String::from_utf8_lossy(l)).is_some_and(|f| f.0 == crate::fields::Syntax::Logfmt)).count() * 2 > lines.len() => "logfmt",
         _ => "csv",
     }
@@ -686,6 +695,14 @@ fn cmd_convert(args: &[String], out: &mut dyn Write) -> Res<i32> {
             })?;
             return Ok(0);
         }
+        ("log", "csv") => {
+            let f = crate::logformat::detect(&buf)?.ok_or_else(|| Fail(format!("{file}: not an nginx / Apache, AWS load balancer, IIS or syslog log")))?;
+            with_output(target, out, |w| {
+                crate::logformat::to_csv(&buf, &f, &mut &mut *w, &cancel, None)?;
+                Ok(())
+            })?;
+            return Ok(0);
+        }
         ("logfmt", "csv") => {
             with_output(target, out, |w| {
                 crate::fields::logfmt_to_csv(&buf, &mut &mut *w, &cancel, None)?;
@@ -694,7 +711,7 @@ fn cmd_convert(args: &[String], out: &mut dyn Write) -> Res<i32> {
             return Ok(0);
         }
         ("csv", _) => {}
-        (f, t) => return fail(format!("cannot convert {f} to {t} (json → jsonl, jsonl → json or csv, logfmt → csv, csv → json, jsonl, md, xlsx)")),
+        (f, t) => return fail(format!("cannot convert {f} to {t} (json → jsonl, jsonl → json or csv, logfmt or log → csv, csv → json, jsonl, md, xlsx)")),
     }
     let format = Format::ALL.into_iter().find(|f| f.ext() == to || (to == "markdown" && *f == Format::Markdown)).ok_or_else(|| Fail(format!("unknown format {to}")))?;
     if format == Format::Xlsx && target.is_none() {
@@ -707,6 +724,29 @@ fn cmd_convert(args: &[String], out: &mut dyn Write) -> Res<i32> {
         Ok(())
     })?;
     Ok(0)
+}
+
+fn cmd_report(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(args, &["--urls", "--minutes", "--slow"], &["--top", "-o", "--output"])?;
+    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let top = a.opt(&["--top"]).map(|n| n.parse::<usize>().map_err(|_| Fail(format!("not a number: {n}")))).transpose()?;
+    let (buf, _) = open(Path::new(file))?;
+    let f = crate::logformat::detect(&buf)?.filter(|f| f.has_requests()).ok_or_else(|| Fail(format!("{file}: not a web server log (nginx / Apache, AWS ALB or Classic ELB, IIS)")))?;
+    let r = crate::logformat::report(&buf, &f, &CancelToken::new(), None, |_| {})?.unwrap_or_default();
+    with_output(a.opt(&["-o", "--output"]), out, |w| {
+        let w = &mut &mut *w;
+        if a.flag(&["--urls"]) {
+            crate::logformat::urls_csv(&r, w, top)?;
+        } else if a.flag(&["--minutes"]) {
+            crate::logformat::minutes_csv(&r, w)?;
+        } else if a.flag(&["--slow"]) {
+            crate::logformat::slow_csv(&r, w, top)?;
+        } else {
+            crate::logformat::write_summary(&r, &f, w, top.unwrap_or(10))?;
+        }
+        Ok(())
+    })?;
+    Ok(if r.requests > 0 { 0 } else { 1 })
 }
 
 fn cmd_values(args: &[String], out: &mut dyn Write) -> Res<i32> {
@@ -1732,6 +1772,7 @@ fn run_command(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32
         "stats" => cmd_stats(rest, out),
         "merge" => cmd_merge(rest, out),
         "convert" => cmd_convert(rest, out),
+        "report" => cmd_report(rest, out),
         "values" => cmd_values(rest, out),
         "gaps" => cmd_gaps(rest, out),
         "patterns" => cmd_patterns(rest, out),

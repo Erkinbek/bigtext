@@ -235,6 +235,8 @@ pub struct Document {
     pub timeline: Option<super::timeline::TimelineResults>,
     pub gaps: Option<super::gaps_panel::GapsResults>,
     pub patterns: Option<super::patterns_window::PatternsResults>,
+    /// Web log report (Search → Web log report…).
+    pub log_report: Option<super::log_report::ReportResults>,
     pub problems: Option<super::problems_panel::ProblemsResults>,
     pub chart: Option<super::column_chart::ChartResults>,
     pub json_check: Option<super::json_validate::JsonCheckResults>,
@@ -385,6 +387,7 @@ impl Document {
             timeline: None,
             gaps: None,
             patterns: None,
+            log_report: None,
             problems: None,
             chart: None,
             json_check: None,
@@ -505,6 +508,9 @@ impl Document {
         }
         if let Some(p) = &self.patterns {
             p.cancel.cancel();
+        }
+        if let Some(r) = &self.log_report {
+            r.cancel.cancel();
         }
         if let Some(p) = &self.problems {
             p.cancel.cancel();

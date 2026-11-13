@@ -28,7 +28,7 @@ Usage: bigtext [OPTIONS] [FILE[:LINE] ...]
 
 Script commands, without a window (bigtext-cli runs the same; on Windows use it in
 scripts, since bigtext.exe is a windowed program):
-  --filter, --levels, --count, --split, --stats, --merge, --convert
+  --filter, --levels, --count, --split, --stats, --merge, --convert, --report
                    see  bigtext-cli --help
 ";
 

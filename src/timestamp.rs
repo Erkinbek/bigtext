@@ -66,7 +66,7 @@ impl Clock {
 }
 
 /// Days from 0000-03-01 (proleptic Gregorian) for a civil date (H. Hinnant's algorithm).
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+pub fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;
