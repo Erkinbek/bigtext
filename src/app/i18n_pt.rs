@@ -1354,4 +1354,7 @@ pub static PT: &[(&str, &str)] = &[
     ("{n} tables, {s} statements", "{n} tabelas, {s} instruções"),
     // CSV split.
     ("Repeat the header row in every part", "Repetir a linha de cabeçalho em cada parte"),
+    // Lone CRs on save.
+    ("Lone CR characters become line breaks too", "CRs isolados também viram quebras de linha"),
+    ("Otherwise a CR not followed by LF (shown as ←) stays as it is", "Caso contrário, um CR sem LF depois (mostrado como ←) fica como está"),
 ];

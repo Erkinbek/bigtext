@@ -1354,4 +1354,7 @@ pub static TR: &[(&str, &str)] = &[
     ("{n} tables, {s} statements", "{n} tablo, {s} ifade"),
     // CSV split.
     ("Repeat the header row in every part", "Başlık satırını her parçada tekrarla"),
+    // Lone CRs on save.
+    ("Lone CR characters become line breaks too", "Tek başına CR karakterleri de satır sonu olsun"),
+    ("Otherwise a CR not followed by LF (shown as ←) stays as it is", "Aksi halde ardından LF gelmeyen CR (← olarak gösterilir) olduğu gibi kalır"),
 ];

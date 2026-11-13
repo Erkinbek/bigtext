@@ -38,7 +38,10 @@ keyboard shortcuts.
   become `?` and are counted in the message. Binary-looking files open as text with a one-click
   **hex view**.
 - **Line endings**: LF / CRLF / CR / Mixed detection in the status bar, optional conversion on
-  save.
+  save. In a file of LF line breaks a lone CR (a progress bar's "back to the start of the
+  line") is not a line break, as in `wc -l` and `less`, and conversions keep it; **Lone CR
+  characters become line breaks too** (shown for a Mixed file) makes the conversion to LF or
+  CRLF turn them into line breaks as well, when saved in the same encoding.
 - **Status bar you can click**: Ln/Col goes to a line, the offset to a byte offset, the encoding
   reopens in another one, the line ending picks the one to save with, READ-ONLY turns it off;
   right-click the bar (or …) to choose its fields, kept with the settings.
@@ -491,7 +494,7 @@ keyboard shortcuts.
   later start than strict leftmost-first semantics would give.
 - Column numbers inside soft-broken lines (> 64 KB) are byte-based estimates (`Col ~N`).
 - A CR-only line break is recognised only in files without LF line breaks (mixed CR is shown
-  as a `←` placeholder).
+  as a `←` placeholder; **Line endings on save** can turn such CRs into line breaks).
 - Right-to-left text (Arabic, Hebrew) is shown left to right in the order it is stored, with
   its letters unjoined: there is no bidirectional layout.
 - On Linux/macOS a file that another program truncates while it is open shows what was read

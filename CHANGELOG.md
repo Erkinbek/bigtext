@@ -15,6 +15,13 @@ All notable changes to BigText. Each release on
   frame), and the block cache holds up to 64 MB. Windows keeps the mapping, since it does not
   let a mapped file be truncated.
 
+### Lone CRs
+
+- In a file that mixes lone CRs into LF line breaks (the status bar says Mixed), **Line
+  endings on save** offers **Lone CR characters become line breaks too**: converting to LF or
+  CRLF then turns every CR without an LF after it into a line break, so one save makes such
+  a file regular. Without it lone CRs stay as they are, as before.
+
 ### CSV records with line breaks
 
 - **One row per record**: in the table view, a record whose quoted fields hold line breaks is

@@ -1531,4 +1531,7 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["{n} tables, {s} statements", "таблиц: {n}, операторов: {s}", "{n} ta jadval, {s} ta statement"],
     // CSV split.
     ["Repeat the header row in every part", "Повторять строку заголовка в каждой части", "Sarlavha qatorini har bir qismda takrorlash"],
+    // Lone CRs on save.
+    ["Lone CR characters become line breaks too", "Одиночные CR тоже становятся переводами строк", "Yakka CR belgilari ham satr oxiriga aylansin"],
+    ["Otherwise a CR not followed by LF (shown as ←) stays as it is", "Иначе CR без LF после него (показан как ←) остаётся как есть", "Aks holda ortidan LF kelmagan CR (← bilan ko'rsatiladi) o'zgarmay qoladi"],
 ];

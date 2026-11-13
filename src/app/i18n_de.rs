@@ -1354,4 +1354,7 @@ pub static DE: &[(&str, &str)] = &[
     ("{n} tables, {s} statements", "{n} Tabellen, {s} Anweisungen"),
     // CSV split.
     ("Repeat the header row in every part", "Kopfzeile in jedem Teil wiederholen"),
+    // Lone CRs on save.
+    ("Lone CR characters become line breaks too", "Einzelne CR werden ebenfalls zu Zeilenumbrüchen"),
+    ("Otherwise a CR not followed by LF (shown as ←) stays as it is", "Sonst bleibt ein CR ohne folgendes LF (als ← gezeigt) unverändert"),
 ];

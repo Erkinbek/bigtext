@@ -1351,4 +1351,7 @@ pub static ZH: &[(&str, &str)] = &[
     ("{n} tables, {s} statements", "{n} 个表，{s} 条语句"),
     // CSV split.
     ("Repeat the header row in every part", "在每个部分中重复标题行"),
+    // Lone CRs on save.
+    ("Lone CR characters become line breaks too", "单独的 CR 也转换为换行"),
+    ("Otherwise a CR not followed by LF (shown as ←) stays as it is", "否则，后面没有 LF 的 CR（显示为 ←）保持不变"),
 ];

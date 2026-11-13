@@ -22,8 +22,9 @@ const WRITE_BUF: usize = 8 * 1024 * 1024;
 
 pub enum Transform<'a> {
     Identity,
-    /// Convert line breaks to the given style.
-    Eol(LineEnding),
+    /// Convert line breaks to the given style; with `true`, a CR not followed by LF (in a file
+    /// whose line breaks are LF) becomes a line break too instead of staying as it is.
+    Eol(LineEnding, bool),
     /// Replace every match in the range.
     Replace {
         matcher: &'a Matcher,
@@ -227,6 +228,8 @@ struct EolWriter<'w, W: Write> {
     codec: Codec,
     target: Vec<u8>,
     pending_cr: bool,
+    /// A CR without LF after it becomes `target` too.
+    lone_cr: bool,
     written: u64,
 }
 
@@ -254,7 +257,7 @@ impl<W: Write> EolWriter<'_, W> {
                         self.emit(&target)?;
                         i += 1;
                         continue;
-                    } else if self.codec.nl == NlByte::Lf {
+                    } else if self.codec.nl == NlByte::Lf && !self.lone_cr {
                         self.emit(b"\r")?;
                     } else {
                         self.emit(&target)?;
@@ -286,7 +289,7 @@ impl<W: Write> EolWriter<'_, W> {
                     if u == lf.as_slice() {
                         self.emit(&target)?;
                         continue;
-                    } else if self.codec.nl == NlByte::Lf {
+                    } else if self.codec.nl == NlByte::Lf && !self.lone_cr {
                         self.emit(&cr)?;
                     } else {
                         self.emit(&target)?;
@@ -307,7 +310,7 @@ impl<W: Write> EolWriter<'_, W> {
     fn finish(&mut self) -> io::Result<()> {
         if self.pending_cr {
             self.pending_cr = false;
-            if self.codec.nl == NlByte::Lf {
+            if self.codec.nl == NlByte::Lf && !self.lone_cr {
                 let cr = self.codec.cr_unit().to_vec();
                 self.emit(&cr)?;
             } else {
@@ -453,13 +456,14 @@ pub fn write_temp(
                     None => return Err(SaveError::Cancelled),
                 }
             }
-            Transform::Identity | Transform::Eol(_) => {
+            Transform::Identity | Transform::Eol(..) => {
                 let mut sink = match &transform {
-                    Transform::Eol(style) => Sink::Eol(EolWriter {
+                    Transform::Eol(style, lone_cr) => Sink::Eol(EolWriter {
                         out: &mut w,
                         codec: buf.codec,
                         target: buf.codec.line_break(*style),
                         pending_cr: false,
+                        lone_cr: *lone_cr,
                         written: 0,
                     }),
                     _ => Sink::Plain(&mut w, 0),
@@ -741,7 +745,7 @@ mod tests {
         let (temp, _) = write_temp(
             &t,
             &path,
-            Transform::Eol(LineEnding::Lf),
+            Transform::Eol(LineEnding::Lf, false),
             &CancelToken::new(),
             &Progress::default(),
         )
@@ -750,12 +754,22 @@ mod tests {
         let (temp2, _) = write_temp(
             &t,
             &path,
-            Transform::Eol(LineEnding::CrLf),
+            Transform::Eol(LineEnding::CrLf, false),
             &CancelToken::new(),
             &Progress::default(),
         )
         .unwrap();
         assert_eq!(fs::read(&temp2).unwrap(), b"a\r\nb\r\nc\rd\r\n");
+        // Lone CRs become line breaks too when asked.
+        let (temp_lone, _) = write_temp(
+            &t,
+            &path,
+            Transform::Eol(LineEnding::CrLf, true),
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
+        assert_eq!(fs::read(&temp_lone).unwrap(), b"a\r\nb\r\nc\r\nd\r\n");
         let u16c = Codec::new(Encoding::Utf16Le, crate::encoding::NlByte::Lf, 0);
         let p2 = dir.path().join("d.txt");
         fs::write(&p2, u16c.encode("x\r\ny\nz")).unwrap();
@@ -763,7 +777,7 @@ mod tests {
         let (temp3, _) = write_temp(
             &t2,
             &p2,
-            Transform::Eol(LineEnding::CrLf),
+            Transform::Eol(LineEnding::CrLf, false),
             &CancelToken::new(),
             &Progress::default(),
         )

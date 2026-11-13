@@ -35,7 +35,8 @@ pub struct SaveJob {
 #[derive(Clone)]
 pub enum WriteSpec {
     Identity,
-    Eol(LineEnding),
+    /// Line breaks converted; `true`: lone CRs become line breaks too.
+    Eol(LineEnding, bool),
     Replace {
         matcher: Arc<Matcher>,
         template: Template,
@@ -158,7 +159,7 @@ impl BigTextApp {
         };
         let spec = match (encoding, d.eol_on_save) {
             (Some((enc, bom)), eol) => WriteSpec::Transcode { enc, bom, eol },
-            (None, Some(le)) => WriteSpec::Eol(le),
+            (None, Some(le)) => WriteSpec::Eol(le, d.eol_lone_cr),
             (None, None) => WriteSpec::Identity,
         };
         let id = d.id;
@@ -210,7 +211,7 @@ impl BigTextApp {
             WriteSpec::TextOp { op, .. } => WriteKind::TextOp(*op),
             WriteSpec::ColumnEdit { .. } => WriteKind::ColumnEdit,
             WriteSpec::Sort { .. } => WriteKind::Sort,
-            WriteSpec::Identity | WriteSpec::Eol(_) => WriteKind::Save,
+            WriteSpec::Identity | WriteSpec::Eol(..) => WriteKind::Save,
         };
         let cancel = CancelToken::new();
         let progress = Progress::new(d.buf.len());
@@ -267,7 +268,7 @@ impl BigTextApp {
             }
             let transform = match &spec {
                 WriteSpec::Identity => Transform::Identity,
-                WriteSpec::Eol(le) => Transform::Eol(*le),
+                WriteSpec::Eol(le, lone) => Transform::Eol(*le, *lone),
                 WriteSpec::Replace {
                     matcher,
                     template,
@@ -433,6 +434,7 @@ impl BigTextApp {
                     waker.clone(),
                 );
                 d.eol_on_save = None;
+                d.eol_lone_cr = false;
                 let secs = f.elapsed.as_secs_f64();
                 d.banner = Some(Banner::Info(match &f.kind {
                     WriteKind::Replace => trf("Replaced {n} matches; wrote {size} in {secs}s.", &[("n", &f.stats.count.to_string()), ("size", &human_bytes(f.stats.bytes_out)), ("secs", &format!("{secs:.2}"))]),

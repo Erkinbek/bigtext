@@ -108,6 +108,12 @@ impl StatusFields {
     }
 }
 
+/// Whether a file mixes lone CRs into LF line breaks, so that a conversion can turn them into
+/// line breaks too.
+pub(crate) fn lone_cr_applies(d: &super::document::Document) -> bool {
+    d.line_ending == LineEnding::Mixed && d.buf.codec.nl == bigtext::encoding::NlByte::Lf
+}
+
 /// What a click in the status bar asks for, done once the bar is drawn.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum StatusAct {
@@ -115,6 +121,7 @@ pub(crate) enum StatusAct {
     GotoOffset,
     Reopen(Option<Encoding>),
     Eol(Option<LineEnding>),
+    LoneCr(bool),
     ToggleReadOnly,
     CopyPath,
     Fields(StatusFields),
@@ -391,6 +398,14 @@ impl BigTextApp {
                                 acts.push(StatusAct::Eol(to));
                             }
                         }
+                        if lone_cr_applies(d) {
+                            ui.separator();
+                            let mut on = d.eol_lone_cr;
+                            let can = matches!(d.eol_on_save, Some(LineEnding::Lf | LineEnding::CrLf));
+                            if ui.add_enabled(can, egui::Checkbox::new(&mut on, tr("Lone CR characters become line breaks too"))).on_hover_text(tr("Otherwise a CR not followed by LF (shown as ←) stays as it is")).changed() {
+                                acts.push(StatusAct::LoneCr(on));
+                            }
+                        }
                     });
                     ui.separator();
                     field_menu(ui, d.buf.codec.enc.name(), tr("Reopen with encoding"), |ui| {
@@ -528,6 +543,11 @@ impl BigTextApp {
             StatusAct::Eol(to) => {
                 if let Some(d) = self.docs.get_mut(self.active) {
                     d.eol_on_save = to;
+                }
+            }
+            StatusAct::LoneCr(on) => {
+                if let Some(d) = self.docs.get_mut(self.active) {
+                    d.eol_lone_cr = on;
                 }
             }
             StatusAct::ToggleReadOnly => self.run(ctx, Cmd::ReadOnly),

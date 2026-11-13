@@ -173,6 +173,8 @@ pub struct Document {
     pub buf: TextBuf,
     pub line_ending: LineEnding,
     pub eol_on_save: Option<LineEnding>,
+    /// With a conversion to LF or CRLF, a CR without LF after it becomes a line break too.
+    pub eol_lone_cr: bool,
     pub looks_binary: bool,
     pub read_only: bool,
     pub hex: bool,
@@ -361,6 +363,7 @@ impl Document {
             buf: TextBuf::new(src, idx, bigtext::encoding::Codec::utf8()),
             line_ending: LineEnding::Unknown,
             eol_on_save: None,
+            eol_lone_cr: false,
             looks_binary: false,
             read_only: false,
             hex: false,

@@ -1335,6 +1335,11 @@ impl BigTextApp {
                         ui.radio_value(&mut d.eol_on_save, Some(LineEnding::Lf), tr("Convert to LF"));
                         ui.radio_value(&mut d.eol_on_save, Some(LineEnding::CrLf), tr("Convert to CRLF"));
                         ui.radio_value(&mut d.eol_on_save, Some(LineEnding::Cr), tr("Convert to CR"));
+                        if super::status_bar::lone_cr_applies(d) {
+                            ui.separator();
+                            let can = matches!(d.eol_on_save, Some(LineEnding::Lf | LineEnding::CrLf));
+                            ui.add_enabled(can, egui::Checkbox::new(&mut d.eol_lone_cr, tr("Lone CR characters become line breaks too"))).on_hover_text(tr("Otherwise a CR not followed by LF (shown as ←) stays as it is"));
+                        }
                     });
                 }
                 ui.menu_button(tr("Save with encoding"), |ui| {
