@@ -160,6 +160,61 @@ jobs:
           path: packaging/vscode/bigtext-vscode.vsix
           if-no-files-found: error
 
+  # Starts the AppImage the way the AppImage catalog's test does (Ubuntu 22.04 with its X packages,
+  # Xvfb 800x600, icewm, a home without settings) and checks that a window appears, and that it
+  # is light, since that system is not set to dark mode. The catalog found v0.7.1 and v0.7.2 not
+  # starting only after their release; this finds it on every push. It does not hold up a release.
+  appimage-test:
+    name: appimage-test
+    needs: build
+    runs-on: ubuntu-latest
+    container: ubuntu:22.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: bigtext-linux-x64
+          path: dist
+
+      - name: The X packages of the catalog's test system
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            xvfb icewm x11-utils xdotool imagemagick libgl1-mesa-dri libgl1-mesa-dev mesa-utils >/dev/null
+
+      - name: Start it and look at the window
+        run: |
+          Xvfb :99 -screen 0 800x600x24 &
+          export DISPLAY=:99
+          sleep 2
+          icewm &
+          sleep 2
+          export HOME=/tmp/home
+          mkdir -p "$HOME"
+          chmod +x dist/bigtext-linux-x64.AppImage
+          dist/bigtext-linux-x64.AppImage --appimage-extract-and-run > app.log 2>&1 &
+          for _ in $(seq 30); do xdotool search --name BigText > /dev/null 2>&1 && break; sleep 1; done
+          sleep 3
+          import -window root shot.png
+          if ! xdotool search --name BigText > /dev/null 2>&1; then
+            echo "::error::No BigText window after 30 s"
+            cat app.log
+            exit 1
+          fi
+          # Light theme about 0.6-0.95 (a dialog dims it), dark about 0.1.
+          mean="$(convert shot.png -colorspace Gray -format '%[fx:mean]' info:)"
+          echo "::notice::BigText window found; mean brightness $mean (light above 0.35)"
+          if ! awk -v m="$mean" 'BEGIN { exit !(m > 0.35) }'; then
+            echo "::error::The window is dark (mean brightness $mean) on a system not set to dark mode"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: appimage-test-screenshot
+          path: shot.png
+          if-no-files-found: ignore
+
   # A pushed tag (v0.1.0, ...) publishes a GitHub release. Asset names carry no version so the
   # website can link to releases/latest/download/<name>.
   release:
