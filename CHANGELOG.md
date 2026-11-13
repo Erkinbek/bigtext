@@ -5,6 +5,16 @@ All notable changes to BigText. Each release on
 
 ## Unreleased
 
+### Files truncated while open (Linux, macOS)
+
+- A local file is read in 64 KB blocks on demand instead of being mapped into memory, so
+  another program truncating it while it is open (logrotate's `copytruncate`, a script
+  rewriting it) can no longer crash BigText with SIGBUS: reads past the new end fail and the
+  file is offered for reloading. Background work already read this way. Measured on a 1 GB
+  file: the first screen takes the same time, frames 0.2–0.8 ms more (well under the 16 ms of a
+  frame), and the block cache holds up to 64 MB. Windows keeps the mapping, since it does not
+  let a mapped file be truncated.
+
 ### CSV records with line breaks
 
 - **One row per record**: in the table view, a record whose quoted fields hold line breaks is

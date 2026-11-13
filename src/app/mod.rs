@@ -2337,12 +2337,13 @@ pub(super) fn watch(d: &mut Document, tx: Sender<Msg>, waker: Waker) {
     });
 }
 
-/// Following reads a file in chunks rather than mapped: the writer can then truncate it
-/// (copytruncate rotation) on Windows, and a shrinking file cannot fault the process on Unix.
+/// Following reads a file in chunks rather than mapped (or, on Unix, read in blocks on the
+/// calling thread): the writer can then truncate it (copytruncate rotation) on Windows, and the
+/// loader keeps up with a growing file.
 pub(super) fn follow_chunked(d: &mut Document, tx: &Sender<Msg>, waker: &Waker) {
     if d.follow
         && d.is_ready()
-        && d.buf.source.is_mmap()
+        && (d.buf.source.is_mmap() || d.buf.source.is_pread())
         && !d.reloading
         && !d.temporary
         && !d.is_modified()

@@ -6,10 +6,12 @@ keyboard shortcuts.
 
 - **Open anything**: File → Open, drag & drop, command line (`bigtext file.txt`), Windows
   "Open with" (registered by the installer), multiple tabs.
-- **Never reads the whole file**: a small cache of memory-mapped views for the visible text,
-  positional streaming reads for background work; network/removable drives (or mmap failure)
-  fall back to buffered chunked reads served from a cache by a loader thread, so a slow drive
-  can never stall the UI.
+- **Never reads the whole file**: the visible text comes from a small cache of memory-mapped
+  views on Windows and of 64 KB blocks read on demand on Linux and macOS (there another
+  program may truncate an open file, which would crash a process reading it through a
+  mapping); background work streams with positional reads. Network/removable drives (or mmap
+  failure) fall back to buffered chunked reads served from a cache by a loader thread, so a
+  slow drive can never stall the UI.
 - **Sparse, incremental line index**: one `u64` per 64 KB, built in the background from the top.
   Go to line and the scrollbar work immediately (estimated positions, shown with `~`, refined
   when the index catches up).
@@ -492,9 +494,9 @@ keyboard shortcuts.
   as a `←` placeholder).
 - Right-to-left text (Arabic, Hebrew) is shown left to right in the order it is stored, with
   its letters unjoined: there is no bidirectional layout.
-- On Linux/macOS, another process truncating a file while it is mapped can raise SIGBUS
-  (inherent to mmap; Windows forbids truncating mapped files). Followed files and network
-  drives use chunked reads, so a followed log can be truncated safely.
+- On Linux/macOS a file that another program truncates while it is open shows what was read
+  before, and reads past its new end fail (the file is offered for reloading): open files
+  are read in blocks, not mapped, so this cannot crash BigText.
 - Syntax highlighting never reads a file from its start: after a jump it looks 64 KB above the
   screen, so a comment or string opened further up than that is not seen until you scroll
   through it from above.

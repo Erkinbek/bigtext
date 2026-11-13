@@ -213,6 +213,26 @@ impl Source {
         let force_chunked = mode == OpenMode::Chunked
             || std::env::var_os("BIGTEXT_FORCE_CHUNKED").is_some()
             || prefers_chunked(path);
+        // Unix lets another process truncate a mapped file, and touching the lost pages then
+        // kills the process with SIGBUS; positional reads just come up short. So there a local
+        // file is read in blocks, filled at once like a mapping's page faults. Windows does not
+        // let a mapped file be truncated, so it keeps the mapping. BIGTEXT_FORCE_PREAD picks the
+        // block reads anywhere (to compare them with the mapping).
+        let pread = cfg!(unix) || std::env::var_os("BIGTEXT_FORCE_PREAD").is_some();
+        if !force_chunked && pread {
+            return Ok(Source {
+                path: path_buf,
+                len,
+                backing: Backing::Chunked(Chunked::new(
+                    Box::new(file),
+                    len,
+                    CHUNK_BLOCK,
+                    false,
+                    true,
+                )),
+                modified,
+            });
+        }
         if !force_chunked {
             let m = Mapped {
                 file,
@@ -239,6 +259,7 @@ impl Source {
                             len,
                             CHUNK_BLOCK,
                             false,
+                            false,
                         )),
                         modified,
                     })
@@ -248,7 +269,7 @@ impl Source {
         Ok(Source {
             path: path_buf,
             len,
-            backing: Backing::Chunked(Chunked::new(Box::new(file), len, CHUNK_BLOCK, false)),
+            backing: Backing::Chunked(Chunked::new(Box::new(file), len, CHUNK_BLOCK, false, false)),
             modified,
         })
     }
@@ -259,7 +280,7 @@ impl Source {
         let backing = if len == 0 {
             Backing::Empty
         } else {
-            Backing::Chunked(Chunked::new(reader, len, REMOTE_BLOCK, true))
+            Backing::Chunked(Chunked::new(reader, len, REMOTE_BLOCK, true, false))
         };
         Source {
             path: None,
@@ -303,12 +324,18 @@ impl Source {
         match self.backing {
             Backing::Empty => "empty",
             Backing::Mapped(_) => "mmap",
+            Backing::Chunked(ref c) if c.inner.sync => "pread",
             Backing::Chunked(_) => "chunked",
         }
     }
 
     pub fn is_mmap(&self) -> bool {
         matches!(self.backing, Backing::Mapped(_))
+    }
+
+    /// A local file read in blocks filled on the calling thread (Unix instead of a mapping).
+    pub fn is_pread(&self) -> bool {
+        matches!(&self.backing, Backing::Chunked(c) if c.inner.sync)
     }
 
     /// Registers the function used to wake the UI when queued chunked reads complete.
@@ -426,6 +453,9 @@ struct ChunkedInner {
     /// Blocks the cache keeps.
     capacity: usize,
     remote: bool,
+    /// A block missing from the cache is read at once on the calling thread, as a page fault of
+    /// a mapping would be, instead of being queued for the loader.
+    sync: bool,
     cache: Mutex<BlockCache>,
     pending: Mutex<HashSet<u64>>,
     waker: Mutex<Option<Waker>>,
@@ -478,13 +508,14 @@ struct Chunked {
 }
 
 impl Chunked {
-    fn new(reader: Box<dyn RangeRead>, len: u64, block: u64, remote: bool) -> Chunked {
+    fn new(reader: Box<dyn RangeRead>, len: u64, block: u64, remote: bool, sync: bool) -> Chunked {
         let inner = Arc::new(ChunkedInner {
             reader,
             len,
             block,
             capacity: (CACHE_BYTES / block) as usize,
             remote,
+            sync,
             cache: Mutex::new(BlockCache {
                 map: HashMap::new(),
                 tick: 0,
@@ -533,6 +564,9 @@ impl Chunked {
     }
 
     fn try_read(&self, r: Range<u64>) -> Option<Vec<u8>> {
+        if self.inner.sync {
+            return self.read_blocking(r).ok();
+        }
         let n = (r.end - r.start) as usize;
         if n == 0 {
             return Some(Vec::new());
@@ -778,6 +812,30 @@ mod tests {
         assert_eq!(file_id(&dir.path().join("missing.log")), None);
     }
 
+    /// Another process truncating an open file: with a mapping, touching the lost pages would
+    /// kill this test with SIGBUS; block reads come up short and report it.
+    #[cfg(unix)]
+    #[test]
+    fn a_file_truncated_while_open_reads_short() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(&vec![b'x'; 4 << 20]).unwrap();
+        f.flush().unwrap();
+        let s = Source::open(f.path(), OpenMode::Auto).unwrap();
+        assert!(s.is_pread());
+        assert_eq!(s.try_read(0..16).unwrap().len(), 16);
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(f.path())
+            .unwrap()
+            .set_len(1000)
+            .unwrap();
+        assert!(s.try_read(3 << 20..(3 << 20) + 100).is_none());
+        assert!(s.read(2 << 20..(2 << 20) + 100).is_err());
+        assert!(s.has_io_error());
+        let mut buf = vec![0u8; 100];
+        assert!(s.read_into(1 << 20, &mut buf).is_err());
+    }
+
     #[test]
     fn mmap_and_chunked_agree() {
         let mut f = tempfile::NamedTempFile::new().unwrap();
@@ -786,6 +844,7 @@ mod tests {
         f.flush().unwrap();
         let a = Source::open(f.path(), OpenMode::Auto).unwrap();
         let b = Source::open(f.path(), OpenMode::Chunked).unwrap();
+        assert_eq!(a.kind_name(), if cfg!(unix) { "pread" } else { "mmap" });
         assert_eq!(b.kind_name(), "chunked");
         for r in [0..10u64, 65_530..65_600, 100_000..250_000, 299_990..400_000] {
             let x = a.read(r.clone()).unwrap();

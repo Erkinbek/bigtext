@@ -47,7 +47,7 @@ renderer).
 
 ```
 src/
-  file.rs           Source: cached mmap views + positional reads | chunked (block cache + loader) | empty
+  file.rs           Source: cached mmap views (Windows) | pread blocks filled on demand (Unix) | chunked (block cache + loader) | empty
   encoding.rs       Encoding, Codec (newline search/count, decode/encode, char boundaries), detection
   index.rs          LineIndex: one u64 per 64 KB, background indexer, estimates
   text/buffer.rs    TextBuf: piece table (original mmap + add buffer), line<->offset mapping, undo swaps
