@@ -1,0 +1,26 @@
+name: Feature request
+description: Something BigText could do for your files
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The task and the files, before any solution. "I get 20 GB of JSON logs a day and need the requests that took over 2 s" helps more than "add a JSON filter".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How could BigText help?
+      description: How you imagine it, if you have an idea.
+  - type: input
+    id: files
+    attributes:
+      label: Typical files
+      placeholder: "CSV, 5–40 GB, semicolon-separated"
+  - type: textarea
+    id: now
+    attributes:
+      label: What you use now
+      description: Other tools or scripts you use for this today, and what is missing in them.

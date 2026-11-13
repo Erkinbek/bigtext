@@ -1,0 +1,74 @@
+name: Bug report
+description: Something does not work as it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. A security problem goes to the [security policy](https://github.com/Erkinbek/bigtext/security/policy) instead, not here.
+  - type: input
+    id: version
+    attributes:
+      label: BigText version
+      description: Help → About shows it.
+      placeholder: "0.10.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: System
+      options:
+        - Windows
+        - Linux
+        - macOS
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: System version
+      placeholder: "Windows 11 24H2, Ubuntu 24.04 (Wayland), macOS 15 on Apple Silicon"
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installed with
+      options:
+        - Windows installer (setup.exe)
+        - Windows portable zip
+        - AppImage
+        - .deb package
+        - Homebrew
+        - Scoop
+        - cargo install
+        - Built from source
+        - Other
+  - type: input
+    id: file
+    attributes:
+      label: The file
+      description: Its kind, size and encoding, if the problem depends on a file. Please do not attach files with real or confidential data.
+      placeholder: "12 GB nginx access log, UTF-8, LF line breaks"
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the file
+        2. Search → Find All for "timeout"
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Error messages, a screenshot, or for a crash the text it printed when started from a terminal.
+    validations:
+      required: true

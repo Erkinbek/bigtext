@@ -175,6 +175,7 @@ from `bigtext-bench`. Raw reports: `scripts/bench.ps1` reproduces them.
 - [USAGE.md](USAGE.md): the command line, `bigtext-cli` and the keyboard shortcuts.
 - [CONTRIBUTING.md](CONTRIBUTING.md): building, architecture, tests, the website and releasing.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release.
+- [SECURITY.md](SECURITY.md): reporting a vulnerability privately.
 - Guides on the website: [a CSV past Excel's 1,048,576 rows](https://erkinbek.github.io/bigtext/guides/open-csv-larger-than-excel/),
   [a 10 GB log file](https://erkinbek.github.io/bigtext/guides/open-large-log-file/),
   [one table out of a mysqldump](https://erkinbek.github.io/bigtext/guides/extract-table-from-mysqldump/).

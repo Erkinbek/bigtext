@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or idea to discuss
+    url: https://github.com/Erkinbek/bigtext/discussions
+    about: How to do something, or an idea you would like to talk over first.
+  - name: Security problem
+    url: https://github.com/Erkinbek/bigtext/security/policy
+    about: Report it privately, not in a public issue.
