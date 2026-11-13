@@ -3,6 +3,29 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## 0.8.0 — 2026-11-13
+
+### A first start that explains itself
+
+- **A page over the empty document**: a fresh start no longer opens on a blank editor. The page
+  offers Open, Open folder and Open remote file, lists the recent files and the main keys as
+  you have bound them, and goes away as soon as you type or open a file.
+- **Create a 1 GB sample log**: no big file at hand? BigText writes a web-service log to the
+  temporary folder in the background, with a progress bar, and opens it when it is complete;
+  the next time it opens at once.
+- **What's new after an update**: after an update, a note like this one shows what changed in
+  the new version, with a link to the full release notes.
+
+### Around BigText
+
+- **Open in BigText for VS Code**: an extension opens files and folders in BigText from VS Code's
+  Explorer, a tab or the editor (at the caret's line), and offers BigText when VS Code opens a
+  file larger than 50 MB. The release carries it as `bigtext-vscode.vsix`
+  (`code --install-extension bigtext-vscode.vsix`).
+- **The website in eight languages**: Chinese, Spanish, Portuguese, German and Turkish join
+  English, Russian and Uzbek, with a demo of a 50 GB file and guides for a CSV past Excel's row
+  limit, a 10 GB log file and one table out of a mysqldump.
+
 ## 0.7.3 — 2026-11-12
 
 Linux packaging only; nothing changes on Windows and macOS.

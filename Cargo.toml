@@ -1,6 +1,6 @@
 [package]
 name = "bigtext"
-version = "0.7.3"
+version = "0.8.0"
 edition = "2021"
 description = "Free editor for huge text and log files (1-50+ GB): opens instantly, never freezes, 2.5 GB/s search, atomic save"
 authors = ["Erkin Pardayev <erkin.pardayev@gmail.com>"]
