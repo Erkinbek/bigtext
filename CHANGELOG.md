@@ -18,6 +18,8 @@ All notable changes to BigText. Each release on
   `.csv` and `.tsv` files (or with `--csv`). Column names, the Add column preview and the
   header that Row checks writes with the problem rows read the first record, not the first
   line.
+- **Filter by a column** reads records: a match counts in the field it is in, also on the
+  second line of a record, and a kept record keeps all its lines.
 
 ## 0.10.0 — 2026-11-13
 

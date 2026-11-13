@@ -667,13 +667,26 @@ pub fn for_each_record(
     d: Dialect,
     cancel: &CancelToken,
     progress: Option<&Progress>,
+    f: impl FnMut(&Record) -> bool,
+) -> ScanEnd {
+    for_each_record_in(buf, d, 0..buf.len(), cancel, progress, f)
+}
+
+/// [`for_each_record`] over the records in `range`, whose start is taken to be a record start
+/// (it is moved to [`Dialect::first`] when before it).
+pub fn for_each_record_in(
+    buf: &TextBuf,
+    d: Dialect,
+    range: Range<u64>,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
     mut f: impl FnMut(&Record) -> bool,
 ) -> ScanEnd {
     let codec = buf.codec;
     let unit = codec.unit();
     let (nl, cr, lf_mode) = (nl_value(&codec), b'\r' as u16, codec.nl == NlByte::Lf);
-    let len = buf.len();
-    let start = d.first(buf);
+    let len = range.end.min(buf.len());
+    let start = range.start.max(d.first(buf)).min(len);
     let mut st = State::FieldStart;
     let mut fields: Vec<Range<u64>> = Vec::new();
     let (mut rec_start, mut field_start) = (start, start);

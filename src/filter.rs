@@ -531,6 +531,9 @@ fn hit_lines(
     progress: Option<&Progress>,
     mut on_line: impl FnMut(u64, u64) -> bool,
 ) -> SearchEnd {
+    if let Some((d, col)) = spec.column {
+        return hit_records(buf, m, spec, d, col, cancel, progress, on_line);
+    }
     let (from, len) = spec.bounds(buf.len());
     let codec = buf.codec;
     // The line the last match fell in, and whether it was kept.
@@ -618,6 +621,74 @@ fn hit_lines(
         }
     }
     SearchEnd::Completed
+}
+
+/// [`hit_lines`] for a filter limited to CSV column `col`: reads record by record (a quoted
+/// field may hold line breaks), looks for a match inside that field, and passes every line of
+/// a kept record to `on_line`.
+#[allow(clippy::too_many_arguments)]
+fn hit_records(
+    buf: &TextBuf,
+    m: &Matcher,
+    spec: FilterSpec,
+    d: Dialect,
+    col: usize,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut on_line: impl FnMut(u64, u64) -> bool,
+) -> SearchEnd {
+    let (from, len) = spec.bounds(buf.len());
+    let (mut failed, mut stopped) = (false, false);
+    let end = csv::for_each_record_in(buf, d, from..len, cancel, progress, |rec| {
+        let hit = match rec.fields.get(col) {
+            Some(f) if f.end - f.start <= FIELD_LINE_MAX => {
+                let Some(b) = buf.read(f.clone()) else {
+                    failed = true;
+                    return false;
+                };
+                let mut found = false;
+                let mut last_end = None;
+                m.find_in(
+                    &b,
+                    f.start,
+                    0,
+                    b.len() + 1,
+                    b.len(),
+                    &mut last_end,
+                    &mut |_, _| {
+                        found = true;
+                        false
+                    },
+                );
+                found
+            }
+            _ => false,
+        };
+        if hit == spec.invert {
+            return true;
+        }
+        match each_line(buf, rec.content.start..rec.next, cancel, &mut on_line) {
+            Some(true) => true,
+            Some(false) => {
+                stopped = true;
+                false
+            }
+            None => {
+                failed = true;
+                false
+            }
+        }
+    });
+    if failed {
+        return SearchEnd::Unavailable;
+    }
+    match end {
+        _ if cancel.is_cancelled() => SearchEnd::Cancelled,
+        csv::ScanEnd::Done => SearchEnd::Completed,
+        csv::ScanEnd::Stopped if stopped => SearchEnd::Stopped,
+        csv::ScanEnd::Stopped | csv::ScanEnd::Cancelled => SearchEnd::Cancelled,
+        csv::ScanEnd::Failed => SearchEnd::Unavailable,
+    }
 }
 
 fn line_start_in(codec: &crate::encoding::Codec, hay: &[u8], base: u64, s: u64) -> Option<u64> {
@@ -962,6 +1033,36 @@ mod tests {
         assert_eq!(
             lines(&t, "Paris", false, col(1, true)),
             vec!["id,name,city\n", "1,Ann,Paris\n"]
+        );
+    }
+
+    #[test]
+    fn csv_column_reads_records_with_line_breaks() {
+        // Line by line, "Rome" on the second line of record 1 would sit in column 0.
+        let (_f, t) = buf_with(
+            b"id,note,city\n1,\"first\nRome\",Oslo\n2,plain,Rome\n",
+            Codec::utf8(),
+        );
+        let col = |c, invert| FilterSpec {
+            invert,
+            column: Some((Dialect::new(b','), c)),
+            ..Default::default()
+        };
+        assert_eq!(
+            lines(&t, "Rome", false, col(1, false)),
+            vec!["1,\"first\n", "Rome\",Oslo\n"]
+        );
+        assert_eq!(
+            lines(&t, "Rome", false, col(0, false)),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            lines(&t, "Rome", false, col(2, false)),
+            vec!["2,plain,Rome\n"]
+        );
+        assert_eq!(
+            lines(&t, "first", false, col(1, true)),
+            vec!["id,note,city\n", "2,plain,Rome\n"]
         );
     }
 
