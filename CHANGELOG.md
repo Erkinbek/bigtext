@@ -15,6 +15,14 @@ All notable changes to BigText. Each release on
   frame), and the block cache holds up to 64 MB. Windows keeps the mapping, since it does not
   let a mapped file be truncated.
 
+### Syntax colours after a jump
+
+- In a large file of code, SQL or HTML, a background pass from the start keeps the highlighting
+  state every 64 KB, so after a jump (or a scroll into the middle of a long INSERT line) the
+  rows start in the comment or string they are in, instead of guessing from 64 KB above,
+  which could swap the colours of strings and code. 200–700 MB a second, about 40 bytes of
+  memory per 64 KB.
+
 ### Lone CRs
 
 - In a file that mixes lone CRs into LF line breaks (the status bar says Mixed), **Line

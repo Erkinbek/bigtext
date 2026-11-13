@@ -87,6 +87,50 @@ impl BigTextApp {
     /// Reads where the records start in the CSV shown as a table, in the background, once for
     /// each version of the document and dialect, so a record whose quoted fields hold line
     /// breaks is one row.
+    /// Finds the highlighting checkpoints of a large document in a stateful language in the
+    /// background, once for each version and language, so that a jump far below where a comment
+    /// or string opened still colours it right.
+    pub(crate) fn hl_tick(&mut self) {
+        let syntax = self.settings.syntax;
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
+        let lang = d.effective_lang();
+        if !syntax
+            || !lang.stateful()
+            || d.table
+            || d.hex
+            || !d.is_ready()
+            || d.buf.len() <= crate::view::hl_rows::LOOKBACK
+        {
+            return;
+        }
+        if d.hl_index
+            .as_ref()
+            .is_some_and(|j| j.version == d.version && j.lang == lang)
+        {
+            return;
+        }
+        if let Some(j) = d.hl_index.take() {
+            j.cancel.cancel();
+        }
+        let data = Arc::new(Mutex::new(Arc::new(
+            crate::view::hl_rows::HlIndex::default(),
+        )));
+        let cancel = CancelToken::new();
+        d.hl_index = Some(super::document::HlJob {
+            version: d.version,
+            lang,
+            data: data.clone(),
+            cancel: cancel.clone(),
+        });
+        let snap = d.buf.snapshot();
+        let waker = self.waker.clone();
+        jobs::spawn("hl-index", move || {
+            crate::view::hl_rows::build_index(&snap, lang, &cancel, &data, &|| waker());
+        });
+    }
+
     pub(crate) fn records_tick(&mut self) {
         let Some(d) = self.docs.get_mut(self.active) else {
             return;

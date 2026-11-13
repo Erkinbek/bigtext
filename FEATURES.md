@@ -500,9 +500,11 @@ keyboard shortcuts.
 - On Linux/macOS a file that another program truncates while it is open shows what was read
   before, and reads past its new end fail (the file is offered for reloading): open files
   are read in blocks, not mapped, so this cannot crash BigText.
-- Syntax highlighting never reads a file from its start: after a jump it looks 64 KB above the
-  screen, so a comment or string opened further up than that is not seen until you scroll
-  through it from above.
+- Syntax highlighting of a file over 64 KB in a language with comments and strings that span
+  lines (code, SQL, HTML, …) takes a background pass from the start (200–700 MB a second, about
+  40 bytes per 64 KB), so after a jump a row starts in the comment or string it is in. Until
+  the pass gets there, it looks 64 KB above the screen, and a comment or string opened further
+  up is not seen until you scroll through it from above.
 - In the CSV table, a quote that opens a field and is never closed makes the rest of the file
   one record, as RFC 4180 reads it; the table shows it in 64 KB pieces (`↪`).
 - The file comparison compares lines by 64-bit hash + length (a collision would hide a

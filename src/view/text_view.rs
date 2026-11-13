@@ -458,8 +458,15 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         (Some(o), Some(a), Some(b)) => (o.spans)(a.start..b.seg.next.max(b.end)),
         _ => Vec::new(),
     };
-    let hl_states =
-        super::hl_rows::row_states(&mut doc.view.hl, &doc.buf, doc.version, env.lang, &rows);
+    let hl_index = doc.hl_index(env.lang);
+    let hl_states = super::hl_rows::row_states(
+        &mut doc.view.hl,
+        &doc.buf,
+        doc.version,
+        env.lang,
+        &rows,
+        hl_index.as_deref(),
+    );
     let stateful = env.lang.stateful();
     let diff_color = match env.diff.as_ref().map(|o| o.added) {
         Some(true) => role(

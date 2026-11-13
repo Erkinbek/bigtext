@@ -182,7 +182,9 @@ impl BigTextApp {
                         Some(tr("Copy as HTML works on up to 2 MB. Select a smaller part.").into());
                     return;
                 }
-                let st = crate::view::hl_rows::state_at(&d.buf, lang, s).unwrap_or_default();
+                let idx = d.hl_index(lang);
+                let st = crate::view::hl_rows::state_at_with(&d.buf, lang, s, idx.as_deref())
+                    .unwrap_or_default();
                 let html = html_block(
                     &text,
                     lang,

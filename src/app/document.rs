@@ -166,6 +166,14 @@ impl Default for ViewState {
     }
 }
 
+/// The highlighting checkpoints being found for a document (`BigTextApp::hl_tick` starts it).
+pub struct HlJob {
+    pub version: u64,
+    pub lang: crate::view::highlight::Lang,
+    pub data: std::sync::Arc<std::sync::Mutex<std::sync::Arc<crate::view::hl_rows::HlIndex>>>,
+    pub cancel: bigtext::jobs::CancelToken,
+}
+
 pub struct Document {
     pub id: u64,
     pub path: Option<PathBuf>,
@@ -248,6 +256,8 @@ pub struct Document {
     pub sql_dump: Option<super::sql_dump::DumpResults>,
     /// Where the records of a CSV shown as a table start (quoted fields may hold line breaks).
     pub records: Option<crate::view::table_view::RecordsJob>,
+    /// Highlighting checkpoints of a large document (see `HlIndex`).
+    pub hl_index: Option<HlJob>,
     pub problems: Option<super::problems_panel::ProblemsResults>,
     pub chart: Option<super::column_chart::ChartResults>,
     pub json_check: Option<super::json_validate::JsonCheckResults>,
@@ -413,6 +423,7 @@ impl Document {
             alerts: None,
             sql_dump: None,
             records: None,
+            hl_index: None,
             problems: None,
             chart: None,
             json_check: None,
@@ -516,6 +527,15 @@ impl Document {
     }
 
     /// The format the document is highlighted as.
+    /// The highlighting checkpoints for `lang`, when they belong to this version.
+    pub fn hl_index(
+        &self,
+        lang: crate::view::highlight::Lang,
+    ) -> Option<std::sync::Arc<crate::view::hl_rows::HlIndex>> {
+        let j = self.hl_index.as_ref()?;
+        (j.version == self.version && j.lang == lang).then(|| j.data.lock().unwrap().clone())
+    }
+
     pub fn effective_lang(&self) -> crate::view::highlight::Lang {
         self.lang.unwrap_or_else(|| self.auto_lang())
     }
@@ -558,6 +578,9 @@ impl Document {
         }
         if let Some(r) = &self.records {
             r.cancel.cancel();
+        }
+        if let Some(h) = &self.hl_index {
+            h.cancel.cancel();
         }
         if let Some(p) = &self.problems {
             p.cancel.cancel();

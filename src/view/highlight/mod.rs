@@ -2,8 +2,8 @@
 //!
 //! Highlighting runs only on the visible slice of each visible row, so it costs nothing for the
 //! rest of the file. What a row starts inside of — a block comment, a string, an open tag — is a
-//! [`State`], carried down from the row above (see [`super::hl_rows`]); nothing reads the file
-//! from its start.
+//! [`State`], carried down from the row above (see [`super::hl_rows`]); after a jump it comes
+//! from checkpoints a background pass keeps every 64 KB.
 
 mod code;
 mod markup;
