@@ -14,6 +14,8 @@ install -Dm755 "$bin/bigtext-cli" "$root/usr/bin/bigtext-cli"
 install -Dm644 "$here/bigtext.desktop" "$root/usr/share/applications/bigtext.desktop"
 install -Dm644 "$here/../../assets/icon-256.png" "$root/usr/share/icons/hicolor/256x256/apps/bigtext.png"
 install -Dm644 "$here/../../LICENSE" "$root/usr/share/doc/bigtext/copyright"
+# Software centres (GNOME Software, KDE Discover) show its description and screenshots.
+bash "$here/metainfo.sh" "$root/usr/share/metainfo/io.github.erkinbek.bigtext.metainfo.xml"
 
 mkdir -p "$root/DEBIAN"
 size_kb="$(du -sk "$root/usr" | cut -f1)"

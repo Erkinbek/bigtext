@@ -37,6 +37,8 @@ LANGS = ["en", "ru", "uz"]
 LOCALE = {"en": "en_US", "ru": "ru_RU", "uz": "uz_UZ"}
 LANG_NAME = {"en": "English", "ru": "Русский", "uz": "O'zbekcha"}
 SHOTS = ["hero", "search", "compare", "hex", "json"]
+# Also written as PNG to docs/img/appstream/ for the AppStream metainfo's screenshots.
+APPSTREAM_SHOTS = ["hero", "search", "json", "compare"]
 
 # Logo: four "text lines" on a rounded square, on a 512 grid (shared by the SVG and PNGs).
 LOGO_BG = "#0f172a"
@@ -1060,6 +1062,11 @@ def build_images(shots):
         im = Image.open(src).convert("RGB")
         # Lossless is both smaller and sharper than lossy WebP for flat UI screenshots.
         im.save(img / f"{name}.webp", "WEBP", lossless=True, method=6)
+        # Software centres and the AppImage catalog take PNG screenshots (named in
+        # packaging/linux/io.github.erkinbek.bigtext.metainfo.xml).
+        if name in APPSTREAM_SHOTS:
+            (img / "appstream").mkdir(exist_ok=True)
+            im.save(img / "appstream" / f"{name}.png", optimize=True)
     (img / "logo.svg").write_text(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">'
         f'<rect width="512" height="512" rx="112" fill="{LOGO_BG}"/>'

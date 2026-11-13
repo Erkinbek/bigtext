@@ -15,6 +15,18 @@ The release workflow (`.github/workflows/build.yml`) builds these from the relea
 `linux/bigtext.desktop` is the menu entry (also in the Linux tarball, with `icon-256.png`). The
 window's app id is `bigtext`, so desktops match it to this entry.
 
+`linux/io.github.erkinbek.bigtext.metainfo.xml` is the AppStream metadata (summary, description,
+screenshots) that software centres and the AppImage catalog show; `linux/metainfo.sh` adds the
+newest releases from `CHANGELOG.md` and the AppImage and `.deb` scripts install it. Its
+screenshots are PNGs at `docs/img/appstream/` (written by `scripts/build-site.py` with the
+site's screenshots), so they go live with the website. The AppImage carries it as
+`io.github.erkinbek.bigtext.appdata.xml`: the catalog reads the summary only from an
+`.appdata.xml` file, and its test fails on any `appstreamcli validate-tree` warning, which a
+file name other than the id would give. Check it with
+`appstreamcli validate --no-net packaging/linux/io.github.erkinbek.bigtext.metainfo.xml`
+(Ubuntu 22.04's appstreamcli is the oldest that matters: it does not know `<developer>` or a
+`vcs-browser` link).
+
 `winget/` holds the winget manifests; the release workflow's winget job submits new versions
 once the package is in `microsoft/winget-pkgs`.
 

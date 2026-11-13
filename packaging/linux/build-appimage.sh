@@ -15,6 +15,11 @@ install -Dm644 "$here/bigtext.desktop" "$app/usr/share/applications/bigtext.desk
 install -Dm644 "$here/../../assets/icon-256.png" "$app/usr/share/icons/hicolor/256x256/apps/bigtext.png"
 cp "$here/bigtext.desktop" "$app/bigtext.desktop"
 cp "$here/../../assets/icon-256.png" "$app/bigtext.png"
+# The AppImage catalog's page and software centres show its description and screenshots. The
+# older .appdata.xml ending: the catalog takes the summary only from such a file, and its test
+# fails on any appstreamcli warning, so the name is the component's id. (appimagetool looks for
+# bigtext.appdata.xml instead and only warns that it found none.)
+bash "$here/metainfo.sh" "$app/usr/share/metainfo/io.github.erkinbek.bigtext.appdata.xml"
 
 # The window libraries are loaded at run time, not linked, so nothing lists them. A desktop
 # without Qt or GNOME may have no libxkbcommon-x11, and BigText then quits at start on X11
