@@ -93,6 +93,9 @@ BIGTEXT_SSH_CONFIG=test/ssh_config BIGTEXT_SELFTEST_SSH=root@test-host:/var/log/
 target/release/bigtext --self-test ... # also reads a file in place over SSH and searches it on the server
 BIGTEXT_SSH_LIVE="root@127.0.0.1 2222 /var/log/app/big.log KEY KNOWN_HOSTS" \
 cargo test --lib ssh_live -- --ignored   # the SSH range reader and grep against a real server
+BIGTEXT_SELFTEST_DOCKER="|CONTAINER|TEXT" BIGTEXT_SELFTEST_K8S="|POD|TEXT|CONTAINER" \
+BIGTEXT_SELFTEST_K8S_PREVIOUS="|POD|TEXT" BIGTEXT_SELFTEST_JOURNAL="SERVER|UNIT|TEXT" \
+target/release/bigtext --self-test ... # container and service logs against real Docker, Kubernetes, journald
 target/release/bigtext-bench FILE    # core benchmarks (open, first screen, go-to, index, search, replace, memory)
 target/release/bigtext --bench-ui FILE --report out.txt [--screenshot out.png]
         [--scenario search:TEXT|edit|view|wrap|hex|close-search|close-replace]
@@ -105,6 +108,17 @@ remote file`, with ` ERROR disk full` on every thousandth line from line 7). `BI
 points BigText's `ssh` at a config of its own (`ssh -F`), with a `Host test-host` entry naming
 the port, the key, `UserKnownHostsFile` and `StrictHostKeyChecking accept-new`, so your own
 `~/.ssh` is not touched.
+
+For the **container and service log checks** (`BIGTEXT_SELFTEST_*` above: server, empty for
+this computer | text of the row to pick | text the log must show | container): a container that
+prints to stdout and stderr (`docker run -d --name logtest ubuntu:22.04 sh -c 'while true; do
+echo out; echo err >&2; sleep 1; done'`); a Kubernetes cluster in Docker
+(`docker run -d --privileged -p 127.0.0.1:16443:6443 rancher/k3s:v1.31.4-k3s1 server`, its
+`/etc/rancher/k3s/k3s.yaml` with the port changed as `KUBECONFIG`, so your own kubeconfig is not
+touched) with a two-container pod and one that exits with an error (for `--previous`); and for
+the journal, an `ubuntu:22.04` image with `systemd systemd-sysv openssh-server`, a small
+service that prints a line a second, run with `/sbin/init` (`--privileged --cgroupns=host -v
+/sys/fs/cgroup:/sys/fs/cgroup:rw`) and reached over SSH as above.
 
 The **GUI self-test** drives the real window through `App::raw_input_hook`: clicks, drags,
 double/triple clicks, shift-click, keys and shortcuts, typing, copy/paste, Ctrl+wheel. It checks

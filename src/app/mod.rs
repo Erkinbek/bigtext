@@ -52,6 +52,7 @@ pub mod only_in;
 pub mod ops;
 pub mod patterns_window;
 pub mod log_report;
+pub mod log_sources;
 pub mod pivot;
 pub mod portable;
 pub mod properties;
@@ -336,6 +337,7 @@ pub struct BigTextApp {
     pub range: time_range::TimeRangeUi,
     pub patterns: patterns_window::PatternsUi,
     pub log_report: log_report::ReportUi,
+    pub log_sources: log_sources::SourcesUi,
     pub nav: nav::NavHistory,
     pub values: Option<match_values::ValuesDialog>,
     pub problems: problems_panel::ProblemsUi,
@@ -648,6 +650,7 @@ impl BigTextApp {
             range: time_range::TimeRangeUi::default(),
             patterns: patterns_window::PatternsUi::default(),
             log_report: log_report::ReportUi::default(),
+            log_sources: log_sources::SourcesUi::default(),
             nav: nav::NavHistory::default(),
             values: None,
             problems: problems_panel::ProblemsUi::default(),
@@ -715,6 +718,9 @@ impl BigTextApp {
             app.settings.wrap_column = state.wrap_column.flatten();
             app.settings.ruler = state.ruler.flatten();
             app.settings.json_crumb = state.json_crumb.unwrap_or(true);
+            if let Some(l) = &state.log_sources {
+                app.log_sources.set_line(l);
+            }
             app.settings.tools = std::mem::take(&mut state.tools);
             app.run_cmd.history = std::mem::take(&mut state.commands);
             app.run_cmd.shell = state.shell.as_deref().map(run_command::ShellChoice::from_id).unwrap_or_default();
@@ -2155,6 +2161,7 @@ impl eframe::App for BigTextApp {
         self.quick_open_window(&ctx);
         self.file_ops_window(&ctx);
         self.remote_window(&ctx);
+        self.log_sources_window(&ctx);
         self.symbols_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);

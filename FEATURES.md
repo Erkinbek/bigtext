@@ -394,6 +394,17 @@ keyboard shortcuts.
   (`bigtext -f user@server:/var/log/syslog` does the same). The copies are temporary and go
   away with their tabs; closing a followed tab ends its `ssh`, and errors (a refused key, a
   missing file) are shown in ssh's own words.
+- **Container and service logs** (File → Open container or service log…): a picker of
+  **Docker** (or Podman) containers, also stopped ones, with their state; **Kubernetes** pods
+  of the kubeconfig's contexts, with namespace, ready containers, status (CrashLoopBackOff in
+  red) and restarts, a pod's container or all of them, and **its run before the last restart**
+  (`--previous`, where a crash's error is); and **systemd services** with the whole journal and
+  the kernel's messages. Everything runs on this computer or, with a server in the field, over
+  SSH with your keys. The chosen log opens read-only — the last N lines, the last N minutes or
+  all of it — **followed** as it grows (`docker logs -f`, `kubectl logs -f`, `journalctl -f`)
+  or read once; a container's stderr comes in the same tab, line by line, and journal times are
+  ISO 8601 for the time tools. The command is shown before it runs; closing a followed tab ends
+  it. Only lists and logs are read: nothing is started, stopped or changed.
 - **Go to file** (Search → Go to file…, Ctrl+P): a few letters of a file's name or path find it
   among the open folder's files, as in Sublime Text — `ftree` finds `folder_tree.rs`. Letters in
   the file name, at the start of a word and next to each other count more, and the matched

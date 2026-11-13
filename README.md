@@ -39,6 +39,9 @@ dependencies.
   with your keys, or an `https://` or public `s3://` file (**Ctrl+Shift+U**): only what is on
   screen comes over, and over SSH searches run on the server. Or follow a log's last megabytes
   like `tail -F` (`bigtext -f user@server:/var/log/syslog`).
+- **Container and service logs.** Pick a Docker container, a Kubernetes pod (or its run before
+  the last crash) or a systemd service from a list, here or on a server over SSH, and its log
+  opens and follows as it grows — no `docker logs -f … | bigtext -` to type.
 - **Also a comfortable code editor.** Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust,
   PHP, shell scripts, YAML and more are highlighted in One Dark, Monokai, GitHub or Solarized
   colours with indent guides; a folder side bar works as in Sublime Text; **Ctrl+P** finds a

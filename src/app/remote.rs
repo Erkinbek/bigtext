@@ -107,7 +107,7 @@ pub fn ssh_command(target: &str, port: Option<u16>, path: &str, tail: Option<u64
 }
 
 /// What went wrong with `ssh`, with the hint about signing in in the interface's language.
-fn ssh_error(stderr: &str, code: Option<i32>) -> String {
+pub(crate) fn ssh_error(stderr: &str, code: Option<i32>) -> String {
     const HINT: &str = "BigText signs in with your SSH keys or agent (and known hosts); password sign-in is not supported.";
     bigtext::remote::ssh_error(stderr, code).replace(HINT, tr(HINT))
 }
@@ -118,11 +118,17 @@ fn spawn_ssh(mut c: Command) -> Result<Child, String> {
 
 /// A new temporary file for a copy of `src`.
 fn temp_file(src: &Source) -> Result<(PathBuf, File), String> {
+    temp_copy(&src.file_name())
+}
+
+/// A new temporary file named `name` (in a folder of its own) for a copy that goes away with
+/// its tab.
+pub(crate) fn temp_copy(name: &str) -> Result<(PathBuf, File), String> {
     static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let dir = bigtext::decompress::temp_dir().join(format!("{}-remote-{n}", std::process::id()));
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let path = dir.join(src.file_name());
+    let path = dir.join(name);
     let file = File::create(&path).map_err(|e| e.to_string())?;
     Ok((path, file))
 }
@@ -198,6 +204,31 @@ struct Follow {
     title: String,
     child: Arc<Mutex<Option<Child>>>,
     done: Receiver<Result<(), String>>,
+    /// A local or remote command (`docker logs -f`…) rather than a file over ssh.
+    command: bool,
+}
+
+/// The exit code of a process whose output ended (so it is ending), without holding the lock a
+/// closing tab needs to kill it; `None` when it was killed or does not end in two seconds.
+fn exit_code(held: &Mutex<Option<Child>>) -> Option<i32> {
+    for _ in 0..100 {
+        let state = held.lock().ok().map(|mut c| c.as_mut().map(|c| c.try_wait()));
+        match state {
+            Some(Some(Ok(Some(st)))) => return st.code(),
+            Some(Some(Ok(None))) => std::thread::sleep(Duration::from_millis(20)),
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// Why a program could not be started: ssh, or a tool such as docker, is not installed.
+pub(crate) fn missing(e: &std::io::Error, program: &str) -> String {
+    match (e.kind(), program) {
+        (std::io::ErrorKind::NotFound, "ssh") => tr("ssh was not found. Install the OpenSSH client (on Windows: Settings → System → Optional features).").to_string(),
+        (std::io::ErrorKind::NotFound, p) => trf("{program} was not found on this computer. Install it, or give a server to run it on.", &[("program", p)]),
+        _ => e.to_string(),
+    }
 }
 
 impl Drop for Follow {
@@ -429,20 +460,7 @@ impl BigTextApp {
             let copied = pump(stdout, &mut file, None, None);
             let mut s = String::new();
             let _ = stderr.read_to_string(&mut s);
-            // The output ended, so ssh is ending: its exit code, without holding the lock
-            // a closing tab needs to kill it (gone: it was killed).
-            let mut code = None;
-            for _ in 0..100 {
-                let state = held.lock().ok().map(|mut c| c.as_mut().map(|c| c.try_wait()));
-                match state {
-                    Some(Some(Ok(Some(st)))) => {
-                        code = st.code();
-                        break;
-                    }
-                    Some(Some(Ok(None))) => std::thread::sleep(Duration::from_millis(20)),
-                    _ => break,
-                }
-            }
+            let code = exit_code(&held);
             let _ = tx.send(match copied {
                 Err(e) => Err(e.to_string()),
                 Ok(_) if code == Some(0) || code.is_none() => Ok(()),
@@ -457,7 +475,39 @@ impl BigTextApp {
         d.read_only = true;
         d.follow = true;
         let doc = d.id;
-        self.remote.follows.push(Follow { doc, title, child, done: rx });
+        self.remote.follows.push(Follow { doc, title, child, done: rx, command: false });
+        Ok(())
+    }
+
+    /// Runs `cmd` (`docker logs -f`, `kubectl logs -f`, `journalctl -f`, here or through ssh),
+    /// opens `path` followed and read-only, and keeps adding what `cmd` prints — its errors too,
+    /// line by line — until the tab closes (which ends `cmd`). `program` names what was started,
+    /// for when it is not installed.
+    pub(crate) fn follow_process(&mut self, mut cmd: Command, title: String, path: PathBuf, file: File, program: &str) -> Result<(), String> {
+        let mut child = cmd.spawn().map_err(|e| missing(&e, program))?;
+        let stdout = child.stdout.take().ok_or("no output")?;
+        let stderr = child.stderr.take().ok_or("no output")?;
+        let child = Arc::new(Mutex::new(Some(child)));
+        let (tx, rx) = channel();
+        let (waker, held) = (self.waker.clone(), child.clone());
+        bigtext::jobs::spawn("log-follow", move || {
+            let copied = bigtext::logsources::copy_merged(stdout, stderr, file, None);
+            let code = exit_code(&held);
+            let _ = tx.send(match copied {
+                Err(e) => Err(e.to_string()),
+                Ok(_) if code == Some(0) || code.is_none() => Ok(()),
+                Ok(c) => Err(ssh_error(&c.errors, code)),
+            });
+            waker();
+        });
+        self.open_path(path);
+        let Some(d) = self.docs.get_mut(self.active) else { return Ok(()) };
+        d.title = title.clone();
+        d.temporary = true;
+        d.read_only = true;
+        d.follow = true;
+        let doc = d.id;
+        self.remote.follows.push(Follow { doc, title, child, done: rx, command: true });
         Ok(())
     }
 
@@ -486,12 +536,13 @@ impl BigTextApp {
         let mut ended = Vec::new();
         for (i, f) in self.remote.follows.iter().enumerate() {
             if let Ok(r) = f.done.try_recv() {
-                ended.push((i, f.title.clone(), r));
+                ended.push((i, f.title.clone(), f.command, r));
             }
         }
-        for (i, title, r) in ended.into_iter().rev() {
+        for (i, title, command, r) in ended.into_iter().rev() {
             self.remote.follows.remove(i);
             match r {
+                Ok(()) if command => self.notify(trf("Following {name} stopped: the command ended (a stopped container ends it, for one).", &[("name", &title)]), None),
                 Ok(()) => self.notify(trf("Following {name} stopped: the connection ended.", &[("name", &title)]), None),
                 Err(e) => self.error = Some(format!("{}: {e}", trf("Could not follow {name}", &[("name", &title)]))),
             }

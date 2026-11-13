@@ -333,6 +333,77 @@ fn access_log() -> String {
         .collect()
 }
 
+/// A live log source (needs `env`: `server|text of the row|text the log has|container`, the
+/// server empty for this computer and the container optional): lists the tab, opens the row
+/// with that text (followed, or read once), and passes when the log shows the text.
+fn log_source_step(env: &'static str, tab: crate::app::log_sources::Tab, follow: bool, previous: bool) -> StepFn {
+    Box::new(move |app, c| {
+        let Ok(v) = std::env::var(env) else { return Step::Skip(format!("{env} is not set")) };
+        let f: Vec<&str> = v.split('|').collect();
+        if f.len() < 3 {
+            return Step::Fail(format!("{env}: server|row|text[|container]"));
+        }
+        let (host, pick, expect) = (f[0], f[1], f[2]);
+        if c.first() {
+            let s = &mut app.log_sources;
+            s.host = host.to_string();
+            s.tab = tab;
+            (s.selected, s.namespace, s.context) = (None, None, None);
+            (s.follow, s.previous, s.timestamps) = (follow, previous, false);
+            s.how = crate::app::log_sources::HowMuch::Lines;
+            s.lines = 100;
+            s.filter.clear();
+            app.open_log_sources();
+            app.load_log_sources();
+            return Step::Wait;
+        }
+        if c.mark == 0 {
+            let s = &app.log_sources;
+            let list = s.list.clone();
+            let l = list.lock().unwrap();
+            if l.loading {
+                return if c.waited() > Duration::from_secs(40) { Step::Fail("the list did not come".into()) } else { Step::Wait };
+            }
+            if let Some(e) = &l.error {
+                return Step::Fail(format!("listing: {e}"));
+            }
+            let rows = s.rows(&l);
+            let Some(key) = rows.iter().find(|r| r.text.contains(pick)).map(|r| r.key.clone()) else {
+                return Step::Fail(format!("no row with {pick:?} in {:?}", rows.iter().map(|r| r.text.trim()).collect::<Vec<_>>()));
+            };
+            drop(l);
+            app.log_sources.selected = Some(key.clone());
+            if let Some(container) = f.get(3) {
+                app.log_sources.container = Some(container.to_string());
+                app.log_sources.container_of_for_test(&key);
+            }
+            if let Err(e) = app.open_chosen_log() {
+                return Step::Fail(e);
+            }
+            app.log_sources.open = false;
+            c.mark = 1;
+            return Step::Wait;
+        }
+        if let Some(e) = app.test_error() {
+            return Step::Fail(e);
+        }
+        let ready = app.active_doc().is_some_and(|d| d.temporary && d.read_only && d.is_ready() && d.title.contains(pick.split('/').next_back().unwrap_or(pick)));
+        let t = if ready { text(app) } else { String::new() };
+        if ready && t.contains(expect) {
+            let (title, following) = app.active_doc().map(|d| (d.title.clone(), d.follow)).unwrap_or_default();
+            if let Some(id) = app.active_doc().map(|d| d.id) {
+                app.close_tab(id, true);
+            }
+            c.mark = 0;
+            return check(following == follow, format!("{title}: following {following}"));
+        }
+        if c.waited() > Duration::from_secs(40) {
+            return Step::Fail(format!("doc {:?}, text {:?}", app.active_doc().map(|d| d.title.clone()), &t[..t.len().min(300)]));
+        }
+        Step::Wait
+    })
+}
+
 fn open_step(name: &'static str) -> StepFn {
     Box::new(move |app, c| {
         if c.first() {
@@ -3647,6 +3718,72 @@ impl SelfTest {
             }
             Step::Wait
         }));
+        s("container and service logs: a command's output and errors in one followed tab", Box::new(|app, c| {
+            if c.first() {
+                let mut cmd = if cfg!(windows) {
+                    let mut c = std::process::Command::new("cmd");
+                    c.args(["/C", "echo out1&echo err1 1>&2&echo out2"]);
+                    c
+                } else {
+                    let mut c = std::process::Command::new("sh");
+                    c.args(["-c", "echo out1; echo err1 >&2; echo out2"]);
+                    c
+                };
+                cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+                bigtext::remote::hide_console(&mut cmd);
+                let r = crate::app::remote::temp_copy("merged.log").and_then(|(path, file)| app.follow_process(cmd, "merged (docker)".into(), path, file, "cmd"));
+                if let Err(e) = r {
+                    return Step::Fail(e);
+                }
+                return Step::Wait;
+            }
+            let t = text(app);
+            let ok = app.active_doc().is_some_and(|d| d.title == "merged (docker)" && d.follow && d.read_only);
+            if ok && ["out1", "err1", "out2"].iter().all(|x| t.contains(x)) {
+                if let Some(id) = app.active_doc().map(|d| d.id) {
+                    app.close_tab(id, true);
+                }
+                return Step::Next;
+            }
+            if c.waited() > Duration::from_secs(10) {
+                return Step::Fail(format!("{:?}: {t:?}", app.active_doc().map(|d| d.title.clone())));
+            }
+            Step::Wait
+        }));
+        s("container and service logs: the picker with a cluster's pods", Box::new(|app, c| {
+            use bigtext::logsources::Pod;
+            if c.first() {
+                let pod = |ns: &str, name: &str, status: &str, ready: (u32, u32), restarts: u32, containers: &[&str]| Pod { namespace: ns.into(), name: name.into(), status: status.into(), ready, restarts, containers: containers.iter().map(|c| c.to_string()).collect(), init_containers: Vec::new() };
+                let listing = crate::app::log_sources::Listing {
+                    contexts: vec!["prod-eu".into(), "staging".into()],
+                    current_context: Some("prod-eu".into()),
+                    pods: vec![
+                        pod("shop", "payment-7d9f4c-x2k4m", "Running", (2, 2), 0, &["app", "proxy"]),
+                        pod("shop", "cart-5b8d6f-q9r2t", "Running", (1, 1), 0, &["cart"]),
+                        pod("shop", "worker-6c4f8b-z7k1p", "CrashLoopBackOff", (0, 1), 12, &["worker"]),
+                        pod("kube-system", "coredns-ccb96694c-9nxvd", "Running", (1, 1), 0, &["coredns"]),
+                    ],
+                    ..Default::default()
+                };
+                app.test_log_listing(crate::app::log_sources::Tab::Kubernetes, listing);
+                app.log_sources.selected = Some("shop/payment-7d9f4c-x2k4m".into());
+                return Step::Wait;
+            }
+            if c.waited() < Duration::from_millis(300) {
+                return Step::Wait;
+            }
+            check(app.log_sources.open, "picker not open")
+        }));
+        s("screenshot: the container and service log picker", shot_step("selftest-log-sources.png"));
+        s("close the picker", Box::new(|app, _c| {
+            app.log_sources.open = false;
+            app.log_sources.selected = None;
+            Step::Next
+        }));
+        s("a Docker container's log, followed (needs BIGTEXT_SELFTEST_DOCKER)", log_source_step("BIGTEXT_SELFTEST_DOCKER", crate::app::log_sources::Tab::Docker, true, false));
+        s("a Kubernetes pod's container, read once (needs BIGTEXT_SELFTEST_K8S)", log_source_step("BIGTEXT_SELFTEST_K8S", crate::app::log_sources::Tab::Kubernetes, false, false));
+        s("a crashed pod's previous run (needs BIGTEXT_SELFTEST_K8S_PREVIOUS)", log_source_step("BIGTEXT_SELFTEST_K8S_PREVIOUS", crate::app::log_sources::Tab::Kubernetes, false, true));
+        s("a systemd unit's journal over SSH, followed (needs BIGTEXT_SELFTEST_JOURNAL)", log_source_step("BIGTEXT_SELFTEST_JOURNAL", crate::app::log_sources::Tab::Journal, true, false));
         s("open remote: what a followed command sends grows in its tab; closing the tab ends it", Box::new(|app, c| {
             if c.first() {
                 let mut cmd = if cfg!(windows) {

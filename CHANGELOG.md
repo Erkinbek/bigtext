@@ -3,6 +3,18 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## Unreleased
+
+### Container and service logs
+
+- **File → Open container or service log…** lists Docker (or Podman) containers, Kubernetes
+  pods and systemd services, on this computer or on a server over SSH, and opens the chosen
+  one's log: the last N lines, the last N minutes or all of it, followed as it grows or read
+  once. Kubernetes pods show their status and restarts; a pod's container or all of them can be
+  chosen, and its run before the last restart, where a crash's error is. A container's stderr
+  comes in the same tab, and the journal's times are ISO 8601 for the time tools. Only lists
+  and logs are read; closing a followed tab ends its command.
+
 ## 0.9.0 — 2026-11-13
 
 ### Web server logs, summed up

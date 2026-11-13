@@ -199,6 +199,7 @@ mod tests {
         "app" / "ops.rs",
         "app" / "patterns_window.rs",
         "app" / "log_report.rs",
+        "app" / "log_sources.rs",
         "app" / "pivot.rs",
         "app" / "portable.rs",
         "app" / "properties.rs",

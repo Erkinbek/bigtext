@@ -34,6 +34,7 @@ pub mod jsonq;
 pub mod lines;
 pub mod logformat;
 pub mod loglevel;
+pub mod logsources;
 pub mod merge;
 pub mod patch;
 pub mod pipe;
