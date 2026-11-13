@@ -1,6 +1,7 @@
 //! Interface texts in Simplified Chinese: (English text, translation). The English texts are the
 //! keys of `i18n_texts::TEXTS`; `i18n::tests` checks that none is missing.
 
+#[rustfmt::skip]
 pub static ZH: &[(&str, &str)] = &[
     ("File", "文件"),
     ("Edit", "编辑"),

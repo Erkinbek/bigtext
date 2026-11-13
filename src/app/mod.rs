@@ -124,6 +124,10 @@ pub struct Opened {
     pub growing: bool,
 }
 
+/// The Replace preview: the document id, each match as (offset, text before, text after), and the
+/// line number of each match.
+type ReplacePreview = (u64, Vec<(u64, String, String)>, Vec<u64>);
+
 pub enum Msg {
     Opened { doc: u64, result: Result<Opened, String> },
     Copied { doc: u64, result: Result<String, String>, cut: bool },
@@ -314,7 +318,7 @@ pub struct BigTextApp {
     pub diff: Option<extras::DiffResults>,
     pub search: search_panel::SearchUi,
     pending_replace: Option<(u64, Arc<Matcher>, Template, std::ops::Range<u64>)>,
-    preview: Option<(u64, Vec<(u64, String, String)>, Vec<u64>)>,
+    preview: Option<ReplacePreview>,
     pub update: update::UpdateUi,
     /// The page over an empty start and the note after an update.
     pub welcome: welcome::Welcome,

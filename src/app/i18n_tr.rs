@@ -1,6 +1,7 @@
 //! Interface texts in Turkish: (English text, translation). The English texts are the keys of
 //! `i18n_texts::TEXTS`; `i18n::tests` checks that none is missing.
 
+#[rustfmt::skip]
 pub static TR: &[(&str, &str)] = &[
     ("File", "Dosya"),
     ("Edit", "Düzen"),

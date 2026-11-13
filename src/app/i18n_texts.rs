@@ -2,6 +2,7 @@
 //! `i18n::tests` checks that every text the code translates is here, with the same `{…}`
 //! placeholders in each language.
 
+#[rustfmt::skip]
 pub static TEXTS: &[[&str; 3]] = &[
     // Menus and commands.
     ["File", "Файл", "Fayl"],

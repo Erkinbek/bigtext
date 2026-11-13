@@ -769,6 +769,7 @@ fn regex_error_text(e: &str) -> String {
     lines.iter().map(|l| &l[indent.min(l.len())..]).collect::<Vec<_>>().join("\n")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn snippet_job(buf: &TextBuf, s: u64, e: u64, line: u64, exact: bool, font: &FontId, v: &egui::Visuals, stale: bool) -> LayoutJob {
     let mut job = LayoutJob::default();
     let weak = TextFormat { font_id: font.clone(), color: v.weak_text_color(), ..Default::default() };

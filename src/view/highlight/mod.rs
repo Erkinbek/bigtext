@@ -7,6 +7,7 @@
 
 mod code;
 mod markup;
+#[rustfmt::skip] // keyword lists, one language per few lines
 mod words;
 
 use std::path::Path;

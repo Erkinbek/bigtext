@@ -1,6 +1,7 @@
 //! Interface texts in Brazilian Portuguese: (English text, translation). The English texts are
 //! the keys of `i18n_texts::TEXTS`; `i18n::tests` checks that none is missing.
 
+#[rustfmt::skip]
 pub static PT: &[(&str, &str)] = &[
     ("File", "Arquivo"),
     ("Edit", "Editar"),

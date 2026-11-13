@@ -39,6 +39,9 @@ pub struct Query {
     pub dot_all: bool,
 }
 
+// One `Matcher` exists per search, so the literal finder's size wastes nothing, and boxing it
+// would add an indirection to the hot path.
+#[allow(clippy::large_enum_variant)]
 enum Engine {
     Literal { finder: memchr::memmem::Finder<'static>, len: usize },
     Regex(Regex),
@@ -134,6 +137,8 @@ impl Matcher {
     /// `[from, accept_end)` and which end at or before `span_end` (indices into `hay`).
     /// `last_end` suppresses an empty match right after the previous match. Returns false if
     /// `f` asked to stop.
+    // The hot search loop: plain arguments rather than a struct built for every window.
+    #[allow(clippy::too_many_arguments)]
     pub fn find_in(
         &self,
         hay: &[u8],
