@@ -92,6 +92,9 @@ T = {
          "dosyasını indirmeden açın: yalnızca ekrandaki kısım gelir, SSH üzerinden aramalar sunucuda çalışır. "
          "Ya da bir logun son megabaytlarını tail -F gibi izleyin."),
         ("Web sunucusu logları", "nginx ve Apache erişim logları, AWS yük dengeleyici ve IIS logları ile syslog, her alan için bir sütunu olan bir tablo olarak açılır. Web log raporu tek geçişte en çok istenen URL'leri, dakika başına 5xx hatalarını ve en yavaş istekleri verir: 1 GB'lık bir log 2 saniyeden kısa sürede."),
+        ("Konteyner ve servis logları", "Bir Docker veya Podman konteynerini, bir Kubernetes pod'unu ya da bir systemd servisini, bu bilgisayarda veya SSH üzerinden bir sunucuda, listeden seçin ve logunu açın: son satırlar ya da son dakikalar, büyüdükçe izlenerek. Bir pod'un yeniden başlatmaları görünür; çökme hatasının bulunduğu, son yeniden başlatmadan önceki çalışması da açılabilir."),
+        ("Yeni satır uyarıları", "İzlenen bir loga ERROR veya bir düzenli ifade gibi birkaç desen verin: eşleşen her yeni satır sekmede sayılır ve bir sistem bildirimi ile bir sesle duyurulur, en fazla on saniyede bir. Windows'ta bildirime tıklamak o satıra götürür."),
+        ("SQL dökümü tabloları", "Bir mysqldump, pg_dump veya SQLite dökümünün tabloları, satır sayıları ve boyutlarıyla: 1 GB'lık bir döküm yaklaşık bir saniyede listelenir. Bir tabloyu kendi başına geri yüklenen bir dosyaya kaydedin ya da dökümü tablo başına birer dosyaya bölün; adlarının sırasıyla dosyalar tüm veritabanını geri yükler."),
     ],
     "gallery_h2": "Ekran görüntüleri",
     "gallery": {
@@ -278,33 +281,38 @@ GUIDES = [
     {
         "slug": "extract-table-from-mysqldump",
         "title": "mysqldump dosyasından tek bir tabloyu çıkarma — BigText",
-        "description": "Çok gigabaytlık bir SQL dökümünde bir tabloyu bulun ve birkaç adımda kendi dosyasına yazın; dökümü "
-                       "belleğe yüklemeden. Ücretsiz; Windows, Linux ve macOS için.",
+        "description": "Birkaç gigabaytlık bir SQL dökümünün tablolarını listeleyin ve ihtiyacınız olanı, dökümü "
+                       "belleğe yüklemeden, kendi başına geri yüklenen bir dosyaya kaydedin. Ücretsiz, Windows, "
+                       "Linux ve macOS için.",
         "h1": "mysqldump dosyasından tek bir tabloyu çıkarma",
-        "card": "Devasa bir SQL dökümünün tablolarını listeleyin ve ihtiyacınız olanı kendi dosyasına yazın.",
+        "card": "Devasa bir SQL dökümünün tablolarını listeleyin ve ihtiyacınız olanı kendi başına geri yüklenen "
+                "bir dosyaya kaydedin.",
         "intro": [
-            "Bir veritabanının tam mysqldump'ı onlarca gigabayt olabilir ve çoğu zaman içinden yalnızca bir tablo gerekir: "
-            "geri yüklemek, verisini kontrol etmek ya da birine göndermek için. BigText dökümü belleğe yüklemeden anında "
-            "açar ve “Satırları dışa aktar…” herhangi bir satır aralığını yeni bir dosyaya yazar.",
+            "Bir veritabanının tam mysqldump'ı onlarca gigabayt olabilir ve çoğu zaman ondan tek bir tablo "
+            "gerekir: geri yüklemek, verisine bakmak ya da birine göndermek için. BigText dökümü belleğe "
+            "yüklemeden anında açar, tablolarını tek geçişte listeler ve ihtiyacınız olanı geri yükleme için "
+            "gereken her şeyiyle kendi dosyasına yazar.",
         ],
         "steps": [
-            ("Dökümü açın", ".sql dosyasını Dosya → Aç ile ya da pencereye sürükleyerek açın. .sql.gz dökümü de doğrudan açılır."),
-            ("Tabloları listeleyin", "mysqldump her tabloyu {{-- Table structure for table `orders`}} gibi bir yorumla "
-             "işaretler. {{-- Table structure for table}} arayın ve “Tümünü bul”a basın: sonuçlar dökümdeki tüm tabloları "
-             "satır numaralarıyla listeler."),
-            ("Tablonun başını ve sonunu bulun", "Sonuçlarda ihtiyacınız olan tabloya tıklayın; satır numarası durum "
-             "çubuğundadır. Tablo, sonraki tablonun yorumunun başladığı yerde biter: {{F3}} oraya atlar."),
-            ("Bir dosyaya yazın", "Dosya → Satırları dışa aktar… bir satır aralığını yeni bir dosyaya yazar: tablonun ilk "
-             "satırından sonraki tablodan önceki satıra kadar. CREATE TABLE ifadesini ve tablonun INSERT satırlarını "
-             "içeren küçük bir .sql dosyası elde edersiniz."),
+            ("Dökümü açın", ".sql dosyasını Dosya → Aç ile ya da pencereye sürükleyerek açın. .sql.gz dökümü de "
+             "doğrudan açılır."),
+            ("Tabloları listeleyin", "“Dosya → SQL dökümü tabloları…” dökümü bir kez, saniyede yaklaşık bir "
+             "gigabayt hızla okur ve tablolarını satır sayıları ve boyutlarıyla listeler: döküm sırasıyla ya da "
+             "önce en büyükler. Yüzlerce tablo arasında birini bulmak için filtreye adının bir kısmını yazın."),
+            ("Tabloyu kontrol edin", "Bir tabloya tıklayınca CREATE TABLE ifadesine gidip sütunlarını görürsünüz."),
+            ("Bir dosyaya kaydedin", "Tabloya sağ tıklayıp “Bu tabloyu farklı kaydet…” seçeneğini seçin. Dosyaya "
+             "tablonun DROP ve CREATE ifadeleri, satırları, anahtarları, dizinleri ve tetikleyicileri ile dökümün "
+             "başındaki ve sonundaki ayarlar yazılır; bu yüzden kendi başına geri yüklenir: {{mysql shop < "
+             "orders.sql}}."),
         ],
         "tips": [
-            "Döküm SET satırlarıyla (karakter kümesi, yabancı anahtar denetimi) başlar. Tablo gerektiriyorsa bunları yeni "
-            "dosyanın başına kopyalayın.",
-            "{{--skip-comments}} ile alınmış bir dökümde bu yorumlar yoktur: bunun yerine {{CREATE TABLE `orders`}} ve "
-            "sonraki {{DROP TABLE IF EXISTS}} satırını arayın.",
-            "Yalnızca veri: {{INSERT INTO `orders`}} ile filtre görünümü yalnızca o tablonun INSERT satırlarını gösterir ve "
-            "yeni bir dosyaya kaydeder.",
+            "Birkaç tablo: listede işaretleyip “İşaretli tabloları tek dosya olarak kaydet…” düğmesine basın. “Bu "
+            "tabloyu yeni sekmede aç” bir tabloyu kaydetmeden gösterir.",
+            "“Her tablo için bir dosyaya böl…” her tablo için bir dosya, tablolardan öncekiler için bir dosya ve "
+            "sonraki görünümler, yordamlar ve yabancı anahtarlar için bir dosya yazar. Adlarının sırasıyla tüm "
+            "dökümü geri yüklerler: {{for f in shop.*.sql; do mysql shop < \"$f\"; done}}.",
+            "Metin biçimindeki pg_dump dosyaları ve SQLite {{.dump}} dosyaları da aynı şekilde çalışır. "
+            "Betiklerde: {{bigtext-cli sqldump shop.sql extract orders -o orders.sql}}.",
         ],
     },
 ]

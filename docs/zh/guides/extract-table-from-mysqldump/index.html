@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>从 mysqldump 文件中提取单个表 — BigText</title>
-  <meta name="description" content="在数 GB 的 SQL 转储中找到某个表，几步就把它写入单独的文件，无需把转储载入内存。免费，支持 Windows、Linux 和 macOS。">
+  <meta name="description" content="列出数 GB SQL 转储中的表，并把需要的那个保存为能单独恢复的文件，无需把转储载入内存。免费，支持 Windows、Linux 和 macOS。">
   <link rel="canonical" href="https://erkinbek.github.io/bigtext/zh/guides/extract-table-from-mysqldump/">
   <link rel="alternate" hreflang="en" href="https://erkinbek.github.io/bigtext/guides/extract-table-from-mysqldump/">
   <link rel="alternate" hreflang="ru" href="https://erkinbek.github.io/bigtext/ru/guides/extract-table-from-mysqldump/">
@@ -21,7 +21,7 @@
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="BigText">
   <meta property="og:title" content="从 mysqldump 文件中提取单个表">
-  <meta property="og:description" content="在数 GB 的 SQL 转储中找到某个表，几步就把它写入单独的文件，无需把转储载入内存。免费，支持 Windows、Linux 和 macOS。">
+  <meta property="og:description" content="列出数 GB SQL 转储中的表，并把需要的那个保存为能单独恢复的文件，无需把转储载入内存。免费，支持 Windows、Linux 和 macOS。">
   <meta property="og:url" content="https://erkinbek.github.io/bigtext/zh/guides/extract-table-from-mysqldump/">
   <meta property="og:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
   <meta property="og:image:width" content="1280">
@@ -37,7 +37,7 @@
   <meta property="og:locale:alternate" content="tr_TR">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="从 mysqldump 文件中提取单个表">
-  <meta name="twitter:description" content="在数 GB 的 SQL 转储中找到某个表，几步就把它写入单独的文件，无需把转储载入内存。免费，支持 Windows、Linux 和 macOS。">
+  <meta name="twitter:description" content="列出数 GB SQL 转储中的表，并把需要的那个保存为能单独恢复的文件，无需把转储载入内存。免费，支持 Windows、Linux 和 macOS。">
   <meta name="twitter:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
   <link rel="icon" href="../../../favicon.ico" sizes="48x48">
   <link rel="icon" href="../../../img/logo.svg" type="image/svg+xml">
@@ -49,7 +49,7 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "从 mysqldump 文件中提取单个表",
- "description": "在数 GB 的 SQL 转储中找到某个表，几步就把它写入单独的文件，无需把转储载入内存。免费，支持 Windows、Linux 和 macOS。",
+ "description": "列出数 GB SQL 转储中的表，并把需要的那个保存为能单独恢复的文件，无需把转储载入内存。免费，支持 Windows、Linux 和 macOS。",
  "inLanguage": "zh",
  "url": "https://erkinbek.github.io/bigtext/zh/guides/extract-table-from-mysqldump/",
  "dateModified": "2026-10-24",
@@ -86,11 +86,11 @@
   <article class="wrap narrow">
     <p class="crumb"><a href="../../../zh/">BigText 首页</a> › <a href="../../../zh/#guides">使用指南</a></p>
     <h1>从 mysqldump 文件中提取单个表</h1>
-    <p>一个数据库的完整 mysqldump 可能有几十 GB，而你常常只需要其中一个表：用来恢复、检查数据或发给别人。BigText 能即刻打开转储且不载入内存，“导出行…”可以把任意范围的行写入新文件。</p>
+    <p>一个数据库的完整 mysqldump 可能有几十 GB，而你常常只需要其中一个表：用来恢复、检查数据或发给别人。BigText 无需把转储载入内存即可立即打开它，一次遍历列出所有表，并把需要的表连同恢复所需的一切写入单独的文件。</p>
     <h2>操作步骤</h2>
-    <ol class="steps"><li><h3>打开转储</h3><p>通过“文件 → 打开”或把 .sql 文件拖到窗口上打开。.sql.gz 转储也可以直接打开。</p></li><li><h3>列出所有表</h3><p>mysqldump 会用类似 <code>-- Table structure for table `orders`</code> 的注释标记每个表。搜索 <code>-- Table structure for table</code> 并点击“查找全部”：结果会列出转储中的每个表及其行号。</p></li><li><h3>找到表的起止位置</h3><p>在结果中点击你需要的表，它的行号会显示在状态栏中。表在下一个表的注释开始处结束：<code>F3</code> 可跳过去。</p></li><li><h3>写入文件</h3><p>“文件 → 导出行…”把一段行写入新文件：从该表的第一行到下一个表之前的那一行。你会得到一个包含 CREATE TABLE 语句和该表所有 INSERT 行的小 .sql 文件。</p></li></ol>
+    <ol class="steps"><li><h3>打开转储</h3><p>通过“文件 → 打开”或把 .sql 文件拖到窗口上打开。.sql.gz 转储也可以直接打开。</p></li><li><h3>列出所有表</h3><p>“文件 → SQL 转储中的表…”只读取一遍转储，速度约每秒 1 GB，并列出所有表及其行数和大小，可按转储顺序或从大到小排列。要在数百个表中找到某个表，在筛选框中输入名称的一部分即可。</p></li><li><h3>查看表</h3><p>单击一个表即可跳到它的 CREATE TABLE 语句，查看其列。</p></li><li><h3>保存为文件</h3><p>右键单击该表，选择“将此表另存为…”。文件中包含该表的 DROP 和 CREATE 语句、数据行、键、索引和触发器，以及转储开头和结尾的设置，因此可以单独恢复：<code>mysql shop &lt; orders.sql</code>。</p></li></ol>
     <h2>小贴士</h2>
-    <ul class="tips"><li>转储开头有 SET 语句（字符集、外键检查）。如果该表需要，请把它们复制到新文件的开头。</li><li>用 <code>--skip-comments</code> 生成的转储没有这些注释：改为搜索 <code>CREATE TABLE `orders`</code> 和下一个 <code>DROP TABLE IF EXISTS</code>。</li><li>只要数据：在筛选视图中输入 <code>INSERT INTO `orders`</code>，就只显示该表的 INSERT 行，并可保存到新文件。</li></ul>
+    <ul class="tips"><li>多个表：在列表中勾选它们，然后点击“将勾选的表保存为一个文件…”。“在新标签页中打开此表”可以不保存就查看一个表。</li><li>“按表拆分为多个文件…”为每个表写一个文件，另有一个文件存放表之前的内容，一个存放之后的视图、例程和外键。按文件名顺序执行即可恢复整个转储：<code>for f in shop.*.sql; do mysql shop &lt; &quot;$f&quot;; done</code>。</li><li>纯文本格式的 pg_dump 文件和 SQLite 的 <code>.dump</code> 文件用法相同。在脚本中：<code>bigtext-cli sqldump shop.sql extract orders -o orders.sql</code>。</li></ul>
     <p class="cta"><a class="btn primary" href="../../../zh/#download">免费下载 BigText</a></p>
     <h2>更多指南</h2>
     <ul class="more"><li><a href="../open-csv-larger-than-excel/">打开超过 Excel 1,048,576 行上限的 CSV 文件</a></li><li><a href="../open-large-log-file/">打开 10 GB 的日志文件而不卡顿</a></li></ul>
@@ -99,7 +99,7 @@
 <footer class="foot">
   <div class="wrap">
     <p>作者 <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
-    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">MIT 许可证</a> · <a href="../../../zh/#privacy">隐私</a> · v0.9.0</p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">MIT 许可证</a> · <a href="../../../zh/#privacy">隐私</a> · v0.10.0</p>
     <p class="langs-foot"><a href="../../../guides/extract-table-from-mysqldump/" hreflang="en" lang="en">English</a> · <a href="../../../ru/guides/extract-table-from-mysqldump/" hreflang="ru" lang="ru">Русский</a> · <a href="../../../uz/guides/extract-table-from-mysqldump/" hreflang="uz" lang="uz">O'zbekcha</a> · <a href="../../../zh/guides/extract-table-from-mysqldump/" hreflang="zh" lang="zh">简体中文</a> · <a href="../../../es/guides/extract-table-from-mysqldump/" hreflang="es" lang="es">Español</a> · <a href="../../../pt/guides/extract-table-from-mysqldump/" hreflang="pt" lang="pt">Português</a> · <a href="../../../de/guides/extract-table-from-mysqldump/" hreflang="de" lang="de">Deutsch</a> · <a href="../../../tr/guides/extract-table-from-mysqldump/" hreflang="tr" lang="tr">Türkçe</a></p>
   </div>
 </footer>

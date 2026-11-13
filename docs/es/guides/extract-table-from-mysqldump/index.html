@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Extraer una tabla de un archivo mysqldump — BigText</title>
-  <meta name="description" content="Encuentra una tabla en un volcado SQL de varios gigabytes y escríbela en su propio archivo en pocos pasos, sin cargar el volcado en memoria. Gratis, para Windows, Linux y macOS.">
+  <meta name="description" content="Lista las tablas de un volcado SQL de varios gigabytes y guarda la que necesitas en un archivo que se restaura por sí solo, sin cargar el volcado en memoria. Gratis, para Windows, Linux y macOS.">
   <link rel="canonical" href="https://erkinbek.github.io/bigtext/es/guides/extract-table-from-mysqldump/">
   <link rel="alternate" hreflang="en" href="https://erkinbek.github.io/bigtext/guides/extract-table-from-mysqldump/">
   <link rel="alternate" hreflang="ru" href="https://erkinbek.github.io/bigtext/ru/guides/extract-table-from-mysqldump/">
@@ -21,7 +21,7 @@
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="BigText">
   <meta property="og:title" content="Extraer una tabla de un archivo mysqldump">
-  <meta property="og:description" content="Encuentra una tabla en un volcado SQL de varios gigabytes y escríbela en su propio archivo en pocos pasos, sin cargar el volcado en memoria. Gratis, para Windows, Linux y macOS.">
+  <meta property="og:description" content="Lista las tablas de un volcado SQL de varios gigabytes y guarda la que necesitas en un archivo que se restaura por sí solo, sin cargar el volcado en memoria. Gratis, para Windows, Linux y macOS.">
   <meta property="og:url" content="https://erkinbek.github.io/bigtext/es/guides/extract-table-from-mysqldump/">
   <meta property="og:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
   <meta property="og:image:width" content="1280">
@@ -37,7 +37,7 @@
   <meta property="og:locale:alternate" content="tr_TR">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Extraer una tabla de un archivo mysqldump">
-  <meta name="twitter:description" content="Encuentra una tabla en un volcado SQL de varios gigabytes y escríbela en su propio archivo en pocos pasos, sin cargar el volcado en memoria. Gratis, para Windows, Linux y macOS.">
+  <meta name="twitter:description" content="Lista las tablas de un volcado SQL de varios gigabytes y guarda la que necesitas en un archivo que se restaura por sí solo, sin cargar el volcado en memoria. Gratis, para Windows, Linux y macOS.">
   <meta name="twitter:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
   <link rel="icon" href="../../../favicon.ico" sizes="48x48">
   <link rel="icon" href="../../../img/logo.svg" type="image/svg+xml">
@@ -49,7 +49,7 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "Extraer una tabla de un archivo mysqldump",
- "description": "Encuentra una tabla en un volcado SQL de varios gigabytes y escríbela en su propio archivo en pocos pasos, sin cargar el volcado en memoria. Gratis, para Windows, Linux y macOS.",
+ "description": "Lista las tablas de un volcado SQL de varios gigabytes y guarda la que necesitas en un archivo que se restaura por sí solo, sin cargar el volcado en memoria. Gratis, para Windows, Linux y macOS.",
  "inLanguage": "es",
  "url": "https://erkinbek.github.io/bigtext/es/guides/extract-table-from-mysqldump/",
  "dateModified": "2026-10-24",
@@ -86,11 +86,11 @@
   <article class="wrap narrow">
     <p class="crumb"><a href="../../../es/">Inicio de BigText</a> › <a href="../../../es/#guides">Guías</a></p>
     <h1>Extraer una tabla de un archivo mysqldump</h1>
-    <p>Un mysqldump completo de una base de datos puede ocupar decenas de gigabytes, y a menudo solo necesitas una tabla: para restaurarla, revisar sus datos o enviarla a alguien. BigText abre el volcado al instante sin cargarlo en memoria, y «Exportar líneas…» escribe cualquier rango de líneas en un archivo nuevo.</p>
+    <p>Un mysqldump completo de una base de datos puede ocupar decenas de gigabytes, y a menudo solo necesitas una tabla: para restaurarla, revisar sus datos o enviársela a alguien. BigText abre el volcado al instante sin cargarlo en memoria, lista sus tablas en una sola pasada y escribe la que necesitas en su propio archivo, con lo que hace falta para restaurarla.</p>
     <h2>Paso a paso</h2>
-    <ol class="steps"><li><h3>Abre el volcado</h3><p>Abre el archivo .sql con Archivo → Abrir o arrastrándolo a la ventana. Un volcado .sql.gz también se abre directamente.</p></li><li><h3>Lista las tablas</h3><p>mysqldump marca cada tabla con un comentario como <code>-- Table structure for table `orders`</code>. Busca <code>-- Table structure for table</code> y pulsa «Buscar todo»: los resultados listan todas las tablas del volcado con su número de línea.</p></li><li><h3>Encuentra dónde empieza y termina la tabla</h3><p>Haz clic en la tabla que necesitas en los resultados; su número de línea aparece en la barra de estado. Termina donde empieza el comentario de la siguiente tabla: <code>F3</code> salta a él.</p></li><li><h3>Escríbela en un archivo</h3><p>Archivo → Exportar líneas… escribe un rango de líneas en un archivo nuevo: desde la primera línea de la tabla hasta la línea anterior a la siguiente tabla. Obtienes un .sql pequeño con la sentencia CREATE TABLE y las líneas INSERT de la tabla.</p></li></ol>
+    <ol class="steps"><li><h3>Abre el volcado</h3><p>Abre el archivo .sql con Archivo → Abrir o arrastrándolo a la ventana. Un volcado .sql.gz también se abre directamente.</p></li><li><h3>Lista las tablas</h3><p>«Archivo → Tablas del volcado SQL…» lee el volcado una vez, a cerca de un gigabyte por segundo, y lista sus tablas con sus filas y tamaños, en el orden del volcado o las mayores primero. Para encontrar una tabla entre cientos, escribe parte del nombre en el filtro.</p></li><li><h3>Revisa la tabla</h3><p>Haz clic en una tabla para ir a su CREATE TABLE y ver sus columnas.</p></li><li><h3>Guárdala en un archivo</h3><p>Haz clic derecho en la tabla y elige «Guardar esta tabla como…». El archivo recibe las sentencias DROP y CREATE de la tabla, sus filas, claves, índices y disparadores, y la configuración del principio y del final del volcado, así que se restaura por sí solo: <code>mysql shop &lt; orders.sql</code>.</p></li></ol>
     <h2>Conviene saber</h2>
-    <ul class="tips"><li>El volcado empieza con líneas SET (juego de caracteres, comprobación de claves foráneas). Cópialas al principio del archivo nuevo si la tabla las necesita.</li><li>Un volcado hecho con <code>--skip-comments</code> no tiene esos comentarios: busca <code>CREATE TABLE `orders`</code> y el siguiente <code>DROP TABLE IF EXISTS</code>.</li><li>Solo los datos: la vista de filtro con <code>INSERT INTO `orders`</code> muestra solo las líneas INSERT de esa tabla y las guarda en un archivo nuevo.</li></ul>
+    <ul class="tips"><li>Varias tablas: márcalas en la lista y pulsa «Guardar las tablas marcadas en un archivo…». «Abrir esta tabla en una pestaña nueva» muestra una tabla sin guardarla.</li><li>«Dividir en un archivo por tabla…» escribe un archivo por tabla, uno para lo que va antes de las tablas y otro para las vistas, rutinas y claves foráneas que van después. En el orden de sus nombres restauran todo el volcado: <code>for f in shop.*.sql; do mysql shop &lt; &quot;$f&quot;; done</code>.</li><li>Los volcados de pg_dump en formato de texto y los archivos <code>.dump</code> de SQLite funcionan igual. En scripts: <code>bigtext-cli sqldump shop.sql extract orders -o orders.sql</code>.</li></ul>
     <p class="cta"><a class="btn primary" href="../../../es/#download">Descargar BigText gratis</a></p>
     <h2>Más guías</h2>
     <ul class="more"><li><a href="../open-csv-larger-than-excel/">Abrir un archivo CSV con más filas que las 1.048.576 de Excel</a></li><li><a href="../open-large-log-file/">Abrir un archivo de log de 10 GB sin que se congele</a></li></ul>
@@ -99,7 +99,7 @@
 <footer class="foot">
   <div class="wrap">
     <p>Hecho por <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
-    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">licencia MIT</a> · <a href="../../../es/#privacy">Privacidad</a> · v0.9.0</p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">licencia MIT</a> · <a href="../../../es/#privacy">Privacidad</a> · v0.10.0</p>
     <p class="langs-foot"><a href="../../../guides/extract-table-from-mysqldump/" hreflang="en" lang="en">English</a> · <a href="../../../ru/guides/extract-table-from-mysqldump/" hreflang="ru" lang="ru">Русский</a> · <a href="../../../uz/guides/extract-table-from-mysqldump/" hreflang="uz" lang="uz">O'zbekcha</a> · <a href="../../../zh/guides/extract-table-from-mysqldump/" hreflang="zh" lang="zh">简体中文</a> · <a href="../../../es/guides/extract-table-from-mysqldump/" hreflang="es" lang="es">Español</a> · <a href="../../../pt/guides/extract-table-from-mysqldump/" hreflang="pt" lang="pt">Português</a> · <a href="../../../de/guides/extract-table-from-mysqldump/" hreflang="de" lang="de">Deutsch</a> · <a href="../../../tr/guides/extract-table-from-mysqldump/" hreflang="tr" lang="tr">Türkçe</a></p>
   </div>
 </footer>

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Extrair uma tabela de um arquivo mysqldump — BigText</title>
-  <meta name="description" content="Encontre uma tabela num dump SQL de vários gigabytes e grave-a num arquivo próprio em poucos passos, sem carregar o dump na memória. Grátis, para Windows, Linux e macOS.">
+  <meta name="description" content="Liste as tabelas de um dump SQL de vários gigabytes e salve a que você precisa em um arquivo que é restaurado sozinho, sem carregar o dump na memória. Grátis, para Windows, Linux e macOS.">
   <link rel="canonical" href="https://erkinbek.github.io/bigtext/pt/guides/extract-table-from-mysqldump/">
   <link rel="alternate" hreflang="en" href="https://erkinbek.github.io/bigtext/guides/extract-table-from-mysqldump/">
   <link rel="alternate" hreflang="ru" href="https://erkinbek.github.io/bigtext/ru/guides/extract-table-from-mysqldump/">
@@ -21,7 +21,7 @@
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="BigText">
   <meta property="og:title" content="Extrair uma tabela de um arquivo mysqldump">
-  <meta property="og:description" content="Encontre uma tabela num dump SQL de vários gigabytes e grave-a num arquivo próprio em poucos passos, sem carregar o dump na memória. Grátis, para Windows, Linux e macOS.">
+  <meta property="og:description" content="Liste as tabelas de um dump SQL de vários gigabytes e salve a que você precisa em um arquivo que é restaurado sozinho, sem carregar o dump na memória. Grátis, para Windows, Linux e macOS.">
   <meta property="og:url" content="https://erkinbek.github.io/bigtext/pt/guides/extract-table-from-mysqldump/">
   <meta property="og:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
   <meta property="og:image:width" content="1280">
@@ -37,7 +37,7 @@
   <meta property="og:locale:alternate" content="tr_TR">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Extrair uma tabela de um arquivo mysqldump">
-  <meta name="twitter:description" content="Encontre uma tabela num dump SQL de vários gigabytes e grave-a num arquivo próprio em poucos passos, sem carregar o dump na memória. Grátis, para Windows, Linux e macOS.">
+  <meta name="twitter:description" content="Liste as tabelas de um dump SQL de vários gigabytes e salve a que você precisa em um arquivo que é restaurado sozinho, sem carregar o dump na memória. Grátis, para Windows, Linux e macOS.">
   <meta name="twitter:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
   <link rel="icon" href="../../../favicon.ico" sizes="48x48">
   <link rel="icon" href="../../../img/logo.svg" type="image/svg+xml">
@@ -49,7 +49,7 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "Extrair uma tabela de um arquivo mysqldump",
- "description": "Encontre uma tabela num dump SQL de vários gigabytes e grave-a num arquivo próprio em poucos passos, sem carregar o dump na memória. Grátis, para Windows, Linux e macOS.",
+ "description": "Liste as tabelas de um dump SQL de vários gigabytes e salve a que você precisa em um arquivo que é restaurado sozinho, sem carregar o dump na memória. Grátis, para Windows, Linux e macOS.",
  "inLanguage": "pt",
  "url": "https://erkinbek.github.io/bigtext/pt/guides/extract-table-from-mysqldump/",
  "dateModified": "2026-10-24",
@@ -86,11 +86,11 @@
   <article class="wrap narrow">
     <p class="crumb"><a href="../../../pt/">Início do BigText</a> › <a href="../../../pt/#guides">Guias</a></p>
     <h1>Extrair uma tabela de um arquivo mysqldump</h1>
-    <p>Um mysqldump completo de um banco de dados pode ter dezenas de gigabytes, e muitas vezes você precisa de uma única tabela: para restaurá-la, conferir os dados ou enviá-la a alguém. O BigText abre o dump na hora sem carregá-lo na memória, e “Exportar linhas…” grava qualquer intervalo de linhas num arquivo novo.</p>
+    <p>Um mysqldump completo de um banco de dados pode ter dezenas de gigabytes, e muitas vezes você precisa de uma tabela só: para restaurá-la, conferir os dados ou enviá-la a alguém. O BigText abre o dump na hora sem carregá-lo na memória, lista as tabelas em uma única passada e grava a que você precisa em um arquivo próprio, com o que ela precisa para ser restaurada.</p>
     <h2>Passo a passo</h2>
-    <ol class="steps"><li><h3>Abra o dump</h3><p>Abra o arquivo .sql com Arquivo → Abrir ou arrastando-o para a janela. Um dump .sql.gz também abre diretamente.</p></li><li><h3>Liste as tabelas</h3><p>O mysqldump marca cada tabela com um comentário como <code>-- Table structure for table `orders`</code>. Pesquise <code>-- Table structure for table</code> e clique em “Localizar todos”: os resultados listam todas as tabelas do dump com o número da linha.</p></li><li><h3>Encontre onde a tabela começa e termina</h3><p>Clique na tabela que você precisa nos resultados; o número da linha aparece na barra de status. Ela termina onde começa o comentário da tabela seguinte: <code>F3</code> pula para ele.</p></li><li><h3>Grave num arquivo</h3><p>Arquivo → Exportar linhas… grava um intervalo de linhas num arquivo novo: da primeira linha da tabela até a linha antes da tabela seguinte. Você obtém um .sql pequeno com o comando CREATE TABLE e as linhas INSERT da tabela.</p></li></ol>
+    <ol class="steps"><li><h3>Abra o dump</h3><p>Abra o arquivo .sql com Arquivo → Abrir ou arrastando-o para a janela. Um dump .sql.gz também abre diretamente.</p></li><li><h3>Liste as tabelas</h3><p>“Arquivo → Tabelas do dump SQL…” lê o dump uma vez, a cerca de um gigabyte por segundo, e lista as tabelas com suas linhas e tamanhos, na ordem do dump ou as maiores primeiro. Para achar uma tabela entre centenas, digite parte do nome no filtro.</p></li><li><h3>Confira a tabela</h3><p>Clique em uma tabela para ir ao CREATE TABLE dela e ver as colunas.</p></li><li><h3>Salve em um arquivo</h3><p>Clique com o botão direito na tabela e escolha “Salvar esta tabela como…”. O arquivo recebe os comandos DROP e CREATE da tabela, suas linhas, chaves, índices e gatilhos, e as configurações do início e do fim do dump, então é restaurado sozinho: <code>mysql shop &lt; orders.sql</code>.</p></li></ol>
     <h2>Bom saber</h2>
-    <ul class="tips"><li>O dump começa com linhas SET (conjunto de caracteres, verificação de chaves estrangeiras). Copie-as para o início do arquivo novo se a tabela precisar.</li><li>Um dump feito com <code>--skip-comments</code> não tem esses comentários: pesquise <code>CREATE TABLE `orders`</code> e o próximo <code>DROP TABLE IF EXISTS</code>.</li><li>Só os dados: a visualização de filtro com <code>INSERT INTO `orders`</code> mostra apenas as linhas INSERT dessa tabela e as salva num arquivo novo.</li></ul>
+    <ul class="tips"><li>Várias tabelas: marque-as na lista e clique em “Salvar as tabelas marcadas em um arquivo…”. “Abrir esta tabela em uma nova aba” mostra uma tabela sem salvá-la.</li><li>“Dividir em um arquivo por tabela…” grava um arquivo por tabela, um para o que vem antes das tabelas e outro para as views, rotinas e chaves estrangeiras que vêm depois. Na ordem dos nomes, eles restauram o dump inteiro: <code>for f in shop.*.sql; do mysql shop &lt; &quot;$f&quot;; done</code>.</li><li>Dumps do pg_dump em formato texto e arquivos <code>.dump</code> do SQLite funcionam do mesmo jeito. Em scripts: <code>bigtext-cli sqldump shop.sql extract orders -o orders.sql</code>.</li></ul>
     <p class="cta"><a class="btn primary" href="../../../pt/#download">Baixar o BigText grátis</a></p>
     <h2>Mais guias</h2>
     <ul class="more"><li><a href="../open-csv-larger-than-excel/">Abrir um arquivo CSV com mais linhas que as 1.048.576 do Excel</a></li><li><a href="../open-large-log-file/">Abrir um arquivo de log de 10 GB sem travar</a></li></ul>
@@ -99,7 +99,7 @@
 <footer class="foot">
   <div class="wrap">
     <p>Feito por <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
-    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">licença MIT</a> · <a href="../../../pt/#privacy">Privacidade</a> · v0.9.0</p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">licença MIT</a> · <a href="../../../pt/#privacy">Privacidade</a> · v0.10.0</p>
     <p class="langs-foot"><a href="../../../guides/extract-table-from-mysqldump/" hreflang="en" lang="en">English</a> · <a href="../../../ru/guides/extract-table-from-mysqldump/" hreflang="ru" lang="ru">Русский</a> · <a href="../../../uz/guides/extract-table-from-mysqldump/" hreflang="uz" lang="uz">O'zbekcha</a> · <a href="../../../zh/guides/extract-table-from-mysqldump/" hreflang="zh" lang="zh">简体中文</a> · <a href="../../../es/guides/extract-table-from-mysqldump/" hreflang="es" lang="es">Español</a> · <a href="../../../pt/guides/extract-table-from-mysqldump/" hreflang="pt" lang="pt">Português</a> · <a href="../../../de/guides/extract-table-from-mysqldump/" hreflang="de" lang="de">Deutsch</a> · <a href="../../../tr/guides/extract-table-from-mysqldump/" hreflang="tr" lang="tr">Türkçe</a></p>
   </div>
 </footer>

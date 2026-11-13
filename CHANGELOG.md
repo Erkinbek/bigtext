@@ -3,7 +3,26 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
-## Unreleased
+## 0.10.0 — 2026-11-13
+
+### Container and service logs
+
+- **File → Open container or service log…** lists Docker (or Podman) containers, Kubernetes
+  pods and systemd services, on this computer or on a server over SSH, and opens the chosen
+  one's log: the last N lines, the last N minutes or all of it, followed as it grows or read
+  once. Kubernetes pods show their status and restarts; a pod's container or all of them can be
+  chosen, and its run before the last restart, where a crash's error is. A container's stderr
+  comes in the same tab, and the journal's times are ISO 8601 for the time tools. Only lists
+  and logs are read; closing a followed tab ends its command.
+
+### Alerts on new lines
+
+- **View → Alerts on new lines…**: patterns for a followed log (text or regex). Each line added
+  from then on that matches one is listed, counted on the tab and in the status bar, and
+  announced with a system notification and a sound — at most one every ten seconds, the lines in
+  between counted in — and the taskbar button flashes when BigText is in the background. On
+  Windows a click on the notification goes to the line. Growing files, pipes, `tail -F` over
+  SSH and container logs all alert.
 
 ### SQL dumps
 
@@ -16,25 +35,6 @@ All notable changes to BigText. Each release on
   `extract TABLE` and `split` do the same in scripts. Checked against real MySQL 8.4 and
   PostgreSQL 16 dumps: every table restores on its own, and the split files restore the same
   database.
-
-### Alerts on new lines
-
-- **View → Alerts on new lines…**: patterns for a followed log (text or regex). Each line added
-  from then on that matches one is listed, counted on the tab and in the status bar, and
-  announced with a system notification and a sound — at most one every ten seconds, the lines in
-  between counted in — and the taskbar button flashes when BigText is in the background. On
-  Windows a click on the notification goes to the line. Growing files, pipes, `tail -F` over
-  SSH and container logs all alert.
-
-### Container and service logs
-
-- **File → Open container or service log…** lists Docker (or Podman) containers, Kubernetes
-  pods and systemd services, on this computer or on a server over SSH, and opens the chosen
-  one's log: the last N lines, the last N minutes or all of it, followed as it grows or read
-  once. Kubernetes pods show their status and restarts; a pod's container or all of them can be
-  chosen, and its run before the last restart, where a crash's error is. A container's stderr
-  comes in the same tab, and the journal's times are ISO 8601 for the time tools. Only lists
-  and logs are read; closing a followed tab ends its command.
 
 ## 0.9.0 — 2026-11-13
 

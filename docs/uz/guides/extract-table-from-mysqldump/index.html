@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>mysqldump faylidan bitta jadvalni ajratib olish — BigText</title>
-  <meta name="description" content="Bir necha gigabaytli SQL dampdan jadvalni toping va uni bir necha qadamda alohida faylga yozing, dampni xotiraga yuklamasdan. Bepul, Windows, Linux va macOS uchun.">
+  <meta name="description" content="Bir necha gigabaytli SQL dampdagi jadvallar ro&#x27;yxatini oling va keraklisini o&#x27;zi alohida tiklanadigan faylga saqlang, dampni xotiraga yuklamasdan. Bepul, Windows, Linux va macOS uchun.">
   <link rel="canonical" href="https://erkinbek.github.io/bigtext/uz/guides/extract-table-from-mysqldump/">
   <link rel="alternate" hreflang="en" href="https://erkinbek.github.io/bigtext/guides/extract-table-from-mysqldump/">
   <link rel="alternate" hreflang="ru" href="https://erkinbek.github.io/bigtext/ru/guides/extract-table-from-mysqldump/">
@@ -21,7 +21,7 @@
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="BigText">
   <meta property="og:title" content="mysqldump faylidan bitta jadvalni ajratib olish">
-  <meta property="og:description" content="Bir necha gigabaytli SQL dampdan jadvalni toping va uni bir necha qadamda alohida faylga yozing, dampni xotiraga yuklamasdan. Bepul, Windows, Linux va macOS uchun.">
+  <meta property="og:description" content="Bir necha gigabaytli SQL dampdagi jadvallar ro&#x27;yxatini oling va keraklisini o&#x27;zi alohida tiklanadigan faylga saqlang, dampni xotiraga yuklamasdan. Bepul, Windows, Linux va macOS uchun.">
   <meta property="og:url" content="https://erkinbek.github.io/bigtext/uz/guides/extract-table-from-mysqldump/">
   <meta property="og:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
   <meta property="og:image:width" content="1280">
@@ -37,7 +37,7 @@
   <meta property="og:locale:alternate" content="tr_TR">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="mysqldump faylidan bitta jadvalni ajratib olish">
-  <meta name="twitter:description" content="Bir necha gigabaytli SQL dampdan jadvalni toping va uni bir necha qadamda alohida faylga yozing, dampni xotiraga yuklamasdan. Bepul, Windows, Linux va macOS uchun.">
+  <meta name="twitter:description" content="Bir necha gigabaytli SQL dampdagi jadvallar ro&#x27;yxatini oling va keraklisini o&#x27;zi alohida tiklanadigan faylga saqlang, dampni xotiraga yuklamasdan. Bepul, Windows, Linux va macOS uchun.">
   <meta name="twitter:image" content="https://erkinbek.github.io/bigtext/img/og-image.png">
   <link rel="icon" href="../../../favicon.ico" sizes="48x48">
   <link rel="icon" href="../../../img/logo.svg" type="image/svg+xml">
@@ -49,7 +49,7 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "mysqldump faylidan bitta jadvalni ajratib olish",
- "description": "Bir necha gigabaytli SQL dampdan jadvalni toping va uni bir necha qadamda alohida faylga yozing, dampni xotiraga yuklamasdan. Bepul, Windows, Linux va macOS uchun.",
+ "description": "Bir necha gigabaytli SQL dampdagi jadvallar ro'yxatini oling va keraklisini o'zi alohida tiklanadigan faylga saqlang, dampni xotiraga yuklamasdan. Bepul, Windows, Linux va macOS uchun.",
  "inLanguage": "uz",
  "url": "https://erkinbek.github.io/bigtext/uz/guides/extract-table-from-mysqldump/",
  "dateModified": "2026-10-24",
@@ -86,11 +86,11 @@
   <article class="wrap narrow">
     <p class="crumb"><a href="../../../uz/">BigText bosh sahifasi</a> › <a href="../../../uz/#guides">Qo&#x27;llanmalar</a></p>
     <h1>mysqldump faylidan bitta jadvalni ajratib olish</h1>
-    <p>Ma&#x27;lumotlar bazasining to&#x27;liq mysqldump&#x27;i o&#x27;nlab gigabayt bo&#x27;lishi mumkin, undan esa ko&#x27;pincha bitta jadval kerak: tiklash, ma&#x27;lumotini tekshirish yoki hamkasbga yuborish uchun. BigText dampni xotiraga yuklamasdan darhol ochadi, «Satrlarni eksport qilish…» esa istalgan qatorlar oralig&#x27;ini yangi faylga yozadi.</p>
+    <p>Ma&#x27;lumotlar bazasining to&#x27;liq mysqldump&#x27;i o&#x27;nlab gigabayt bo&#x27;lishi mumkin, undan esa ko&#x27;pincha bitta jadval kerak: tiklash, ma&#x27;lumotini tekshirish yoki hamkasbga yuborish uchun. BigText dampni xotiraga yuklamasdan darhol ochadi, bir o&#x27;tishda jadvallar ro&#x27;yxatini tuzadi va keraklisini tiklash uchun zarur hamma narsasi bilan alohida faylga yozadi.</p>
     <h2>Qadamma-qadam</h2>
-    <ol class="steps"><li><h3>Dampni oching</h3><p>.sql faylni «Fayl → Ochish» orqali yoki oynaga tortib oching. .sql.gz damp ham to&#x27;g&#x27;ridan-to&#x27;g&#x27;ri ochiladi.</p></li><li><h3>Jadvallar ro&#x27;yxatini oling</h3><p>mysqldump har bir jadvalni <code>-- Table structure for table `orders`</code> kabi izoh bilan belgilaydi. <code>-- Table structure for table</code> ni qidiring va «Hammasini topish» ni bosing: natijalarda dampdagi barcha jadvallar qator raqamlari bilan chiqadi.</p></li><li><h3>Jadval boshi va oxirini toping</h3><p>Natijalarda kerakli jadvalni bosing, uning qator raqami holat satrida ko&#x27;rinadi. Jadval keyingi jadval izohi boshlangan joyda tugaydi: <code>F3</code> unga o&#x27;tadi.</p></li><li><h3>Uni faylga yozing</h3><p>«Fayl → Satrlarni eksport qilish…» qatorlar oralig&#x27;ini yangi faylga yozadi: jadvalning birinchi qatoridan keyingi jadvaldan oldingi qatorgacha. Natijada CREATE TABLE va shu jadvalning INSERT qatorlari bor kichik .sql fayl hosil bo&#x27;ladi.</p></li></ol>
+    <ol class="steps"><li><h3>Dampni oching</h3><p>.sql faylni «Fayl → Ochish» orqali yoki oynaga tortib oching. .sql.gz damp ham to&#x27;g&#x27;ridan-to&#x27;g&#x27;ri ochiladi.</p></li><li><h3>Jadvallar ro&#x27;yxatini oling</h3><p>«Fayl → SQL damp jadvallari…» dampni bir marta, soniyasiga taxminan bir gigabayt tezlikda o&#x27;qiydi va jadvallarini qatorlar soni hamda hajmi bilan ko&#x27;rsatadi: damp tartibida yoki avval eng kattalari. Yuzlab jadval orasidan keraklisini topish uchun filtrga nomining bir qismini yozing.</p></li><li><h3>Jadvalni tekshiring</h3><p>Jadvalni bossangiz, uning CREATE TABLE qatoriga o&#x27;tasiz va ustunlarini ko&#x27;rasiz.</p></li><li><h3>Uni faylga saqlang</h3><p>Jadvalni sichqonchaning o&#x27;ng tugmasi bilan bosing va «Bu jadvalni saqlash…» ni tanlang. Faylga jadvalning DROP va CREATE buyruqlari, qatorlari, kalitlari, indekslari va triggerlari hamda dampning boshidagi va oxiridagi sozlamalar yoziladi, shuning uchun u o&#x27;zi alohida tiklanadi: <code>mysql shop &lt; orders.sql</code>.</p></li></ol>
     <h2>Bilib qo&#x27;ying</h2>
-    <ul class="tips"><li>Damp SET qatorlari (kodirovka, tashqi kalitlar tekshiruvi) bilan boshlanadi. Jadvalga kerak bo&#x27;lsa, ularni yangi fayl boshiga ko&#x27;chiring.</li><li><code>--skip-comments</code> bilan olingan dampda bunday izohlar yo&#x27;q: o&#x27;rniga <code>CREATE TABLE `orders`</code> va keyingi <code>DROP TABLE IF EXISTS</code> ni qidiring.</li><li>Faqat ma&#x27;lumot: filtr rejimida <code>INSERT INTO `orders`</code> faqat shu jadvalning INSERT qatorlarini ko&#x27;rsatadi va ularni yangi faylga saqlaydi.</li></ul>
+    <ul class="tips"><li>Bir nechta jadval: ularni ro&#x27;yxatda belgilang va «Belgilangan jadvallarni bitta faylga saqlash…» ni bosing. «Bu jadvalni yangi varaqda ochish» jadvalni saqlamasdan ko&#x27;rsatadi.</li><li>«Har jadvalni alohida faylga bo&#x27;lish…» har bir jadval uchun bitta fayl, jadvallardan oldingi qism uchun bitta va ulardan keyingi view, protsedura va tashqi kalitlar uchun bitta fayl yozadi. Nomlari tartibida ular butun dampni tiklaydi: <code>for f in shop.*.sql; do mysql shop &lt; &quot;$f&quot;; done</code>.</li><li>Matn formatidagi pg_dump va SQLite&#x27;ning <code>.dump</code> fayllari ham xuddi shunday ishlaydi. Skriptlarda: <code>bigtext-cli sqldump shop.sql extract orders -o orders.sql</code>.</li></ul>
     <p class="cta"><a class="btn primary" href="../../../uz/#download">BigText&#x27;ni bepul yuklab olish</a></p>
     <h2>Boshqa qo&#x27;llanmalar</h2>
     <ul class="more"><li><a href="../open-csv-larger-than-excel/">Excel&#x27;ning 1 048 576 qatoridan katta CSV faylni ochish</a></li><li><a href="../open-large-log-file/">10 GB log faylni qotmasdan ochish</a></li></ul>
@@ -99,7 +99,7 @@
 <footer class="foot">
   <div class="wrap">
     <p>Muallif: <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
-    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">MIT litsenziyasi</a> · <a href="../../../uz/#privacy">Maxfiylik</a> · v0.9.0</p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">MIT litsenziyasi</a> · <a href="../../../uz/#privacy">Maxfiylik</a> · v0.10.0</p>
     <p class="langs-foot"><a href="../../../guides/extract-table-from-mysqldump/" hreflang="en" lang="en">English</a> · <a href="../../../ru/guides/extract-table-from-mysqldump/" hreflang="ru" lang="ru">Русский</a> · <a href="../../../uz/guides/extract-table-from-mysqldump/" hreflang="uz" lang="uz">O'zbekcha</a> · <a href="../../../zh/guides/extract-table-from-mysqldump/" hreflang="zh" lang="zh">简体中文</a> · <a href="../../../es/guides/extract-table-from-mysqldump/" hreflang="es" lang="es">Español</a> · <a href="../../../pt/guides/extract-table-from-mysqldump/" hreflang="pt" lang="pt">Português</a> · <a href="../../../de/guides/extract-table-from-mysqldump/" hreflang="de" lang="de">Deutsch</a> · <a href="../../../tr/guides/extract-table-from-mysqldump/" hreflang="tr" lang="tr">Türkçe</a></p>
   </div>
 </footer>

@@ -101,6 +101,9 @@ T = {
          "öffentlichem s3://, ohne sie herunterzuladen: Nur das Angezeigte wird übertragen, und über SSH laufen Suchen "
          "auf dem Server. Oder die letzten Megabytes eines Logs wie tail -F verfolgen."),
         ("Webserver-Logs", "Zugriffslogs von nginx und Apache, Logs von AWS Load Balancern und IIS sowie syslog öffnen sich als Tabelle mit einer Spalte je Feld. Der Web-Log-Bericht liefert in einem Durchgang die Top-URLs, die 5xx-Fehler pro Minute und die langsamsten Anfragen: ein 1-GB-Log in unter 2 Sekunden."),
+        ("Container- und Dienst-Logs", "Einen Docker- oder Podman-Container, einen Kubernetes-Pod oder einen systemd-Dienst aus einer Liste wählen, auf diesem Rechner oder auf einem Server über SSH, und sein Log öffnen: die letzten Zeilen oder Minuten, mitverfolgt, während es wächst. Die Neustarts eines Pods werden angezeigt, und auch sein Lauf vor dem letzten Neustart lässt sich öffnen, wo der Fehler eines Absturzes steht."),
+        ("Benachrichtigung bei neuen Zeilen", "Einem verfolgten Log einige Muster geben, etwa ERROR oder einen regulären Ausdruck: Jede neue passende Zeile wird am Tab gezählt und mit einer Systembenachrichtigung und einem Ton gemeldet, höchstens einmal alle zehn Sekunden. Unter Windows führt ein Klick auf die Benachrichtigung zur Zeile."),
+        ("Tabellen des SQL-Dumps", "Die Tabellen eines mysqldump-, pg_dump- oder SQLite-Dumps mit ihren Zeilen und Größen: Ein 1-GB-Dump ist in etwa einer Sekunde aufgelistet. Eine Tabelle als Datei speichern, die sich für sich wiederherstellen lässt, oder den Dump in eine Datei je Tabelle aufteilen; in der Reihenfolge ihrer Namen stellen die Dateien die ganze Datenbank wieder her."),
     ],
     "gallery_h2": "Screenshots",
     "gallery": {
@@ -294,36 +297,42 @@ GUIDES = [
     {
         "slug": "extract-table-from-mysqldump",
         "title": "Eine Tabelle aus einer mysqldump-Datei herauslösen — BigText",
-        "description": "Eine Tabelle in einem SQL-Dump mit mehreren Gigabyte finden und in wenigen Schritten in eine "
-                       "eigene Datei schreiben, ohne den Dump in den Speicher zu laden. Kostenlos, für Windows, Linux und macOS.",
+        "description": "Die Tabellen eines SQL-Dumps mit mehreren Gigabyte auflisten und die gesuchte als Datei "
+                       "speichern, die sich für sich wiederherstellen lässt, ohne den Dump in den Speicher zu "
+                       "laden. Kostenlos, für Windows, Linux und macOS.",
         "h1": "Eine Tabelle aus einer mysqldump-Datei herauslösen",
-        "card": "Die Tabellen eines riesigen SQL-Dumps auflisten und die gesuchte in eine eigene Datei schreiben.",
+        "card": "Die Tabellen eines riesigen SQL-Dumps auflisten und die gesuchte als Datei speichern, die sich "
+                "für sich wiederherstellen lässt.",
         "intro": [
-            "Ein vollständiger mysqldump einer Datenbank kann Dutzende Gigabyte groß sein, und oft brauchen Sie nur eine "
-            "Tabelle daraus: um sie wiederherzustellen, ihre Daten zu prüfen oder sie weiterzugeben. BigText öffnet den "
-            "Dump sofort, ohne ihn in den Speicher zu laden, und „Zeilen exportieren…“ schreibt einen beliebigen "
-            "Zeilenbereich in eine neue Datei.",
+            "Ein vollständiger mysqldump einer Datenbank kann Dutzende Gigabyte groß sein, und oft brauchen Sie "
+            "nur eine Tabelle daraus: um sie wiederherzustellen, ihre Daten zu prüfen oder sie weiterzugeben. "
+            "BigText öffnet den Dump sofort, ohne ihn in den Speicher zu laden, listet seine Tabellen in einem "
+            "Durchgang auf und schreibt die gesuchte in eine eigene Datei, mit allem, was sie zur "
+            "Wiederherstellung braucht.",
         ],
         "steps": [
-            ("Den Dump öffnen", "Öffnen Sie die .sql-Datei mit Datei → Öffnen oder ziehen Sie sie auf das Fenster. Ein "
-             ".sql.gz-Dump öffnet sich ebenfalls direkt."),
-            ("Die Tabellen auflisten", "mysqldump markiert jede Tabelle mit einem Kommentar wie "
-             "{{-- Table structure for table `orders`}}. Suchen Sie nach {{-- Table structure for table}} und drücken "
-             "Sie „Alle suchen“: Die Ergebnisse listen jede Tabelle des Dumps mit ihrer Zeilennummer."),
-            ("Anfang und Ende der Tabelle finden", "Klicken Sie in den Ergebnissen auf die gesuchte Tabelle; ihre "
-             "Zeilennummer steht in der Statusleiste. Sie endet dort, wo der Kommentar der nächsten Tabelle beginnt: "
-             "{{F3}} springt dorthin."),
-            ("In eine Datei schreiben", "Datei → Zeilen exportieren… schreibt einen Zeilenbereich in eine neue Datei: "
-             "von der ersten Zeile der Tabelle bis zur Zeile vor der nächsten Tabelle. Sie erhalten eine kleine "
-             ".sql-Datei mit der CREATE-TABLE-Anweisung und den INSERT-Zeilen der Tabelle."),
+            ("Den Dump öffnen", "Öffnen Sie die .sql-Datei mit Datei → Öffnen oder ziehen Sie sie auf das Fenster. "
+             "Ein .sql.gz-Dump öffnet sich ebenfalls direkt."),
+            ("Die Tabellen auflisten", "„Datei → Tabellen des SQL-Dumps…“ liest den Dump einmal, etwa ein Gigabyte "
+             "pro Sekunde, und listet seine Tabellen mit ihren Zeilen und Größen auf, in der Reihenfolge des Dumps "
+             "oder die größten zuerst. Um eine Tabelle unter Hunderten zu finden, tippen Sie einen Teil des Namens "
+             "in den Filter."),
+            ("Die Tabelle prüfen", "Ein Klick auf eine Tabelle springt zu ihrer CREATE-TABLE-Anweisung und zeigt "
+             "ihre Spalten."),
+            ("In eine Datei speichern", "Klicken Sie mit der rechten Maustaste auf die Tabelle und wählen Sie "
+             "„Diese Tabelle speichern unter…“. Die Datei erhält die DROP- und CREATE-Anweisungen der Tabelle, "
+             "ihre Zeilen, Schlüssel, Indizes und Trigger sowie die Einstellungen vom Anfang und Ende des Dumps, "
+             "darum lässt sie sich für sich wiederherstellen: {{mysql shop < orders.sql}}."),
         ],
         "tips": [
-            "Der Dump beginnt mit SET-Zeilen (Zeichensatz, Fremdschlüsselprüfung). Kopieren Sie sie an den Anfang der "
-            "neuen Datei, wenn die Tabelle sie braucht.",
-            "Ein Dump mit {{--skip-comments}} hat diese Kommentare nicht: Suchen Sie stattdessen nach "
-            "{{CREATE TABLE `orders`}} und dem nächsten {{DROP TABLE IF EXISTS}}.",
-            "Nur die Daten: Die Filteransicht mit {{INSERT INTO `orders`}} zeigt nur die INSERT-Zeilen dieser Tabelle "
-            "und speichert sie in eine neue Datei.",
+            "Mehrere Tabellen: Markieren Sie sie in der Liste und drücken Sie „Die markierten Tabellen als eine "
+            "Datei speichern…“. „Diese Tabelle in einem neuen Tab öffnen“ zeigt eine Tabelle, ohne sie zu "
+            "speichern.",
+            "„In eine Datei je Tabelle aufteilen…“ schreibt eine Datei je Tabelle, eine für das, was vor den "
+            "Tabellen steht, und eine für Views, Routinen und Fremdschlüssel danach. In der Reihenfolge ihrer "
+            "Namen stellen sie den ganzen Dump wieder her: {{for f in shop.*.sql; do mysql shop < \"$f\"; done}}.",
+            "pg_dump-Dateien im Textformat und {{.dump}}-Dateien von SQLite funktionieren genauso. In Skripten: "
+            "{{bigtext-cli sqldump shop.sql extract orders -o orders.sql}}.",
         ],
     },
 ]

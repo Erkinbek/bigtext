@@ -29,7 +29,7 @@ DOCS = ROOT / "docs"
 BASE = "https://erkinbek.github.io/bigtext/"
 REPO = "https://github.com/Erkinbek/bigtext"
 RELEASES = REPO + "/releases/latest"
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 # When the demo animation (docs/img/demo.mp4) was last recorded.
 DEMO_DATE = "2026-11-12"
 UPDATED = "2026-10-24"
@@ -123,6 +123,9 @@ T = {
             ("Also a comfortable code editor", "Syntax colours for Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell scripts, YAML and more, in One Dark, Monokai, GitHub or Solarized; a folder side bar as in Sublime Text; Ctrl+P to find a file, Ctrl+R for the functions and classes of a file, Ctrl+/ to comment lines out, and brackets that close themselves. Only the rows on screen are coloured, so a huge file stays just as fast."),
             ("Logs on servers", "Open user@server:/var/log/app.log over SSH with your keys, or an https:// or public s3:// file, without downloading it: only what is on screen comes over, and over SSH searches run on the server. Or follow a log's last megabytes like tail -F."),
             ("Web server logs", "nginx and Apache access logs, AWS load balancer and IIS logs, and syslog open as a table with a column per field. The web log report gives the top URLs, the 5xx errors per minute and the slowest requests from one pass: a 1 GB log in under 2 seconds."),
+            ("Container and service logs", "Pick a Docker or Podman container, a Kubernetes pod or a systemd service from a list, on this computer or on a server over SSH, and open its log: the last lines or minutes, followed as it grows. A pod's restarts are shown, and its run before the last restart, where a crash's error is, opens too."),
+            ("Alerts on new lines", "Give a followed log a few patterns, such as ERROR or a regular expression: each new line that matches is counted on the tab and announced with a system notification and a sound, at most one every ten seconds. On Windows a click on the notification goes to the line."),
+            ("SQL dump tables", "The tables of a mysqldump, pg_dump or SQLite dump with their rows and sizes: a 1 GB dump is listed in about a second. Save one table as a file that restores on its own, or split the dump into a file per table that restores the whole database in the order of the names."),
         ],
         "gallery_h2": "Screenshots",
         "gallery": {
@@ -287,6 +290,9 @@ T = {
             ("И удобный редактор кода", "Подсветка Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell-скриптов, YAML и других языков в цветах One Dark, Monokai, GitHub или Solarized; боковая панель папки, как в Sublime Text; Ctrl+P для поиска файла, Ctrl+R для функций и классов файла, Ctrl+/ для комментирования строк и автозакрытие скобок. Раскрашиваются только строки на экране, поэтому огромный файл остаётся таким же быстрым."),
             ("Логи на серверах", "Открывайте user@server:/var/log/app.log по SSH с вашими ключами или файл по https:// и публичный s3://, не скачивая его: передаётся только то, что на экране, а по SSH поиск выполняется на сервере. Или следите за последними мегабайтами лога, как tail -F."),
             ("Логи веб-серверов", "Логи доступа nginx и Apache, логи балансировщиков AWS и IIS, а также syslog открываются таблицей со столбцом на каждое поле. Отчёт по веб-логу за один проход даёт топ URL, ошибки 5xx по минутам и самые медленные запросы: лог в 1 ГБ меньше чем за 2 секунды."),
+            ("Логи контейнеров и служб", "Выберите из списка контейнер Docker или Podman, под Kubernetes или службу systemd, на этом компьютере или на сервере по SSH, и откройте его лог: последние строки или минуты, с отслеживанием по мере роста. Для пода видны перезапуски, и можно открыть его запуск до последнего перезапуска — там, где ошибка падения."),
+            ("Оповещения о новых строках", "Задайте отслеживаемому логу несколько шаблонов, например ERROR или регулярное выражение: каждая новая подходящая строка считается на вкладке и сопровождается системным уведомлением и звуком — не чаще раза в десять секунд. В Windows щелчок по уведомлению переходит к строке."),
+            ("Таблицы дампа SQL", "Таблицы дампа mysqldump, pg_dump или SQLite с числом строк и размером: дамп в 1 ГБ читается примерно за секунду. Сохраните одну таблицу в файл, который восстанавливается сам по себе, или разбейте дамп на файлы по таблицам, которые в порядке имён восстанавливают всю базу."),
         ],
         "gallery_h2": "Скриншоты",
         "gallery": {
@@ -452,6 +458,9 @@ T = {
             ("Qulay kod muharriri ham", "Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell skriptlar, YAML va boshqa tillar One Dark, Monokai, GitHub yoki Solarized ranglarida; Sublime Text'dagidek papka paneli; faylni topish uchun Ctrl+P, fayldagi funksiya va klasslar uchun Ctrl+R, satrlarni izohga aylantirish uchun Ctrl+/ va o'zi yopiladigan qavslar. Faqat ekrandagi satrlar bo'yaladi, shuning uchun ulkan fayl ham xuddi shunday tez qoladi."),
             ("Serverdagi loglar", "user@server:/var/log/app.log faylini kalitlaringiz bilan SSH orqali yoki https:// va ochiq s3:// faylni yuklab olmasdan oching: faqat ekrandagi qism keladi, SSH orqali esa qidiruv serverning o'zida bajariladi. Yoki logning oxirgi megabaytlarini tail -F kabi kuzatib boring."),
             ("Veb-server loglari", "nginx va Apache kirish loglari, AWS load balancer va IIS loglari hamda syslog har bir maydon alohida ustunda bo'lgan jadval bo'lib ochiladi. Veb-log hisoboti bir o'tishda eng ko'p so'ralgan URL'lar, daqiqalik 5xx xatolari va eng sekin so'rovlarni beradi: 1 GB log 2 soniyadan kamroq vaqtda."),
+            ("Konteyner va xizmat loglari", "Docker yoki Podman konteynerini, Kubernetes podini yoki systemd xizmatini ro'yxatdan tanlang — shu kompyuterda yoki SSH orqali serverda — va uning logini oching: oxirgi satrlar yoki daqiqalar, o'sib borgan sari kuzatib boriladi. Podning qayta ishga tushishlari ko'rinadi, oxirgi qayta ishga tushishdan oldingi ishini ham ochish mumkin — qulash xatosi o'sha yerda bo'ladi."),
+            ("Yangi satrlar haqida ogohlantirish", "Kuzatilayotgan logga bir nechta naqsh bering, masalan ERROR yoki muntazam ifoda: mos kelgan har bir yangi satr varaqda sanaladi va tizim bildirishnomasi hamda ovoz bilan xabar qilinadi, o'n soniyada ko'pi bilan bir marta. Windows'da bildirishnoma bosilsa, o'sha satrga o'tadi."),
+            ("SQL damp jadvallari", "mysqldump, pg_dump yoki SQLite dampidagi jadvallar qatorlar soni va hajmi bilan: 1 GB damp taxminan bir soniyada ro'yxatlanadi. Bitta jadvalni o'zi alohida tiklanadigan faylga saqlang yoki dampni har jadval uchun alohida fayllarga bo'ling: nomlari tartibida ular butun bazani tiklaydi."),
         ],
         "gallery_h2": "Skrinshotlar",
         "gallery": {

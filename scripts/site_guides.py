@@ -108,34 +108,37 @@ GUIDES = {
         {
             "slug": "extract-table-from-mysqldump",
             "title": "Extract One Table From a mysqldump File — BigText",
-            "description": "Find a table in a multi-gigabyte SQL dump and write it to its own file in a few steps, "
-                           "without loading the dump into memory. Free, for Windows, Linux and macOS.",
+            "description": "List the tables of a multi-gigabyte SQL dump and save the one you need as a file that "
+                           "restores on its own, without loading the dump into memory. Free, for Windows, Linux "
+                           "and macOS.",
             "h1": "Extract one table from a mysqldump file",
-            "card": "List the tables of a huge SQL dump and write the one you need to its own file.",
+            "card": "List the tables of a huge SQL dump and save the one you need as a file that restores on its "
+                    "own.",
             "intro": [
                 "A full mysqldump of a database can be tens of gigabytes, and often you need one table from it: to "
                 "restore it, to check its data or to send it to someone. BigText opens the dump at once without "
-                "loading it into memory, and Export lines… writes any range of lines to a new file.",
+                "loading it into memory, lists its tables in one pass and writes the one you need to its own file, "
+                "with what it needs to restore.",
             ],
             "steps": [
-                ("Open the dump", "Open the .sql file with File → Open or by dragging it onto the window. A .sql.gz "
-                 "dump opens directly too."),
-                ("List the tables", "mysqldump marks each table with a comment such as "
-                 "{{-- Table structure for table `orders`}}. Search for {{-- Table structure for table}} and press "
-                 "Find All: the results list every table in the dump with its line number."),
-                ("Find where the table starts and ends", "Click the table you need in the results; its line number is "
-                 "in the status bar. The next table's comment is where it ends: {{F3}} jumps to it."),
-                ("Write it to a file", "File → Export lines… writes a range of lines to a new file: from the first "
-                 "line of the table to the line before the next table. You get a small .sql file with the "
-                 "CREATE TABLE statement and the table's INSERT lines."),
+                ("Open the dump", "Open the .sql file with File → Open or by dragging it onto the window. A "
+                 ".sql.gz dump opens directly too."),
+                ("List the tables", "File → SQL dump tables… reads the dump once, about a gigabyte a second, and "
+                 "lists its tables with their rows and sizes, in the dump's order or largest first. Type part of a "
+                 "name in the filter to find a table among hundreds."),
+                ("Check the table", "Click a table to go to its CREATE TABLE statement and see its columns."),
+                ("Save it to a file", "Right-click the table and choose Save this table as… The file gets the "
+                 "table's DROP and CREATE statements, its rows, keys, indexes and triggers, and the dump's opening "
+                 "and closing settings, so it restores on its own: {{mysql shop < orders.sql}}."),
             ],
             "tips": [
-                "The dump starts with SET lines (character set, foreign key checks). Copy them to the top of the new "
-                "file if the table needs them.",
-                "A dump made with {{--skip-comments}} has no such comments: search for {{CREATE TABLE `orders`}} and "
-                "the next {{DROP TABLE IF EXISTS}} instead.",
-                "Only the data: the filter view with {{INSERT INTO `orders`}} shows just that table's INSERT lines and "
-                "saves them to a new file.",
+                "Several tables: check them in the list and press Save the checked tables as one file… To look at "
+                "a table without saving it, use Open this table in a new tab.",
+                "Split into a file per table… writes a file for each table, one for what comes before the tables "
+                "and one for the views, routines and foreign keys after them. In the order of their names they "
+                "restore the whole dump: {{for f in shop.*.sql; do mysql shop < \"$f\"; done}}.",
+                "pg_dump files in plain format and SQLite {{.dump}} files work the same way. In scripts: "
+                "{{bigtext-cli sqldump shop.sql extract orders -o orders.sql}}.",
             ],
         },
     ],
@@ -217,34 +220,37 @@ GUIDES = {
         {
             "slug": "extract-table-from-mysqldump",
             "title": "Как извлечь одну таблицу из дампа mysqldump — BigText",
-            "description": "Найдите таблицу в SQL-дампе на несколько гигабайт и запишите её в отдельный файл за "
-                           "несколько шагов, не загружая дамп в память. Бесплатно, для Windows, Linux и macOS.",
+            "description": "Получите список таблиц SQL-дампа на несколько гигабайт и сохраните нужную в файл, "
+                           "который восстанавливается сам по себе, не загружая дамп в память. Бесплатно, для "
+                           "Windows, Linux и macOS.",
             "h1": "Как извлечь одну таблицу из дампа mysqldump",
-            "card": "Получите список таблиц огромного SQL-дампа и запишите нужную в отдельный файл.",
+            "card": "Получите список таблиц огромного SQL-дампа и сохраните нужную в файл, который "
+                    "восстанавливается сам по себе.",
             "intro": [
                 "Полный mysqldump базы может весить десятки гигабайт, а нужна из него часто одна таблица: "
-                "восстановить её, проверить данные или отправить коллеге. BigText открывает дамп сразу, не загружая "
-                "его в память, а «Экспорт строк…» записывает любой диапазон строк в новый файл.",
+                "восстановить её, проверить данные или отправить коллеге. BigText открывает дамп сразу, не "
+                "загружая его в память, за один проход составляет список таблиц и записывает нужную в отдельный "
+                "файл со всем, что нужно для восстановления.",
             ],
             "steps": [
-                ("Откройте дамп", "Откройте .sql через «Файл → Открыть» или перетащите в окно. Дамп в .sql.gz "
-                 "тоже открывается напрямую."),
-                ("Получите список таблиц", "mysqldump отмечает каждую таблицу комментарием вида "
-                 "{{-- Table structure for table `orders`}}. Найдите {{-- Table structure for table}} и нажмите "
-                 "«Найти все»: в результатах будут все таблицы дампа с номерами строк."),
-                ("Найдите начало и конец таблицы", "Щёлкните нужную таблицу в результатах — номер её строки виден в "
-                 "строке состояния. Конец таблицы там, где начинается комментарий следующей: {{F3}} переходит к нему."),
-                ("Запишите её в файл", "«Файл → Экспорт строк…» записывает диапазон строк в новый файл: от первой "
-                 "строки таблицы до строки перед следующей таблицей. Получится небольшой .sql с CREATE TABLE и "
-                 "строками INSERT этой таблицы."),
+                ("Откройте дамп", "Откройте .sql через «Файл → Открыть» или перетащите в окно. Дамп в .sql.gz тоже "
+                 "открывается напрямую."),
+                ("Получите список таблиц", "«Файл → Таблицы дампа SQL…» читает дамп один раз, примерно гигабайт в "
+                 "секунду, и выводит его таблицы с числом строк и размером — в порядке дампа или по убыванию "
+                 "размера. Чтобы найти таблицу среди сотен, введите часть имени в фильтр."),
+                ("Проверьте таблицу", "Щёлкните таблицу, чтобы перейти к её CREATE TABLE и увидеть столбцы."),
+                ("Сохраните её в файл", "Щёлкните таблицу правой кнопкой и выберите «Сохранить эту таблицу как…». "
+                 "В файл попадут DROP и CREATE таблицы, её строки, ключи, индексы и триггеры, а также начальные и "
+                 "конечные настройки дампа, поэтому он восстанавливается сам по себе: {{mysql shop < orders.sql}}."),
             ],
             "tips": [
-                "Дамп начинается со строк SET (кодировка, проверка внешних ключей). Скопируйте их в начало нового "
-                "файла, если они нужны таблице.",
-                "В дампе, сделанном с {{--skip-comments}}, таких комментариев нет: ищите {{CREATE TABLE `orders`}} и "
-                "следующий {{DROP TABLE IF EXISTS}}.",
-                "Только данные: режим фильтра с {{INSERT INTO `orders`}} покажет лишь строки INSERT этой таблицы и "
-                "сохранит их в новый файл.",
+                "Несколько таблиц: отметьте их в списке и нажмите «Сохранить отмеченные таблицы в один файл…». "
+                "«Открыть эту таблицу в новой вкладке» показывает таблицу, не сохраняя её.",
+                "«Разбить на файл для каждой таблицы…» записывает файл на каждую таблицу, один файл для того, что "
+                "идёт до таблиц, и один для представлений, процедур и внешних ключей после них. В порядке имён они "
+                "восстанавливают весь дамп: {{for f in shop.*.sql; do mysql shop < \"$f\"; done}}.",
+                "Так же работают дампы pg_dump в текстовом формате и файлы {{.dump}} из SQLite. В скриптах: "
+                "{{bigtext-cli sqldump shop.sql extract orders -o orders.sql}}.",
             ],
         },
     ],
@@ -328,36 +334,41 @@ GUIDES = {
         {
             "slug": "extract-table-from-mysqldump",
             "title": "mysqldump faylidan bitta jadvalni ajratib olish — BigText",
-            "description": "Bir necha gigabaytli SQL dampdan jadvalni toping va uni bir necha qadamda alohida faylga "
-                           "yozing, dampni xotiraga yuklamasdan. Bepul, Windows, Linux va macOS uchun.",
+            "description": "Bir necha gigabaytli SQL dampdagi jadvallar ro'yxatini oling va keraklisini o'zi "
+                           "alohida tiklanadigan faylga saqlang, dampni xotiraga yuklamasdan. Bepul, Windows, "
+                           "Linux va macOS uchun.",
             "h1": "mysqldump faylidan bitta jadvalni ajratib olish",
-            "card": "Ulkan SQL dampdagi jadvallar ro'yxatini oling va keraklisini alohida faylga yozing.",
+            "card": "Ulkan SQL dampdagi jadvallar ro'yxatini oling va keraklisini o'zi alohida tiklanadigan faylga "
+                    "saqlang.",
             "intro": [
-                "Ma'lumotlar bazasining to'liq mysqldump'i o'nlab gigabayt bo'lishi mumkin, undan esa ko'pincha bitta "
-                "jadval kerak: tiklash, ma'lumotini tekshirish yoki hamkasbga yuborish uchun. BigText dampni xotiraga "
-                "yuklamasdan darhol ochadi, «Satrlarni eksport qilish…» esa istalgan qatorlar oralig'ini yangi faylga "
-                "yozadi.",
+                "Ma'lumotlar bazasining to'liq mysqldump'i o'nlab gigabayt bo'lishi mumkin, undan esa ko'pincha "
+                "bitta jadval kerak: tiklash, ma'lumotini tekshirish yoki hamkasbga yuborish uchun. BigText dampni "
+                "xotiraga yuklamasdan darhol ochadi, bir o'tishda jadvallar ro'yxatini tuzadi va keraklisini "
+                "tiklash uchun zarur hamma narsasi bilan alohida faylga yozadi.",
             ],
             "steps": [
                 ("Dampni oching", ".sql faylni «Fayl → Ochish» orqali yoki oynaga tortib oching. .sql.gz damp ham "
                  "to'g'ridan-to'g'ri ochiladi."),
-                ("Jadvallar ro'yxatini oling", "mysqldump har bir jadvalni "
-                 "{{-- Table structure for table `orders`}} kabi izoh bilan belgilaydi. "
-                 "{{-- Table structure for table}} ni qidiring va «Hammasini topish» ni bosing: natijalarda dampdagi "
-                 "barcha jadvallar qator raqamlari bilan chiqadi."),
-                ("Jadval boshi va oxirini toping", "Natijalarda kerakli jadvalni bosing, uning qator raqami holat "
-                 "satrida ko'rinadi. Jadval keyingi jadval izohi boshlangan joyda tugaydi: {{F3}} unga o'tadi."),
-                ("Uni faylga yozing", "«Fayl → Satrlarni eksport qilish…» qatorlar oralig'ini yangi faylga yozadi: "
-                 "jadvalning birinchi qatoridan keyingi jadvaldan oldingi qatorgacha. Natijada CREATE TABLE va shu "
-                 "jadvalning INSERT qatorlari bor kichik .sql fayl hosil bo'ladi."),
+                ("Jadvallar ro'yxatini oling", "«Fayl → SQL damp jadvallari…» dampni bir marta, soniyasiga "
+                 "taxminan bir gigabayt tezlikda o'qiydi va jadvallarini qatorlar soni hamda hajmi bilan "
+                 "ko'rsatadi: damp tartibida yoki avval eng kattalari. Yuzlab jadval orasidan keraklisini topish "
+                 "uchun filtrga nomining bir qismini yozing."),
+                ("Jadvalni tekshiring", "Jadvalni bossangiz, uning CREATE TABLE qatoriga o'tasiz va ustunlarini "
+                 "ko'rasiz."),
+                ("Uni faylga saqlang", "Jadvalni sichqonchaning o'ng tugmasi bilan bosing va «Bu jadvalni "
+                 "saqlash…» ni tanlang. Faylga jadvalning DROP va CREATE buyruqlari, qatorlari, kalitlari, "
+                 "indekslari va triggerlari hamda dampning boshidagi va oxiridagi sozlamalar yoziladi, shuning "
+                 "uchun u o'zi alohida tiklanadi: {{mysql shop < orders.sql}}."),
             ],
             "tips": [
-                "Damp SET qatorlari (kodirovka, tashqi kalitlar tekshiruvi) bilan boshlanadi. Jadvalga kerak bo'lsa, "
-                "ularni yangi fayl boshiga ko'chiring.",
-                "{{--skip-comments}} bilan olingan dampda bunday izohlar yo'q: o'rniga {{CREATE TABLE `orders`}} va "
-                "keyingi {{DROP TABLE IF EXISTS}} ni qidiring.",
-                "Faqat ma'lumot: filtr rejimida {{INSERT INTO `orders`}} faqat shu jadvalning INSERT qatorlarini "
-                "ko'rsatadi va ularni yangi faylga saqlaydi.",
+                "Bir nechta jadval: ularni ro'yxatda belgilang va «Belgilangan jadvallarni bitta faylga saqlash…» "
+                "ni bosing. «Bu jadvalni yangi varaqda ochish» jadvalni saqlamasdan ko'rsatadi.",
+                "«Har jadvalni alohida faylga bo'lish…» har bir jadval uchun bitta fayl, jadvallardan oldingi qism "
+                "uchun bitta va ulardan keyingi view, protsedura va tashqi kalitlar uchun bitta fayl yozadi. "
+                "Nomlari tartibida ular butun dampni tiklaydi: {{for f in shop.*.sql; do mysql shop < \"$f\"; "
+                "done}}.",
+                "Matn formatidagi pg_dump va SQLite'ning {{.dump}} fayllari ham xuddi shunday ishlaydi. "
+                "Skriptlarda: {{bigtext-cli sqldump shop.sql extract orders -o orders.sql}}.",
             ],
         },
     ],

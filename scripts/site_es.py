@@ -97,6 +97,9 @@ T = {
          "sin descargarlo: solo llega lo que está en pantalla, y por SSH las búsquedas se ejecutan en el servidor. "
          "O sigue los últimos megabytes de un log como tail -F."),
         ("Logs de servidores web", "Los logs de acceso de nginx y Apache, los de los balanceadores de carga de AWS y de IIS, y syslog se abren como una tabla con una columna por campo. El informe del log web da en una pasada las URL principales, los errores 5xx por minuto y las solicitudes más lentas: un log de 1 GB en menos de 2 segundos."),
+        ("Logs de contenedores y servicios", "Elige de una lista un contenedor de Docker o Podman, un pod de Kubernetes o un servicio de systemd, en este equipo o en un servidor por SSH, y abre su log: las últimas líneas o minutos, siguiéndolo mientras crece. Se ven los reinicios de un pod, y también se abre su ejecución anterior al último reinicio, donde está el error de la caída."),
+        ("Alertas de líneas nuevas", "Dale a un log seguido algunos patrones, como ERROR o una expresión regular: cada línea nueva que coincide se cuenta en la pestaña y se anuncia con una notificación del sistema y un sonido, como mucho una cada diez segundos. En Windows, un clic en la notificación lleva a la línea."),
+        ("Tablas del volcado SQL", "Las tablas de un volcado de mysqldump, pg_dump o SQLite con sus filas y tamaños: un volcado de 1 GB se lista en un segundo aproximadamente. Guarda una tabla en un archivo que se restaura por sí solo, o divide el volcado en un archivo por tabla; en el orden de sus nombres, los archivos restauran toda la base de datos."),
     ],
     "gallery_h2": "Capturas",
     "gallery": {
@@ -286,35 +289,38 @@ GUIDES = [
     {
         "slug": "extract-table-from-mysqldump",
         "title": "Extraer una tabla de un archivo mysqldump — BigText",
-        "description": "Encuentra una tabla en un volcado SQL de varios gigabytes y escríbela en su propio archivo en "
-                       "pocos pasos, sin cargar el volcado en memoria. Gratis, para Windows, Linux y macOS.",
+        "description": "Lista las tablas de un volcado SQL de varios gigabytes y guarda la que necesitas en un "
+                       "archivo que se restaura por sí solo, sin cargar el volcado en memoria. Gratis, para "
+                       "Windows, Linux y macOS.",
         "h1": "Extraer una tabla de un archivo mysqldump",
-        "card": "Lista las tablas de un volcado SQL enorme y escribe la que necesitas en su propio archivo.",
+        "card": "Lista las tablas de un volcado SQL enorme y guarda la que necesitas en un archivo que se restaura "
+                "por sí solo.",
         "intro": [
-            "Un mysqldump completo de una base de datos puede ocupar decenas de gigabytes, y a menudo solo necesitas una "
-            "tabla: para restaurarla, revisar sus datos o enviarla a alguien. BigText abre el volcado al instante sin "
-            "cargarlo en memoria, y «Exportar líneas…» escribe cualquier rango de líneas en un archivo nuevo.",
+            "Un mysqldump completo de una base de datos puede ocupar decenas de gigabytes, y a menudo solo "
+            "necesitas una tabla: para restaurarla, revisar sus datos o enviársela a alguien. BigText abre el "
+            "volcado al instante sin cargarlo en memoria, lista sus tablas en una sola pasada y escribe la que "
+            "necesitas en su propio archivo, con lo que hace falta para restaurarla.",
         ],
         "steps": [
             ("Abre el volcado", "Abre el archivo .sql con Archivo → Abrir o arrastrándolo a la ventana. Un volcado "
              ".sql.gz también se abre directamente."),
-            ("Lista las tablas", "mysqldump marca cada tabla con un comentario como "
-             "{{-- Table structure for table `orders`}}. Busca {{-- Table structure for table}} y pulsa «Buscar todo»: "
-             "los resultados listan todas las tablas del volcado con su número de línea."),
-            ("Encuentra dónde empieza y termina la tabla", "Haz clic en la tabla que necesitas en los resultados; su "
-             "número de línea aparece en la barra de estado. Termina donde empieza el comentario de la siguiente tabla: "
-             "{{F3}} salta a él."),
-            ("Escríbela en un archivo", "Archivo → Exportar líneas… escribe un rango de líneas en un archivo nuevo: desde "
-             "la primera línea de la tabla hasta la línea anterior a la siguiente tabla. Obtienes un .sql pequeño con la "
-             "sentencia CREATE TABLE y las líneas INSERT de la tabla."),
+            ("Lista las tablas", "«Archivo → Tablas del volcado SQL…» lee el volcado una vez, a cerca de un "
+             "gigabyte por segundo, y lista sus tablas con sus filas y tamaños, en el orden del volcado o las "
+             "mayores primero. Para encontrar una tabla entre cientos, escribe parte del nombre en el filtro."),
+            ("Revisa la tabla", "Haz clic en una tabla para ir a su CREATE TABLE y ver sus columnas."),
+            ("Guárdala en un archivo", "Haz clic derecho en la tabla y elige «Guardar esta tabla como…». El "
+             "archivo recibe las sentencias DROP y CREATE de la tabla, sus filas, claves, índices y disparadores, "
+             "y la configuración del principio y del final del volcado, así que se restaura por sí solo: {{mysql "
+             "shop < orders.sql}}."),
         ],
         "tips": [
-            "El volcado empieza con líneas SET (juego de caracteres, comprobación de claves foráneas). Cópialas al "
-            "principio del archivo nuevo si la tabla las necesita.",
-            "Un volcado hecho con {{--skip-comments}} no tiene esos comentarios: busca {{CREATE TABLE `orders`}} y el "
-            "siguiente {{DROP TABLE IF EXISTS}}.",
-            "Solo los datos: la vista de filtro con {{INSERT INTO `orders`}} muestra solo las líneas INSERT de esa tabla y "
-            "las guarda en un archivo nuevo.",
+            "Varias tablas: márcalas en la lista y pulsa «Guardar las tablas marcadas en un archivo…». «Abrir esta "
+            "tabla en una pestaña nueva» muestra una tabla sin guardarla.",
+            "«Dividir en un archivo por tabla…» escribe un archivo por tabla, uno para lo que va antes de las "
+            "tablas y otro para las vistas, rutinas y claves foráneas que van después. En el orden de sus nombres "
+            "restauran todo el volcado: {{for f in shop.*.sql; do mysql shop < \"$f\"; done}}.",
+            "Los volcados de pg_dump en formato de texto y los archivos {{.dump}} de SQLite funcionan igual. En "
+            "scripts: {{bigtext-cli sqldump shop.sql extract orders -o orders.sql}}.",
         ],
     },
 ]

@@ -95,6 +95,9 @@ T = {
          "sem baixá-lo: só vem o que está na tela, e via SSH as buscas rodam no servidor. "
          "Ou acompanhe os últimos megabytes de um log como tail -F."),
         ("Logs de servidores web", "Logs de acesso do nginx e do Apache, logs dos balanceadores de carga da AWS e do IIS, e syslog abrem como uma tabela com uma coluna por campo. O relatório do log web traz em uma passada as URLs principais, os erros 5xx por minuto e as requisições mais lentas: um log de 1 GB em menos de 2 segundos."),
+        ("Logs de contêineres e serviços", "Escolha em uma lista um contêiner Docker ou Podman, um pod do Kubernetes ou um serviço do systemd, neste computador ou em um servidor via SSH, e abra o log: as últimas linhas ou minutos, acompanhado enquanto cresce. Os reinícios de um pod aparecem, e a execução antes do último reinício, onde está o erro da queda, também abre."),
+        ("Alertas de novas linhas", "Dê a um log acompanhado alguns padrões, como ERROR ou uma expressão regular: cada nova linha que corresponde é contada na aba e anunciada com uma notificação do sistema e um som, no máximo uma a cada dez segundos. No Windows, um clique na notificação vai até a linha."),
+        ("Tabelas do dump SQL", "As tabelas de um dump do mysqldump, pg_dump ou SQLite com suas linhas e tamanhos: um dump de 1 GB é listado em cerca de um segundo. Salve uma tabela em um arquivo que é restaurado sozinho, ou divida o dump em um arquivo por tabela; na ordem dos nomes, os arquivos restauram o banco inteiro."),
     ],
     "gallery_h2": "Capturas de tela",
     "gallery": {
@@ -284,34 +287,37 @@ GUIDES = [
     {
         "slug": "extract-table-from-mysqldump",
         "title": "Extrair uma tabela de um arquivo mysqldump — BigText",
-        "description": "Encontre uma tabela num dump SQL de vários gigabytes e grave-a num arquivo próprio em poucos "
-                       "passos, sem carregar o dump na memória. Grátis, para Windows, Linux e macOS.",
+        "description": "Liste as tabelas de um dump SQL de vários gigabytes e salve a que você precisa em um "
+                       "arquivo que é restaurado sozinho, sem carregar o dump na memória. Grátis, para Windows, "
+                       "Linux e macOS.",
         "h1": "Extrair uma tabela de um arquivo mysqldump",
-        "card": "Liste as tabelas de um dump SQL enorme e grave a que você precisa num arquivo próprio.",
+        "card": "Liste as tabelas de um dump SQL enorme e salve a que você precisa em um arquivo que é restaurado "
+                "sozinho.",
         "intro": [
-            "Um mysqldump completo de um banco de dados pode ter dezenas de gigabytes, e muitas vezes você precisa de uma "
-            "única tabela: para restaurá-la, conferir os dados ou enviá-la a alguém. O BigText abre o dump na hora sem "
-            "carregá-lo na memória, e “Exportar linhas…” grava qualquer intervalo de linhas num arquivo novo.",
+            "Um mysqldump completo de um banco de dados pode ter dezenas de gigabytes, e muitas vezes você precisa "
+            "de uma tabela só: para restaurá-la, conferir os dados ou enviá-la a alguém. O BigText abre o dump na "
+            "hora sem carregá-lo na memória, lista as tabelas em uma única passada e grava a que você precisa em "
+            "um arquivo próprio, com o que ela precisa para ser restaurada.",
         ],
         "steps": [
-            ("Abra o dump", "Abra o arquivo .sql com Arquivo → Abrir ou arrastando-o para a janela. Um dump .sql.gz "
-             "também abre diretamente."),
-            ("Liste as tabelas", "O mysqldump marca cada tabela com um comentário como "
-             "{{-- Table structure for table `orders`}}. Pesquise {{-- Table structure for table}} e clique em "
-             "“Localizar todos”: os resultados listam todas as tabelas do dump com o número da linha."),
-            ("Encontre onde a tabela começa e termina", "Clique na tabela que você precisa nos resultados; o número da "
-             "linha aparece na barra de status. Ela termina onde começa o comentário da tabela seguinte: {{F3}} pula para ele."),
-            ("Grave num arquivo", "Arquivo → Exportar linhas… grava um intervalo de linhas num arquivo novo: da primeira "
-             "linha da tabela até a linha antes da tabela seguinte. Você obtém um .sql pequeno com o comando CREATE "
-             "TABLE e as linhas INSERT da tabela."),
+            ("Abra o dump", "Abra o arquivo .sql com Arquivo → Abrir ou arrastando-o para a janela. Um dump "
+             ".sql.gz também abre diretamente."),
+            ("Liste as tabelas", "“Arquivo → Tabelas do dump SQL…” lê o dump uma vez, a cerca de um gigabyte por "
+             "segundo, e lista as tabelas com suas linhas e tamanhos, na ordem do dump ou as maiores primeiro. "
+             "Para achar uma tabela entre centenas, digite parte do nome no filtro."),
+            ("Confira a tabela", "Clique em uma tabela para ir ao CREATE TABLE dela e ver as colunas."),
+            ("Salve em um arquivo", "Clique com o botão direito na tabela e escolha “Salvar esta tabela como…”. O "
+             "arquivo recebe os comandos DROP e CREATE da tabela, suas linhas, chaves, índices e gatilhos, e as "
+             "configurações do início e do fim do dump, então é restaurado sozinho: {{mysql shop < orders.sql}}."),
         ],
         "tips": [
-            "O dump começa com linhas SET (conjunto de caracteres, verificação de chaves estrangeiras). Copie-as para o "
-            "início do arquivo novo se a tabela precisar.",
-            "Um dump feito com {{--skip-comments}} não tem esses comentários: pesquise {{CREATE TABLE `orders`}} e o "
-            "próximo {{DROP TABLE IF EXISTS}}.",
-            "Só os dados: a visualização de filtro com {{INSERT INTO `orders`}} mostra apenas as linhas INSERT dessa "
-            "tabela e as salva num arquivo novo.",
+            "Várias tabelas: marque-as na lista e clique em “Salvar as tabelas marcadas em um arquivo…”. “Abrir "
+            "esta tabela em uma nova aba” mostra uma tabela sem salvá-la.",
+            "“Dividir em um arquivo por tabela…” grava um arquivo por tabela, um para o que vem antes das tabelas "
+            "e outro para as views, rotinas e chaves estrangeiras que vêm depois. Na ordem dos nomes, eles "
+            "restauram o dump inteiro: {{for f in shop.*.sql; do mysql shop < \"$f\"; done}}.",
+            "Dumps do pg_dump em formato texto e arquivos {{.dump}} do SQLite funcionam do mesmo jeito. Em "
+            "scripts: {{bigtext-cli sqldump shop.sql extract orders -o orders.sql}}.",
         ],
     },
 ]
