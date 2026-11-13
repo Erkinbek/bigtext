@@ -497,7 +497,9 @@ keyboard shortcuts.
   screen, so a comment or string opened further up than that is not seen until you scroll
   through it from above.
 - In the CSV table, a quote that opens a field and is never closed makes the rest of the file
-  one record, as RFC 4180 reads it; the table shows it in 64 KB pieces (`↪`).
+  one record, as RFC 4180 reads it; the table shows it in 64 KB pieces (`↪`). Filtering by a
+  column still reads lines: in a record whose quoted fields hold line breaks, only the fields
+  of the line a match is on count.
 - The file comparison compares lines by 64-bit hash + length (a collision would hide a
   difference; astronomically unlikely) and re-synchronises within 4,096 lines / 16 MB. It
   reads the whole document again however small the edit, and a comparison does not follow
