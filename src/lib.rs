@@ -47,6 +47,8 @@ pub mod patterns;
 pub mod pipe;
 pub mod remote;
 pub mod replace;
+#[cfg(test)]
+mod robustness;
 pub mod save;
 pub mod search;
 pub mod setdiff;

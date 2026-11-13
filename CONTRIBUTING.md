@@ -103,6 +103,8 @@ makes `git blame` look past it (GitHub does this by itself).
 cargo test --lib --bins              # 371 unit tests: index, piece table, rows, search, replace, save,
                                      # encodings, diff, highlighting, log formats, SQL dumps, CSV, ...
 cargo test --lib update -- --ignored # downloads and unpacks the latest release (needs the network)
+BIGTEXT_FUZZ_ROUNDS=50 cargo test --release --lib robustness
+                                     # random and broken input for the file parsers, 50 times as many
 target/release/bigtext --self-test --report report.txt [--screenshot shots/x.png]
                                      # 261 GUI checks with synthetic mouse/keyboard/clipboard input
 scripts/gen-testfiles.ps1            # or scripts/gen-testfiles.sh; -SkipBig / --skip-big avoids the 10 GB file
