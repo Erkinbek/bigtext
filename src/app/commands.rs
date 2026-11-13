@@ -109,6 +109,8 @@ pub enum Cmd {
     Syntax,
     ShowWhitespace,
     DarkTheme,
+    /// Follow the system's dark or light mode.
+    SystemTheme,
     Highlights,
     LevelBar,
     ZoomIn,
@@ -155,7 +157,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 120] = [
+    pub const ALL: [Cmd; 121] = [
         Cmd::New,
         Cmd::Open,
         Cmd::OpenFolder,
@@ -248,6 +250,7 @@ impl Cmd {
         Cmd::Syntax,
         Cmd::ShowWhitespace,
         Cmd::DarkTheme,
+        Cmd::SystemTheme,
         Cmd::ColourBlind,
         Cmd::Fullscreen,
         Cmd::Zen,
@@ -419,6 +422,7 @@ impl Cmd {
             Cmd::Syntax => "Syntax highlighting",
             Cmd::ShowWhitespace => "Show whitespace and line breaks",
             Cmd::DarkTheme => "Dark theme",
+            Cmd::SystemTheme => "Same as the system",
             Cmd::Highlights => "Highlights…",
             Cmd::LevelBar => "Log level bar",
             Cmd::Fullscreen => "Full screen",
@@ -864,11 +868,19 @@ impl BigTextApp {
             }
             Cmd::DarkTheme => {
                 self.settings.theme = self.settings.theme.flipped();
+                self.settings.theme_system = false;
                 self.apply_look(ctx);
+                self.persist_state();
+            }
+            Cmd::SystemTheme => {
+                self.settings.theme_system = true;
+                self.apply_look(ctx);
+                self.settings.theme = super::theme::shown(ctx);
                 self.persist_state();
             }
             Cmd::Theme(t) => {
                 self.settings.theme = t;
+                self.settings.theme_system = false;
                 self.apply_look(ctx);
                 self.persist_state();
             }
@@ -926,7 +938,7 @@ impl BigTextApp {
     }
 
     /// Whether a toggle command is on (for menu check marks).
-    fn is_on(&self, cmd: Cmd) -> bool {
+    pub(crate) fn is_on(&self, cmd: Cmd) -> bool {
         let d = self.docs.get(self.active);
         match cmd {
             Cmd::ReadOnly => d.is_some_and(|d| d.read_only),
@@ -947,7 +959,8 @@ impl BigTextApp {
                 }
             }
             Cmd::DarkTheme => self.settings.theme.is_dark(),
-            Cmd::Theme(t) => self.settings.theme == t,
+            Cmd::SystemTheme => self.settings.theme_system,
+            Cmd::Theme(t) => !self.settings.theme_system && self.settings.theme == t,
             Cmd::CodeTheme(t) => self.settings.code_theme == t,
             Cmd::ColourBlind => self.settings.cvd,
             Cmd::Fullscreen => self.fullscreen,
@@ -1010,7 +1023,7 @@ impl BigTextApp {
     }
 
     fn is_toggle(cmd: Cmd) -> bool {
-        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::ColourBlind | Cmd::Fullscreen | Cmd::Zen | Cmd::LineNumbers | Cmd::JsonCrumb | Cmd::Sidebar | Cmd::Theme(_) | Cmd::CodeTheme(_) | Cmd::Scale(_) | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
+        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::SystemTheme | Cmd::ColourBlind | Cmd::Fullscreen | Cmd::Zen | Cmd::LineNumbers | Cmd::JsonCrumb | Cmd::Sidebar | Cmd::Theme(_) | Cmd::CodeTheme(_) | Cmd::Scale(_) | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
     }
 
     fn enabled(&self, cmd: Cmd) -> bool {
@@ -1276,8 +1289,11 @@ impl BigTextApp {
                 }
                 ui.separator();
                 ui.menu_button(tr("Theme"), |ui| {
+                    if ui.radio(self.settings.theme_system, tr(Cmd::SystemTheme.label())).clicked() {
+                        run = Some(Cmd::SystemTheme);
+                    }
                     for t in super::theme::Theme::ALL {
-                        if ui.radio(self.settings.theme == t, tr(t.label())).clicked() {
+                        if ui.radio(!self.settings.theme_system && self.settings.theme == t, tr(t.label())).clicked() {
                             run = Some(Cmd::Theme(t));
                         }
                     }

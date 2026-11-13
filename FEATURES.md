@@ -118,7 +118,10 @@ keyboard shortcuts.
 - **Screen readers**: menus, dialogs, the search bar and lists go to screen readers through
   AccessKit; the text view is a multi-line text field with the rows on screen, the caret, the
   selection and "Ln N, Col M", and finished work (file opened, saved, matches found) is announced.
-- **Themes**: View → Theme offers Dark, Light, High contrast dark and High contrast light, and
+- **Themes**: View → Theme offers **Same as the system** (the default until a theme is chosen:
+  dark or light as Windows, macOS or the Linux desktop is set, also when that changes on Windows
+  and macOS; light when the system does not say), Dark, Light, High contrast dark and High
+  contrast light, and
   **Colour-blind-safe colours** (the Okabe-Ito palette) for everything BigText paints itself:
   syntax and log levels, highlights, merged logs, scrollbar marks, search hits, the histogram and
   the status bar. **View → Interface scale** (100–200 %) enlarges menus and dialogs, leaving the

@@ -1040,6 +1040,7 @@ pub static ES: &[(&str, &str)] = &[
     ("Interface scale 175 %", "Escala de la interfaz 175 %"),
     ("Interface scale 200 %", "Escala de la interfaz 200 %"),
     ("Light", "Claro"),
+    ("Same as the system", "Igual que el sistema"),
     ("Menus and dialogs; the text has its own size (Ctrl+wheel)", "Menús y diálogos; el texto tiene su propio tamaño (Ctrl+rueda)"),
     ("Theme", "Tema"),
     ("Opened {name}", "Se abrió {name}"),

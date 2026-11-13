@@ -146,6 +146,10 @@ fn main() -> eframe::Result {
         None => None,
     };
     let start = app::StartOptions { files: user.files, find: user.find, follow: user.follow, stdin };
+    if !tools {
+        // The Linux desktop's dark or light preference, asked while the window is created.
+        app::theme::probe_desktop();
+    }
 
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("BigText")

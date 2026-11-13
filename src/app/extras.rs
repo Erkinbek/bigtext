@@ -40,6 +40,9 @@ pub struct Persisted {
     /// Kept beside `theme` for older versions.
     pub dark: Option<bool>,
     pub theme: Option<super::theme::Theme>,
+    /// `theme=system`: follows the system's dark or light mode (`theme` is then unset, and
+    /// older versions go by `dark`).
+    pub theme_system: Option<bool>,
     /// Colour-blind-safe colours.
     pub cvd: Option<bool>,
     /// Interface scale, per cent.
@@ -306,6 +309,7 @@ pub(super) fn parse(text: &str) -> Persisted {
             "active" => p.active = v.parse().unwrap_or(0),
             "font_size" => p.font_size = v.parse().ok(),
             "dark" => p.dark = Some(v == "1"),
+            "theme" if v == "system" => p.theme_system = Some(true),
             "theme" => p.theme = super::theme::Theme::from_id(v),
             "cvd" => p.cvd = Some(v == "1"),
             "scale" => p.scale = v.parse().ok().filter(|s| super::theme::SCALES.contains(s)),
@@ -361,7 +365,9 @@ pub(super) fn serialize(p: &Persisted) -> String {
     if let Some(d) = p.dark {
         s.push_str(&format!("dark={}\n", b(d)));
     }
-    if let Some(t) = p.theme {
+    if p.theme_system == Some(true) {
+        s.push_str("theme=system\n");
+    } else if let Some(t) = p.theme {
         s.push_str(&format!("theme={}\n", t.id()));
     }
     if let Some(c) = p.cvd {
@@ -790,6 +796,7 @@ impl BigTextApp {
             font_size: Some(self.settings.font_size),
             dark: Some(self.settings.theme.is_dark()),
             theme: Some(self.settings.theme),
+            theme_system: Some(self.settings.theme_system),
             cvd: Some(self.settings.cvd),
             scale: Some(self.settings.scale),
             backup_on_save: Some(self.settings.backup_on_save),
@@ -844,8 +851,11 @@ impl BigTextApp {
 
     /// Takes the theme, colours and scale of saved settings (without showing them yet).
     pub(super) fn restore_look(&mut self, p: &Persisted) {
-        if let Some(t) = p.theme.or(p.dark.map(|d| if d { super::theme::Theme::Dark } else { super::theme::Theme::Light })) {
+        if p.theme_system == Some(true) {
+            self.settings.theme_system = true;
+        } else if let Some(t) = p.theme.or(p.dark.map(|d| if d { super::theme::Theme::Dark } else { super::theme::Theme::Light })) {
             self.settings.theme = t;
+            self.settings.theme_system = false;
         }
         if let Some(c) = p.cvd {
             self.settings.cvd = c;
@@ -858,9 +868,22 @@ impl BigTextApp {
         }
     }
 
+    /// While the system's theme is followed: takes a late answer from the Linux desktop, and
+    /// keeps `settings.theme` on what egui shows (the system can switch at any time).
+    pub(super) fn theme_tick(&mut self, ctx: &egui::Context) {
+        if !self.settings.theme_system {
+            return;
+        }
+        let fallback = super::theme::fallback(std::time::Duration::ZERO);
+        if ctx.options(|o| o.fallback_theme) != fallback {
+            ctx.options_mut(|o| o.fallback_theme = fallback);
+        }
+        self.settings.theme = super::theme::shown(ctx);
+    }
+
     /// Shows the theme, colours and interface scale.
     pub(crate) fn apply_look(&self, ctx: &egui::Context) {
-        super::theme::apply(ctx, self.settings.theme, self.settings.cvd);
+        super::theme::apply(ctx, self.settings.theme, self.settings.theme_system, self.settings.cvd);
         super::theme::set_code_theme(self.settings.code_theme);
         ctx.set_zoom_factor(self.settings.scale as f32 / 100.0);
     }
@@ -1446,6 +1469,18 @@ mod tests {
     }
 
     #[test]
+    fn following_the_system_theme_is_saved_for_new_and_old_versions() {
+        let p = Persisted { theme: Some(super::super::theme::Theme::Dark), theme_system: Some(true), dark: Some(true), ..Default::default() };
+        let text = serialize(&p);
+        assert!(text.contains("theme=system\n") && text.contains("dark=1\n"));
+        let q = parse(&text);
+        assert_eq!((q.theme_system, q.theme, q.dark), (Some(true), None, Some(true)));
+        // A chosen theme is saved by its name, as before.
+        let q = parse(&serialize(&Persisted { theme: Some(super::super::theme::Theme::Light), theme_system: Some(false), ..Default::default() }));
+        assert_eq!((q.theme_system, q.theme), (None, Some(super::super::theme::Theme::Light)));
+    }
+
+    #[test]
     fn session_roundtrip() {
         let p = Persisted {
             recent: vec![PathBuf::from(r"C:\logs\a.log"), PathBuf::from("/tmp/b|c.txt")],
@@ -1457,6 +1492,7 @@ mod tests {
             font_size: Some(16.0),
             dark: Some(false),
             theme: Some(super::super::theme::Theme::HighContrastLight),
+            theme_system: None,
             cvd: Some(true),
             scale: Some(150),
             backup_on_save: Some(true),

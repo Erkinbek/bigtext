@@ -1037,6 +1037,7 @@ pub static ZH: &[(&str, &str)] = &[
     ("Interface scale 175 %", "界面缩放 175 %"),
     ("Interface scale 200 %", "界面缩放 200 %"),
     ("Light", "浅色"),
+    ("Same as the system", "跟随系统"),
     ("Menus and dialogs; the text has its own size (Ctrl+wheel)", "菜单和对话框；文本有单独的大小（Ctrl+wheel）"),
     ("Theme", "主题"),
     ("Opened {name}", "已打开 {name}"),

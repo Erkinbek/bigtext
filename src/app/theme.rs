@@ -121,12 +121,127 @@ pub fn high_contrast_on() -> bool {
     STATE.load(Ordering::Relaxed) & 2 != 0
 }
 
-/// Switches to `theme`, with colour-blind-safe colours when `cvd`.
-pub fn apply(ctx: &egui::Context, theme: Theme, cvd: bool) {
+/// Switches to `theme`, or to the system's dark or light theme when `system`, with
+/// colour-blind-safe colours when `cvd`.
+pub fn apply(ctx: &egui::Context, theme: Theme, system: bool, cvd: bool) {
+    if system {
+        // egui picks the slot the system asks for each frame (Windows and macOS report it, also
+        // when it changes); otherwise the fallback, from the Linux desktop or light.
+        STATE.store(u8::from(cvd), Ordering::Relaxed);
+        ctx.set_visuals_of(egui::Theme::Dark, Theme::Dark.visuals());
+        ctx.set_visuals_of(egui::Theme::Light, Theme::Light.visuals());
+        let fallback = fallback(std::time::Duration::from_millis(100));
+        ctx.options_mut(|o| o.fallback_theme = fallback);
+        ctx.set_theme(egui::ThemePreference::System);
+        return;
+    }
     STATE.store(u8::from(cvd) | (u8::from(theme.high_contrast()) << 1), Ordering::Relaxed);
     let t = if theme.is_dark() { egui::Theme::Dark } else { egui::Theme::Light };
     ctx.set_visuals_of(t, theme.visuals());
     ctx.set_theme(t);
+}
+
+/// The theme shown while BigText follows the system.
+pub fn shown(ctx: &egui::Context) -> Theme {
+    if ctx.theme() == egui::Theme::Dark {
+        Theme::Dark
+    } else {
+        Theme::Light
+    }
+}
+
+/// The theme for a system that does not say which it prefers: dark only when the Linux desktop
+/// asks for it (waiting up to `wait` for [`probe_desktop`]), light otherwise.
+pub fn fallback(wait: std::time::Duration) -> egui::Theme {
+    if desktop_prefers_dark(wait) == Some(true) {
+        egui::Theme::Dark
+    } else {
+        egui::Theme::Light
+    }
+}
+
+#[cfg(target_os = "linux")]
+static DESKTOP_DARK: std::sync::OnceLock<Option<bool>> = std::sync::OnceLock::new();
+#[cfg(target_os = "linux")]
+static PROBING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Starts asking the Linux desktop whether it prefers a dark theme: winit does not say on X11
+/// or Wayland. Started before the window, so the answer is in before the first frame.
+pub fn probe_desktop() {
+    #[cfg(target_os = "linux")]
+    if !PROBING.swap(true, Ordering::Relaxed) {
+        std::thread::spawn(|| {
+            let _ = DESKTOP_DARK.set(linux_desktop_dark());
+        });
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn desktop_prefers_dark(wait: std::time::Duration) -> Option<bool> {
+    if !PROBING.load(Ordering::Relaxed) {
+        return None;
+    }
+    let end = std::time::Instant::now() + wait;
+    loop {
+        if let Some(dark) = DESKTOP_DARK.get() {
+            return *dark;
+        }
+        if std::time::Instant::now() >= end {
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn desktop_prefers_dark(_wait: std::time::Duration) -> Option<bool> {
+    None
+}
+
+/// `GTK_THEME`, then the freedesktop portal (GNOME, KDE and most others), then GNOME's setting.
+#[cfg(target_os = "linux")]
+fn linux_desktop_dark() -> Option<bool> {
+    use std::process::{Command, Stdio};
+    if let Some(dark) = std::env::var("GTK_THEME").ok().and_then(|t| gtk_theme_dark(&t)) {
+        return Some(dark);
+    }
+    let run = |cmd: &str, args: &[&str]| {
+        Command::new(cmd).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+    };
+    let portal = ["--session", "--print-reply=literal", "--reply-timeout=300", "--dest=org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.Settings.Read", "string:org.freedesktop.appearance", "string:color-scheme"];
+    if let Some(dark) = run("dbus-send", &portal).and_then(|out| portal_dark(&out)) {
+        return Some(dark);
+    }
+    run("gsettings", &["get", "org.gnome.desktop.interface", "color-scheme"]).and_then(|out| gnome_dark(&out))
+}
+
+/// `GTK_THEME=Adwaita:dark` (or a `…-dark` theme) asks for dark; other values say nothing.
+#[cfg(any(target_os = "linux", test))]
+fn gtk_theme_dark(value: &str) -> Option<bool> {
+    let v = value.to_ascii_lowercase();
+    (v.ends_with(":dark") || v.ends_with("-dark")).then_some(true)
+}
+
+/// The portal's `color-scheme`: 1 prefers dark, 2 prefers light, 0 no preference.
+#[cfg(any(target_os = "linux", test))]
+fn portal_dark(reply: &str) -> Option<bool> {
+    let n: u32 = reply.split_whitespace().skip_while(|w| *w != "uint32").nth(1)?.parse().ok()?;
+    match n {
+        1 => Some(true),
+        2 => Some(false),
+        _ => None,
+    }
+}
+
+/// GNOME's `color-scheme`: `'prefer-dark'`, `'prefer-light'` or `'default'` (light).
+#[cfg(any(target_os = "linux", test))]
+fn gnome_dark(reply: &str) -> Option<bool> {
+    let v = reply.trim().trim_matches('\'');
+    match v {
+        "prefer-dark" => Some(true),
+        "prefer-light" | "default" => Some(false),
+        _ => None,
+    }
 }
 
 /// Interface scales offered (per cent).
@@ -430,5 +545,30 @@ mod tests {
         assert!(d.r() > c.r() && d.g() > c.g() && d.b() > c.b());
         assert!(l.r() < c.r() && l.g() < c.g() && l.b() < c.b());
         assert_eq!(contrast(Color32::WHITE, true), Color32::WHITE);
+    }
+
+    #[test]
+    fn desktop_answers_are_read() {
+        assert_eq!(portal_dark("   variant       variant          uint32 1\n"), Some(true));
+        assert_eq!(portal_dark("   variant       uint32 2\n"), Some(false));
+        assert_eq!(portal_dark("   variant       variant          uint32 0\n"), None);
+        assert_eq!(portal_dark(""), None);
+        assert_eq!(gnome_dark("'prefer-dark'\n"), Some(true));
+        assert_eq!(gnome_dark("'default'\n"), Some(false));
+        assert_eq!(gnome_dark("No such key\n"), None);
+        assert_eq!(gtk_theme_dark("Adwaita:dark"), Some(true));
+        assert_eq!(gtk_theme_dark("Arc-Dark"), Some(true));
+        assert_eq!(gtk_theme_dark("Adwaita"), None);
+    }
+
+    #[test]
+    fn following_the_system_without_an_answer_is_light() {
+        let ctx = egui::Context::default();
+        apply(&ctx, Theme::HighContrastDark, true, false);
+        assert_eq!(ctx.options(|o| o.theme_preference), egui::ThemePreference::System);
+        assert_eq!(shown(&ctx), Theme::Light);
+        assert!(!high_contrast_on());
+        apply(&ctx, Theme::Dark, false, false);
+        assert_eq!(shown(&ctx), Theme::Dark);
     }
 }

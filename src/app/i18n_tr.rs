@@ -1040,6 +1040,7 @@ pub static TR: &[(&str, &str)] = &[
     ("Interface scale 175 %", "Arayüz ölçeği %175"),
     ("Interface scale 200 %", "Arayüz ölçeği %200"),
     ("Light", "Açık"),
+    ("Same as the system", "Sistemle aynı"),
     ("Menus and dialogs; the text has its own size (Ctrl+wheel)", "Menüler ve iletişim kutuları; metnin kendi boyutu vardır (Ctrl+tekerlek)"),
     ("Theme", "Tema"),
     ("Opened {name}", "{name} açıldı"),

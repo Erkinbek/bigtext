@@ -1223,6 +1223,7 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Interface scale 175 %", "Масштаб интерфейса 175 %", "Interfeys masshtabi 175 %"],
     ["Interface scale 200 %", "Масштаб интерфейса 200 %", "Interfeys masshtabi 200 %"],
     ["Light", "Светлая", "Och"],
+    ["Same as the system", "Как в системе", "Tizimdagidek"],
     ["Menus and dialogs; the text has its own size (Ctrl+wheel)", "Меню и диалоги; у текста свой размер (Ctrl+колесо)", "Menyular va oynalar; matnning o'z o'lchami bor (Ctrl+g'ildirak)"],
     ["Theme", "Тема", "Mavzu"],
     // Screen readers.

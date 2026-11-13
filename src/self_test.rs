@@ -4990,6 +4990,30 @@ impl SelfTest {
             c.mark = 0;
             check(ok && crate::view::highlight::color(Kind::Error, true) == Color32::from_rgb(240, 90, 90), got)
         }));
+        s("themes: \"Same as the system\" shows the system's mode and is saved; a chosen theme ends it", Box::new(|app, c| {
+            use crate::app::commands::Cmd;
+            use crate::app::theme::Theme;
+            let Some(ctx) = app.test_ctx() else { return Step::Fail("no context".into()) };
+            if c.mark == 0 {
+                app.run(&ctx, Cmd::SystemTheme);
+                c.mark = 1;
+                return Step::Wait;
+            }
+            if c.waited() < Duration::from_millis(200) {
+                return Step::Wait;
+            }
+            // Windows and macOS say; without an answer (and no Linux desktop asked here) light.
+            let expect = if ctx.system_theme() == Some(egui::Theme::Dark) { Theme::Dark } else { Theme::Light };
+            let shown_dark = ctx.global_style().visuals.dark_mode;
+            let st = app.test_state_round_trip();
+            let following = app.settings.theme_system && app.settings.theme == expect && shown_dark == expect.is_dark() && app.is_on(Cmd::SystemTheme) && !app.is_on(Cmd::Theme(expect)) && (st.theme_system, st.theme, st.dark) == (Some(true), None, Some(expect.is_dark()));
+            let got = format!("system {:?} shown dark {shown_dark} settings {:?}/{} saved {:?} {:?} {:?}", ctx.system_theme(), app.settings.theme, app.settings.theme_system, st.theme_system, st.theme, st.dark);
+            app.run(&ctx, Cmd::Theme(Theme::Dark));
+            let st = app.test_state_round_trip();
+            let ended = !app.settings.theme_system && (st.theme_system, st.theme) == (None, Some(Theme::Dark)) && ctx.options(|o| o.theme_preference) == egui::ThemePreference::Dark && app.is_on(Cmd::Theme(Theme::Dark));
+            c.mark = 0;
+            check(following && ended, format!("{got}; after Dark: {:?} {:?} {:?}", st.theme_system, st.theme, ctx.options(|o| o.theme_preference)))
+        }));
         SelfTest::build(steps, report, dir, shot_dir)
     }
 
@@ -5469,6 +5493,7 @@ impl SelfTest {
         }
         if let Some(t) = self.ctx.theme.take() {
             app.settings.theme = t;
+            app.settings.theme_system = false;
             app.apply_look(ctx);
         }
         if let Some(path) = self.ctx.pending_shot.take() {

@@ -158,7 +158,10 @@ pub enum Msg {
 
 pub struct Settings {
     pub font_size: f32,
+    /// The theme shown; while `theme_system` is on, the system's dark or light one.
     pub theme: theme::Theme,
+    /// Follows the system's dark or light mode (the default until a theme is chosen).
+    pub theme_system: bool,
     /// Colour-blind-safe colours.
     pub cvd: bool,
     /// Interface scale in per cent (menus and dialogs; the text has its own size).
@@ -598,7 +601,7 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, show_ws_code: false, code_theme: Default::default(), filter_context: 0, filter_entries: false, id_keys: None, status: Default::default(), zen: false, show_gutter: true, wrap_column: None, ruler: None, json_crumb: true, tools: Vec::new() },
+            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, theme_system: false, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, show_ws_code: false, code_theme: Default::default(), filter_context: 0, filter_entries: false, id_keys: None, status: Default::default(), zen: false, show_gutter: true, wrap_column: None, ruler: None, json_crumb: true, tools: Vec::new() },
             goto: None,
             confirm: None,
             error: None,
@@ -688,6 +691,8 @@ impl BigTextApp {
         app.search.query.case_sensitive = true;
         if persist {
             let mut state = extras::load();
+            // Until a theme is chosen, the system's dark or light mode.
+            app.settings.theme_system = true;
             app.update.restore(&state);
             app.welcome.enabled = true;
             app.welcome.after_start(state.loaded, state.seen_version.as_deref());
@@ -1903,6 +1908,7 @@ impl eframe::App for BigTextApp {
 
         self.update_tick();
         self.welcome_tick();
+        self.theme_tick(&ctx);
         let modal_open = self.run_cmd.open || self.goto.is_some() || self.clips.open.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.quick_open.is_some() || self.file_ops.dialog.is_some() || self.remote.open || self.symbols_open() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open() || self.welcome.whats_new.is_some();
         if !modal_open {
             self.shortcuts(&ctx);

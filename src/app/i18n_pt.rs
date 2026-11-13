@@ -1040,6 +1040,7 @@ pub static PT: &[(&str, &str)] = &[
     ("Interface scale 175 %", "Escala da interface 175 %"),
     ("Interface scale 200 %", "Escala da interface 200 %"),
     ("Light", "Claro"),
+    ("Same as the system", "Igual ao sistema"),
     ("Menus and dialogs; the text has its own size (Ctrl+wheel)", "Menus e diálogos; o texto tem tamanho próprio (Ctrl+roda)"),
     ("Theme", "Tema"),
     ("Opened {name}", "{name} aberto"),
