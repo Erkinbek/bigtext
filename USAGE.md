@@ -35,7 +35,8 @@ bigtext-cli filter [-v] [-i] [-w] [-E] PATTERN FILE [-o OUT]   lines with (-v: w
 bigtext-cli levels ERROR,WARN FILE [-o OUT]                    lines of these log levels
 bigtext-cli count [-v] [-i] [-w] [-E] PATTERN FILE             number of matching lines
 bigtext-cli extract [-E] [-g N] [--count] PATTERN FILE          only the matched texts (or counts)
-bigtext-cli split (--size 100MB | --lines N) FILE [--out-dir DIR] [--csv]  parts; a CSV between records
+bigtext-cli split (--size 100MB | --lines N) FILE [--out-dir DIR] [--csv] [--repeat-header]
+                                                                parts; a CSV between records
 bigtext-cli grep [-i] [-w] [-E] PATTERN FILES... | -r DIR      find in files (file:line:text)
 bigtext-cli head [-n N] FILE / tail [-n N] FILE                the first / last N lines
 bigtext-cli replace [-E] PATTERN REPLACEMENT FILE [--in-place [--bak]]   Replace All, streamed

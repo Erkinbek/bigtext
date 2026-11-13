@@ -1352,4 +1352,6 @@ pub static PT: &[(&str, &str)] = &[
     ("Wrote {n} files ({size}) to {dir}; restore them in the order of their names.", "{n} arquivos ({size}) gravados em {dir}; restaure-os na ordem dos nomes."),
     ("{n} tables ({name})", "{n} tabelas ({name})"),
     ("{n} tables, {s} statements", "{n} tabelas, {s} instruções"),
+    // CSV split.
+    ("Repeat the header row in every part", "Repetir a linha de cabeçalho em cada parte"),
 ];

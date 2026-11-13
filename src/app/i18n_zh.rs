@@ -1349,4 +1349,6 @@ pub static ZH: &[(&str, &str)] = &[
     ("Wrote {n} files ({size}) to {dir}; restore them in the order of their names.", "已将 {n} 个文件（{size}）写入 {dir}；请按名称顺序恢复。"),
     ("{n} tables ({name})", "{n} 个表（{name}）"),
     ("{n} tables, {s} statements", "{n} 个表，{s} 条语句"),
+    // CSV split.
+    ("Repeat the header row in every part", "在每个部分中重复标题行"),
 ];

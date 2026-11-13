@@ -14,8 +14,10 @@ All notable changes to BigText. Each release on
 - The delimiter, the lines before the table and the header row are detected from records
   too, so a file whose first records hold line breaks no longer takes its header for a title.
 - **Split file…** cuts a CSV shown as a table only between records, so no part ends inside a
-  quoted field, and a number of lines counts records; `bigtext-cli split` does this for
-  `.csv` and `.tsv` files (or with `--csv`). Column names, the Add column preview and the
+  quoted field, and a number of lines counts records; **Repeat the header row in every part**
+  (on by default for a table with a header) starts each part with the column names, as Excel
+  needs. `bigtext-cli split` does this for `.csv` and `.tsv` files (or with `--csv`;
+  `--repeat-header` for the header). Column names, the Add column preview and the
   header that Row checks writes with the problem rows read the first record, not the first
   line.
 - **Filter by a column** reads records: a match counts in the field it is in, also on the

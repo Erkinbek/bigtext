@@ -1352,4 +1352,6 @@ pub static TR: &[(&str, &str)] = &[
     ("Wrote {n} files ({size}) to {dir}; restore them in the order of their names.", "{dir} klasörüne {n} dosya ({size}) yazıldı; bunları adlarının sırasıyla geri yükleyin."),
     ("{n} tables ({name})", "{n} tablo ({name})"),
     ("{n} tables, {s} statements", "{n} tablo, {s} ifade"),
+    // CSV split.
+    ("Repeat the header row in every part", "Başlık satırını her parçada tekrarla"),
 ];

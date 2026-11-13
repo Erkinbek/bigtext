@@ -80,6 +80,14 @@ pub enum SplitBy {
     Lines(u64),
 }
 
+/// How a CSV is split: between records only, and with its header row at the top of every
+/// part when `repeat_header` (the header is then not counted as a row).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CsvSplit {
+    pub dialect: crate::csv::Dialect,
+    pub repeat_header: bool,
+}
+
 /// `app.log` → `app.part001.log` in `dir`.
 pub fn part_path(dir: &Path, name: &str, n: usize) -> PathBuf {
     let p = Path::new(name);
@@ -112,6 +120,8 @@ struct Parts<'a> {
     name: &'a str,
     pack: Option<Kind>,
     bom: Vec<u8>,
+    /// Written after the byte order mark at the top of every part but the first.
+    header: Vec<u8>,
     cur: Option<Packer<BufWriter<File>>>,
     made: Vec<PathBuf>,
     bytes: u64,
@@ -129,6 +139,9 @@ impl Parts<'_> {
             self.made.push(p);
             let mut w = Packer::new(BufWriter::with_capacity(8 << 20, f), self.pack)?;
             w.write_all(&self.bom)?;
+            if self.made.len() > 1 {
+                w.write_all(&self.header)?;
+            }
             self.cur = Some(w);
         }
         self.bytes += b.len() as u64;
@@ -159,7 +172,7 @@ pub fn split_to_files(
     dir: &Path,
     name: &str,
     pack: Option<Kind>,
-    csv: Option<crate::csv::Dialect>,
+    csv: Option<CsvSplit>,
     cancel: &CancelToken,
     progress: &Progress,
 ) -> io::Result<Option<Vec<PathBuf>>> {
@@ -174,11 +187,23 @@ pub fn split_to_files(
         name,
         pack,
         bom: buf.read(0..bom).map(|b| b.into_owned()).unwrap_or_default(),
+        header: Vec::new(),
         cur: None,
         made: Vec::new(),
         bytes: 0,
         lines: 0,
     };
+    // The header record, repeated in every part and not counted as a row.
+    let mut header_end = 0;
+    if let Some(c) = csv.filter(|c| c.repeat_header) {
+        let first = c.dialect.first(buf);
+        if let Some(b) = buf.read(first..(first + (64 << 10)).min(len)) {
+            if let Some(r) = crate::csv::records_in(&codec, c.dialect, &b, false, 1).first() {
+                header_end = first + r.2 as u64;
+                parts.header = b[..r.2].to_vec();
+            }
+        }
+    }
     let r = (|| -> io::Result<bool> {
         let mut pos = bom;
         while pos < len {
@@ -195,7 +220,16 @@ pub fn split_to_files(
                 let rest = &b[i..];
                 // Index into `rest` just past the line break that ends the current part, if any.
                 let cut = match (csv, by) {
-                    (Some(d), _) => record_cut(&mut csv_state, d, codec, rest, by, &mut parts),
+                    (Some(c), _) => record_cut(
+                        &mut csv_state,
+                        c.dialect,
+                        codec,
+                        rest,
+                        base,
+                        header_end,
+                        by,
+                        &mut parts,
+                    ),
                     (None, SplitBy::Lines(n)) => {
                         let want = n.max(1) - parts.lines;
                         match codec.nth_nl(rest, base, want) {
@@ -247,14 +281,18 @@ pub fn split_to_files(
     }
 }
 
-/// Where in `rest` the current part ends for a CSV: just past the line break of the record that
-/// makes it `n` records long, or the first record that ends past `n` bytes. Counts the records
-/// it passes in `parts.lines`; `st` carries the quote state between calls.
+/// Where in `rest` (at offset `base`) the current part ends for a CSV: just past the line break
+/// of the record that makes it `n` records long, or the first record that ends past `n` bytes.
+/// Counts the records it passes in `parts.lines`, except those ending by `header_end`; `st`
+/// carries the quote state between calls.
+#[allow(clippy::too_many_arguments)]
 fn record_cut(
     st: &mut crate::csv::State,
     d: crate::csv::Dialect,
     codec: crate::encoding::Codec,
     rest: &[u8],
+    base: u64,
+    header_end: u64,
     by: SplitBy,
     parts: &mut Parts,
 ) -> Option<usize> {
@@ -264,7 +302,7 @@ fn record_cut(
     while j + unit <= rest.len() {
         let c = crate::csv::unit_at(codec.enc, rest, j);
         j += unit;
-        if st.step(c, d, nl) != crate::csv::Step::RecordEnd {
+        if st.step(c, d, nl) != crate::csv::Step::RecordEnd || base + (j as u64) <= header_end {
             continue;
         }
         parts.lines += 1;
@@ -299,6 +337,33 @@ mod tests {
     }
 
     #[test]
+    fn csv_parts_repeat_the_header() {
+        let data = b"id,note\n1,\"a\nb\"\n2,c\n3,d\n";
+        let (_f, t) = buf_with(data, Codec::utf8());
+        let dir = tempfile::tempdir().unwrap();
+        let files = split_to_files(
+            &t,
+            SplitBy::Lines(2),
+            dir.path(),
+            "t.csv",
+            None,
+            Some(CsvSplit {
+                dialect: crate::csv::Dialect::new(b','),
+                repeat_header: true,
+            }),
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap()
+        .unwrap();
+        let parts: Vec<String> = files
+            .iter()
+            .map(|f| String::from_utf8(fs::read(f).unwrap()).unwrap())
+            .collect();
+        assert_eq!(parts, ["id,note\n1,\"a\nb\"\n2,c\n", "id,note\n3,d\n"]);
+    }
+
+    #[test]
     fn csv_parts_end_between_records() {
         let data = b"id,note\n1,\"a\nb\"\n2,c\n3,\"d\ne\nf\"\n4,g\n";
         let (_f, t) = buf_with(data, Codec::utf8());
@@ -309,7 +374,10 @@ mod tests {
             dir.path(),
             "t.csv",
             None,
-            Some(crate::csv::Dialect::new(b',')),
+            Some(CsvSplit {
+                dialect: crate::csv::Dialect::new(b','),
+                repeat_header: false,
+            }),
             &CancelToken::new(),
             &Progress::default(),
         )
@@ -330,7 +398,10 @@ mod tests {
             dir.path(),
             "t.csv",
             None,
-            Some(crate::csv::Dialect::new(b',')),
+            Some(CsvSplit {
+                dialect: crate::csv::Dialect::new(b','),
+                repeat_header: false,
+            }),
             &CancelToken::new(),
             &Progress::default(),
         )

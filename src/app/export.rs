@@ -23,6 +23,8 @@ pub struct LinesDialog {
 
 pub struct SplitDialog {
     by_lines: bool,
+    /// A CSV's header row at the top of every part.
+    header: bool,
     pack: Option<bigtext::decompress::Kind>,
     size_mb: String,
     lines: String,
@@ -126,6 +128,7 @@ impl BigTextApp {
         if self.docs.get(self.active).is_some_and(|d| d.is_ready()) {
             self.export.split = Some(SplitDialog {
                 by_lines: false,
+                header: true,
                 pack: None,
                 size_mb: "100".into(),
                 lines: "1000000".into(),
@@ -194,13 +197,20 @@ impl BigTextApp {
         );
     }
 
-    fn split_file(&mut self, by: SplitBy, pack: Option<bigtext::decompress::Kind>) {
+    fn split_file(&mut self, by: SplitBy, pack: Option<bigtext::decompress::Kind>, header: bool) {
         let Some(d) = self.docs.get(self.active) else {
             return;
         };
         let snap = d.buf.snapshot();
         // A CSV shown as a table is cut between records, never inside a quoted field.
-        let csv = d.table_state.dialect.filter(|_| d.table);
+        let csv = d
+            .table_state
+            .dialect
+            .filter(|_| d.table)
+            .map(|dialect| split::CsvSplit {
+                dialect,
+                repeat_header: header && d.table_state.header,
+            });
         let mut dlg = rfd::FileDialog::new().set_title(tr("Folder for the parts"));
         if let Some(dir) = d
             .unpacked_from
@@ -310,6 +320,10 @@ impl BigTextApp {
                 self.export_times(a, b, None);
             }
         }
+        let csv_header = self
+            .docs
+            .get(self.active)
+            .is_some_and(|d| d.table && d.table_state.dialect.is_some() && d.table_state.header);
         if let Some(g) = &mut self.export.split {
             let mut open = true;
             let mut go = None;
@@ -334,6 +348,9 @@ impl BigTextApp {
                         }
                     });
                 });
+                if csv_header {
+                    ui.checkbox(&mut g.header, tr("Repeat the header row in every part"));
+                }
                 ui.weak(tr("Parts end at line breaks and are named name.part001.ext, name.part002.ext, … in the folder you choose."));
                 if let Some(e) = &g.error {
                     ui.colored_label(ui.visuals().error_fg_color, e);
@@ -350,8 +367,9 @@ impl BigTextApp {
                 self.export.split = None;
             }
             if let Some(by) = go {
-                let pack = self.export.split.take().and_then(|g| g.pack);
-                self.split_file(by, pack);
+                let g = self.export.split.take();
+                let (pack, header) = (g.as_ref().and_then(|g| g.pack), g.is_none_or(|g| g.header));
+                self.split_file(by, pack, header);
             }
         }
     }

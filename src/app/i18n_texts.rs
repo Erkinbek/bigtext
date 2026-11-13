@@ -1529,4 +1529,6 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Wrote {n} files ({size}) to {dir}; restore them in the order of their names.", "Записано файлов: {n} ({size}) в {dir}; восстанавливайте их в порядке имён.", "{n} ta fayl ({size}) {dir} ga yozildi; ularni nomlari tartibida tiklang."],
     ["{n} tables ({name})", "таблиц: {n} ({name})", "{n} ta jadval ({name})"],
     ["{n} tables, {s} statements", "таблиц: {n}, операторов: {s}", "{n} ta jadval, {s} ta statement"],
+    // CSV split.
+    ["Repeat the header row in every part", "Повторять строку заголовка в каждой части", "Sarlavha qatorini har bir qismda takrorlash"],
 ];
