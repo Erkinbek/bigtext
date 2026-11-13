@@ -127,10 +127,7 @@ fn each_line(
         }
         pos = hi;
     }
-    if line < range.end && !f(line, range.end) {
-        return Some(false);
-    }
-    Some(true)
+    Some(line >= range.end || f(line, range.end))
 }
 
 /// Byte range of field `col` in the line `ls..le`, if the line has that field.

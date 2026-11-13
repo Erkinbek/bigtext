@@ -9,7 +9,7 @@
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::csv::{self, Dialect};
 use crate::encoding::{Codec, Encoding, LineEnding, NlByte};
@@ -626,7 +626,9 @@ fn finalize_impl(temp: &Path, target: &Path, backup: bool) -> Result<(), String>
                 break;
             }
             // Sharing violation, access denied (scanners), unable to remove replaced, mapped file.
-            32 | 5 | 1175 | 1224 if attempt < 39 => std::thread::sleep(Duration::from_millis(50)),
+            32 | 5 | 1175 | 1224 if attempt < 39 => {
+                std::thread::sleep(std::time::Duration::from_millis(50))
+            }
             _ => break,
         }
     }
@@ -641,7 +643,7 @@ fn rename_retry(from: &Path, to: &Path) -> io::Result<()> {
             Ok(()) => return Ok(()),
             Err(e) if matches!(e.raw_os_error(), Some(32) | Some(5)) => {
                 last = Some(e);
-                std::thread::sleep(Duration::from_millis(50));
+                std::thread::sleep(std::time::Duration::from_millis(50));
             }
             Err(e) => return Err(e),
         }

@@ -15,7 +15,7 @@ use crate::replace::ReplaceStats;
 use crate::text::TextBuf;
 
 /// The delimiters [`detect`] chooses from.
-pub const DELIMITERS: [u8; 4] = [b',', b';', b'\t', b'|'];
+pub const DELIMITERS: [u8; 4] = *b",;\t|";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Dialect {

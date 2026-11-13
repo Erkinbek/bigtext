@@ -83,7 +83,9 @@ Key decisions (details in [PLAN.md](PLAN.md)):
 ## Code style
 
 The code is formatted with rustfmt's default settings and has no clippy warnings. CI checks both
-on every push and pull request:
+on every push and pull request with the latest stable Rust, so run them with it too
+(`rustup update stable`): an older clippy misses newer lints and reports `unknown lint` for the
+ones the code allows.
 
 ```
 cargo fmt                                   # formats the code (cargo fmt --check only checks)
