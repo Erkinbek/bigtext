@@ -10,7 +10,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use egui::RichText;
 
 use bigtext::jobs::{self, human_bytes, CancelToken, Progress};
-use bigtext::update::{self, Block, Method, Span, Version};
+use bigtext::update::{self, Block, Manager, Method, Span, Version};
 
 use super::extras::{self, Persisted};
 use super::i18n::{tr, trf};
@@ -20,7 +20,6 @@ use super::{BigTextApp, Msg};
 const CHECK_INTERVAL: u64 = 24 * 60 * 60;
 /// The next try after an automatic check failed (offline, say).
 const RETRY_AFTER: Duration = Duration::from_secs(60 * 60);
-const CARGO_INSTALL: &str = "cargo install bigtext";
 
 pub enum Event {
     Checked(Result<Option<Box<Offer>>, String>),
@@ -108,6 +107,38 @@ impl UpdateUi {
     /// Self-test: (asked, put off for this session, the question on screen).
     pub(crate) fn test_state(&self) -> (bool, bool, bool) {
         (self.asked, self.ask_later, matches!(self.stage, Stage::Ask))
+    }
+
+    /// Self-test: offers the next patch version, updated by `method`, with one note.
+    pub(crate) fn test_offer(&mut self, method: Method) {
+        let Version(a, b, c) = Version::current();
+        let version = Version(a, b, c + 1);
+        let notes = vec![(version, update::parse_notes("- **A note**: what changed."))];
+        self.stage = Stage::Offer(Box::new(Offer { version, page: update::RELEASES_PAGE.into(), notes, method }));
+    }
+
+    /// Self-test: closes the dialog.
+    pub(crate) fn test_close(&mut self) {
+        self.stage = Stage::Idle;
+    }
+}
+
+/// What the offer says to a copy a package manager installed: the sentence and the command.
+fn package_hint(m: Manager) -> (String, &'static str) {
+    let text = match m {
+        Manager::Aur => tr("This copy was installed from the AUR. Update it with your AUR helper, for example:").to_owned(),
+        Manager::Deb => tr("This copy was installed from the .deb package. Download the new package, then install it with:").to_owned(),
+        _ => trf("This copy was installed with {manager}. To update it, run:", &[("manager", m.name())]),
+    };
+    (text, m.command())
+}
+
+/// The offer's buttons besides "Remind me later" and "Skip": (Update now, Open download page).
+fn offer_buttons(method: &Method) -> (bool, bool) {
+    match method {
+        Method::Replace { .. } | Method::Installer { .. } => (true, false),
+        Method::Manual | Method::Package(Manager::Deb) => (false, true),
+        Method::Package(_) => (false, false),
     }
 }
 
@@ -242,7 +273,7 @@ impl BigTextApp {
                     let setup = update::download_dir().join(&asset.name);
                     update::download(&asset, &setup, &p, &c).map(|()| Pending::Installer { version, setup })
                 }
-                Method::Cargo | Method::Manual => Err(tr("This copy of BigText cannot update itself.").into()),
+                Method::Package(_) | Method::Manual => Err(tr("This copy of BigText cannot update itself.").into()),
             };
             let _ = tx.send(Msg::Update(Event::Downloaded(result)));
             waker();
@@ -321,12 +352,13 @@ impl BigTextApp {
                     notes_ui(ui, o);
                     ui.add_space(6.0);
                     match &o.method {
-                        Method::Cargo => {
-                            ui.label(tr("This copy was installed with cargo. To update it, run:"));
+                        Method::Package(m) => {
+                            let (text, command) = package_hint(*m);
+                            ui.label(text);
                             ui.horizontal(|ui| {
-                                ui.code(CARGO_INSTALL);
+                                ui.code(command);
                                 if ui.small_button(tr("Copy")).clicked() {
-                                    action = Some(Action::Copy(CARGO_INSTALL));
+                                    action = Some(Action::Copy(command));
                                 }
                             });
                         }
@@ -335,19 +367,13 @@ impl BigTextApp {
                         }
                         Method::Replace { .. } | Method::Installer { .. } => {}
                     }
+                    let (update_now, download_page) = offer_buttons(&o.method);
                     ui.horizontal(|ui| {
-                        match &o.method {
-                            Method::Replace { .. } | Method::Installer { .. } => {
-                                if ui.button(RichText::new(tr("Update now")).strong()).clicked() {
-                                    action = Some(Action::Update);
-                                }
-                            }
-                            Method::Manual => {
-                                if ui.button(tr("Open download page")).clicked() {
-                                    action = Some(Action::Open(o.page.clone()));
-                                }
-                            }
-                            Method::Cargo => {}
+                        if update_now && ui.button(RichText::new(tr("Update now")).strong()).clicked() {
+                            action = Some(Action::Update);
+                        }
+                        if download_page && ui.button(tr("Open download page")).clicked() {
+                            action = Some(Action::Open(o.page.clone()));
                         }
                         if ui.button(tr("Remind me later")).clicked() {
                             action = Some(Action::Close);
@@ -551,5 +577,21 @@ mod tests {
         assert_eq!(restored(Some(false), None), (true, false));
         assert_eq!(restored(Some(true), Some(true)), (true, true));
         assert_eq!(restored(Some(false), Some(true)), (true, false));
+    }
+
+    #[test]
+    fn a_package_managers_copy_is_told_its_command() {
+        let (scoop, cmd) = package_hint(Manager::Scoop);
+        assert_eq!((scoop.as_str(), cmd), ("This copy was installed with Scoop. To update it, run:", "scoop update bigtext"));
+        assert!(package_hint(Manager::Homebrew).0.contains("Homebrew"));
+        assert!(package_hint(Manager::Deb).0.contains("Download the new package"));
+        assert!(package_hint(Manager::Aur).0.contains("AUR helper"));
+        // Only a copy BigText can replace gets "Update now"; the .deb gets the download page.
+        let asset = update::Asset { name: "bigtext-linux-x64.AppImage".into(), url: String::new(), size: 1, sha256: None };
+        assert_eq!(offer_buttons(&Method::Replace { asset: asset.clone(), exe: PathBuf::from("/a/b.AppImage") }), (true, false));
+        assert_eq!(offer_buttons(&Method::Installer { asset }), (true, false));
+        assert_eq!(offer_buttons(&Method::Package(Manager::Scoop)), (false, false));
+        assert_eq!(offer_buttons(&Method::Package(Manager::Deb)), (false, true));
+        assert_eq!(offer_buttons(&Method::Manual), (false, true));
     }
 }

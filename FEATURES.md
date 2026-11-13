@@ -411,8 +411,11 @@ keyboard shortcuts.
   **Skip this version** stops the reminders until the next release. The download is checked
   against its size and the SHA-256 that GitHub publishes. An installed copy runs the new
   installer silently when BigText closes; a portable copy (zip, tar.gz) swaps its executable in
-  place. **Restart now** reopens your tabs in the new version. A `cargo install` copy shows the
-  command to run instead.
+  place, and an AppImage swaps the AppImage file. **Restart now** reopens your tabs in the new
+  version. A copy a package manager installed shows its command instead, so the manager keeps
+  knowing the version: `cargo install bigtext`, `scoop update bigtext`, `brew upgrade bigtext`
+  (or `brew upgrade --cask bigtext-app`), an AUR helper for `bigtext-bin`, and for the `.deb`
+  `sudo apt install` with the download page.
 
 ## Known limitations
 

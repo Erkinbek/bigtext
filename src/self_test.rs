@@ -341,6 +341,28 @@ fn open_step(name: &'static str) -> StepFn {
 }
 
 /// Saves the window to `file` in the screenshot directory once animations have settled.
+/// Shows the update offer for `method` (with a screenshot to `file` when screenshots are taken),
+/// then closes it.
+fn offer_step(method: bigtext::update::Method, file: &'static str) -> StepFn {
+    Box::new(move |app, c| {
+        if c.first() {
+            app.update.test_offer(method.clone());
+            return Step::Wait;
+        }
+        if c.mark == 0 && c.waited() > Duration::from_millis(400) {
+            c.mark = 1;
+            c.pending_shot = c.shot.clone().map(|d| d.join(file));
+        }
+        if c.mark == 0 || c.shot.as_ref().is_some_and(|d| !d.join(file).exists()) {
+            return Step::Wait;
+        }
+        let open = app.update.dialog_open();
+        app.update.test_close();
+        c.mark = 0;
+        check(open, format!("dialog open {open}"))
+    })
+}
+
 fn shot_step(file: &'static str) -> StepFn {
     Box::new(move |_app, c| {
         let Some(path) = c.shot.clone().map(|d| d.join(file)) else { return Step::Skip("no screenshot dir".into()) };
@@ -616,6 +638,13 @@ impl SelfTest {
             app.welcome.after_start(true, Some(&v.to_string()));
             check(v == bigtext::update::Version::current() && !notes.is_empty() && app.welcome.whats_new.is_none(), format!("{v} with {} blocks", notes.len()))
         }));
+        {
+            use bigtext::update::{Asset, Manager, Method};
+            let image = Asset { name: "bigtext-linux-x64.AppImage".into(), url: String::new(), size: 1, sha256: None };
+            s("update offer: a copy Scoop installed is told its command", offer_step(Method::Package(Manager::Scoop), "selftest-update-scoop.png"));
+            s("update offer: a .deb copy gets the command and the download page", offer_step(Method::Package(Manager::Deb), "selftest-update-deb.png"));
+            s("update offer: an AppImage updates itself", offer_step(Method::Replace { asset: image, exe: "/home/me/bigtext-linux-x64.AppImage".into() }, "selftest-update-appimage.png"));
+        }
         s("open edit.txt", open_step("edit.txt"));
         s("screenshot: initial view", Box::new(|_app, c| {
             if c.first() {

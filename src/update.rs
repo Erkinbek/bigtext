@@ -168,37 +168,133 @@ pub fn check(current: Version) -> Result<Vec<Release>, String> {
 /// How this copy of BigText updates itself.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Method {
-    /// Unpack the release archive and swap the executable `exe` for the new one.
+    /// Unpack the release archive and swap the executable `exe` for the new one (or, for an
+    /// AppImage, swap the AppImage file `exe` for the new AppImage).
     Replace { asset: Asset, exe: PathBuf },
     /// Installed with the Windows setup program: run the new installer after BigText exits, so
     /// the version in "Installed apps", the shortcuts and the uninstaller stay right.
     Installer { asset: Asset },
-    /// Installed with `cargo install`; the user runs it again.
-    Cargo,
+    /// Installed by a package manager (or cargo): the user runs its update command, so the
+    /// manager keeps knowing which version is installed (and `/usr/bin` needs root anyway).
+    Package(Manager),
     /// The release has no build for this platform.
     Manual,
 }
 
+/// What installed this copy, when it was not the Windows setup program or a download.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Manager {
+    Cargo,
+    Scoop,
+    Homebrew,
+    /// The `bigtext-app` cask (BigText.app).
+    HomebrewCask,
+    /// The `bigtext-bin` package from the AUR.
+    Aur,
+    /// The `.deb` package from the release.
+    Deb,
+}
+
+impl Manager {
+    /// The name in "This copy was installed with {manager}."
+    pub fn name(self) -> &'static str {
+        match self {
+            Manager::Cargo => "cargo",
+            Manager::Scoop => "Scoop",
+            Manager::Homebrew | Manager::HomebrewCask => "Homebrew",
+            Manager::Aur => "the AUR",
+            Manager::Deb => "the .deb package",
+        }
+    }
+
+    /// The command that updates it.
+    pub fn command(self) -> &'static str {
+        match self {
+            Manager::Cargo => "cargo install bigtext",
+            Manager::Scoop => "scoop update bigtext",
+            Manager::Homebrew => "brew upgrade bigtext",
+            Manager::HomebrewCask => "brew upgrade --cask bigtext-app",
+            Manager::Aur => "yay -S bigtext-bin",
+            Manager::Deb => "sudo apt install ./bigtext-linux-x64.deb",
+        }
+    }
+}
+
+/// The release's AppImage, which an AppImage updates to.
+const APPIMAGE_ASSET: &str = "bigtext-linux-x64.AppImage";
+
 /// Path of the running executable; on Unix with symlinks resolved, so the real file is replaced.
+/// Run from an AppImage, the AppImage file: the executable inside it is on a read-only mount.
 pub fn current_exe() -> io::Result<PathBuf> {
     let exe = std::env::current_exe()?;
-    Ok(if cfg!(windows) { exe } else { fs::canonicalize(&exe).unwrap_or(exe) })
+    let exe = if cfg!(windows) { exe } else { fs::canonicalize(&exe).unwrap_or(exe) };
+    Ok(appimage_of(&exe, std::env::var_os("APPDIR"), std::env::var_os("APPIMAGE")).unwrap_or(exe))
+}
+
+/// The AppImage file `exe` runs from. Its runtime sets APPDIR (the mount) and APPIMAGE (the
+/// file); a program started from another AppImage inherits both, so `exe` must be inside APPDIR.
+fn appimage_of(exe: &Path, appdir: Option<std::ffi::OsString>, appimage: Option<std::ffi::OsString>) -> Option<PathBuf> {
+    let (dir, file) = (PathBuf::from(appdir?), PathBuf::from(appimage?));
+    let dir = fs::canonicalize(&dir).unwrap_or(dir);
+    (exe.starts_with(&dir) && !dir.as_os_str().is_empty()).then_some(file)
 }
 
 /// Picks the update method for the executable at `exe` (reads the file system).
 pub fn method(release: &Release, exe: &Path) -> Method {
+    let appimage = std::env::current_exe().is_ok_and(|e| fs::canonicalize(&e).is_ok_and(|e| appimage_of(&e, std::env::var_os("APPDIR"), std::env::var_os("APPIMAGE")).is_some()));
+    method_in(release, exe, appimage, Path::new("/"))
+}
+
+/// [`method`], with the system's folders under `root` (for the tests).
+fn method_in(release: &Release, exe: &Path, appimage: bool, root: &Path) -> Method {
     let dir = exe.parent().unwrap_or(Path::new(""));
     // Inno Setup puts its uninstaller next to the installed program.
     if cfg!(windows) && dir.join("unins000.exe").is_file() {
         return release.asset(INSTALLER_ASSET).map_or(Method::Manual, |a| Method::Installer { asset: a.clone() });
     }
-    if is_cargo_bin(dir) {
-        return Method::Cargo;
-    }
-    match ARCHIVE_ASSET.and_then(|name| release.asset(name)) {
+    let name = if appimage {
+        Some(APPIMAGE_ASSET)
+    } else if let Some(m) = package_manager(exe, root) {
+        return Method::Package(m);
+    } else {
+        ARCHIVE_ASSET
+    };
+    match name.and_then(|name| release.asset(name)) {
         Some(a) => Method::Replace { asset: a.clone(), exe: exe.to_path_buf() },
         None => Method::Manual,
     }
+}
+
+/// What installed the executable `exe`, judged by where it is and what the managers keep
+/// beside it; the system's folders are under `root`.
+fn package_manager(exe: &Path, root: &Path) -> Option<Manager> {
+    let dir = exe.parent()?;
+    if is_cargo_bin(dir) {
+        return Some(Manager::Cargo);
+    }
+    // Scoop keeps the manifest and its install record in each version's folder.
+    if dir.join("manifest.json").is_file() && dir.join("install.json").is_file() {
+        return Some(Manager::Scoop);
+    }
+    let parts: Vec<&std::ffi::OsStr> = exe.iter().collect();
+    if parts.windows(2).any(|w| w[0] == "Cellar" && w[1] == "bigtext") {
+        return Some(Manager::Homebrew);
+    }
+    // The cask moves BigText.app to Applications and keeps its record in the Caskroom.
+    let in_app = parts.windows(3).any(|w| w[0].to_string_lossy().ends_with(".app") && w[1] == "Contents" && w[2] == "MacOS");
+    if in_app && ["opt/homebrew/Caskroom/bigtext-app", "usr/local/Caskroom/bigtext-app"].iter().any(|p| root.join(p).is_dir()) {
+        return Some(Manager::HomebrewCask);
+    }
+    if dir == root.join("usr").join("bin") {
+        let pacman = fs::read_dir(root.join("var/lib/pacman/local")).is_ok_and(|mut d| d.any(|e| e.is_ok_and(|e| e.file_name().to_string_lossy().starts_with("bigtext-bin-"))));
+        if pacman {
+            return Some(Manager::Aur);
+        }
+        if root.join("var/lib/dpkg/info/bigtext.list").is_file() {
+            return Some(Manager::Deb);
+        }
+    }
+    None
 }
 
 fn is_cargo_bin(dir: &Path) -> bool {
@@ -279,12 +375,21 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Downloads the release archive next to `exe`, unpacks the new executable and swaps it in.
-/// The running program keeps working; the new version starts next time.
+/// Downloads the release archive next to `exe`, unpacks the new executable and swaps it in (an
+/// AppImage is itself the new file). The running program keeps working; the new version starts
+/// next time.
 pub fn update_exe(asset: &Asset, exe: &Path, progress: &Progress, cancel: &CancelToken) -> Result<(), String> {
+    let staged = sibling(exe, ".new");
+    if asset.name.ends_with(".AppImage") {
+        download(asset, &staged, progress, cancel)?;
+        let result = install_exe(&staged, exe);
+        if result.is_err() {
+            let _ = fs::remove_file(&staged);
+        }
+        return result;
+    }
     let archive = sibling(exe, if asset.name.ends_with(".zip") { ".update.zip" } else { ".update.tar.gz" });
     download(asset, &archive, progress, cancel)?;
-    let staged = sibling(exe, ".new");
     let result = extract_exe(&archive, &staged).and_then(|()| install_exe(&staged, exe));
     let _ = fs::remove_file(&archive);
     if result.is_err() {
@@ -363,7 +468,7 @@ fn install_exe(staged: &Path, exe: &Path) -> Result<(), String> {
 /// Removes what an earlier update left behind: the previous executable (Windows keeps it until
 /// that process has exited), half-done downloads and the downloaded installer.
 pub fn cleanup(exe: &Path) {
-    for suffix in [".old", ".new", ".update.zip", ".update.zip.part", ".update.tar.gz", ".update.tar.gz.part"] {
+    for suffix in [".old", ".new", ".new.part", ".update.zip", ".update.zip.part", ".update.tar.gz", ".update.tar.gz.part"] {
         let _ = fs::remove_file(sibling(exe, suffix));
     }
     if cfg!(windows) {
@@ -648,6 +753,77 @@ mod tests {
             assert!(matches!(method(&all, &exe), Method::Installer { asset } if asset.name == INSTALLER_ASSET));
             assert_eq!(method(&release(&["bigtext-windows-x64.zip"]), &exe), Method::Manual);
         }
+    }
+
+    #[test]
+    fn package_managers_and_appimages() {
+        let root = tempfile::tempdir().unwrap();
+        let r = root.path();
+        let all = release(&["bigtext-windows-x64.zip", "bigtext-linux-x64.tar.gz", "bigtext-linux-x64.AppImage", "bigtext-macos-arm64.tar.gz", "bigtext-macos-x64.tar.gz"]);
+        let pm = |exe: &Path| match method_in(&all, exe, false, r) {
+            Method::Package(m) => Some(m),
+            _ => None,
+        };
+        // Scoop: its manifest and install record beside the executable.
+        let scoop = r.join("scoop/apps/bigtext/0.8.0");
+        fs::create_dir_all(&scoop).unwrap();
+        assert_eq!(pm(&scoop.join(EXE_NAME)), None);
+        fs::write(scoop.join("manifest.json"), b"{}").unwrap();
+        fs::write(scoop.join("install.json"), b"{}").unwrap();
+        assert_eq!(pm(&scoop.join(EXE_NAME)), Some(Manager::Scoop));
+        // Homebrew: the formula's keg, and the cask's app with its Caskroom record.
+        assert_eq!(pm(&r.join("opt/homebrew/Cellar/bigtext/0.8.0/bin/bigtext")), Some(Manager::Homebrew));
+        assert_eq!(pm(&r.join("opt/homebrew/Cellar/other/1.0/bin/bigtext")), None);
+        let app = r.join("Applications/BigText.app/Contents/MacOS/bigtext");
+        assert_eq!(pm(&app), None);
+        fs::create_dir_all(r.join("opt/homebrew/Caskroom/bigtext-app/0.8.0")).unwrap();
+        assert_eq!(pm(&app), Some(Manager::HomebrewCask));
+        // /usr/bin: the .deb's file list, or the AUR package in pacman's database.
+        let usr_bin = r.join("usr").join("bin").join("bigtext");
+        assert_eq!(pm(&usr_bin), None);
+        fs::create_dir_all(r.join("var/lib/dpkg/info")).unwrap();
+        fs::write(r.join("var/lib/dpkg/info/bigtext.list"), b"/usr/bin/bigtext\n").unwrap();
+        assert_eq!(pm(&usr_bin), Some(Manager::Deb));
+        fs::create_dir_all(r.join("var/lib/pacman/local/bigtext-bin-0.8.0-1")).unwrap();
+        assert_eq!(pm(&usr_bin), Some(Manager::Aur));
+        assert_eq!(pm(&r.join("home/me/bin/bigtext")), None);
+        // An AppImage is replaced by the release's AppImage, wherever it is.
+        let image = r.join("home/me/Apps/bigtext-linux-x64.AppImage");
+        assert!(matches!(method_in(&all, &image, true, r), Method::Replace { asset, exe } if asset.name == APPIMAGE_ASSET && exe == image));
+        assert_eq!(method_in(&release(&["bigtext-linux-x64.tar.gz"]), &image, true, r), Method::Manual);
+        for m in [Manager::Cargo, Manager::Scoop, Manager::Homebrew, Manager::HomebrewCask, Manager::Aur, Manager::Deb] {
+            assert!(m.command().contains("bigtext") && !m.name().is_empty());
+        }
+    }
+
+    #[test]
+    fn an_appimage_is_found_only_from_inside_it() {
+        let mount = tempfile::tempdir().unwrap();
+        let exe = fs::canonicalize(mount.path()).unwrap().join("usr/bin/bigtext");
+        let os = |p: &Path| Some(p.as_os_str().to_owned());
+        let file = PathBuf::from("/home/me/bigtext.AppImage");
+        assert_eq!(appimage_of(&exe, os(mount.path()), os(&file)), Some(file.clone()));
+        // Started from another AppImage (say a terminal), which set the variables for itself.
+        assert_eq!(appimage_of(Path::new("/usr/bin/bigtext"), os(mount.path()), os(&file)), None);
+        assert_eq!(appimage_of(&exe, None, os(&file)), None);
+        assert_eq!(appimage_of(&exe, os(Path::new("")), os(&file)), None);
+    }
+
+    #[test]
+    fn a_failed_appimage_download_leaves_the_appimage_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let image = dir.path().join("bigtext.AppImage");
+        fs::write(&image, b"old").unwrap();
+        let new = b"new appimage";
+        let src = dir.path().join("served");
+        fs::write(&src, new).unwrap();
+        let url = format!("file://{}", src.display());
+        let asset = Asset { name: APPIMAGE_ASSET.into(), url, size: new.len() as u64, sha256: None };
+        // No network here: a file:// URL fails in ureq, and the old file must be left alone.
+        let r = update_exe(&asset, &image, &Progress::default(), &CancelToken::new());
+        assert!(r.is_err());
+        assert_eq!(fs::read(&image).unwrap(), b"old");
+        assert!(!sibling(&image, ".new").exists());
     }
 
     fn zip_with(entries: &[(&str, &[u8])]) -> Vec<u8> {
