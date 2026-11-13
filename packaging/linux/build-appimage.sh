@@ -42,4 +42,9 @@ chmod +x "$app/AppRun"
 tool="$work/appimagetool"
 curl -fsSL -o "$tool" https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
 chmod +x "$tool"
-ARCH=x86_64 "$tool" --appimage-extract-and-run "$app" "$out"
+# Update information: AppImageUpdate and similar tools look up the newest GitHub release and
+# download only the blocks that changed, using the .zsync file written next to the AppImage
+# (it goes into the release with it). BigText's own update check works without it.
+name="$(basename "$out")"
+(cd "$(dirname "$out")" && ARCH=x86_64 "$tool" --appimage-extract-and-run -u "gh-releases-zsync|Erkinbek|bigtext|latest|$name.zsync" "$app" "$out")
+[ -s "$out.zsync" ] || { echo "build-appimage.sh: appimagetool wrote no $name.zsync" >&2; exit 1; }

@@ -129,6 +129,7 @@ jobs:
             dist/*.tar.gz
             dist/*.deb
             dist/*.AppImage
+            dist/*.AppImage.zsync
             dist/*.app.zip
             dist/*setup*.exe
           if-no-files-found: error
@@ -181,7 +182,7 @@ jobs:
           cp dist/bigtext-windows-x64/*setup*.exe out/bigtext-setup-windows-x64.exe
           (cd dist/bigtext-windows-x64 && zip -qr ../../out/bigtext-windows-x64.zip bigtext-windows-x64)
           cp dist/bigtext-*/bigtext-*.tar.gz out/
-          find dist -maxdepth 2 \( -name '*.deb' -o -name '*.AppImage' -o -name '*.app.zip' -o -name '*.vsix' \) -exec cp {} out/ \;
+          find dist -maxdepth 2 \( -name '*.deb' -o -name '*.AppImage' -o -name '*.AppImage.zsync' -o -name '*.app.zip' -o -name '*.vsix' \) -exec cp {} out/ \;
           (cd out && sha256sum * > SHA256SUMS.txt)
           ls -l out
           # The opening lines of the notes; "What's new" is written by hand afterwards

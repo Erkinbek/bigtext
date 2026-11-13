@@ -7,6 +7,7 @@ The release workflow (`.github/workflows/build.yml`) builds these from the relea
 | `bigtext-setup-windows-x64.exe` | `installer/bigtext.iss` (Inno Setup) | Windows installer with "Open with" and the Explorer menu |
 | `bigtext-linux-x64.deb` | `linux/build-deb.sh` | Debian / Ubuntu package: `/usr/bin/bigtext`, `bigtext-cli`, menu entry, icon |
 | `bigtext-linux-x64.AppImage` | `linux/build-appimage.sh` | One file that runs on most Linux systems |
+| `bigtext-linux-x64.AppImage.zsync` | `linux/build-appimage.sh` | Lets AppImageUpdate and similar tools update the AppImage by downloading only what changed (the AppImage carries `gh-releases-zsync` update information) |
 | `bigtext-macos-arm64.app.zip`, `…-x64.app.zip` | `macos/build-app.sh` | `BigText.app` for the Applications folder (unsigned) |
 | `bigtext-vscode.vsix` | `vscode/` (`vsce package`) | The VS Code extension "Open in BigText", for installing by hand |
 | `SHA256SUMS.txt` | the release job | Checksums of all files |
