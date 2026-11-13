@@ -175,11 +175,14 @@ jobs:
           name: bigtext-linux-x64
           path: dist
 
-      - name: The X packages of the catalog's test system
+      # The list the catalog's test installs ("packages:" in its log), minus OCR and sound.
+      - name: The packages of the catalog's test system
         run: |
           apt-get update -qq
           DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-            xvfb icewm x11-utils xdotool imagemagick libgl1-mesa-dri libgl1-mesa-dev mesa-utils >/dev/null
+            sudo imagemagick desktop-file-utils xmlstarlet xsel xterm xvfb icewm x11-utils x11-apps \
+            netpbm xdotool libgl1-mesa-dri libgl1-mesa-dev mesa-utils libosmesa6 libsdl1.2-dev \
+            libsdl2-2.0-0 fonts-wqy-microhei libfile-mimeinfo-perl >/dev/null
 
       - name: Start it and look at the window
         run: |
@@ -196,8 +199,11 @@ jobs:
           sleep 3
           import -window root shot.png
           if ! xdotool search --name BigText > /dev/null 2>&1; then
-            echo "::error::No BigText window after 30 s"
-            cat app.log
+            # Annotations, which the run's page shows without opening the log.
+            log="$(head -c 3000 app.log | sed 's/%/%25/g' | awk '{ printf "%s%%0A", $0 }')"
+            windows="$(xwininfo -root -tree | grep -v 'has no name' | head -n 15 | awk '{ printf "%s%%0A", $0 }')"
+            echo "::error::No BigText window after 30 s. Its output:%0A$log"
+            echo "::warning::Windows on the screen:%0A$windows"
             exit 1
           fi
           # Light theme about 0.6-0.95 (a dialog dims it), dark about 0.1.
