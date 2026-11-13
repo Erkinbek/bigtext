@@ -190,6 +190,16 @@ impl BigTextApp {
                     if d.is_modified() {
                         label.push_str(" *");
                     }
+                    let unseen = d.alerts.as_ref().map_or(0, |a| a.unseen);
+                    let label = if unseen > 0 {
+                        let mut job = egui::text::LayoutJob::default();
+                        let style = ui.style();
+                        egui::RichText::new(format!("{label} ")).append_to(&mut job, style, egui::FontSelection::Default, egui::Align::Center);
+                        egui::RichText::new(format!("🔔{unseen}")).color(ui.visuals().error_fg_color).strong().append_to(&mut job, style, egui::FontSelection::Default, egui::Align::Center);
+                        egui::WidgetText::from(job)
+                    } else {
+                        egui::WidgetText::from(label)
+                    };
                     let r = ui.add(egui::Button::selectable(i == self.active, label).sense(egui::Sense::click_and_drag()));
                     r.dnd_set_drag_payload(i);
                     if r.dnd_hover_payload::<usize>().is_some_and(|from| *from != i) {

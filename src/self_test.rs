@@ -198,6 +198,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("cities.csv"), "city,country\nTashkent,UZ\nBukhara,UZ\n")?;
     std::fs::write(dir.join("app.logfmt"), "level=info msg=ok\nlevel=error msg=\"bad x\" code=7\n")?;
     std::fs::write(dir.join("access.log"), access_log())?;
+    std::fs::write(dir.join("alerts.log"), "INFO start\nERROR old\n")?;
     std::fs::write(dir.join("excel.csv"), "sep=;\n# exported\nname;qty\nann;1\nbob;2\n")?;
     std::fs::write(dir.join("numbers.csv"), "1,2\n3,4\n5,6\n")?;
     std::fs::write(dir.join("semi.txt"), "id;note\n1;a,b\n2;c,d\n")?;
@@ -3717,6 +3718,88 @@ impl SelfTest {
                 return Step::Fail(format!("doc {:?}", app.active_doc().map(|d| (d.title.clone(), d.is_ready(), d.buf.source.is_remote()))));
             }
             Step::Wait
+        }));
+        s("open alerts.log", open_step("alerts.log"));
+        s("alerts on new lines: a pattern set on a followed log", Box::new(|app, _c| {
+            let real = std::env::var_os("BIGTEXT_SELFTEST_NOTIFY").is_some();
+            if !real {
+                crate::app::notify::capture();
+            }
+            doc(app).follow = true;
+            let q = bigtext::search::Query { pattern: "ERROR".into(), regex: false, case_sensitive: true, ..Default::default() };
+            if let Err(e) = app.add_alert(q) {
+                return Step::Fail(e);
+            }
+            let len = doc(app).buf.len();
+            let scanned = doc(app).alerts.as_ref().map(|a| a.scanned);
+            check(scanned == Some(len), format!("scanned {scanned:?} of {len}"))
+        }));
+        s("alerts: a matching line added alerts once; the line already there and an unfinished one do not", Box::new(|app, c| {
+            if c.first() {
+                use std::io::Write;
+                let r = std::fs::OpenOptions::new().append(true).open(c.file("alerts.log")).and_then(|mut f| f.write_all(b"INFO ok\nERROR boom\nERROR half"));
+                if let Err(e) = r {
+                    return Step::Fail(e.to_string());
+                }
+                return Step::Wait;
+            }
+            let Some(a) = doc(app).alerts.as_ref() else { return Step::Fail("no alerts".into()) };
+            let hits: Vec<String> = a.hits.iter().map(|h| h.text.clone()).collect();
+            if a.total == 0 {
+                return if c.waited() > Duration::from_secs(10) { Step::Fail(format!("no alert; doc {} bytes", doc(app).buf.len())) } else { Step::Wait };
+            }
+            if c.waited() < Duration::from_millis(600) {
+                return Step::Wait;
+            }
+            let sent = crate::app::notify::captured();
+            let real = std::env::var_os("BIGTEXT_SELFTEST_NOTIFY").is_some();
+            check(
+                a.total == 1 && hits == ["ERROR boom"] && (real || (sent.len() == 1 && sent[0].0 == "BigText: alerts.log" && sent[0].1 == "ERROR boom" && sent[0].2)),
+                format!("total {}, hits {hits:?}, sent {sent:?}", a.total),
+            )
+        }));
+        s("alerts: the finished line alerts; its notification waits for the ten seconds", Box::new(|app, c| {
+            if c.first() {
+                use std::io::Write;
+                let r = std::fs::OpenOptions::new().append(true).open(c.file("alerts.log")).and_then(|mut f| f.write_all(b"\nINFO done\n"));
+                if let Err(e) = r {
+                    return Step::Fail(e.to_string());
+                }
+                return Step::Wait;
+            }
+            let Some(a) = doc(app).alerts.as_ref() else { return Step::Fail("no alerts".into()) };
+            if a.total < 2 {
+                return if c.waited() > Duration::from_secs(10) { Step::Fail(format!("total {}", a.total)) } else { Step::Wait };
+            }
+            let last = a.hits.back().map(|h| h.text.clone());
+            let sent = crate::app::notify::captured().len();
+            let real = std::env::var_os("BIGTEXT_SELFTEST_NOTIFY").is_some();
+            check(a.total == 2 && last.as_deref() == Some("ERROR half") && (real || sent == 1), format!("total {}, last {last:?}, sent {sent}", a.total))
+        }));
+        s("alerts: the window with the lines that matched", Box::new(|app, c| {
+            if c.first() {
+                app.open_alerts();
+                return Step::Wait;
+            }
+            if c.waited() < Duration::from_millis(300) {
+                return Step::Wait;
+            }
+            check(app.alerts.open, "window not open")
+        }));
+        s("screenshot: alerts on new lines", shot_step("selftest-alerts.png"));
+        s("alerts: a real system notification is taken by the system (needs BIGTEXT_SELFTEST_NOTIFY)", Box::new(|_app, _c| {
+            if std::env::var_os("BIGTEXT_SELFTEST_NOTIFY").is_none() {
+                return Step::Skip("BIGTEXT_SELFTEST_NOTIFY is not set".into());
+            }
+            let shown = crate::app::notify::show("BigText: alerts.log", "ERROR boom\n(+1 more lines)", true);
+            check(shown, "the system did not take the notification")
+        }));
+        s("alerts: removing the last pattern ends the alerts", Box::new(|app, _c| {
+            app.remove_alert(0);
+            app.alerts.open = false;
+            let gone = doc(app).alerts.is_none();
+            doc(app).follow = false;
+            check(gone, "alerts still there")
         }));
         s("container and service logs: a command's output and errors in one followed tab", Box::new(|app, c| {
             if c.first() {

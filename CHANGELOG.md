@@ -5,6 +5,15 @@ All notable changes to BigText. Each release on
 
 ## Unreleased
 
+### Alerts on new lines
+
+- **View → Alerts on new lines…**: patterns for a followed log (text or regex). Each line added
+  from then on that matches one is listed, counted on the tab and in the status bar, and
+  announced with a system notification and a sound — at most one every ten seconds, the lines in
+  between counted in — and the taskbar button flashes when BigText is in the background. On
+  Windows a click on the notification goes to the line. Growing files, pipes, `tail -F` over
+  SSH and container logs all alert.
+
 ### Container and service logs
 
 - **File → Open container or service log…** lists Docker (or Podman) containers, Kubernetes

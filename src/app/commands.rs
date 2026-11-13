@@ -96,6 +96,7 @@ pub enum Cmd {
     TimeGaps,
     Patterns,
     LogReport,
+    Alerts,
     CheckJson,
     MatchBracket,
     WordWrap,
@@ -159,7 +160,7 @@ const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: tru
 const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
 
 impl Cmd {
-    pub const ALL: [Cmd; 123] = [
+    pub const ALL: [Cmd; 124] = [
         Cmd::New,
         Cmd::Open,
         Cmd::OpenFolder,
@@ -239,6 +240,7 @@ impl Cmd {
         Cmd::TimeGaps,
         Cmd::Patterns,
         Cmd::LogReport,
+        Cmd::Alerts,
         Cmd::CheckJson,
         Cmd::MatchBracket,
         Cmd::WordWrap,
@@ -413,6 +415,7 @@ impl Cmd {
             Cmd::TimeGaps => "Find time gaps…",
             Cmd::Patterns => "Message patterns…",
             Cmd::LogReport => "Web log report…",
+            Cmd::Alerts => "Alerts on new lines…",
             Cmd::CheckJson => "Check JSON",
             Cmd::MatchBracket => "Go to matching bracket",
             Cmd::WordWrap => "Word wrap",
@@ -823,6 +826,7 @@ impl BigTextApp {
             Cmd::TimeGaps => self.open_gaps(),
             Cmd::Patterns => self.open_patterns(),
             Cmd::LogReport => self.open_log_report(),
+            Cmd::Alerts => self.open_alerts(),
             Cmd::CheckJson => self.check_json(None),
             Cmd::Timeline => {
                 if self.is_on(Cmd::Timeline) {
@@ -1256,7 +1260,7 @@ impl BigTextApp {
                 ui.separator();
                 run = run.or(self.item(ui, Cmd::WordWrap));
                 self.wrap_menu(ui);
-                for c in [Cmd::HexView, Cmd::TableView, Cmd::CheckRows, Cmd::JsonStructure, Cmd::JsonFields, Cmd::LogFields, Cmd::JsonlTable, Cmd::Follow, Cmd::SplitView, Cmd::CompareSideBySide] {
+                for c in [Cmd::HexView, Cmd::TableView, Cmd::CheckRows, Cmd::JsonStructure, Cmd::JsonFields, Cmd::LogFields, Cmd::JsonlTable, Cmd::Follow, Cmd::Alerts, Cmd::SplitView, Cmd::CompareSideBySide] {
                     run = run.or(self.item(ui, c));
                 }
                 self.link_menu(ui);

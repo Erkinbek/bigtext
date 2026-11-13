@@ -237,6 +237,8 @@ pub struct Document {
     pub patterns: Option<super::patterns_window::PatternsResults>,
     /// Web log report (Search → Web log report…).
     pub log_report: Option<super::log_report::ReportResults>,
+    /// View → Alerts on new lines: the patterns and what matched.
+    pub alerts: Option<super::alerts::Alerts>,
     pub problems: Option<super::problems_panel::ProblemsResults>,
     pub chart: Option<super::column_chart::ChartResults>,
     pub json_check: Option<super::json_validate::JsonCheckResults>,
@@ -388,6 +390,7 @@ impl Document {
             gaps: None,
             patterns: None,
             log_report: None,
+            alerts: None,
             problems: None,
             chart: None,
             json_check: None,

@@ -96,6 +96,7 @@ cargo test --lib ssh_live -- --ignored   # the SSH range reader and grep against
 BIGTEXT_SELFTEST_DOCKER="|CONTAINER|TEXT" BIGTEXT_SELFTEST_K8S="|POD|TEXT|CONTAINER" \
 BIGTEXT_SELFTEST_K8S_PREVIOUS="|POD|TEXT" BIGTEXT_SELFTEST_JOURNAL="SERVER|UNIT|TEXT" \
 target/release/bigtext --self-test ... # container and service logs against real Docker, Kubernetes, journald
+BIGTEXT_SELFTEST_NOTIFY=1 target/release/bigtext --self-test ... # alerts show real notifications (otherwise kept)
 target/release/bigtext-bench FILE    # core benchmarks (open, first screen, go-to, index, search, replace, memory)
 target/release/bigtext --bench-ui FILE --report out.txt [--screenshot out.png]
         [--scenario search:TEXT|edit|view|wrap|hex|close-search|close-replace]

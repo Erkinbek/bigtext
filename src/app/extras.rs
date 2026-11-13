@@ -100,6 +100,10 @@ pub struct Persisted {
     pub json_crumb: Option<bool>,
     /// File → Open container or service log…: the server and the choices.
     pub log_sources: Option<String>,
+    /// Alerts on new lines: notification, sound, only in the background (`110`).
+    pub alert_options: Option<String>,
+    /// Alerts on new lines: the recent patterns (`flags|pattern`).
+    pub alert_recent: Vec<String>,
     /// Edit → External tools.
     pub tools: Vec<super::run_command::Tool>,
     /// Edit → Run command's history, newest first.
@@ -347,6 +351,8 @@ pub(super) fn parse(text: &str) -> Persisted {
             "ruler" => p.ruler = v.parse::<u16>().ok().map(|c| (c > 0).then_some(c)),
             "json_crumb" => p.json_crumb = Some(v == "1"),
             "log_sources" => p.log_sources = Some(v.to_string()),
+            "alert_options" => p.alert_options = Some(v.to_string()),
+            "alert" => p.alert_recent.push(v.to_string()),
             "tool" => p.tools.extend(v.split_once('|').filter(|(n, c)| !n.is_empty() && !c.is_empty()).map(|(n, c)| super::run_command::Tool { name: n.to_string(), command: c.to_string() })),
             "cmd" => p.commands.push(v.to_string()),
             "shell" => p.shell = Some(v.to_string()),
@@ -420,6 +426,12 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(l) = p.log_sources.as_ref().filter(|l| !l.contains(['\n', '\r'])) {
         s.push_str(&format!("log_sources={l}\n"));
+    }
+    if let Some(o) = &p.alert_options {
+        s.push_str(&format!("alert_options={o}\n"));
+    }
+    for a in p.alert_recent.iter().filter(|a| !a.contains(['\n', '\r'])) {
+        s.push_str(&format!("alert={a}\n"));
     }
     for t in p.tools.iter().filter(|t| !t.command.contains(['\n', '\r'])) {
         s.push_str(&format!("tool={}|{}\n", t.name.replace('|', "/"), t.command));
@@ -827,6 +839,8 @@ impl BigTextApp {
             ruler: Some(self.settings.ruler),
             json_crumb: Some(self.settings.json_crumb),
             log_sources: Some(self.log_sources.to_line()),
+            alert_options: Some(self.alerts.options_line()),
+            alert_recent: self.alerts.recent.iter().map(super::alerts::query_line).collect(),
             tools: self.settings.tools.clone(),
             commands: self.run_cmd.history.clone(),
             shell: Some(self.run_cmd.shell.id().to_string()),
@@ -1529,6 +1543,8 @@ mod tests {
             ruler: Some(None),
             json_crumb: Some(false),
             log_sources: Some("deploy@web1|journal|docker|all|10000|60|1|0".into()),
+            alert_options: Some("011".into()),
+            alert_recent: vec!["rc|ERROR|FATAL".into(), "|timeout".into()],
             tools: vec![super::super::run_command::Tool { name: "Open in VS Code".into(), command: "code -g \"{file}:{line}\"".into() }],
             commands: vec!["sort | uniq -c".into(), "jq .".into()],
             shell: Some("git-bash".into()),
@@ -1576,6 +1592,7 @@ mod tests {
         assert_eq!(q0.seen_version.as_deref(), Some("0.7.2"));
         assert_eq!((q0.wrap_column, q0.ruler, q0.json_crumb), (Some(Some(100)), Some(None), Some(false)));
         assert_eq!(q0.log_sources.as_deref(), Some("deploy@web1|journal|docker|all|10000|60|1|0"));
+        assert_eq!((q0.alert_options.as_deref(), q0.alert_recent.clone()), (Some("011"), vec!["rc|ERROR|FATAL".to_string(), "|timeout".to_string()]));
         assert_eq!((&q0.tools, &q0.commands, q0.shell.as_deref()), (&p.tools, &p.commands, Some("git-bash")));
         assert_eq!((q0.theme, q0.cvd, q0.scale, q0.dark), (p.theme, Some(true), Some(150), Some(false)));
         assert_eq!((q0.show_ws, q0.show_ws_code, q0.code_theme), (Some(true), Some(false), Some(super::super::theme::CodeTheme::Monokai)));

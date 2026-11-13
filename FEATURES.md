@@ -139,6 +139,16 @@ keyboard shortcuts.
   `tail -F` it survives log rotation: when the file is truncated (copytruncate) or renamed away
   and created again, it goes on in the new file, with a button to open the rotated one
   (`app.log.1`); the status bar shows FOLLOW ×n.
+- **Alerts on new lines** (View → Alerts on new lines…): patterns for a followed tab — text or
+  regex, with case and whole-word options, and a menu of recent ones. Each complete line added
+  from then on that matches one is listed (a click goes to it), counted on the tab (🔔3 while you
+  are elsewhere) and in the status bar, and announced with a **system notification** (Windows'
+  notification area — a click brings BigText to that line; Linux `notify-send` or the
+  notification service; macOS Notification Center) and a **sound**, at most one every ten
+  seconds with the lines in between counted in; the taskbar button flashes when BigText is in the
+  background. Notifications can be kept to when BigText is in the background. Works for every
+  kind of following: growing files, pipes, `tail -F` over SSH and container logs. Only the added
+  bytes are read; the lines already there and a line still being written do not alert.
 - **Column (block) selection**: Alt+drag, or Shift+Alt+arrows (Home/End, PageUp/PageDown; with
   Ctrl too), selects a rectangle. Copy copies it line by line; typing, Backspace, Delete and Tab
   change every row at once (one undo step); pasting as many lines as the block has rows puts one

@@ -55,4 +55,5 @@ pub mod textops;
 pub mod timestamp;
 pub mod unified;
 pub mod update;
+pub mod watch;
 pub mod xml;

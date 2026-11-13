@@ -93,6 +93,7 @@ pub(crate) enum StatusAct {
     /// A part of the JSON path: go to it (when the text is still that version).
     JsonGoto { version: u64, off: u64 },
     CopyText(String),
+    Alerts,
 }
 
 /// The JSON path, `$ › items › [3] › city` (the last four parts): a click goes to that part, a
@@ -263,6 +264,15 @@ impl BigTextApp {
                         ui.label(RichText::new(label).color(super::theme::ok_text(ui))).on_hover_text(trf("Following the file; it was rotated {n} times so far", &[("n", &d.rotations.to_string())]));
                         ui.separator();
                     }
+                    if let Some(a) = &d.alerts {
+                        let text = RichText::new(format!("🔔 {}", super::filter_panel::fmt_count(a.total)));
+                        let text = if a.total > 0 { text.color(super::theme::warn_text(ui)) } else { text };
+                        let tip = trf("Alerts on new lines: {n} patterns; click to see the lines that matched", &[("n", &a.patterns.len().to_string())]);
+                        if ui.add(egui::Label::new(text).sense(egui::Sense::click())).on_hover_text(tip).clicked() {
+                            acts.push(StatusAct::Alerts);
+                        }
+                        ui.separator();
+                    }
                     if let Some(l) = d.link.as_ref().filter(|l| l.mode == super::time_link::LinkMode::Time) {
                         let mut secs = l.skew_ms as f64 / 1000.0;
                         let r = ui.add(egui::DragValue::new(&mut secs).speed(0.1).suffix(" s").max_decimals(3));
@@ -417,6 +427,7 @@ impl BigTextApp {
     pub(crate) fn status_act(&mut self, ctx: &egui::Context, a: StatusAct) {
         match a {
             StatusAct::GotoLine => self.run(ctx, Cmd::GotoLine),
+            StatusAct::Alerts => self.open_alerts(),
             StatusAct::GotoOffset => self.run(ctx, Cmd::GotoOffset),
             StatusAct::Reopen(enc) => self.reopen_with(enc),
             StatusAct::Eol(to) => {

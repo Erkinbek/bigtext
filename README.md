@@ -25,8 +25,9 @@ dependencies.
 - **Real editing, safe saving.** Undo, multiple cursors, column selection, and sorting and text
   operations on files of any size. Saves write a temporary file and replace the original
   atomically, and a recovery journal brings unsaved edits back after a crash.
-- **Made for logs.** Follow mode like `tail -F`, go to a time, a level bar, a time histogram,
-  logs merged by time, and message patterns that group lines by template.
+- **Made for logs.** Follow mode like `tail -F` — with alerts: a system notification and a sound
+  when a line like `ERROR|FATAL` arrives — go to a time, a level bar, a time histogram, logs
+  merged by time, and message patterns that group lines by template.
 - **Web server logs, summed up.** nginx and Apache access logs, AWS load balancer logs, IIS logs
   and syslog open as a table with a column per field, and **Search → Web log report…** gives the
   top URLs, the 5xx errors per minute and the slowest requests from one pass (a 1 GB log in under

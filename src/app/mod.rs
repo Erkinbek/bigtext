@@ -53,6 +53,8 @@ pub mod ops;
 pub mod patterns_window;
 pub mod log_report;
 pub mod log_sources;
+pub mod alerts;
+pub mod notify;
 pub mod pivot;
 pub mod portable;
 pub mod properties;
@@ -160,6 +162,8 @@ pub enum Msg {
     RemoteOpened { doc: u64, src: remote::Source, result: Result<Box<remote::RemoteOpened>, remote::RemoteFail> },
     /// Something a worker could not do, for the error dialog.
     Error(String),
+    /// A click on an alert's system notification.
+    AlertClicked,
 }
 
 pub struct Settings {
@@ -338,6 +342,7 @@ pub struct BigTextApp {
     pub patterns: patterns_window::PatternsUi,
     pub log_report: log_report::ReportUi,
     pub log_sources: log_sources::SourcesUi,
+    pub alerts: alerts::AlertsUi,
     pub nav: nav::NavHistory,
     pub values: Option<match_values::ValuesDialog>,
     pub problems: problems_panel::ProblemsUi,
@@ -651,6 +656,7 @@ impl BigTextApp {
             patterns: patterns_window::PatternsUi::default(),
             log_report: log_report::ReportUi::default(),
             log_sources: log_sources::SourcesUi::default(),
+            alerts: alerts::AlertsUi::default(),
             nav: nav::NavHistory::default(),
             values: None,
             problems: problems_panel::ProblemsUi::default(),
@@ -721,6 +727,10 @@ impl BigTextApp {
             if let Some(l) = &state.log_sources {
                 app.log_sources.set_line(l);
             }
+            if let Some(o) = &state.alert_options {
+                app.alerts.set_options_line(o);
+            }
+            app.alerts.recent = state.alert_recent.iter().filter_map(|l| alerts::parse_query_line(l)).collect();
             app.settings.tools = std::mem::take(&mut state.tools);
             app.run_cmd.history = std::mem::take(&mut state.commands);
             app.run_cmd.shell = state.shell.as_deref().map(run_command::ShellChoice::from_id).unwrap_or_default();
@@ -1184,6 +1194,7 @@ impl BigTextApp {
                 Msg::Update(e) => self.on_update_event(e),
                 Msg::RemoteOpened { doc, src, result } => self.remote_opened(doc, src, result),
                 Msg::Error(e) => self.error = Some(e),
+                Msg::AlertClicked => self.on_alert_clicked(),
                 Msg::ColumnsDeleted(c) => self.on_columns_deleted(*c),
                 Msg::TaskDone { id, outcome } => self.on_task_done(id, outcome),
                 Msg::TextOp(r) => self.on_text_op(*r),
@@ -1957,6 +1968,7 @@ impl eframe::App for BigTextApp {
         self.json_crumb_tick(&ctx);
         self.folder_tick(&ctx);
         self.remote_tick();
+        self.alerts_tick(&ctx);
         self.sync_diff_marks();
 
         self.fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
@@ -2162,6 +2174,7 @@ impl eframe::App for BigTextApp {
         self.file_ops_window(&ctx);
         self.remote_window(&ctx);
         self.log_sources_window(&ctx);
+        self.alerts_window(&ctx);
         self.symbols_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);
@@ -2211,6 +2224,7 @@ impl eframe::App for BigTextApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        notify::hide();
         self.apply_update_on_exit();
         // Unpacked copies are deleted once nothing maps them any more.
         let temps: Vec<PathBuf> = self.docs.iter().filter(|d| d.temporary).filter_map(|d| d.path.clone()).collect();

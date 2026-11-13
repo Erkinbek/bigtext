@@ -67,8 +67,9 @@ unicode-width = { version = "0.2", default-features = false }
 unicode-segmentation = "1.12"
 
 [target.'cfg(windows)'.dependencies]
-# Moving files to the Recycle Bin (SHFileOperationW).
-windows-sys = { version = "0.59", features = ["Win32_UI_Shell", "Win32_Foundation", "Win32_Globalization"] }
+# Moving files to the Recycle Bin (SHFileOperationW); alert notifications from a
+# notification-area icon (Shell_NotifyIconW) and the warning sound.
+windows-sys = { version = "0.59", features = ["Win32_UI_Shell", "Win32_Foundation", "Win32_Globalization", "Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader", "Win32_System_Diagnostics_Debug", "Win32_Graphics_Gdi"] }
 
 [target.'cfg(unix)'.dependencies]
 # Free disk space (statvfs).
