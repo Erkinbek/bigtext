@@ -28,9 +28,15 @@ pub struct Welcome {
     pub sample_size: u64,
     /// Where the sample goes (the self-test's own folder; otherwise the temporary folder).
     pub sample_path: Option<PathBuf>,
-    /// The version that changed and its notes, while the note is open.
-    pub whats_new: Option<(Version, Vec<Block>)>,
+    /// The versions since the one used before and their notes, newest first, while the note is
+    /// open.
+    pub whats_new: Option<Vec<(Version, Vec<Block>)>>,
 }
+
+/// Settings without the version that saved them come from before 0.8.0, which began noting it.
+const FIRST_NOTING: Version = Version(0, 8, 0);
+/// The note tells about at most this many versions.
+const MAX_VERSIONS: usize = 8;
 
 impl Default for Welcome {
     fn default() -> Welcome {
@@ -48,20 +54,33 @@ pub struct SampleJob {
 
 impl Welcome {
     /// At start, with the saved settings: after an update (settings saved by an older version,
-    /// or by one that did not note its version yet) the note says what changed. A first start
-    /// shows the page instead.
+    /// or by one that did not note its version yet) the note says what changed in every version
+    /// since. A first start shows the page instead.
     pub fn after_start(&mut self, saved_before: bool, seen: Option<&str>) {
-        let current = Version::current();
-        let updated = match seen.and_then(Version::parse) {
-            Some(v) => v < current,
-            None => saved_before,
-        };
-        if updated {
-            if let Some(notes) = notes_for(current) {
-                self.whats_new = Some((current, notes));
-            }
+        let notes = changes(CHANGELOG, saved_before, seen.and_then(Version::parse), Version::current());
+        if !notes.is_empty() {
+            self.whats_new = Some(notes);
         }
     }
+}
+
+/// The versions in `md` (CHANGELOG.md) after `seen` up to `current`, with their notes, newest
+/// first; without `seen`, settings saved before mean an update from before [`FIRST_NOTING`].
+pub fn changes(md: &str, saved_before: bool, seen: Option<Version>, current: Version) -> Vec<(Version, Vec<Block>)> {
+    let newer = |v: Version| match seen {
+        Some(s) => v > s,
+        None => saved_before && v >= FIRST_NOTING,
+    };
+    versions(md)
+        .filter(|&v| v <= current && newer(v))
+        .filter_map(|v| section(md, v).map(parse_notes).filter(|b| !b.is_empty()).map(|b| (v, b)))
+        .take(MAX_VERSIONS)
+        .collect()
+}
+
+/// The versions with a "## X.Y.Z" heading in `md`, in their order (newest first).
+fn versions(md: &str) -> impl Iterator<Item = Version> + '_ {
+    md.lines().filter_map(|l| l.strip_prefix("## ")).filter_map(|t| t.split_whitespace().next().and_then(Version::parse))
 }
 
 /// The section of `md` (CHANGELOG.md) for version `v`: from its "## X.Y.Z" heading to the next
@@ -82,11 +101,6 @@ pub fn section(md: &str, v: Version) -> Option<&str> {
         pos += line.len();
     }
     start.map(|s| md[s..].trim())
-}
-
-/// What changed in `v`, as the update dialog shows release notes.
-pub fn notes_for(v: Version) -> Option<Vec<Block>> {
-    section(CHANGELOG, v).map(parse_notes).filter(|b| !b.is_empty())
 }
 
 pub fn default_sample_path() -> PathBuf {
@@ -275,22 +289,21 @@ impl BigTextApp {
         }
     }
 
-    /// The note after an update: what changed in this version.
+    /// The note after an update: what changed in each version since the one used before.
     pub(super) fn whats_new_ui(&mut self, ctx: &egui::Context) {
-        let Some((v, blocks)) = &self.welcome.whats_new else { return };
+        let Some(notes) = &self.welcome.whats_new else { return };
         let mut close = false;
         let modal = egui::Modal::new(egui::Id::new("whats-new")).show(ctx, |ui| {
             ui.set_width(560.0);
-            ui.heading(trf("What's new in {v}", &[("v", &v.to_string())]));
-            ui.add_space(6.0);
-            egui::ScrollArea::vertical().max_height(380.0).auto_shrink([false, true]).show(ui, |ui| {
-                for b in blocks {
-                    super::update::block_ui(ui, b);
-                }
-            });
+            super::update::versions_ui(ui, notes, 420.0);
             ui.add_space(8.0);
+            // One version: its release; several: the list of releases.
+            let page = match notes.as_slice() {
+                [(v, _)] => format!("https://github.com/Erkinbek/bigtext/releases/tag/v{v}"),
+                _ => "https://github.com/Erkinbek/bigtext/releases".to_owned(),
+            };
             ui.horizontal(|ui| {
-                ui.hyperlink_to(tr("Full release notes on GitHub"), format!("https://github.com/Erkinbek/bigtext/releases/tag/v{v}"));
+                ui.hyperlink_to(tr("Full release notes on GitHub"), page);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     close = ui.button(tr("Close")).clicked();
                 });
@@ -308,8 +321,23 @@ mod tests {
 
     #[test]
     fn the_current_version_has_notes() {
-        let notes = notes_for(Version::current()).expect("CHANGELOG.md has a section for this version");
+        let notes = section(CHANGELOG, Version::current()).map(parse_notes).expect("CHANGELOG.md has a section for this version");
         assert!(notes.iter().any(|b| matches!(b, Block::Item(..))), "{notes:?}");
+    }
+
+    #[test]
+    fn every_version_since_the_one_used_before() {
+        let md = "# Changelog\n\n## 0.9.0 — next\n\n- not out\n\n## 0.8.2\n\n- c\n\n## 0.8.1\n\n- b\n\n## 0.8.0\n\n- a\n\n## 0.7.3\n\n- old\n";
+        let got = |saved: bool, seen: Option<Version>| changes(md, saved, seen, Version(0, 8, 2)).into_iter().map(|(v, _)| v.to_string()).collect::<Vec<_>>();
+        assert_eq!(got(true, Some(Version(0, 8, 0))), ["0.8.2", "0.8.1"]);
+        assert_eq!(got(true, Some(Version(0, 8, 1))), ["0.8.2"]);
+        assert!(got(true, Some(Version(0, 8, 2))).is_empty());
+        // Saved by a version before 0.8.0 (no version in the settings): 0.8.0 and later.
+        assert_eq!(got(true, None), ["0.8.2", "0.8.1", "0.8.0"]);
+        assert!(got(false, None).is_empty());
+        // Many versions skipped: the newest few.
+        let long: String = (0..20).rev().map(|p| format!("## 1.0.{p}\n\n- n\n\n")).collect();
+        assert_eq!(changes(&long, true, Some(Version(0, 9, 0)), Version(1, 0, 19)).len(), MAX_VERSIONS);
     }
 
     #[test]
@@ -326,7 +354,7 @@ mod tests {
         let older = Version(0, 0, 1).to_string();
         let mut w = Welcome::default();
         w.after_start(true, Some(&older));
-        assert_eq!(w.whats_new.as_ref().map(|n| n.0), Some(current));
+        assert_eq!(w.whats_new.as_ref().and_then(|n| n.first()).map(|n| n.0), Some(current));
         // Settings without a version were saved by a version before this note.
         let mut w = Welcome::default();
         w.after_start(true, None);

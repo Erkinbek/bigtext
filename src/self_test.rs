@@ -632,11 +632,25 @@ impl SelfTest {
             app.welcome.enabled = false;
             check(lines > 10_000 && size >= 2 << 20 && !shown && app.docs.len() == 1, format!("{lines} lines, {size} bytes, page shown {shown}, {} tabs", app.docs.len()))
         }));
-        s("after an update: what changed in this version", Box::new(|app, _c| {
-            app.welcome.after_start(true, Some("0.0.1"));
-            let Some((v, notes)) = app.welcome.whats_new.take() else { return Step::Fail("no note after an update".into()) };
-            app.welcome.after_start(true, Some(&v.to_string()));
-            check(v == bigtext::update::Version::current() && !notes.is_empty() && app.welcome.whats_new.is_none(), format!("{v} with {} blocks", notes.len()))
+        s("after an update: what changed in every version since the one used before", Box::new(|app, _c| {
+            use bigtext::update::Version;
+            let current = Version::current();
+            app.welcome.after_start(true, Some(&current.to_string()));
+            let none_when_same = app.welcome.whats_new.is_none();
+            // From 0.7.x (whose settings name no version): 0.8.0 and everything after it.
+            app.welcome.after_start(true, None);
+            let Some(notes) = app.welcome.whats_new.clone() else { return Step::Fail("no note after an update".into()) };
+            let versions: Vec<Version> = notes.iter().map(|n| n.0).collect();
+            // Left open for the screenshot.
+            app.welcome.after_start(true, Some("0.7.0"));
+            let older = app.welcome.whats_new.as_ref().map_or(0, |n| n.len());
+            let ok = none_when_same && versions.first() == Some(&current) && versions.last() == Some(&Version(0, 8, 0)) && versions.windows(2).all(|w| w[0] > w[1]) && notes.iter().all(|n| !n.1.is_empty()) && older > versions.len();
+            check(ok, format!("since 0.7.x {versions:?}, since 0.7.0 {older} versions"))
+        }));
+        s("screenshot: what's new after an update", shot_step("selftest-whats-new.png"));
+        s("what's new closes", Box::new(|app, _c| {
+            app.welcome.whats_new = None;
+            Step::Next
         }));
         {
             use bigtext::update::{Asset, Manager, Method};

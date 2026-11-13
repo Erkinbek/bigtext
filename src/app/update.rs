@@ -492,9 +492,15 @@ impl BigTextApp {
 }
 
 fn notes_ui(ui: &mut egui::Ui, o: &Offer) {
+    versions_ui(ui, &o.notes, 360.0);
+    ui.hyperlink_to(tr("Full release notes on GitHub"), &o.page);
+}
+
+/// "What's new in X.Y.Z" and its notes for each version, newest first, in a scrolling box.
+pub(super) fn versions_ui(ui: &mut egui::Ui, notes: &[(Version, Vec<Block>)], max_height: f32) {
     egui::Frame::new().fill(ui.visuals().extreme_bg_color).corner_radius(4.0).inner_margin(10.0).show(ui, |ui| {
-        egui::ScrollArea::vertical().max_height(360.0).auto_shrink([false, true]).show(ui, |ui| {
-            for (v, blocks) in &o.notes {
+        egui::ScrollArea::vertical().max_height(max_height).auto_shrink([false, true]).show(ui, |ui| {
+            for (v, blocks) in notes {
                 ui.label(RichText::new(trf("What's new in {v}", &[("v", &v.to_string())])).strong().size(16.0));
                 if blocks.is_empty() {
                     ui.weak(tr("No release notes."));
@@ -506,7 +512,6 @@ fn notes_ui(ui: &mut egui::Ui, o: &Offer) {
             }
         });
     });
-    ui.hyperlink_to(tr("Full release notes on GitHub"), &o.page);
 }
 
 pub(super) fn block_ui(ui: &mut egui::Ui, b: &Block) {
