@@ -84,6 +84,9 @@ pub struct SelfTest {
 
 const ORIGINAL: &str =
     "alpha beta gamma\n    indented line\nthird line here\nfoo bar foo baz\nlast line\n";
+/// Records whose quoted fields hold line breaks: each is one row of the table.
+const MULTILINE_CSV: &str =
+    "id,note,qty\n1,\"first\nsecond line\",5\n2,plain,6\n3,\"a,\"\"b\"\"\nc\nd\",7\n4,last,8\n";
 const CSV: &str =
     "id;name;age;city\r\n1;Ann;30;Tashkent\r\n2;\"Bob; Jr\";41;Samarkand\r\n3;Cy;25;Bukhara\r\n";
 const LEVELS_LOG: &str = "2024-05-01 10:00:00 INFO start\n2024-05-01 10:00:01 DEBUG cfg loaded\n2024-05-01 10:00:02 WARN slow disk\n2024-05-01 10:00:03 ERROR db timeout\n2024-05-01 10:00:04 INFO no error here\n2024-05-01 10:00:05 [error] nginx style\n";
@@ -405,6 +408,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
         long.join("deep.txt").to_string_lossy().as_bytes(),
     )?;
     std::fs::write(dir.join("table.csv"), CSV)?;
+    std::fs::write(dir.join("multiline.csv"), MULTILINE_CSV)?;
     std::fs::write(
         dir.join("data.json"),
         "{\"name\": \"bigtext\", \"size\": 42, \"ok\": true}\n",
@@ -4523,6 +4527,58 @@ impl SelfTest {
                         && s.max == Some(41.0),
                     format!("{s:?}"),
                 )
+            }),
+        );
+        s(
+            "CSV: a record whose quoted fields hold line breaks is one row",
+            Box::new(|app, c| {
+                if c.first() {
+                    app.open_path(c.file("multiline.csv"));
+                    return Step::Wait;
+                }
+                let ready = wait_ready(app);
+                let d = doc(app);
+                let indexed = d
+                    .records
+                    .as_ref()
+                    .is_some_and(|r| r.data.lock().unwrap().done);
+                if !indexed || !d.table || d.table_state.shown.len() < 4 || !ready {
+                    if c.waited() > Duration::from_secs(5) {
+                        let idx = d.records.as_ref().map(|r| {
+                            let i = r.data.lock().unwrap();
+                            (r.version == d.version, i.done, i.multiline, i.scanned)
+                        });
+                        return Step::Fail(format!(
+                            "index {idx:?}, table {}, dialect {:?}, shown {:?}",
+                            d.table, d.table_state.dialect, d.table_state.shown
+                        ));
+                    }
+                    return Step::Wait;
+                }
+                let shown = &doc(app).table_state.shown;
+                let rows: Vec<(&str, &str)> = shown[shown.len() - 4..]
+                    .iter()
+                    .map(|(a, b)| (a.as_str(), b.as_str()))
+                    .collect();
+                let want = [
+                    ("2", "first second line"),
+                    ("4", "plain"),
+                    ("5", "a,\"b\" c d"),
+                    ("8", "last"),
+                ];
+                if rows != want {
+                    return Step::Fail(format!("rows {shown:?}"));
+                }
+                let shot = c.shot.clone().map(|d| d.join("selftest-csv-multiline.png"));
+                if c.mark == 0 {
+                    c.pending_shot = shot;
+                    c.mark = 1;
+                    return Step::Wait;
+                }
+                if shot.is_some_and(|p| !p.exists()) && c.waited() < Duration::from_secs(3) {
+                    return Step::Wait;
+                }
+                Step::Next
             }),
         );
         s(

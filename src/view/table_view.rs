@@ -13,8 +13,13 @@ use egui::{
     Painter, Rect, Sense, Stroke, Ui, UiBuilder,
 };
 
+use std::sync::{Arc, Mutex};
+
 use bigtext::csv::{self, Dialect, DELIMITERS};
+use bigtext::csv_rows::{self, RecordIndex};
+use bigtext::jobs::CancelToken;
 use bigtext::text::rows::{self, Pending, Row};
+use bigtext::text::TextBuf;
 
 use super::highlight::Lang;
 use super::text_view;
@@ -49,6 +54,8 @@ pub struct TableState {
     first_line: Option<u64>,
     /// Header cells drawn in the last frame (the self-test clicks them).
     pub header_cells: Vec<(usize, Rect)>,
+    /// The rows drawn in the last frame as (gutter label, second cell), for the self-test.
+    pub shown: Vec<(String, String)>,
     /// Lines before the table (`sep=;`, comments, a title); `dialect.start` is where it begins.
     pub skip: usize,
     /// Columns 0..frozen stay on the left while the others scroll.
@@ -97,6 +104,7 @@ impl Default for TableState {
             anchor: None,
             first_line: None,
             header_cells: Vec::new(),
+            shown: Vec::new(),
             skip: 0,
             frozen: 0,
             hidden: BTreeSet::new(),
@@ -416,6 +424,98 @@ fn set_skip(doc: &mut Document, skip: usize) {
     st.reset_columns();
 }
 
+/// The record index being read for a document shown as a table (`App::records_tick` starts it).
+pub struct RecordsJob {
+    pub version: u64,
+    pub dialect: Dialect,
+    pub data: Arc<Mutex<Arc<RecordIndex>>>,
+    pub cancel: CancelToken,
+}
+
+/// The record index of `doc` when it is current and some record spans lines; otherwise the
+/// rows are lines, as they always were.
+fn record_index(doc: &Document) -> Option<Arc<RecordIndex>> {
+    let r = doc.records.as_ref()?;
+    if r.version != doc.version || Some(r.dialect) != doc.table_state.dialect {
+        return None;
+    }
+    let idx = r.data.lock().unwrap().clone();
+    idx.multiline.then_some(idx)
+}
+
+/// The table's rows: whole records where the record index has been read (a quoted field may
+/// hold line breaks), lines elsewhere.
+struct TableRows<'a> {
+    buf: &'a TextBuf,
+    idx: Option<&'a RecordIndex>,
+}
+
+fn table_rows<'a>(buf: &'a TextBuf, idx: &'a Option<Arc<RecordIndex>>) -> TableRows<'a> {
+    TableRows {
+        buf,
+        idx: idx.as_deref(),
+    }
+}
+
+impl TableRows<'_> {
+    fn rec(&self, p: u64) -> Option<&RecordIndex> {
+        self.idx.filter(|i| i.covers(p))
+    }
+
+    fn row_at(&self, off: u64) -> Result<Row, Pending> {
+        match self.rec(off) {
+            Some(i) => csv_rows::row_at(self.buf, i, off),
+            None => rows::row_at(self.buf, off, None),
+        }
+    }
+
+    fn next_row(&self, r: &Row) -> Result<Option<Row>, Pending> {
+        match self.rec(r.start) {
+            Some(i) if r.seg.has_nl || i.covers(r.seg.next) => csv_rows::next_row(self.buf, i, r),
+            _ => rows::next_row(self.buf, r, None),
+        }
+    }
+
+    fn prev_row(&self, r: &Row) -> Result<Option<Row>, Pending> {
+        match self.idx {
+            Some(i) if r.start > i.first && i.covers(r.start - 1) => {
+                csv_rows::prev_row(self.buf, i, r)
+            }
+            _ => rows::prev_row(self.buf, r, None),
+        }
+    }
+
+    /// Moves `n` rows down (positive) or up; stops at the document's edges.
+    fn step_rows(&self, row: Row, n: i64) -> Result<Row, Pending> {
+        let mut r = row;
+        for _ in 0..n.unsigned_abs() {
+            let next = if n > 0 {
+                self.next_row(&r)?
+            } else {
+                self.prev_row(&r)?
+            };
+            match next {
+                Some(x) => r = x,
+                None => break,
+            }
+        }
+        Ok(r)
+    }
+
+    /// The `n` rows shown from `top`.
+    fn layout(&self, top: u64, n: usize) -> Result<Vec<Row>, Pending> {
+        let mut v = Vec::with_capacity(n + 1);
+        v.push(self.row_at(top)?);
+        while v.len() < n {
+            match self.next_row(v.last().unwrap())? {
+                Some(r) => v.push(r),
+                None => break,
+            }
+        }
+        Ok(v)
+    }
+}
+
 /// Puts back the layout remembered for the file when its first line is still the one it was
 /// saved with; otherwise the columns may have moved, and it is dropped.
 fn apply_pending(doc: &mut Document) {
@@ -423,7 +523,8 @@ fn apply_pending(doc: &mut Document) {
         return;
     };
     let start = d.first(&doc.buf).max(doc.min_caret());
-    let Ok(head) = rows::row_at(&doc.buf, start, None) else {
+    let idx = record_index(doc);
+    let Ok(head) = table_rows(&doc.buf, &idx).row_at(start) else {
         return;
     };
     let Some(first) = doc.buf.read(head.start..head.end) else {
@@ -459,8 +560,10 @@ fn apply_pending(doc: &mut Document) {
 
 /// Moves the first visible row by `n` rows.
 fn step(doc: &mut Document, n: i64) {
-    if let Ok(top) = rows::row_at(&doc.buf, doc.view.top, None) {
-        if let Ok(r) = rows::step_rows(&doc.buf, top, n, None) {
+    let idx = record_index(doc);
+    let tr = table_rows(&doc.buf, &idx);
+    if let Ok(top) = tr.row_at(doc.view.top) {
+        if let Ok(r) = tr.step_rows(top, n) {
             doc.view.top = r.start;
         }
     }
@@ -515,7 +618,8 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
 
     let mut pending = false;
     let table_start = dialect.first(&doc.buf).max(doc.min_caret());
-    let head = match rows::row_at(&doc.buf, table_start, None) {
+    let rec_idx = record_index(doc);
+    let head = match table_rows(&doc.buf, &rec_idx).row_at(table_start) {
         Ok(r) => Some(r),
         Err(Pending) => {
             pending = true;
@@ -578,7 +682,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         doc.view.top = doc.view.top.max(data_start);
         // Never scroll past the last row (an empty line after the final line break is not one).
         if len > 0 && doc.view.top >= len && data_start < len {
-            if let Ok(r) = rows::row_at(&doc.buf, len - 1, None) {
+            if let Ok(r) = table_rows(&doc.buf, &rec_idx).row_at(len - 1) {
                 doc.view.top = r.start.max(data_start);
             }
         }
@@ -586,7 +690,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
 
     // Rows on screen.
     let rows: Vec<Row> = if doc.is_ready() && doc.view.top < len {
-        match text_view::layout_rows(&doc.buf, doc.view.top, n_rows, None) {
+        match table_rows(&doc.buf, &rec_idx).layout(doc.view.top, n_rows) {
             Ok(r) => r.into_iter().filter(|r| r.start < len).collect(),
             Err(Pending) => {
                 pending = true;
@@ -747,12 +851,20 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         .first()
         .map(|l| doc.buf.line_of(l.row.start))
         .unwrap_or((0, true));
+    // Line breaks inside the rows since the last row that started a line (a record whose
+    // quoted fields hold line breaks covers several lines).
+    let mut inner = 0;
+    let mut shown = Vec::with_capacity(lines.len());
     for (i, l) in lines.iter().enumerate() {
         let y = body.top() + i as f32 * rh;
         let row_rect = Rect::from_min_max(pos2(body.left(), y), pos2(body.right(), y + rh));
         let starts_line = l.row.is_first_in_seg() && l.row.seg.line_start;
         if i > 0 && starts_line {
-            line += 1;
+            line += 1 + inner;
+            inner = 0;
+        }
+        if rec_idx.is_some() {
+            inner += codec.count_nl(&l.bytes, l.base);
         }
         if i % 2 == 1 {
             body_painter.rect_filled(row_rect, 0.0, zebra);
@@ -790,6 +902,10 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
             (false, _, false) if l.row.is_first_in_seg() => "↪".into(),
             _ => String::new(),
         };
+        shown.push((
+            label.clone(),
+            l.value(&codec, dialect, 1).unwrap_or_default(),
+        ));
         painter.text(
             pos2(gutter.right() - 8.0, y + rh / 2.0),
             Align2::RIGHT_CENTER,
@@ -799,6 +915,7 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         );
         body_painter.hline(body.x_range(), y + rh, Stroke::new(0.5, grid));
     }
+    doc.table_state.shown = shown;
     for &col in &visible {
         let x = right(col);
         painter
@@ -1356,8 +1473,10 @@ fn handle_keys(ui: &mut Ui, doc: &mut Document, n_rows: usize, data_start: u64, 
             }
             Key::End if modifiers.command => {
                 let len = doc.buf.len();
-                if let Ok(last) = rows::row_at(&doc.buf, len.saturating_sub(1), None) {
-                    if let Ok(r) = rows::step_rows(&doc.buf, last, -page, None) {
+                let idx = record_index(doc);
+                let tr = table_rows(&doc.buf, &idx);
+                if let Ok(last) = tr.row_at(len.saturating_sub(1)) {
+                    if let Ok(r) = tr.step_rows(last, -page) {
                         doc.view.top = r.start;
                     }
                 }
@@ -1372,10 +1491,12 @@ fn handle_keys(ui: &mut Ui, doc: &mut Document, n_rows: usize, data_start: u64, 
 
 /// Brings the row with the caret on screen (after go to line, find next, a click elsewhere).
 fn scroll_to_caret(doc: &mut Document, n_rows: usize) -> Result<(), Pending> {
-    let row = rows::row_at(&doc.buf, doc.view.caret, None)?;
+    let idx = record_index(doc);
+    let tr = table_rows(&doc.buf, &idx);
+    let row = tr.row_at(doc.view.caret)?;
     let top = doc.view.top;
     let on_screen = row.start >= top && {
-        let shown = text_view::layout_rows(&doc.buf, top, n_rows.saturating_sub(1).max(1), None)?;
+        let shown = tr.layout(top, n_rows.saturating_sub(1).max(1))?;
         shown.iter().any(|r| r.start == row.start)
     };
     if doc.view.center_caret || !on_screen {
@@ -1384,7 +1505,7 @@ fn scroll_to_caret(doc: &mut Document, n_rows: usize) -> Result<(), Pending> {
         } else {
             n_rows.saturating_sub(2) as i64
         };
-        doc.view.top = rows::step_rows(&doc.buf, row, -back, None)?.start;
+        doc.view.top = tr.step_rows(row, -back)?.start;
     }
     Ok(())
 }

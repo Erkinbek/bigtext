@@ -2580,6 +2580,7 @@ impl eframe::App for BigTextApp {
         self.folder_tick(&ctx);
         self.remote_tick();
         self.alerts_tick(&ctx);
+        self.records_tick();
         self.sync_diff_marks();
 
         self.fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));

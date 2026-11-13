@@ -3,6 +3,17 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## Unreleased
+
+### CSV records with line breaks
+
+- **One row per record**: in the table view, a record whose quoted fields hold line breaks is
+  one row, with the line it starts on in the gutter, instead of a row per line. A background
+  pass (about 1 GB a second, one byte of memory per 64 KB) finds where records start, so
+  scrolling, jumping and the scrollbar work from any point of a huge file.
+- The delimiter, the lines before the table and the header row are detected from records
+  too, so a file whose first records hold line breaks no longer takes its header for a title.
+
 ## 0.10.0 — 2026-11-13
 
 ### Container and service logs

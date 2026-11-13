@@ -244,6 +244,8 @@ pub struct Document {
     pub alerts: Option<super::alerts::Alerts>,
     /// File → SQL dump tables: the tables of the dump.
     pub sql_dump: Option<super::sql_dump::DumpResults>,
+    /// Where the records of a CSV shown as a table start (quoted fields may hold line breaks).
+    pub records: Option<crate::view::table_view::RecordsJob>,
     pub problems: Option<super::problems_panel::ProblemsResults>,
     pub chart: Option<super::column_chart::ChartResults>,
     pub json_check: Option<super::json_validate::JsonCheckResults>,
@@ -407,6 +409,7 @@ impl Document {
             log_report: None,
             alerts: None,
             sql_dump: None,
+            records: None,
             problems: None,
             chart: None,
             json_check: None,
@@ -548,6 +551,9 @@ impl Document {
             r.cancel.cancel();
         }
         if let Some(r) = &self.sql_dump {
+            r.cancel.cancel();
+        }
+        if let Some(r) = &self.records {
             r.cancel.cancel();
         }
         if let Some(p) = &self.problems {

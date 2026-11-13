@@ -226,8 +226,11 @@ keyboard shortcuts.
   HTML uses it too. The high-contrast themes and colour-blind-safe colours keep their own.
 - **CSV / TSV table view**: `.csv` and `.tsv` files open as a table (View → Table view or
   Ctrl+T switches any file between table and text). The delimiter (comma, semicolon, tab, pipe)
-  is detected from the first lines and can be changed in the toolbar; quoted fields follow
-  RFC 4180. The first row is a pinned header, numbers align right, columns fit their content
+  is detected from the first records and can be changed in the toolbar; quoted fields follow
+  RFC 4180, and a record whose quoted fields hold line breaks is one row (the gutter shows the
+  line it starts on). A background pass (about 1 GB a second, one byte of memory per 64 KB)
+  finds where such records start, so this works from any point of a huge file; until it has
+  read that far, rows there are lines. The first row is a pinned header, numbers align right, columns fit their content
   (drag a header border to resize, double-click it to fit again). Like the text view it reads
   only the rows on screen, so a 10 GB CSV scrolls as fast as a small one. Click a cell to put
   the caret there, double-click it to edit it in the text view.
@@ -492,9 +495,8 @@ keyboard shortcuts.
 - Syntax highlighting never reads a file from its start: after a jump it looks 64 KB above the
   screen, so a comment or string opened further up than that is not seen until you scroll
   through it from above.
-- The CSV table shows one line per row, so a quoted field that contains line breaks appears as
-  several rows (the text is unchanged). Deleting columns reads whole records and handles such
-  fields correctly.
+- In the CSV table, a quote that opens a field and is never closed makes the rest of the file
+  one record, as RFC 4180 reads it; the table shows it in 64 KB pieces (`↪`).
 - The file comparison compares lines by 64-bit hash + length (a collision would hide a
   difference; astronomically unlikely) and re-synchronises within 4,096 lines / 16 MB. It
   reads the whole document again however small the edit, and a comparison does not follow

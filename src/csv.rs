@@ -54,7 +54,7 @@ impl Dialect {
 /// The code unit at byte `i`: a byte, or a 16-bit unit in UTF-16. Delimiters, quotes and line
 /// breaks are ASCII, which never occurs inside a multi-byte UTF-8 character.
 #[inline]
-fn unit_at(enc: Encoding, b: &[u8], i: usize) -> u16 {
+pub(crate) fn unit_at(enc: Encoding, b: &[u8], i: usize) -> u16 {
     match enc {
         Encoding::Utf16Le => u16::from_le_bytes([b[i], b[i + 1]]),
         Encoding::Utf16Be => u16::from_be_bytes([b[i], b[i + 1]]),
@@ -62,7 +62,7 @@ fn unit_at(enc: Encoding, b: &[u8], i: usize) -> u16 {
     }
 }
 
-fn nl_value(codec: &Codec) -> u16 {
+pub(crate) fn nl_value(codec: &Codec) -> u16 {
     match codec.nl {
         NlByte::Lf => b'\n' as u16,
         NlByte::Cr => b'\r' as u16,
@@ -70,7 +70,7 @@ fn nl_value(codec: &Codec) -> u16 {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum State {
+pub(crate) enum State {
     FieldStart,
     Unquoted,
     Quoted,
@@ -79,7 +79,7 @@ enum State {
 }
 
 #[derive(PartialEq, Eq)]
-enum Step {
+pub(crate) enum Step {
     Inside,
     FieldEnd,
     RecordEnd,
@@ -88,7 +88,7 @@ enum Step {
 impl State {
     /// Moves past the code unit `c`; `nl` is the line-break unit.
     #[inline]
-    fn step(&mut self, c: u16, d: Dialect, nl: u16) -> Step {
+    pub(crate) fn step(&mut self, c: u16, d: Dialect, nl: u16) -> Step {
         let quote = d.quote as u16;
         match *self {
             State::Quoted => {
@@ -158,35 +158,83 @@ pub fn field_value(codec: &Codec, d: Dialect, raw: &[u8]) -> String {
     out
 }
 
-/// Guesses the delimiter from the start of a file (`sample`, from after the BOM; `whole` if it
-/// is the entire file): the candidate that splits the most lines into the same number of fields
-/// (more than one), then the one with more fields, then `preferred` (from the file extension).
-/// `None` when no candidate splits any line.
-pub fn detect(codec: &Codec, sample: &[u8], whole: bool, preferred: u8) -> Option<Dialect> {
+/// The rows of `sample` as (start, content without the line break, where the next starts):
+/// records with a dialect (a quoted field may hold line breaks), plain lines without one. A
+/// row cut off by the end of the sample is left out unless `whole`.
+fn sample_rows<'a>(
+    codec: &Codec,
+    d: Option<Dialect>,
+    sample: &'a [u8],
+    whole: bool,
+    max: usize,
+) -> Vec<(usize, &'a [u8], usize)> {
     let unit = codec.unit();
-    let mut lines = Vec::new();
+    let nl = nl_value(codec);
+    let mut out = Vec::new();
     let mut from = 0;
-    while from < sample.len() && lines.len() < 200 {
-        let Some(i) = codec.find_nl(&sample[from..], from as u64) else {
-            if whole {
-                lines.push(&sample[from..]);
+    while from < sample.len() && out.len() < max {
+        let end = match d {
+            None => codec
+                .find_nl(&sample[from..], from as u64)
+                .map(|i| from + i),
+            Some(d) => {
+                let mut st = State::FieldStart;
+                let mut j = from;
+                loop {
+                    if j + unit > sample.len() {
+                        break None;
+                    }
+                    if st.step(unit_at(codec.enc, sample, j), d, nl) == Step::RecordEnd {
+                        break Some(j);
+                    }
+                    j += unit;
+                }
             }
-            break;
         };
-        let mut line = &sample[from..from + i];
-        if codec.nl == NlByte::Lf && line.ends_with(codec.cr_unit()) {
-            line = &line[..line.len() - unit];
+        let (end, next) = match end {
+            Some(e) => (e, e + unit),
+            None if whole => (sample.len(), sample.len()),
+            None => break,
+        };
+        let mut row = &sample[from..end];
+        if codec.nl == NlByte::Lf && row.ends_with(codec.cr_unit()) {
+            row = &row[..row.len() - unit];
         }
-        lines.push(line);
-        from += i + unit;
+        out.push((from, row, next));
+        from = next;
     }
+    out
+}
+
+/// The records of `sample` for dialect `d`, or its lines when fewer than two records come out
+/// (a quote opened early and never closed would otherwise hide the whole sample).
+fn sample_records<'a>(
+    codec: &Codec,
+    d: Dialect,
+    sample: &'a [u8],
+    whole: bool,
+    max: usize,
+) -> Vec<(usize, &'a [u8], usize)> {
+    let recs = sample_rows(codec, Some(d), sample, whole, max);
+    if recs.len() >= 2 {
+        recs
+    } else {
+        sample_rows(codec, None, sample, whole, max)
+    }
+}
+
+/// Guesses the delimiter from the start of a file (`sample`, from after the BOM; `whole` if it
+/// is the entire file): the candidate that splits the most records into the same number of
+/// fields (more than one), then the one with more fields, then `preferred` (from the file
+/// extension). `None` when no candidate splits any record.
+pub fn detect(codec: &Codec, sample: &[u8], whole: bool, preferred: u8) -> Option<Dialect> {
     let mut fields = Vec::new();
     let mut best: Option<((usize, usize, bool), u8)> = None;
     for delim in DELIMITERS {
         let d = Dialect::new(delim);
         let mut counts: HashMap<usize, usize> = HashMap::new();
-        for l in &lines {
-            split_fields(codec, d, l, &mut fields);
+        for l in sample_records(codec, d, sample, whole, 200) {
+            split_fields(codec, d, l.1, &mut fields);
             if fields.len() > 1 {
                 *counts.entry(fields.len()).or_default() += 1;
             }
@@ -226,26 +274,10 @@ pub fn detect_table(
     preferred: u8,
     base: u64,
 ) -> TableGuess {
-    let unit = codec.unit();
-    // (start, content) of each line of the sample, and where the next one starts.
-    let mut lines: Vec<(usize, &[u8], usize)> = Vec::new();
-    let mut from = 0;
-    while from < sample.len() && lines.len() < 200 + PREAMBLE_MAX {
-        let (end, next) = match codec.find_nl(&sample[from..], from as u64) {
-            Some(i) => (from + i, from + i + unit),
-            None if whole => (sample.len(), sample.len()),
-            None => break,
-        };
-        let mut line = &sample[from..end];
-        if codec.nl == NlByte::Lf && line.ends_with(codec.cr_unit()) {
-            line = &line[..line.len() - unit];
-        }
-        lines.push((from, line, next));
-        from = next;
-    }
     let text = |b: &[u8]| codec.decode_lossy(b);
+    let first_line = sample_rows(codec, None, sample, whole, 1);
     let mut skip = 0;
-    let mut d = match lines.first().map(|l| text(l.1)) {
+    let mut d = match first_line.first().map(|l| text(l.1)) {
         Some(t)
             if t.trim().len() == 5
                 && t.trim().to_ascii_lowercase().starts_with("sep=")
@@ -257,6 +289,9 @@ pub fn detect_table(
         }
         _ => detect(codec, sample, whole, preferred).unwrap_or(Dialect::new(preferred)),
     };
+    // (start, content) of each record of the sample (a quoted field may hold line breaks),
+    // and where the next one starts.
+    let lines = sample_records(codec, d, sample, whole, 200 + PREAMBLE_MAX);
     let mut fields = Vec::new();
     let mut count = |l: &[u8]| {
         split_fields(codec, d, l, &mut fields);
@@ -1859,6 +1894,26 @@ mod rewrite_tests {
     }
 
     const DATA: &str = "name,qty,note\r\nb,10,\"x\r\ny\"\r\na,9,\r\nC,,z\r\nd,100,last";
+
+    #[test]
+    fn detection_reads_records_not_lines() {
+        // Line by line, the quoted line breaks give rows of 2 fields and the header looks like
+        // a title before the table; record by record, all rows have 3.
+        let s = b"id,note,qty\n1,\"first\nsecond line\",5\n2,plain,6\n3,\"a,\"\"b\"\"\nc\nd\",7\n4,last,8\n";
+        let g = detect_table(&Codec::utf8(), s, true, b',', 0);
+        assert_eq!(
+            (g.dialect.delim, g.dialect.start, g.skip, g.header),
+            (b',', 0, 0, true)
+        );
+        assert_eq!(
+            detect(&Codec::utf8(), s, true, b';').map(|d| d.delim),
+            Some(b',')
+        );
+        // A quote opened in the second line and never closed does not hide the delimiter.
+        let s = b"a;b;c\n\"1;2;3\n4;5;6\n7;8;9\n";
+        let g = detect_table(&Codec::utf8(), s, true, b',', 0);
+        assert_eq!((g.dialect.delim, g.skip), (b';', 0));
+    }
 
     #[test]
     fn records_span_quoted_line_breaks() {

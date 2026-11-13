@@ -17,6 +17,7 @@ pub mod csv_diff;
 pub mod csv_expr;
 pub mod csv_join;
 pub mod csv_pivot;
+pub mod csv_rows;
 pub mod decompress;
 pub mod diff;
 pub mod encoding;

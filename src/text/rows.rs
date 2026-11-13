@@ -70,7 +70,7 @@ pub fn is_line_start(buf: &TextBuf, q: u64) -> Result<bool, Pending> {
 }
 
 /// True if a soft break may sit at `hay[i..]` (not on a newline or the CR of a CRLF).
-fn soft_ok(codec: &Codec, hay: &[u8], i: usize) -> bool {
+pub(crate) fn soft_ok(codec: &Codec, hay: &[u8], i: usize) -> bool {
     let rest = &hay[i.min(hay.len())..];
     if codec.is_nl_at(rest) {
         return false;

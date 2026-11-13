@@ -3,7 +3,10 @@
 //! documents up to `IN_MEMORY_MAX` change in memory as one undo step, bigger ones are
 //! rewritten on disk (temp file, atomic swap, optional backup).
 
+use std::sync::{Arc, Mutex};
+
 use bigtext::csv::{self, ColumnStats, Cond, CondOp, Dialect, Groups, Rewrite, ScanEnd};
+use bigtext::csv_rows::{index_records, RecordIndex};
 use bigtext::jobs::{self, human_bytes, CancelToken, Progress};
 use bigtext::text::Piece;
 
@@ -14,7 +17,7 @@ use super::i18n::{tr, trf};
 use super::ops::{SaveJob, WriteSpec};
 use super::tasks::{self, TaskOutcome};
 use super::{BigTextApp, Confirm, ConfirmAction, Msg};
-use crate::view::table_view::TableAction;
+use crate::view::table_view::{RecordsJob, TableAction};
 
 /// Sorting keeps every row's key in memory, so it is limited to files of this size.
 pub const SORT_MAX: u64 = bigtext::csv::SORT_MAX;
@@ -81,6 +84,41 @@ fn describe(rw: &Rewrite) -> String {
 }
 
 impl BigTextApp {
+    /// Reads where the records start in the CSV shown as a table, in the background, once for
+    /// each version of the document and dialect, so a record whose quoted fields hold line
+    /// breaks is one row.
+    pub(crate) fn records_tick(&mut self) {
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
+        let Some(dialect) = d.table_state.dialect else {
+            return;
+        };
+        if !d.table || !d.is_ready() {
+            return;
+        }
+        let current = d.records.as_ref();
+        if current.is_some_and(|r| r.version == d.version && r.dialect == dialect) {
+            return;
+        }
+        if let Some(r) = d.records.take() {
+            r.cancel.cancel();
+        }
+        let data = Arc::new(Mutex::new(Arc::new(RecordIndex::empty(dialect))));
+        let cancel = CancelToken::new();
+        d.records = Some(RecordsJob {
+            version: d.version,
+            dialect,
+            data: data.clone(),
+            cancel: cancel.clone(),
+        });
+        let snap = d.buf.snapshot();
+        let waker = self.waker.clone();
+        jobs::spawn("csv-records", move || {
+            index_records(&snap, dialect, &cancel, None, &data, &|| waker());
+        });
+    }
+
     pub(crate) fn on_table_action(&mut self, a: TableAction) {
         match a {
             TableAction::DeleteColumns { cols, names } => self.ask_delete_columns(cols, names),
