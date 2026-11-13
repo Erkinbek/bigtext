@@ -97,9 +97,9 @@ T = {
          "wie in Sublime Text; Strg+P findet eine Datei, Strg+R die Funktionen und Klassen einer Datei, Strg+/ "
          "kommentiert Zeilen aus, und Klammern schließen sich selbst. Eingefärbt werden nur die Zeilen auf dem "
          "Bildschirm, darum bleibt eine riesige Datei genauso schnell."),
-        ("Logs auf Servern", "user@server:/var/log/app.log über SSH mit Ihren Schlüsseln öffnen, oder eine Datei unter https:// oder "
-         "öffentlichem s3://, ohne sie herunterzuladen: Nur das Angezeigte wird übertragen, und über SSH laufen Suchen "
-         "auf dem Server. Oder die letzten Megabytes eines Logs wie tail -F verfolgen."),
+        ("Logs auf Servern", "user@server:/var/log/app.log über SSH mit Ihren Schlüsseln öffnen oder seine letzten "
+         "Megabytes wie tail -F verfolgen. Dateien unter https:// und öffentlichem s3:// werden mit Fortschrittsanzeige "
+         "heruntergeladen."),
     ],
     "gallery_h2": "Screenshots",
     "gallery": {

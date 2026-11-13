@@ -88,9 +88,8 @@ T = {
          "Text'teki gibi bir klasör kenar çubuğu; dosya bulmak için Ctrl+P, bir dosyanın işlev ve sınıfları için Ctrl+R, "
          "satırları yorum yapmak için Ctrl+/ ve kendiliğinden kapanan parantezler. Yalnızca ekrandaki satırlar renklenir, "
          "böylece devasa bir dosya da aynı hızda kalır."),
-        ("Sunuculardaki loglar", "user@server:/var/log/app.log'u anahtarlarınızla SSH üzerinden ya da bir https:// veya herkese açık s3:// "
-         "dosyasını indirmeden açın: yalnızca ekrandaki kısım gelir, SSH üzerinden aramalar sunucuda çalışır. "
-         "Ya da bir logun son megabaytlarını tail -F gibi izleyin."),
+        ("Sunuculardaki loglar", "user@server:/var/log/app.log'u anahtarlarınızla SSH üzerinden açın ya da son "
+         "megabaytlarını tail -F gibi izleyin. https:// ve herkese açık s3:// dosyaları ilerleme göstergesiyle indirilir."),
     ],
     "gallery_h2": "Ekran görüntüleri",
     "gallery": {

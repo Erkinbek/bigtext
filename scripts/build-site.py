@@ -121,7 +121,7 @@ T = {
             ("Find in files and scripts", "Search a whole folder with file:line results, and use bigtext-cli for count, head, tail, slice, replace, CSV tools and JSON output in scripts. Sessions, portable mode, and a second launch opens in the running window."),
             ("Comfortable for everyone", "High-contrast and colour-blind-safe themes, interface scaling, screen reader support, zen mode, wrapping at a column with a ruler, a clickable status bar, and settings remembered for each file."),
             ("Also a comfortable code editor", "Syntax colours for Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell scripts, YAML and more, in One Dark, Monokai, GitHub or Solarized; a folder side bar as in Sublime Text; Ctrl+P to find a file, Ctrl+R for the functions and classes of a file, Ctrl+/ to comment lines out, and brackets that close themselves. Only the rows on screen are coloured, so a huge file stays just as fast."),
-            ("Logs on servers", "Open user@server:/var/log/app.log over SSH with your keys, or an https:// or public s3:// file, without downloading it: only what is on screen comes over, and over SSH searches run on the server. Or follow a log's last megabytes like tail -F."),
+            ("Logs on servers", "Open user@server:/var/log/app.log over SSH with your keys, or follow its last megabytes like tail -F. https:// and public s3:// files are downloaded with progress."),
         ],
         "gallery_h2": "Screenshots",
         "gallery": {
@@ -284,7 +284,7 @@ T = {
             ("Поиск в файлах и скрипты", "Поиск по всей папке с результатами file:line и bigtext-cli для count, head, tail, slice, replace, работы с CSV и вывода JSON в скриптах. Сеансы, портативный режим, а повторный запуск открывает файл в уже запущенном окне."),
             ("Удобно каждому", "Высококонтрастные темы и темы для людей с нарушением цветового зрения, масштаб интерфейса, поддержка экранного диктора, режим дзен, перенос по столбцу с линейкой, кликабельная строка состояния и настройки, запоминаемые для каждого файла."),
             ("И удобный редактор кода", "Подсветка Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell-скриптов, YAML и других языков в цветах One Dark, Monokai, GitHub или Solarized; боковая панель папки, как в Sublime Text; Ctrl+P для поиска файла, Ctrl+R для функций и классов файла, Ctrl+/ для комментирования строк и автозакрытие скобок. Раскрашиваются только строки на экране, поэтому огромный файл остаётся таким же быстрым."),
-            ("Логи на серверах", "Открывайте user@server:/var/log/app.log по SSH с вашими ключами или файл по https:// и публичный s3://, не скачивая его: передаётся только то, что на экране, а по SSH поиск выполняется на сервере. Или следите за последними мегабайтами лога, как tail -F."),
+            ("Логи на серверах", "Открывайте user@server:/var/log/app.log по SSH с вашими ключами или следите за его последними мегабайтами, как tail -F. Файлы по https:// и публичные s3:// скачиваются с индикатором хода."),
         ],
         "gallery_h2": "Скриншоты",
         "gallery": {
@@ -448,7 +448,7 @@ T = {
             ("Fayllar ichida qidiruv va skriptlar", "Butun papka bo'ylab file:line natijali qidiruv va skriptlar uchun bigtext-cli: count, head, tail, slice, replace, CSV vositalari va JSON chiqishi. Seanslar, portativ rejim, ikkinchi ishga tushirish esa faylni ochiq oynada ochadi."),
             ("Hamma uchun qulay", "Yuqori kontrastli va ranglarni ajratishda qiynaladiganlar uchun mavzular, interfeys masshtabi, ekran o'quvchi qo'llab-quvvatlashi, zen rejimi, belgilangan ustunda o'rash va chizg'ich, bosiladigan holat qatori va har bir fayl uchun eslab qolinadigan sozlamalar."),
             ("Qulay kod muharriri ham", "Python, JavaScript, TypeScript, Java, C#, C/C++, Go, Rust, PHP, shell skriptlar, YAML va boshqa tillar One Dark, Monokai, GitHub yoki Solarized ranglarida; Sublime Text'dagidek papka paneli; faylni topish uchun Ctrl+P, fayldagi funksiya va klasslar uchun Ctrl+R, satrlarni izohga aylantirish uchun Ctrl+/ va o'zi yopiladigan qavslar. Faqat ekrandagi satrlar bo'yaladi, shuning uchun ulkan fayl ham xuddi shunday tez qoladi."),
-            ("Serverdagi loglar", "user@server:/var/log/app.log faylini kalitlaringiz bilan SSH orqali yoki https:// va ochiq s3:// faylni yuklab olmasdan oching: faqat ekrandagi qism keladi, SSH orqali esa qidiruv serverning o'zida bajariladi. Yoki logning oxirgi megabaytlarini tail -F kabi kuzatib boring."),
+            ("Serverdagi loglar", "user@server:/var/log/app.log faylini kalitlaringiz bilan SSH orqali oching yoki uning oxirgi megabaytlarini tail -F kabi kuzatib boring. https:// va ochiq s3:// fayllar yuklanish jarayoni ko'rsatilgan holda yuklab olinadi."),
         ],
         "gallery_h2": "Skrinshotlar",
         "gallery": {

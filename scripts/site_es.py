@@ -93,9 +93,8 @@ T = {
          "lateral de carpeta como en Sublime Text; Ctrl+P para encontrar un archivo, Ctrl+R para las funciones y clases "
          "de un archivo, Ctrl+/ para comentar líneas y corchetes que se cierran solos. Solo se colorean las filas en "
          "pantalla, así que un archivo enorme sigue igual de rápido."),
-        ("Logs en servidores", "Abre user@server:/var/log/app.log por SSH con tus claves, o un archivo https:// o s3:// público, "
-         "sin descargarlo: solo llega lo que está en pantalla, y por SSH las búsquedas se ejecutan en el servidor. "
-         "O sigue los últimos megabytes de un log como tail -F."),
+        ("Logs en servidores", "Abre user@server:/var/log/app.log por SSH con tus claves, o sigue sus últimos megabytes "
+         "como tail -F. Los archivos https:// y s3:// públicos se descargan mostrando el progreso."),
     ],
     "gallery_h2": "Capturas",
     "gallery": {
