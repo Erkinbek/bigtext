@@ -73,7 +73,10 @@ pub struct Throttle {
 
 impl Throttle {
     pub fn new(interval: Duration) -> Self {
-        Self { last: Instant::now(), interval }
+        Self {
+            last: Instant::now(),
+            interval,
+        }
     }
     /// Returns true at most once per interval.
     pub fn ready(&mut self) -> bool {

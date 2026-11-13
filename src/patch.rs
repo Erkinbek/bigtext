@@ -60,17 +60,29 @@ fn header(line: &[u8]) -> Option<(u64, u64, u64, u64)> {
 
 /// Reads a unified diff: the files it changes and their hunks.
 pub fn parse(text: &[u8]) -> Result<Vec<FilePatch>, String> {
-    let lines: Vec<&[u8]> = text.split(|&c| c == b'\n').map(|l| l.strip_suffix(b"\r").unwrap_or(l)).collect();
+    let lines: Vec<&[u8]> = text
+        .split(|&c| c == b'\n')
+        .map(|l| l.strip_suffix(b"\r").unwrap_or(l))
+        .collect();
     let mut files: Vec<FilePatch> = Vec::new();
     let mut i = 0;
     while i < lines.len() {
         let l = lines[i];
-        if let (Some(old), Some(new)) = (l.strip_prefix(b"--- "), lines.get(i + 1).and_then(|n| n.strip_prefix(b"+++ "))) {
-            files.push(FilePatch { old_name: name_of(old), new_name: name_of(new), hunks: Vec::new() });
+        if let (Some(old), Some(new)) = (
+            l.strip_prefix(b"--- "),
+            lines.get(i + 1).and_then(|n| n.strip_prefix(b"+++ ")),
+        ) {
+            files.push(FilePatch {
+                old_name: name_of(old),
+                new_name: name_of(new),
+                hunks: Vec::new(),
+            });
             i += 2;
             continue;
         }
-        let Some((old_start, old_count, new_start, new_count)) = l.starts_with(b"@@ -").then(|| header(l)).flatten() else {
+        let Some((old_start, old_count, new_start, new_count)) =
+            l.starts_with(b"@@ -").then(|| header(l)).flatten()
+        else {
             i += 1;
             continue;
         };
@@ -78,7 +90,14 @@ pub fn parse(text: &[u8]) -> Result<Vec<FilePatch>, String> {
             files.push(FilePatch::default());
         }
         let at = i + 1;
-        let mut h = PatchHunk { old_start, old_count, new_start, new_count, lines: Vec::new(), at };
+        let mut h = PatchHunk {
+            old_start,
+            old_count,
+            new_start,
+            new_count,
+            lines: Vec::new(),
+            at,
+        };
         let (mut old, mut new) = (0u64, 0u64);
         i += 1;
         while (old < old_count || new < new_count) && i < lines.len() {
@@ -151,7 +170,13 @@ struct Seen {
 
 /// Works out where each of `hunks` (in order) goes in `buf` and the edits that apply them; new
 /// lines end with `eol`. `None` when cancelled or the text could not be read.
-pub fn plan(buf: &TextBuf, hunks: &[PatchHunk], eol: &[u8], cancel: &CancelToken, progress: Option<&Progress>) -> Option<Planned> {
+pub fn plan(
+    buf: &TextBuf,
+    hunks: &[PatchHunk],
+    eol: &[u8],
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> Option<Planned> {
     let mut r = LineReader::new(buf);
     let mut window: VecDeque<Seen> = VecDeque::new();
     // The index of window[0], and of the next line to read.
@@ -168,9 +193,18 @@ pub fn plan(buf: &TextBuf, hunks: &[PatchHunk], eol: &[u8], cancel: &CancelToken
         if cancel.is_cancelled() {
             return None;
         }
-        let old: Vec<u64> = h.lines.iter().filter(|l| l.0 != b'+').map(|l| line_hash(&l.1)).collect();
+        let old: Vec<u64> = h
+            .lines
+            .iter()
+            .filter(|l| l.0 != b'+')
+            .map(|l| line_hash(&l.1))
+            .collect();
         let n = old.len() as u64;
-        let said = if h.old_count == 0 { h.old_start } else { h.old_start.saturating_sub(1) };
+        let said = if h.old_count == 0 {
+            h.old_start
+        } else {
+            h.old_start.saturating_sub(1)
+        };
         let expected = (said as i64 + delta).max(0) as u64;
         let lo = expected.saturating_sub(FUZZ).max(floor);
         let hi = expected + FUZZ;
@@ -210,7 +244,12 @@ pub fn plan(buf: &TextBuf, hunks: &[PatchHunk], eol: &[u8], cancel: &CancelToken
             first = next;
         }
         let matches_at = |p: u64| -> bool {
-            p >= first && p + n <= first + window.len() as u64 && old.iter().enumerate().all(|(i, &x)| window[(p - first) as usize + i].hash == x)
+            p >= first
+                && p + n <= first + window.len() as u64
+                && old
+                    .iter()
+                    .enumerate()
+                    .all(|(i, &x)| window[(p - first) as usize + i].hash == x)
         };
         let at = if lo <= expected && matches_at(expected) {
             Some(expected)
@@ -237,7 +276,12 @@ pub fn plan(buf: &TextBuf, hunks: &[PatchHunk], eol: &[u8], cancel: &CancelToken
         let start_of = |i: u64| -> u64 {
             match window.get((i - first) as usize) {
                 Some(s) => s.off,
-                None => window.back().map(|s| s.end).unwrap_or(if first == 0 { 0 } else { buf.len() }),
+                None => {
+                    window
+                        .back()
+                        .map(|s| s.end)
+                        .unwrap_or(if first == 0 { 0 } else { buf.len() })
+                }
             }
         };
         // Each run of removed and added lines becomes one edit; context stays as it is.
@@ -307,7 +351,14 @@ mod tests {
         let (_fa, sa) = src(a);
         let (_fb, sb) = src(b);
         let opts = DiffOptions::default();
-        let u = Unified { a: &*sa, b: &*sb, a_name: "a", b_name: "b", opts: &opts, context };
+        let u = Unified {
+            a: &*sa,
+            b: &*sb,
+            a_name: "a",
+            b_name: "b",
+            opts: &opts,
+            context,
+        };
         let mut out = Vec::new();
         write_unified(&u, &mut out, &CancelToken::new(), None).unwrap();
         out
@@ -315,7 +366,11 @@ mod tests {
 
     fn apply(text: &[u8], patch: &[u8]) -> (Vec<u8>, Planned) {
         let (_f, s) = src(text);
-        let buf = TextBuf::new(s.clone(), LineIndex::new(s.len()), crate::encoding::Codec::utf8());
+        let buf = TextBuf::new(
+            s.clone(),
+            LineIndex::new(s.len()),
+            crate::encoding::Codec::utf8(),
+        );
         let files = parse(patch).unwrap();
         let p = plan(&buf, &files[0].hunks, b"\n", &CancelToken::new(), None).unwrap();
         (apply_to(text, &p.edits), p)
@@ -329,11 +384,35 @@ mod tests {
     fn parses_headers_counts_and_missing_newlines() {
         let p = b"diff --git a/x b/x\n--- a/x.txt\t2024-05-01\n+++ b/x.txt\n@@ -1,2 +1 @@\n-one\n two\n\\ No newline at end of file\n@@ -10 +9,2 @@\n-ten\n+TEN\n+ELEVEN\n";
         let f = parse(p).unwrap();
-        assert_eq!((f.len(), f[0].old_name.as_str(), f[0].new_name.as_str(), f[0].hunks.len()), (1, "a/x.txt", "b/x.txt", 2));
+        assert_eq!(
+            (
+                f.len(),
+                f[0].old_name.as_str(),
+                f[0].new_name.as_str(),
+                f[0].hunks.len()
+            ),
+            (1, "a/x.txt", "b/x.txt", 2)
+        );
         let h = &f[0].hunks[0];
-        assert_eq!((h.old_start, h.old_count, h.new_start, h.new_count, h.at), (1, 2, 1, 1, 4));
-        assert_eq!(h.lines, vec![(b'-', b"one".to_vec(), false), (b' ', b"two".to_vec(), true)]);
-        assert_eq!((f[0].hunks[1].old_start, f[0].hunks[1].old_count, f[0].hunks[1].new_count), (10, 1, 2));
+        assert_eq!(
+            (h.old_start, h.old_count, h.new_start, h.new_count, h.at),
+            (1, 2, 1, 1, 4)
+        );
+        assert_eq!(
+            h.lines,
+            vec![
+                (b'-', b"one".to_vec(), false),
+                (b' ', b"two".to_vec(), true)
+            ]
+        );
+        assert_eq!(
+            (
+                f[0].hunks[1].old_start,
+                f[0].hunks[1].old_count,
+                f[0].hunks[1].new_count
+            ),
+            (10, 1, 2)
+        );
         assert!(parse(b"just text\n").is_err());
         assert!(parse(b"@@ -1,3 +1,3 @@\n a\n").is_err());
     }
@@ -341,7 +420,10 @@ mod tests {
     #[test]
     fn round_trip_through_a_written_diff() {
         let a = lines(3000);
-        let b = a.replace("line 7\n", "line seven\n").replace("line 1500\n", "").replace("line 2998\n", "line 2998\nadded\n");
+        let b = a
+            .replace("line 7\n", "line seven\n")
+            .replace("line 1500\n", "")
+            .replace("line 2998\n", "line 2998\nadded\n");
         for context in [0, 3] {
             let patch = diff_of(a.as_bytes(), b.as_bytes(), context);
             let (got, p) = apply(a.as_bytes(), &patch);
@@ -349,10 +431,20 @@ mod tests {
             assert!(got == b.as_bytes(), "context {context}");
         }
         // Lines added at the very end and at the very start; a last line without a line break.
-        for (x, y) in [("a\nb\n", "a\nb\nc\nd\n"), ("a\nb\n", "z\na\nb\n"), ("a\nb\n", "a\nb"), ("a\nb", "a\nc\n"), ("", "new\n")] {
+        for (x, y) in [
+            ("a\nb\n", "a\nb\nc\nd\n"),
+            ("a\nb\n", "z\na\nb\n"),
+            ("a\nb\n", "a\nb"),
+            ("a\nb", "a\nc\n"),
+            ("", "new\n"),
+        ] {
             let patch = diff_of(x.as_bytes(), y.as_bytes(), 3);
             let (got, p) = apply(x.as_bytes(), &patch);
-            assert_eq!((String::from_utf8(got).unwrap(), p.rejected.len()), (y.to_string(), 0), "{x:?} -> {y:?}");
+            assert_eq!(
+                (String::from_utf8(got).unwrap(), p.rejected.len()),
+                (y.to_string(), 0),
+                "{x:?} -> {y:?}"
+            );
         }
     }
 
@@ -365,7 +457,10 @@ mod tests {
         let shifted = format!("{}{a}", "extra\n".repeat(40));
         let (got, p) = apply(shifted.as_bytes(), &patch);
         assert_eq!((p.applied, p.moved), (1, 1));
-        assert_eq!(String::from_utf8(got).unwrap(), format!("{}{b}", "extra\n".repeat(40)));
+        assert_eq!(
+            String::from_utf8(got).unwrap(),
+            format!("{}{b}", "extra\n".repeat(40))
+        );
         // Already applied: its old lines are gone.
         let (_, p) = apply(b.as_bytes(), &patch);
         assert_eq!(p.rejected, vec![(0, 98, Reject::NotFound)]);

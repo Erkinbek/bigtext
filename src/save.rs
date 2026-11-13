@@ -25,33 +25,71 @@ pub enum Transform<'a> {
     /// Convert line breaks to the given style.
     Eol(LineEnding),
     /// Replace every match in the range.
-    Replace { matcher: &'a Matcher, template: &'a Template, range: std::ops::Range<u64> },
+    Replace {
+        matcher: &'a Matcher,
+        template: &'a Template,
+        range: std::ops::Range<u64>,
+    },
     /// Delete the columns `cols` (sorted, distinct) of a CSV document.
-    DeleteColumns { dialect: Dialect, cols: &'a [usize] },
+    DeleteColumns {
+        dialect: Dialect,
+        cols: &'a [usize],
+    },
     /// Re-encode into `enc` (with a byte order mark if `bom`), optionally converting line
     /// breaks. `ReplaceStats::count` is the number of characters `enc` cannot represent
     /// (written as '?').
-    Transcode { enc: Encoding, bom: bool, eol: Option<LineEnding> },
+    Transcode {
+        enc: Encoding,
+        bom: bool,
+        eol: Option<LineEnding>,
+    },
     /// Sort rows, swap or select columns of a CSV document.
-    Csv { dialect: Dialect, rewrite: &'a csv::Rewrite },
+    Csv {
+        dialect: Dialect,
+        rewrite: &'a csv::Rewrite,
+    },
     /// Only the lines `keep` is true for (given a line's bytes without its line break).
-    Lines { keep: &'a dyn Fn(&[u8]) -> bool },
+    Lines {
+        keep: &'a dyn Fn(&[u8]) -> bool,
+    },
     /// A text operation (case, trimming, indentation, JSON format) over `range`.
-    TextOp { op: crate::textops::Op, range: std::ops::Range<u64> },
+    TextOp {
+        op: crate::textops::Op,
+        range: std::ops::Range<u64>,
+    },
     /// A column of cells filled from the line at `from` to the end.
-    ColumnEdit { from: u64, cells: (u32, u32), gen: &'a crate::column_edit::ColumnGen },
+    ColumnEdit {
+        from: u64,
+        cells: (u32, u32),
+        gen: &'a crate::column_edit::ColumnGen,
+    },
     /// The lines sorted (or unique) through temporary runs, each ending with `eol`.
-    Sort { spec: crate::extsort::SortSpec, eol: &'a [u8] },
+    Sort {
+        spec: crate::extsort::SortSpec,
+        eol: &'a [u8],
+    },
 }
 
 const TRANSCODE_STEP: u64 = 4 * 1024 * 1024;
 
 /// Streams `buf` re-encoded into `enc`. Pieces are cut at character boundaries, and a CR at
 /// the end of a piece waits for the next one so a CRLF is never split.
-pub fn transcode_to<W: Write>(buf: &TextBuf, enc: Encoding, bom: bool, eol: Option<LineEnding>, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<ReplaceStats>> {
+pub fn transcode_to<W: Write>(
+    buf: &TextBuf,
+    enc: Encoding,
+    bom: bool,
+    eol: Option<LineEnding>,
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<ReplaceStats>> {
     let target = Codec::new(enc, NlByte::Lf, 0);
     let len = buf.len();
-    let mut stats = ReplaceStats { count: 0, bytes_in: len, bytes_out: 0 };
+    let mut stats = ReplaceStats {
+        count: 0,
+        bytes_in: len,
+        bytes_out: 0,
+    };
     let mut emit = |b: &[u8], stats: &mut ReplaceStats| -> io::Result<()> {
         stats.bytes_out += b.len() as u64;
         out.write_all(b)
@@ -70,7 +108,9 @@ pub fn transcode_to<W: Write>(buf: &TextBuf, enc: Encoding, bom: bool, eol: Opti
         if end <= pos {
             end = buf.next_char(pos);
         }
-        let raw = buf.read(pos..end).ok_or_else(|| io::Error::other("Could not read the document"))?;
+        let raw = buf
+            .read(pos..end)
+            .ok_or_else(|| io::Error::other("Could not read the document"))?;
         let mut text = buf.codec.decode_lossy(&raw);
         if let Some(nl) = &breaks {
             if pending_cr {
@@ -114,7 +154,10 @@ pub fn transcode_to<W: Write>(buf: &TextBuf, enc: Encoding, bom: bool, eol: Opti
 
 fn count_and_encode(target: &Codec, text: &str, stats: &mut ReplaceStats) -> Vec<u8> {
     if !target.can_encode(text) {
-        stats.count += text.chars().filter(|c| !target.can_encode(c.encode_utf8(&mut [0; 4]))).count() as u64;
+        stats.count += text
+            .chars()
+            .filter(|c| !target.can_encode(c.encode_utf8(&mut [0; 4])))
+            .count() as u64;
     }
     target.encode(text)
 }
@@ -136,10 +179,22 @@ impl std::fmt::Display for SaveError {
 
 /// Temp file next to `target` (same volume, so the final rename is atomic).
 pub fn temp_path_for(target: &Path) -> PathBuf {
-    let dir = target.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
-    let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "file".into());
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-    dir.join(format!(".{name}.{}-{nanos:x}.bigtext.tmp", std::process::id()))
+    let dir = target
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let name = target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".into());
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    dir.join(format!(
+        ".{name}.{}-{nanos:x}.bigtext.tmp",
+        std::process::id()
+    ))
 }
 
 pub fn backup_path_for(target: &Path) -> PathBuf {
@@ -152,7 +207,9 @@ pub fn backup_path_for(target: &Path) -> PathBuf {
 pub fn describe(e: &io::Error, path: &Path) -> String {
     let p = crate::file::display_path(path);
     match e.raw_os_error() {
-        Some(32) | Some(33) => format!("“{p}” is in use by another process. Close it there and try again."),
+        Some(32) | Some(33) => {
+            format!("“{p}” is in use by another process. Close it there and try again.")
+        }
         Some(5) => format!("Access denied writing “{p}”. The file may be read-only or protected."),
         Some(112) | Some(39) => format!("Not enough disk space to save “{p}”."),
         Some(1224) => format!("“{p}” is still mapped by another program."),
@@ -264,56 +321,147 @@ impl<W: Write> EolWriter<'_, W> {
 
 /// Streams `buf` (a snapshot) through `transform` into a new temp file next to `target`, and
 /// fsyncs it. On any error or cancellation the temp file is removed.
-pub fn write_temp(buf: &TextBuf, target: &Path, transform: Transform, cancel: &CancelToken, progress: &Progress) -> Result<(PathBuf, ReplaceStats), SaveError> {
+pub fn write_temp(
+    buf: &TextBuf,
+    target: &Path,
+    transform: Transform,
+    cancel: &CancelToken,
+    progress: &Progress,
+) -> Result<(PathBuf, ReplaceStats), SaveError> {
     let temp = temp_path_for(target);
-    let file = File::options().write(true).create_new(true).open(&temp).map_err(|e| SaveError::Io(describe(&e, target)))?;
+    let file = File::options()
+        .write(true)
+        .create_new(true)
+        .open(&temp)
+        .map_err(|e| SaveError::Io(describe(&e, target)))?;
     let result = (|| -> Result<ReplaceStats, SaveError> {
         let mut w = BufWriter::with_capacity(WRITE_BUF, &file);
         let len = buf.len();
         progress.set_total(len);
         let io = |e: io::Error| SaveError::Io(describe(&e, target));
         let stats = match transform {
-            Transform::Replace { matcher, template, range } => {
-                match replace::replace_all_to(buf, matcher, template, range, &mut w, cancel, Some(progress)).map_err(io)? {
+            Transform::Replace {
+                matcher,
+                template,
+                range,
+            } => {
+                match replace::replace_all_to(
+                    buf,
+                    matcher,
+                    template,
+                    range,
+                    &mut w,
+                    cancel,
+                    Some(progress),
+                )
+                .map_err(io)?
+                {
                     Some(s) => s,
                     None => return Err(SaveError::Cancelled),
                 }
             }
-            Transform::DeleteColumns { dialect, cols } => match csv::delete_columns_to(buf, dialect, cols, &mut w, cancel, Some(progress)).map_err(io)? {
-                Some(s) => s,
-                None => return Err(SaveError::Cancelled),
-            },
-            Transform::Csv { dialect, rewrite } => match csv::rewrite_to(buf, dialect, rewrite, &mut w, cancel, Some(progress)).map_err(io)? {
-                Some(s) => s,
-                None => return Err(SaveError::Cancelled),
-            },
-            Transform::TextOp { op, range } => match crate::textops::text_op_to(buf, range, op, crate::text::rows::TAB_WIDTH, &mut w, cancel, Some(progress)) {
-                Ok(Some(n)) => ReplaceStats { count: 0, bytes_in: len, bytes_out: n },
+            Transform::DeleteColumns { dialect, cols } => {
+                match csv::delete_columns_to(buf, dialect, cols, &mut w, cancel, Some(progress))
+                    .map_err(io)?
+                {
+                    Some(s) => s,
+                    None => return Err(SaveError::Cancelled),
+                }
+            }
+            Transform::Csv { dialect, rewrite } => {
+                match csv::rewrite_to(buf, dialect, rewrite, &mut w, cancel, Some(progress))
+                    .map_err(io)?
+                {
+                    Some(s) => s,
+                    None => return Err(SaveError::Cancelled),
+                }
+            }
+            Transform::TextOp { op, range } => match crate::textops::text_op_to(
+                buf,
+                range,
+                op,
+                crate::text::rows::TAB_WIDTH,
+                &mut w,
+                cancel,
+                Some(progress),
+            ) {
+                Ok(Some(n)) => ReplaceStats {
+                    count: 0,
+                    bytes_in: len,
+                    bytes_out: n,
+                },
                 Ok(None) => return Err(SaveError::Cancelled),
                 // The text's own problem (not JSON, not valid in its encoding), said as it is.
-                Err(e) if e.kind() == io::ErrorKind::InvalidData => return Err(SaveError::Io(e.to_string())),
+                Err(e) if e.kind() == io::ErrorKind::InvalidData => {
+                    return Err(SaveError::Io(e.to_string()))
+                }
                 Err(e) => return Err(io(e)),
             },
-            Transform::Sort { spec, eol } => match crate::extsort::sort_to(buf, spec, eol, &mut w, cancel, Some(progress)).map_err(io)? {
-                Some(n) => ReplaceStats { count: n, bytes_in: len, bytes_out: 0 },
-                None => return Err(SaveError::Cancelled),
-            },
-            Transform::ColumnEdit { from, cells, gen } => match crate::column_edit::column_edit_to(buf, from, cells, gen, &mut w, cancel, Some(progress)).map_err(io)? {
-                Some(n) => ReplaceStats { count: n, bytes_in: len, bytes_out: 0 },
+            Transform::Sort { spec, eol } => {
+                match crate::extsort::sort_to(buf, spec, eol, &mut w, cancel, Some(progress))
+                    .map_err(io)?
+                {
+                    Some(n) => ReplaceStats {
+                        count: n,
+                        bytes_in: len,
+                        bytes_out: 0,
+                    },
+                    None => return Err(SaveError::Cancelled),
+                }
+            }
+            Transform::ColumnEdit { from, cells, gen } => match crate::column_edit::column_edit_to(
+                buf,
+                from,
+                cells,
+                gen,
+                &mut w,
+                cancel,
+                Some(progress),
+            )
+            .map_err(io)?
+            {
+                Some(n) => ReplaceStats {
+                    count: n,
+                    bytes_in: len,
+                    bytes_out: 0,
+                },
                 None => return Err(SaveError::Cancelled),
             },
             // The byte order mark stays (write_pred_lines_to writes it).
-            Transform::Lines { keep } => match crate::filter::write_pred_lines_to(buf, crate::filter::FilterSpec::default(), keep, &mut w, cancel, Some(progress)).map_err(io)? {
-                Some(n) => ReplaceStats { count: n.lines, bytes_in: len, bytes_out: n.bytes },
+            Transform::Lines { keep } => match crate::filter::write_pred_lines_to(
+                buf,
+                crate::filter::FilterSpec::default(),
+                keep,
+                &mut w,
+                cancel,
+                Some(progress),
+            )
+            .map_err(io)?
+            {
+                Some(n) => ReplaceStats {
+                    count: n.lines,
+                    bytes_in: len,
+                    bytes_out: n.bytes,
+                },
                 None => return Err(SaveError::Cancelled),
             },
-            Transform::Transcode { enc, bom, eol } => match transcode_to(buf, enc, bom, eol, &mut w, cancel, Some(progress)).map_err(io)? {
-                Some(s) => s,
-                None => return Err(SaveError::Cancelled),
-            },
+            Transform::Transcode { enc, bom, eol } => {
+                match transcode_to(buf, enc, bom, eol, &mut w, cancel, Some(progress))
+                    .map_err(io)?
+                {
+                    Some(s) => s,
+                    None => return Err(SaveError::Cancelled),
+                }
+            }
             Transform::Identity | Transform::Eol(_) => {
                 let mut sink = match &transform {
-                    Transform::Eol(style) => Sink::Eol(EolWriter { out: &mut w, codec: buf.codec, target: buf.codec.line_break(*style), pending_cr: false, written: 0 }),
+                    Transform::Eol(style) => Sink::Eol(EolWriter {
+                        out: &mut w,
+                        codec: buf.codec,
+                        target: buf.codec.line_break(*style),
+                        pending_cr: false,
+                        written: 0,
+                    }),
                     _ => Sink::Plain(&mut w, 0),
                 };
                 let mut err = None;
@@ -338,13 +486,19 @@ pub fn write_temp(buf: &TextBuf, target: &Path, transform: Transform, cancel: &C
                         return Err(io(e));
                     }
                     if r.is_none() {
-                        return Err(SaveError::Io("Could not read the document while saving.".into()));
+                        return Err(SaveError::Io(
+                            "Could not read the document while saving.".into(),
+                        ));
                     }
                     progress.set_done(done);
                     pos = end;
                 }
                 sink.finish().map_err(io)?;
-                ReplaceStats { count: 0, bytes_in: len, bytes_out: sink.written() }
+                ReplaceStats {
+                    count: 0,
+                    bytes_in: len,
+                    bytes_out: sink.written(),
+                }
             }
         };
         w.flush().map_err(io)?;
@@ -407,7 +561,14 @@ fn finalize_impl(temp: &Path, target: &Path, backup: bool) -> Result<(), String>
     use std::os::windows::ffi::OsStrExt;
     #[link(name = "kernel32")]
     extern "system" {
-        fn ReplaceFileW(replaced: *const u16, replacement: *const u16, backup: *const u16, flags: u32, exclude: *mut std::ffi::c_void, reserved: *mut std::ffi::c_void) -> i32;
+        fn ReplaceFileW(
+            replaced: *const u16,
+            replacement: *const u16,
+            backup: *const u16,
+            flags: u32,
+            exclude: *mut std::ffi::c_void,
+            reserved: *mut std::ffi::c_void,
+        ) -> i32;
         fn GetLastError() -> u32;
     }
     fn wide(p: &Path) -> Vec<u16> {
@@ -429,7 +590,11 @@ fn finalize_impl(temp: &Path, target: &Path, backup: bool) -> Result<(), String>
     // ReplaceFileW always gets a backup name so a half-finished replace can be undone.
     let user_bak = backup_path_for(target);
     let internal_bak = temp.with_extension("bak.tmp");
-    let bak = if backup { user_bak.clone() } else { internal_bak.clone() };
+    let bak = if backup {
+        user_bak.clone()
+    } else {
+        internal_bak.clone()
+    };
     if backup && bak.exists() {
         let _ = fs::remove_file(&bak);
     }
@@ -437,7 +602,16 @@ fn finalize_impl(temp: &Path, target: &Path, backup: bool) -> Result<(), String>
     let mut last = 0u32;
     for attempt in 0..40 {
         // REPLACEFILE_IGNORE_MERGE_ERRORS = 2
-        let ok = unsafe { ReplaceFileW(wt.as_ptr(), wr.as_ptr(), wb.as_ptr(), 2, std::ptr::null_mut(), std::ptr::null_mut()) };
+        let ok = unsafe {
+            ReplaceFileW(
+                wt.as_ptr(),
+                wr.as_ptr(),
+                wb.as_ptr(),
+                2,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
         if ok != 0 {
             if !backup {
                 let _ = fs::remove_file(&internal_bak);
@@ -520,7 +694,14 @@ mod tests {
         fs::write(&path, b"hello world\n").unwrap();
         let mut t = open(&path, Codec::utf8());
         t.replace(0..5, b"HELLO");
-        let (temp, _) = write_temp(&t, &path, Transform::Identity, &CancelToken::new(), &Progress::default()).unwrap();
+        let (temp, _) = write_temp(
+            &t,
+            &path,
+            Transform::Identity,
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
         drop(t); // release the mapping before replacing (required on Windows)
         finalize(&temp, &path, true).unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"HELLO world\n");
@@ -536,10 +717,17 @@ mod tests {
         let t = open(&path, Codec::utf8());
         let c = CancelToken::new();
         c.cancel();
-        assert!(matches!(write_temp(&t, &path, Transform::Identity, &c, &Progress::default()), Err(SaveError::Cancelled)));
+        assert!(matches!(
+            write_temp(&t, &path, Transform::Identity, &c, &Progress::default()),
+            Err(SaveError::Cancelled)
+        ));
         drop(t);
         assert_eq!(fs::read(&path).unwrap(), b"original");
-        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1, "temp file left behind");
+        assert_eq!(
+            fs::read_dir(dir.path()).unwrap().count(),
+            1,
+            "temp file left behind"
+        );
     }
 
     #[test]
@@ -548,15 +736,36 @@ mod tests {
         let path = dir.path().join("c.txt");
         fs::write(&path, b"a\r\nb\nc\rd\r\n").unwrap();
         let t = open(&path, Codec::utf8());
-        let (temp, _) = write_temp(&t, &path, Transform::Eol(LineEnding::Lf), &CancelToken::new(), &Progress::default()).unwrap();
+        let (temp, _) = write_temp(
+            &t,
+            &path,
+            Transform::Eol(LineEnding::Lf),
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
         assert_eq!(fs::read(&temp).unwrap(), b"a\nb\nc\rd\n");
-        let (temp2, _) = write_temp(&t, &path, Transform::Eol(LineEnding::CrLf), &CancelToken::new(), &Progress::default()).unwrap();
+        let (temp2, _) = write_temp(
+            &t,
+            &path,
+            Transform::Eol(LineEnding::CrLf),
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
         assert_eq!(fs::read(&temp2).unwrap(), b"a\r\nb\r\nc\rd\r\n");
         let u16c = Codec::new(Encoding::Utf16Le, crate::encoding::NlByte::Lf, 0);
         let p2 = dir.path().join("d.txt");
         fs::write(&p2, u16c.encode("x\r\ny\nz")).unwrap();
         let t2 = open(&p2, u16c);
-        let (temp3, _) = write_temp(&t2, &p2, Transform::Eol(LineEnding::CrLf), &CancelToken::new(), &Progress::default()).unwrap();
+        let (temp3, _) = write_temp(
+            &t2,
+            &p2,
+            Transform::Eol(LineEnding::CrLf),
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
         assert_eq!(fs::read(&temp3).unwrap(), u16c.encode("x\r\ny\r\nz"));
     }
 
@@ -569,11 +778,21 @@ mod tests {
         codec.bom_len = 3;
         let t = open(&path, codec);
         let keep = |l: &[u8]| l.starts_with(b"keep");
-        let (temp, stats) = write_temp(&t, &path, Transform::Lines { keep: &keep }, &CancelToken::new(), &Progress::default()).unwrap();
+        let (temp, stats) = write_temp(
+            &t,
+            &path,
+            Transform::Lines { keep: &keep },
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
         assert_eq!(stats.count, 3);
         drop(t);
         finalize(&temp, &path, false).unwrap();
-        assert_eq!(fs::read(&path).unwrap(), b"\xEF\xBB\xBFkeep 1\nkeep 2\nkeep 3");
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            b"\xEF\xBB\xBFkeep 1\nkeep 2\nkeep 3"
+        );
     }
 
     #[test]
@@ -582,10 +801,25 @@ mod tests {
         let path = dir.path().join("e.txt");
         fs::write(&path, b"one two one two").unwrap();
         let t = open(&path, Codec::utf8());
-        let q = Query { pattern: "one".into(), case_sensitive: true, ..Default::default() };
+        let q = Query {
+            pattern: "one".into(),
+            case_sensitive: true,
+            ..Default::default()
+        };
         let m = Matcher::new(&q, Codec::utf8()).unwrap();
         let tpl = Template::new("1", false);
-        let (temp, stats) = write_temp(&t, &path, Transform::Replace { matcher: &m, template: &tpl, range: 0..t.len() }, &CancelToken::new(), &Progress::default()).unwrap();
+        let (temp, stats) = write_temp(
+            &t,
+            &path,
+            Transform::Replace {
+                matcher: &m,
+                template: &tpl,
+                range: 0..t.len(),
+            },
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
         assert_eq!(stats.count, 2);
         drop(t);
         finalize(&temp, &path, false).unwrap();
@@ -601,12 +835,25 @@ mod tests {
         let mut t = open(&path, Codec::utf8());
         t.replace(12..13, b"7"); // unsaved edit: id 1 -> 7
         let cols = [1];
-        let (temp, stats) = write_temp(&t, &path, Transform::DeleteColumns { dialect: Dialect::new(b','), cols: &cols }, &CancelToken::new(), &Progress::default()).unwrap();
+        let (temp, stats) = write_temp(
+            &t,
+            &path,
+            Transform::DeleteColumns {
+                dialect: Dialect::new(b','),
+                cols: &cols,
+            },
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
         assert_eq!(stats.count, 3);
         drop(t);
         finalize(&temp, &path, true).unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"id,age\n7,30\n2,41\n");
-        assert_eq!(fs::read(backup_path_for(&path)).unwrap(), b"id,name,age\n1,ann,30\n2,bob,41\n");
+        assert_eq!(
+            fs::read(backup_path_for(&path)).unwrap(),
+            b"id,name,age\n1,ann,30\n2,bob,41\n"
+        );
     }
 
     #[test]
@@ -620,20 +867,45 @@ mod tests {
         let t = open(&path, u16);
         let run = |enc, bom, eol| {
             let mut out = Vec::new();
-            let s = transcode_to(&t, enc, bom, eol, &mut out, &CancelToken::new(), None).unwrap().unwrap();
+            let s = transcode_to(&t, enc, bom, eol, &mut out, &CancelToken::new(), None)
+                .unwrap()
+                .unwrap();
             (out, s.count)
         };
-        assert_eq!(run(Encoding::Utf8, false, None), ("Привет\r\nмир € 😀\r\n".as_bytes().to_vec(), 0));
+        assert_eq!(
+            run(Encoding::Utf8, false, None),
+            ("Привет\r\nмир € 😀\r\n".as_bytes().to_vec(), 0)
+        );
         let (with_bom, _) = run(Encoding::Utf8, true, Some(LineEnding::Lf));
-        assert_eq!(with_bom, [&[0xEF, 0xBB, 0xBF][..], "Привет\nмир € 😀\n".as_bytes()].concat());
+        assert_eq!(
+            with_bom,
+            [&[0xEF, 0xBB, 0xBF][..], "Привет\nмир € 😀\n".as_bytes()].concat()
+        );
         // Windows-1251 has the euro sign (0x88) but no emoji: one '?'.
         let (cp, missing) = run(Encoding::Windows1251, false, None);
         assert_eq!(missing, 1);
-        assert_eq!(Codec::new(Encoding::Windows1251, crate::encoding::NlByte::Lf, 0).decode_lossy(&cp), "Привет\r\nмир € ?\r\n");
+        assert_eq!(
+            Codec::new(Encoding::Windows1251, crate::encoding::NlByte::Lf, 0).decode_lossy(&cp),
+            "Привет\r\nмир € ?\r\n"
+        );
         // Through the save protocol, with a CRLF split across steps never doubled.
-        let (temp, stats) = write_temp(&t, &path, Transform::Transcode { enc: Encoding::Utf16Be, bom: true, eol: Some(LineEnding::CrLf) }, &CancelToken::new(), &Progress::default()).unwrap();
+        let (temp, stats) = write_temp(
+            &t,
+            &path,
+            Transform::Transcode {
+                enc: Encoding::Utf16Be,
+                bom: true,
+                eol: Some(LineEnding::CrLf),
+            },
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
         let be = Codec::new(Encoding::Utf16Be, crate::encoding::NlByte::Lf, 2);
-        assert_eq!(fs::read(&temp).unwrap(), [&[0xFE, 0xFF][..], &be.encode("Привет\r\nмир € 😀\r\n")].concat());
+        assert_eq!(
+            fs::read(&temp).unwrap(),
+            [&[0xFE, 0xFF][..], &be.encode("Привет\r\nмир € 😀\r\n")].concat()
+        );
         assert_eq!(stats.count, 0);
         // A CRLF across the step boundary becomes exactly one LF.
         let p2 = dir.path().join("u.txt");
@@ -642,7 +914,17 @@ mod tests {
         fs::write(&p2, &big).unwrap();
         let t2 = open(&p2, Codec::utf8());
         let mut out = Vec::new();
-        transcode_to(&t2, Encoding::Utf8, false, Some(LineEnding::Lf), &mut out, &CancelToken::new(), None).unwrap().unwrap();
+        transcode_to(
+            &t2,
+            Encoding::Utf8,
+            false,
+            Some(LineEnding::Lf),
+            &mut out,
+            &CancelToken::new(),
+            None,
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(&out[out.len() - 3..], b"a\nz");
         assert_eq!(out.len(), big.len() - 1);
     }
@@ -654,7 +936,14 @@ mod tests {
         fs::write(&path, b"data").unwrap();
         let t = open(&path, Codec::utf8());
         let target = dir.path().join("новый файл.txt");
-        let (temp, _) = write_temp(&t, &target, Transform::Identity, &CancelToken::new(), &Progress::default()).unwrap();
+        let (temp, _) = write_temp(
+            &t,
+            &target,
+            Transform::Identity,
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
         finalize(&temp, &target, false).unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"data");
         assert_eq!(fs::read(&path).unwrap(), b"data");

@@ -118,16 +118,30 @@ pub struct Extract {
 
 impl Extract {
     /// A file that restores on its own.
-    pub const WHOLE: Extract = Extract { settings: true, prelude: true, foreign: true };
+    pub const WHOLE: Extract = Extract {
+        settings: true,
+        prelude: true,
+        foreign: true,
+    };
     /// Only the tables' own statements.
-    pub const BARE: Extract = Extract { settings: false, prelude: false, foreign: true };
+    pub const BARE: Extract = Extract {
+        settings: false,
+        prelude: false,
+        foreign: true,
+    };
 }
 
 impl Dump {
     pub fn find(&self, name: &str) -> Option<usize> {
         self.tables.iter().position(|t| t.name == name).or_else(|| {
             // Without its schema, when that is unambiguous.
-            let short: Vec<usize> = self.tables.iter().enumerate().filter(|(_, t)| t.name.rsplit('.').next() == Some(name)).map(|(i, _)| i).collect();
+            let short: Vec<usize> = self
+                .tables
+                .iter()
+                .enumerate()
+                .filter(|(_, t)| t.name.rsplit('.').next() == Some(name))
+                .map(|(i, _)| i)
+                .collect();
             (short.len() == 1).then(|| short[0])
         })
     }
@@ -138,11 +152,21 @@ impl Dump {
 enum Stmt {
     /// A table's statement; `rows_list`: an INSERT with a column list (its first parenthesis
     /// is not a row).
-    Table { name: String, create: bool, insert: bool, columns: bool, copy: bool, foreign: bool },
+    Table {
+        name: String,
+        create: bool,
+        insert: bool,
+        columns: bool,
+        copy: bool,
+        foreign: bool,
+    },
     /// UNLOCK TABLES: the table LOCK TABLES named.
     Unlock,
     /// A sequence (PostgreSQL), and the table that owns it.
-    Sequence { name: String, owner: Option<String> },
+    Sequence {
+        name: String,
+        owner: Option<String>,
+    },
     /// A view (mysqldump drops a table of its name first).
     View(String),
     /// SET, COMMIT, PRAGMA, psql's backslash commands: settings.
@@ -173,7 +197,8 @@ fn clean_head(head: &[u8]) -> Vec<u8> {
 }
 
 fn contains_ci(hay: &[u8], needle: &[u8]) -> bool {
-    hay.windows(needle.len()).any(|w| w.eq_ignore_ascii_case(needle))
+    hay.windows(needle.len())
+        .any(|w| w.eq_ignore_ascii_case(needle))
 }
 
 /// Words and names of a statement's start.
@@ -197,7 +222,9 @@ impl<'a> Words<'a> {
     fn word(&mut self) -> Option<String> {
         self.skip_space();
         let s = self.i;
-        while self.i < self.b.len() && (self.b[self.i].is_ascii_alphanumeric() || self.b[self.i] == b'_') {
+        while self.i < self.b.len()
+            && (self.b[self.i].is_ascii_alphanumeric() || self.b[self.i] == b'_')
+        {
             self.i += 1;
         }
         (self.i > s).then(|| String::from_utf8_lossy(&self.b[s..self.i]).to_ascii_uppercase())
@@ -227,18 +254,31 @@ impl<'a> Words<'a> {
                     loop {
                         match self.b.get(self.i) {
                             None => return None,
-                            Some(&x) if x == close && self.b.get(self.i + 1) == Some(&close) && close != b']' => self.i += 2,
+                            Some(&x)
+                                if x == close
+                                    && self.b.get(self.i + 1) == Some(&close)
+                                    && close != b']' =>
+                            {
+                                self.i += 2
+                            }
                             Some(&x) if x == close => break,
                             _ => self.i += 1,
                         }
                     }
                     let doubled = [close, close];
-                    out.push_str(&String::from_utf8_lossy(&self.b[s..self.i]).replace(std::str::from_utf8(&doubled).unwrap_or(""), std::str::from_utf8(&doubled[..1]).unwrap_or("")));
+                    out.push_str(&String::from_utf8_lossy(&self.b[s..self.i]).replace(
+                        std::str::from_utf8(&doubled).unwrap_or(""),
+                        std::str::from_utf8(&doubled[..1]).unwrap_or(""),
+                    ));
                     self.i += 1;
                 }
                 _ if c.is_ascii_alphanumeric() || c == b'_' || c == b'$' || c >= 0x80 => {
                     let s = self.i;
-                    while self.i < self.b.len() && (self.b[self.i].is_ascii_alphanumeric() || matches!(self.b[self.i], b'_' | b'$') || self.b[self.i] >= 0x80) {
+                    while self.i < self.b.len()
+                        && (self.b[self.i].is_ascii_alphanumeric()
+                            || matches!(self.b[self.i], b'_' | b'$')
+                            || self.b[self.i] >= 0x80)
+                    {
                         self.i += 1;
                     }
                     out.push_str(&String::from_utf8_lossy(&self.b[s..self.i]));
@@ -287,16 +327,36 @@ impl<'a> Words<'a> {
 fn classify(head: &[u8]) -> Stmt {
     let head = clean_head(head);
     let mut w = Words::new(&head);
-    let table = |name: Option<String>, create: bool| name.map_or(Stmt::Other, |name| Stmt::Table { name, create, insert: false, columns: false, copy: false, foreign: false });
+    let table = |name: Option<String>, create: bool| {
+        name.map_or(Stmt::Other, |name| Stmt::Table {
+            name,
+            create,
+            insert: false,
+            columns: false,
+            copy: false,
+            foreign: false,
+        })
+    };
     let Some(first) = w.word() else {
-        return if head.trim_ascii_start().starts_with(b"\\") { Stmt::Setting } else { Stmt::Other };
+        return if head.trim_ascii_start().starts_with(b"\\") {
+            Stmt::Setting
+        } else {
+            Stmt::Other
+        };
     };
     match first.as_str() {
-        "SET" | "COMMIT" | "BEGIN" | "START" | "PRAGMA" | "USE" | "END" | "ROLLBACK" => Stmt::Setting,
+        "SET" | "COMMIT" | "BEGIN" | "START" | "PRAGMA" | "USE" | "END" | "ROLLBACK" => {
+            Stmt::Setting
+        }
         "SELECT" => {
             // pg_dump: SELECT pg_catalog.setval('public.orders_id_seq', 42, true);
             let s = String::from_utf8_lossy(&head);
-            match s.find("setval(").and_then(|i| s[i + 7..].trim_start().strip_prefix('\'').map(|r| r.split('\'').next().unwrap_or("").to_string())) {
+            match s.find("setval(").and_then(|i| {
+                s[i + 7..]
+                    .trim_start()
+                    .strip_prefix('\'')
+                    .map(|r| r.split('\'').next().unwrap_or("").to_string())
+            }) {
                 Some(name) if !name.is_empty() => Stmt::Sequence { name, owner: None },
                 _ if s.contains("set_config(") => Stmt::Setting,
                 _ => Stmt::Other,
@@ -310,7 +370,8 @@ fn classify(head: &[u8]) -> Stmt {
             } else if w.take("SEQUENCE") {
                 w.take("IF");
                 w.take("EXISTS");
-                w.name().map_or(Stmt::Other, |name| Stmt::Sequence { name, owner: None })
+                w.name()
+                    .map_or(Stmt::Other, |name| Stmt::Sequence { name, owner: None })
             } else if w.take("VIEW") {
                 w.take("IF");
                 w.take("EXISTS");
@@ -323,7 +384,13 @@ fn classify(head: &[u8]) -> Stmt {
             w.take("OR");
             w.take("REPLACE");
             for _ in 0..3 {
-                if !(w.take("GLOBAL") || w.take("LOCAL") || w.take("TEMPORARY") || w.take("TEMP") || w.take("UNLOGGED") || w.take("UNIQUE")) {
+                if !(w.take("GLOBAL")
+                    || w.take("LOCAL")
+                    || w.take("TEMPORARY")
+                    || w.take("TEMP")
+                    || w.take("UNLOGGED")
+                    || w.take("UNIQUE"))
+                {
                     break;
                 }
             }
@@ -339,7 +406,8 @@ fn classify(head: &[u8]) -> Stmt {
                     w.take("IF");
                     w.take("NOT");
                     w.take("EXISTS");
-                    w.name().map_or(Stmt::Other, |name| Stmt::Sequence { name, owner: None })
+                    w.name()
+                        .map_or(Stmt::Other, |name| Stmt::Sequence { name, owner: None })
                 }
                 Some("INDEX") => {
                     if w.find("ON") {
@@ -373,12 +441,24 @@ fn classify(head: &[u8]) -> Stmt {
                 w.take("EXISTS");
                 w.take("ONLY");
                 match table(w.name(), false) {
-                    Stmt::Table { name, .. } if contains_ci(&head, b"FOREIGN KEY") => Stmt::Table { name, create: false, insert: false, columns: false, copy: false, foreign: true },
+                    Stmt::Table { name, .. } if contains_ci(&head, b"FOREIGN KEY") => Stmt::Table {
+                        name,
+                        create: false,
+                        insert: false,
+                        columns: false,
+                        copy: false,
+                        foreign: true,
+                    },
                     other => other,
                 }
             } else if w.take("SEQUENCE") {
                 let name = w.name();
-                let owner = if w.find("OWNED") && w.take("BY") { w.name().and_then(|c| c.rsplit_once('.').map(|(t, _)| t.to_string())) } else { None };
+                let owner = if w.find("OWNED") && w.take("BY") {
+                    w.name()
+                        .and_then(|c| c.rsplit_once('.').map(|(t, _)| t.to_string()))
+                } else {
+                    None
+                };
                 name.map_or(Stmt::Other, |name| Stmt::Sequence { name, owner })
             } else {
                 Stmt::Other
@@ -392,7 +472,12 @@ fn classify(head: &[u8]) -> Stmt {
         "UNLOCK" => Stmt::Unlock,
         "INSERT" | "REPLACE" => {
             for _ in 0..3 {
-                if !(w.take("LOW_PRIORITY") || w.take("DELAYED") || w.take("HIGH_PRIORITY") || w.take("IGNORE") || w.take("OR")) {
+                if !(w.take("LOW_PRIORITY")
+                    || w.take("DELAYED")
+                    || w.take("HIGH_PRIORITY")
+                    || w.take("IGNORE")
+                    || w.take("OR"))
+                {
                     break;
                 }
                 // INSERT OR REPLACE / OR IGNORE (SQLite).
@@ -403,15 +488,31 @@ fn classify(head: &[u8]) -> Stmt {
             match w.name() {
                 Some(name) => {
                     let columns = w.next_is(b'(');
-                    Stmt::Table { name, create: false, insert: true, columns, copy: false, foreign: false }
+                    Stmt::Table {
+                        name,
+                        create: false,
+                        insert: true,
+                        columns,
+                        copy: false,
+                        foreign: false,
+                    }
                 }
                 None => Stmt::Other,
             }
         }
         "COPY" => match w.name() {
             Some(name) => {
-                let copy = String::from_utf8_lossy(&head).to_ascii_lowercase().contains("from stdin");
-                Stmt::Table { name, create: false, insert: false, columns: false, copy, foreign: false }
+                let copy = String::from_utf8_lossy(&head)
+                    .to_ascii_lowercase()
+                    .contains("from stdin");
+                Stmt::Table {
+                    name,
+                    create: false,
+                    insert: false,
+                    columns: false,
+                    copy,
+                    foreign: false,
+                }
             }
             None => Stmt::Other,
         },
@@ -484,7 +585,10 @@ impl Reader {
             head: Vec::new(),
             depth: 0,
             groups: 0,
-            dump: Dump { dialect, ..Default::default() },
+            dump: Dump {
+                dialect,
+                ..Default::default()
+            },
             index: HashMap::new(),
             sequences: HashMap::new(),
             locked: None,
@@ -499,40 +603,75 @@ impl Reader {
         if let Some(&i) = self.index.get(name) {
             return i;
         }
-        self.dump.tables.push(Table { name: name.to_string(), first: at, ..Default::default() });
+        self.dump.tables.push(Table {
+            name: name.to_string(),
+            first: at,
+            ..Default::default()
+        });
         let i = self.dump.tables.len() - 1;
         self.index.insert(name.to_string(), i);
         i
     }
 
-    fn add_part(parts: &mut Vec<Part>, range: Range<u64>, tail: Option<&'static str>, foreign: bool) {
+    fn add_part(
+        parts: &mut Vec<Part>,
+        range: Range<u64>,
+        tail: Option<&'static str>,
+        foreign: bool,
+    ) {
         match parts.last_mut() {
             Some(p) if p.range.end == range.start && p.tail.is_none() && p.foreign == foreign => {
                 p.range.end = range.end;
                 p.tail = tail;
             }
-            _ => parts.push(Part { range, tail, foreign }),
+            _ => parts.push(Part {
+                range,
+                tail,
+                foreign,
+            }),
         }
     }
 
-    fn add_to(&mut self, owner: &Owner, range: Range<u64>, tail: Option<&'static str>, foreign: bool) {
+    fn add_to(
+        &mut self,
+        owner: &Owner,
+        range: Range<u64>,
+        tail: Option<&'static str>,
+        foreign: bool,
+    ) {
         match owner {
-            Owner::Table(i) => Self::add_part(&mut self.dump.tables[*i].parts, range, tail, foreign),
-            Owner::Sequence(name) => Self::add_part(&mut self.sequences.entry(name.clone()).or_default().0, range, tail, false),
+            Owner::Table(i) => {
+                Self::add_part(&mut self.dump.tables[*i].parts, range, tail, foreign)
+            }
+            Owner::Sequence(name) => Self::add_part(
+                &mut self.sequences.entry(name.clone()).or_default().0,
+                range,
+                tail,
+                false,
+            ),
             Owner::Other => Self::add_part(&mut self.dump.other, range, tail, false),
         }
     }
 
     /// The statement that started at `self.start` ends at `end`.
     fn finish(&mut self, end: u64) {
-        let Some(start) = self.start.take() else { return };
+        let Some(start) = self.start.take() else {
+            return;
+        };
         let span = self.span..end;
         self.span = end;
         self.dump.statements += 1;
         let tail = (self.delimiter != b";").then_some("\nDELIMITER ;\n");
         let mut foreign = false;
         let owner = match classify(&self.head) {
-            Stmt::Table { name, create, insert, columns, copy, foreign: fk } => {
+            Stmt::Table {
+                name,
+                create,
+                insert,
+                columns,
+                copy,
+                foreign: fk,
+            } => {
                 foreign = fk;
                 let i = self.table(&name, start);
                 let t = &mut self.dump.tables[i];
@@ -553,7 +692,12 @@ impl Reader {
                 }
                 Some(Owner::Table(i))
             }
-            Stmt::Unlock => Some(self.locked.take().and_then(|n| self.index.get(&n).copied()).map_or(Owner::Other, Owner::Table)),
+            Stmt::Unlock => Some(
+                self.locked
+                    .take()
+                    .and_then(|n| self.index.get(&n).copied())
+                    .map_or(Owner::Other, Owner::Table),
+            ),
             Stmt::Sequence { name, owner } => {
                 let e = self.sequences.entry(name.clone()).or_default();
                 if owner.is_some() {
@@ -675,8 +819,13 @@ impl Reader {
                             continue;
                         }
                         b'$' if self.dialect != Dialect::MySql => {
-                            let tag = l[i + 1..].iter().take_while(|c| c.is_ascii_alphanumeric() || **c == b'_').count();
-                            if l.get(i + 1 + tag) == Some(&b'$') && !l.get(i + 1).is_some_and(u8::is_ascii_digit) {
+                            let tag = l[i + 1..]
+                                .iter()
+                                .take_while(|c| c.is_ascii_alphanumeric() || **c == b'_')
+                                .count();
+                            if l.get(i + 1 + tag) == Some(&b'$')
+                                && !l.get(i + 1).is_some_and(u8::is_ascii_digit)
+                            {
                                 self.dollar = l[i..i + 2 + tag].to_vec();
                                 self.st = St::Dollar;
                                 i += 2 + tag;
@@ -708,7 +857,11 @@ impl Reader {
                     };
                     let escapes = self.dialect == Dialect::MySql && q != b'`';
                     let rest = &l[i..];
-                    let hit = if escapes { memchr::memchr2(q, b'\\', rest) } else { memchr::memchr(q, rest) };
+                    let hit = if escapes {
+                        memchr::memchr2(q, b'\\', rest)
+                    } else {
+                        memchr::memchr(q, rest)
+                    };
                     match hit {
                         None => i = n,
                         Some(k) => {
@@ -746,8 +899,19 @@ impl Reader {
         if self.start.is_some() {
             self.finish(len);
         }
-        let opening = self.dump.header.iter().chain(&self.dump.prelude).map(|p| p.range.end).max().unwrap_or(0);
-        let footer = if self.last.is_none() { len } else { self.footer.max(opening) };
+        let opening = self
+            .dump
+            .header
+            .iter()
+            .chain(&self.dump.prelude)
+            .map(|p| p.range.end)
+            .max()
+            .unwrap_or(0);
+        let footer = if self.last.is_none() {
+            len
+        } else {
+            self.footer.max(opening)
+        };
         self.dump.footer = footer..len;
         // Sequences go with the table that owns them; the others with what belongs to no table.
         let mut seqs: Vec<(String, Seq)> = self.sequences.into_iter().collect();
@@ -786,8 +950,16 @@ impl Reader {
 
 /// Reads the dump's tables; `partial` gets what is known so far every second. `None` when
 /// cancelled.
-pub fn scan(buf: &TextBuf, cancel: &CancelToken, progress: Option<&Progress>, mut partial: impl FnMut(&Dump)) -> io::Result<Option<Dump>> {
-    let first = buf.read(0..buf.len().min(64 * 1024)).map(|b| b.to_vec()).unwrap_or_default();
+pub fn scan(
+    buf: &TextBuf,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut partial: impl FnMut(&Dump),
+) -> io::Result<Option<Dump>> {
+    let first = buf
+        .read(0..buf.len().min(64 * 1024))
+        .map(|b| b.to_vec())
+        .unwrap_or_default();
     let mut r = Reader::new(Dialect::sniff(&first));
     if let Some(p) = progress {
         p.set_total(buf.len());
@@ -814,21 +986,35 @@ pub fn scan(buf: &TextBuf, cancel: &CancelToken, progress: Option<&Progress>, mu
 }
 
 /// Writes `ranges` of `buf` to `out` one after another, each on lines of its own.
-fn write_parts<W: Write + ?Sized>(buf: &TextBuf, parts: &[Part], out: &mut W, cancel: &CancelToken, progress: Option<&Progress>, last: &mut u8) -> io::Result<Option<u64>> {
+fn write_parts<W: Write + ?Sized>(
+    buf: &TextBuf,
+    parts: &[Part],
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    last: &mut u8,
+) -> io::Result<Option<u64>> {
     let mut total = 0;
     for p in parts {
         if p.range.is_empty() {
             continue;
         }
-        let first = buf.read(p.range.start..p.range.start + 1).map(|b| b.to_vec()).unwrap_or_default();
+        let first = buf
+            .read(p.range.start..p.range.start + 1)
+            .map(|b| b.to_vec())
+            .unwrap_or_default();
         if *last != b'\n' && first.first() != Some(&b'\n') {
             out.write_all(b"\n")?;
         }
-        match crate::filter::write_range_to(buf, p.range.clone(), &mut &mut *out, cancel, progress)? {
+        match crate::filter::write_range_to(buf, p.range.clone(), &mut &mut *out, cancel, progress)?
+        {
             Some(n) => total += n,
             None => return Ok(None),
         }
-        *last = buf.read(p.range.end - 1..p.range.end).and_then(|b| b.first().copied()).unwrap_or(b'\n');
+        *last = buf
+            .read(p.range.end - 1..p.range.end)
+            .and_then(|b| b.first().copied())
+            .unwrap_or(b'\n');
         if let Some(t) = p.tail {
             out.write_all(t.as_bytes())?;
             *last = b'\n';
@@ -849,12 +1035,28 @@ fn opening(dump: &Dump, prelude: bool) -> Vec<Part> {
 }
 
 /// Writes `middle` between the opening and closing settings (when `settings`).
-fn write_file<W: Write + ?Sized>(buf: &TextBuf, dump: &Dump, middle: Vec<Part>, x: Extract, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<u64>> {
+fn write_file<W: Write + ?Sized>(
+    buf: &TextBuf,
+    dump: &Dump,
+    middle: Vec<Part>,
+    x: Extract,
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<u64>> {
     let settings = x.settings;
-    let mut all = if settings { opening(dump, x.prelude) } else { Vec::new() };
+    let mut all = if settings {
+        opening(dump, x.prelude)
+    } else {
+        Vec::new()
+    };
     all.extend(middle);
     if settings && !dump.footer.is_empty() {
-        all.push(Part { range: dump.footer.clone(), tail: None, foreign: false });
+        all.push(Part {
+            range: dump.footer.clone(),
+            tail: None,
+            foreign: false,
+        });
     }
     let mut last = b'\n';
     let r = write_parts(buf, &all, out, cancel, progress, &mut last)?;
@@ -866,22 +1068,53 @@ fn write_file<W: Write + ?Sized>(buf: &TextBuf, dump: &Dump, middle: Vec<Part>, 
 
 /// Writes tables `which` as one SQL file, with what `x` asks for. Returns the bytes written, or
 /// `None` when cancelled.
-pub fn write_tables<W: Write + ?Sized>(buf: &TextBuf, dump: &Dump, which: &[usize], x: Extract, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<u64>> {
-    let mut parts: Vec<Part> = which.iter().filter_map(|&i| dump.tables.get(i)).flat_map(|t| t.parts.iter().cloned()).filter(|p| x.foreign || !p.foreign).collect();
+pub fn write_tables<W: Write + ?Sized>(
+    buf: &TextBuf,
+    dump: &Dump,
+    which: &[usize],
+    x: Extract,
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<u64>> {
+    let mut parts: Vec<Part> = which
+        .iter()
+        .filter_map(|&i| dump.tables.get(i))
+        .flat_map(|t| t.parts.iter().cloned())
+        .filter(|p| x.foreign || !p.foreign)
+        .collect();
     parts.sort_by_key(|p| p.range.start);
     write_file(buf, dump, parts, x, out, cancel, progress)
 }
 
 /// A file name for a table: its name with characters files cannot have replaced.
 pub fn file_name(stem: &str, table: &str) -> String {
-    let clean: String = table.chars().map(|c| if c.is_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' }).collect();
+    let clean: String = table
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
     format!("{stem}.{clean}.sql")
 }
 
 /// A file name of a split dump: `0` before the tables, `1` a table, `2` after them, so the
 /// names sort in the order the files restore.
 fn split_name(stem: &str, order: u8, what: &str) -> String {
-    let clean: String = what.chars().map(|c| if c.is_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' }).collect();
+    let clean: String = what
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
     format!("{stem}.{order}-{clean}.sql")
 }
 
@@ -890,10 +1123,27 @@ fn split_name(stem: &str, order: u8, what: &str) -> String {
 /// `stem.1-TABLE.sql` per table (in any order), `stem.2-after-tables.sql` (views, functions,
 /// events and the foreign keys added after the data). Each has the dump's settings when `settings`. Returns the files with
 /// their sizes, or `None` when cancelled.
-pub fn split(buf: &TextBuf, dump: &Dump, dir: &Path, stem: &str, settings: bool, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<Vec<(PathBuf, u64)>>> {
-    let size = |parts: &[Part]| parts.iter().map(|p| p.range.end - p.range.start).sum::<u64>();
+pub fn split(
+    buf: &TextBuf,
+    dump: &Dump,
+    dir: &Path,
+    stem: &str,
+    settings: bool,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<Vec<(PathBuf, u64)>>> {
+    let size = |parts: &[Part]| {
+        parts
+            .iter()
+            .map(|p| p.range.end - p.range.start)
+            .sum::<u64>()
+    };
     if let Some(p) = progress {
-        p.set_total(dump.tables.iter().map(Table::bytes).sum::<u64>() + size(&dump.other) + size(&dump.prelude));
+        p.set_total(
+            dump.tables.iter().map(Table::bytes).sum::<u64>()
+                + size(&dump.other)
+                + size(&dump.prelude),
+        );
     }
     let mut out = Vec::new();
     let mut used: HashMap<String, u32> = HashMap::new();
@@ -906,15 +1156,37 @@ pub fn split(buf: &TextBuf, dump: &Dump, dir: &Path, stem: &str, settings: bool,
             format!("{}-{n}.sql", name.trim_end_matches(".sql"))
         }
     };
-    let write = |name: String, middle: Vec<Part>, out: &mut Vec<(PathBuf, u64)>| -> io::Result<bool> {
-        let path = dir.join(name);
-        let mut w = io::BufWriter::new(std::fs::File::create(&path)?);
-        let Some(n) = write_file(buf, dump, middle, Extract { settings, prelude: false, foreign: true }, &mut w, cancel, progress)? else { return Ok(false) };
-        w.flush()?;
-        out.push((path, n));
-        Ok(true)
-    };
-    if !dump.prelude.is_empty() && !write(unique(split_name(stem, 0, "before-tables")), dump.prelude.clone(), &mut out)? {
+    let write =
+        |name: String, middle: Vec<Part>, out: &mut Vec<(PathBuf, u64)>| -> io::Result<bool> {
+            let path = dir.join(name);
+            let mut w = io::BufWriter::new(std::fs::File::create(&path)?);
+            let Some(n) = write_file(
+                buf,
+                dump,
+                middle,
+                Extract {
+                    settings,
+                    prelude: false,
+                    foreign: true,
+                },
+                &mut w,
+                cancel,
+                progress,
+            )?
+            else {
+                return Ok(false);
+            };
+            w.flush()?;
+            out.push((path, n));
+            Ok(true)
+        };
+    if !dump.prelude.is_empty()
+        && !write(
+            unique(split_name(stem, 0, "before-tables")),
+            dump.prelude.clone(),
+            &mut out,
+        )?
+    {
         return Ok(None);
     }
     let mut after: Vec<Part> = dump.other.clone();
@@ -936,8 +1208,18 @@ pub fn split(buf: &TextBuf, dump: &Dump, dir: &Path, stem: &str, settings: bool,
 pub fn tables_csv<W: Write + ?Sized>(dump: &Dump, out: &mut W) -> io::Result<()> {
     writeln!(out, "table,rows,bytes,created")?;
     for t in &dump.tables {
-        let name = if t.name.contains([',', '"']) { format!("\"{}\"", t.name.replace('"', "\"\"")) } else { t.name.clone() };
-        writeln!(out, "{name},{},{},{}", t.rows, t.bytes(), if t.created { "yes" } else { "no" })?;
+        let name = if t.name.contains([',', '"']) {
+            format!("\"{}\"", t.name.replace('"', "\"\""))
+        } else {
+            t.name.clone()
+        };
+        writeln!(
+            out,
+            "{name},{},{},{}",
+            t.rows,
+            t.bytes(),
+            if t.created { "yes" } else { "no" }
+        )?;
     }
     Ok(())
 }
@@ -962,19 +1244,38 @@ mod tests {
 
     fn read(text: &str) -> (tempfile::TempDir, TextBuf, Dump) {
         let (d, b) = buf(text);
-        let dump = scan(&b, &CancelToken::new(), None, |_| {}).unwrap().unwrap();
+        let dump = scan(&b, &CancelToken::new(), None, |_| {})
+            .unwrap()
+            .unwrap();
         (d, b, dump)
     }
 
     fn extract(b: &TextBuf, d: &Dump, names: &[&str], settings: bool) -> String {
         let which: Vec<usize> = names.iter().map(|n| d.find(n).unwrap()).collect();
         let mut out = Vec::new();
-        write_tables(b, d, &which, if settings { Extract::WHOLE } else { Extract::BARE }, &mut out, &CancelToken::new(), None).unwrap().unwrap();
+        write_tables(
+            b,
+            d,
+            &which,
+            if settings {
+                Extract::WHOLE
+            } else {
+                Extract::BARE
+            },
+            &mut out,
+            &CancelToken::new(),
+            None,
+        )
+        .unwrap()
+        .unwrap();
         String::from_utf8(out).unwrap()
     }
 
     fn text(src: &str, parts: &[Part]) -> String {
-        parts.iter().map(|p| &src[p.range.start as usize..p.range.end as usize]).collect()
+        parts
+            .iter()
+            .map(|p| &src[p.range.start as usize..p.range.end as usize])
+            .collect()
     }
 
     const MYSQL: &str = "-- MySQL dump 10.13  Distrib 8.4.0, for Linux (x86_64)
@@ -1052,21 +1353,53 @@ DELIMITER ;
         assert_eq!((c.rows, c.created, o.rows), (4, true, 2));
         assert!(MYSQL[c.first as usize..].starts_with("CREATE TABLE `customers`"));
         let header = text(MYSQL, &d.header);
-        assert!(header.contains("SET NAMES utf8mb4") && !header.contains("Table structure"), "{header:?}");
+        assert!(
+            header.contains("SET NAMES utf8mb4") && !header.contains("Table structure"),
+            "{header:?}"
+        );
         assert!(d.prelude.is_empty());
         let footer = &MYSQL[d.footer.start as usize..d.footer.end as usize];
-        assert!(footer.contains("SET FOREIGN_KEY_CHECKS=@OLD") && footer.contains("Dump completed") && !footer.contains("VIEW") && !footer.contains("@saved"), "{footer:?}");
-        let other: String = d.other.iter().map(|p| &MYSQL[p.range.start as usize..p.range.end as usize]).collect();
-        assert!(other.contains("CREATE VIEW `big_orders`") && !other.contains("INSERT"), "{other:?}");
+        assert!(
+            footer.contains("SET FOREIGN_KEY_CHECKS=@OLD")
+                && footer.contains("Dump completed")
+                && !footer.contains("VIEW")
+                && !footer.contains("@saved"),
+            "{footer:?}"
+        );
+        let other: String = d
+            .other
+            .iter()
+            .map(|p| &MYSQL[p.range.start as usize..p.range.end as usize])
+            .collect();
+        assert!(
+            other.contains("CREATE VIEW `big_orders`") && !other.contains("INSERT"),
+            "{other:?}"
+        );
         let x = extract(&b, &d, &["orders"], true);
-        assert!(x.starts_with("-- MySQL dump") && x.contains("CREATE TABLE `orders`") && x.contains("VALUES (10,1),(11,2);") && x.contains("TRIGGER `orders_bi`"));
+        assert!(
+            x.starts_with("-- MySQL dump")
+                && x.contains("CREATE TABLE `orders`")
+                && x.contains("VALUES (10,1),(11,2);")
+                && x.contains("TRIGGER `orders_bi`")
+        );
         assert!(!x.contains("customers") && !x.contains("big_orders"), "{x}");
         // The trigger's DELIMITER ;; is ended before the closing settings.
         let after = &x[x.find("orders_bi").unwrap()..];
-        assert!(after.contains("DELIMITER ;\n") && after.find("DELIMITER ;\n") < after.find("SET FOREIGN_KEY_CHECKS"), "{after}");
-        assert!(x.trim_end().ends_with("Dump completed on 2026-11-13 10:00:00"));
+        assert!(
+            after.contains("DELIMITER ;\n")
+                && after.find("DELIMITER ;\n") < after.find("SET FOREIGN_KEY_CHECKS"),
+            "{after}"
+        );
+        assert!(x
+            .trim_end()
+            .ends_with("Dump completed on 2026-11-13 10:00:00"));
         let y = extract(&b, &d, &["customers"], false);
-        assert!(y.contains("Table structure for table `customers`") && y.contains("UNLOCK TABLES;") && !y.contains("SET NAMES"), "{y}");
+        assert!(
+            y.contains("Table structure for table `customers`")
+                && y.contains("UNLOCK TABLES;")
+                && !y.contains("SET NAMES"),
+            "{y}"
+        );
     }
 
     const PG: &str = "--
@@ -1141,30 +1474,84 @@ CREATE INDEX orders_note ON public.orders USING btree (note);
     fn a_pg_dump() {
         let (_d, b, d) = read(PG);
         assert_eq!(d.dialect, Dialect::Postgres);
-        assert_eq!(d.tables.iter().map(|t| (t.name.as_str(), t.rows)).collect::<Vec<_>>(), [("public.orders", 3), ("public.Items", 1)]);
+        assert_eq!(
+            d.tables
+                .iter()
+                .map(|t| (t.name.as_str(), t.rows))
+                .collect::<Vec<_>>(),
+            [("public.orders", 3), ("public.Items", 1)]
+        );
         assert_eq!(d.find("orders"), Some(0));
         let (header, prelude) = (text(PG, &d.header), text(PG, &d.prelude));
-        assert!(header.contains("\\restrict abc123") && header.contains("default_table_access_method") && !header.contains("FUNCTION"), "{header:?}");
-        assert!(prelude.contains("CREATE FUNCTION public.touch()") && !prelude.contains("CREATE TABLE"), "{prelude:?}");
+        assert!(
+            header.contains("\\restrict abc123")
+                && header.contains("default_table_access_method")
+                && !header.contains("FUNCTION"),
+            "{header:?}"
+        );
+        assert!(
+            prelude.contains("CREATE FUNCTION public.touch()") && !prelude.contains("CREATE TABLE"),
+            "{prelude:?}"
+        );
         let x = extract(&b, &d, &["public.orders"], true);
-        for part in ["\\restrict abc123", "CREATE TABLE public.orders", "CREATE SEQUENCE public.orders_id_seq", "OWNED BY public.orders.id", "SET DEFAULT nextval", "COPY public.orders", "first; with a semicolon\n2\t'quoted'\n3\t\\N\n\\.", "setval('public.orders_id_seq', 3, true)", "orders_pkey", "CREATE INDEX orders_note", "\\unrestrict abc123"] {
+        for part in [
+            "\\restrict abc123",
+            "CREATE TABLE public.orders",
+            "CREATE SEQUENCE public.orders_id_seq",
+            "OWNED BY public.orders.id",
+            "SET DEFAULT nextval",
+            "COPY public.orders",
+            "first; with a semicolon\n2\t'quoted'\n3\t\\N\n\\.",
+            "setval('public.orders_id_seq', 3, true)",
+            "orders_pkey",
+            "CREATE INDEX orders_note",
+            "\\unrestrict abc123",
+        ] {
             assert!(x.contains(part), "{part:?} missing in {x}");
         }
-        assert!(!x.contains("CREATE TABLE public.\"Items\"") && !x.contains("COPY public.\"Items\""), "{x}");
+        assert!(
+            !x.contains("CREATE TABLE public.\"Items\"") && !x.contains("COPY public.\"Items\""),
+            "{x}"
+        );
         // In the dump's order: the sequence after the table, the data before the keys.
-        assert!(x.find("CREATE TABLE public.orders") < x.find("CREATE SEQUENCE") && x.find("COPY public.orders") < x.find("orders_pkey"));
+        assert!(
+            x.find("CREATE TABLE public.orders") < x.find("CREATE SEQUENCE")
+                && x.find("COPY public.orders") < x.find("orders_pkey")
+        );
         assert!(d.other.is_empty(), "{:?}", d.other);
         assert!(x.contains("orders_item_fkey"));
         let dir = tempfile::tempdir().unwrap();
-        let files = split(&b, &d, dir.path(), "pg", true, &CancelToken::new(), None).unwrap().unwrap();
-        let names: Vec<String> = files.iter().map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
-        assert_eq!(names, ["pg.0-before-tables.sql", "pg.1-public.orders.sql", "pg.1-public.Items.sql", "pg.2-after-tables.sql"]);
+        let files = split(&b, &d, dir.path(), "pg", true, &CancelToken::new(), None)
+            .unwrap()
+            .unwrap();
+        let names: Vec<String> = files
+            .iter()
+            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "pg.0-before-tables.sql",
+                "pg.1-public.orders.sql",
+                "pg.1-public.Items.sql",
+                "pg.2-after-tables.sql"
+            ]
+        );
         let read = |n: &str| std::fs::read_to_string(dir.path().join(n)).unwrap();
         assert!(read("pg.0-before-tables.sql").contains("CREATE FUNCTION public.touch()"));
         let orders = read("pg.1-public.orders.sql");
-        assert!(!orders.contains("FUNCTION") && !orders.contains("orders_item_fkey") && orders.contains("orders_pkey"));
+        assert!(
+            !orders.contains("FUNCTION")
+                && !orders.contains("orders_item_fkey")
+                && orders.contains("orders_pkey")
+        );
         let after = read("pg.2-after-tables.sql");
-        assert!(after.contains("orders_item_fkey") && after.starts_with("--\n-- PostgreSQL database dump") && after.trim_end().ends_with("\\unrestrict abc123"), "{after}");
+        assert!(
+            after.contains("orders_item_fkey")
+                && after.starts_with("--\n-- PostgreSQL database dump")
+                && after.trim_end().ends_with("\\unrestrict abc123"),
+            "{after}"
+        );
     }
 
     #[test]
@@ -1172,27 +1559,95 @@ CREATE INDEX orders_note ON public.orders USING btree (note);
         let text = "PRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\nCREATE TABLE t(a,b);\nINSERT INTO t VALUES(1,'x;y');\nINSERT INTO t VALUES(2,'z');\nCREATE TABLE \"u v\"(c);\nINSERT INTO \"u v\" VALUES('(');\nCREATE VIEW w AS SELECT a FROM t;\nCOMMIT;\n";
         let (dir, b, d) = read(text);
         assert_eq!(d.dialect, Dialect::Sqlite);
-        assert_eq!(d.tables.iter().map(|t| (t.name.as_str(), t.rows)).collect::<Vec<_>>(), [("t", 2), ("u v", 1)]);
+        assert_eq!(
+            d.tables
+                .iter()
+                .map(|t| (t.name.as_str(), t.rows))
+                .collect::<Vec<_>>(),
+            [("t", 2), ("u v", 1)]
+        );
         assert_eq!(extract(&b, &d, &["t"], true), "PRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\nCREATE TABLE t(a,b);\nINSERT INTO t VALUES(1,'x;y');\nINSERT INTO t VALUES(2,'z');\nCOMMIT;\n");
-        let files = split(&b, &d, dir.path(), "d", true, &CancelToken::new(), None).unwrap().unwrap();
-        let names: Vec<String> = files.iter().map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        let files = split(&b, &d, dir.path(), "d", true, &CancelToken::new(), None)
+            .unwrap()
+            .unwrap();
+        let names: Vec<String> = files
+            .iter()
+            .map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
         assert_eq!(names, ["d.1-t.sql", "d.1-u_v.sql", "d.2-after-tables.sql"]);
         assert_eq!(std::fs::read_to_string(dir.path().join("d.2-after-tables.sql")).unwrap(), "PRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\nCREATE VIEW w AS SELECT a FROM t;\nCOMMIT;\n");
         let mut csv = Vec::new();
         tables_csv(&d, &mut csv).unwrap();
-        assert!(String::from_utf8(csv).unwrap().starts_with("table,rows,bytes,created\nt,2,"));
+        assert!(String::from_utf8(csv)
+            .unwrap()
+            .starts_with("table,rows,bytes,created\nt,2,"));
     }
 
     #[test]
     fn statement_starts() {
-        assert_eq!(classify(b"INSERT IGNORE INTO `a`.`b c` (x) VALUES (1)"), Stmt::Table { name: "a.b c".into(), create: false, insert: true, columns: true, copy: false, foreign: false });
-        assert_eq!(classify(b"/*!40000 ALTER TABLE `t` DISABLE KEYS */"), Stmt::Table { name: "t".into(), create: false, insert: false, columns: false, copy: false, foreign: false });
-        assert_eq!(classify(b"CREATE UNIQUE INDEX i ON ONLY public.t USING btree (a)"), Stmt::Table { name: "public.t".into(), create: false, insert: false, columns: false, copy: false, foreign: false });
-        assert_eq!(classify(b"INSERT OR REPLACE INTO t VALUES(1)"), Stmt::Table { name: "t".into(), create: false, insert: true, columns: false, copy: false, foreign: false });
-        assert_eq!(classify(b"ALTER SEQUENCE s OWNED BY public.t.id"), Stmt::Sequence { name: "s".into(), owner: Some("public.t".into()) });
-        assert_eq!(classify(b"SELECT pg_catalog.setval('public.s', 3, true)"), Stmt::Sequence { name: "public.s".into(), owner: None });
+        assert_eq!(
+            classify(b"INSERT IGNORE INTO `a`.`b c` (x) VALUES (1)"),
+            Stmt::Table {
+                name: "a.b c".into(),
+                create: false,
+                insert: true,
+                columns: true,
+                copy: false,
+                foreign: false
+            }
+        );
+        assert_eq!(
+            classify(b"/*!40000 ALTER TABLE `t` DISABLE KEYS */"),
+            Stmt::Table {
+                name: "t".into(),
+                create: false,
+                insert: false,
+                columns: false,
+                copy: false,
+                foreign: false
+            }
+        );
+        assert_eq!(
+            classify(b"CREATE UNIQUE INDEX i ON ONLY public.t USING btree (a)"),
+            Stmt::Table {
+                name: "public.t".into(),
+                create: false,
+                insert: false,
+                columns: false,
+                copy: false,
+                foreign: false
+            }
+        );
+        assert_eq!(
+            classify(b"INSERT OR REPLACE INTO t VALUES(1)"),
+            Stmt::Table {
+                name: "t".into(),
+                create: false,
+                insert: true,
+                columns: false,
+                copy: false,
+                foreign: false
+            }
+        );
+        assert_eq!(
+            classify(b"ALTER SEQUENCE s OWNED BY public.t.id"),
+            Stmt::Sequence {
+                name: "s".into(),
+                owner: Some("public.t".into())
+            }
+        );
+        assert_eq!(
+            classify(b"SELECT pg_catalog.setval('public.s', 3, true)"),
+            Stmt::Sequence {
+                name: "public.s".into(),
+                owner: None
+            }
+        );
         assert_eq!(classify(b"/*!40101 SET NAMES utf8mb4 */"), Stmt::Setting);
-        assert_eq!(classify(b"CREATE VIEW v AS SELECT 1"), Stmt::View("v".into()));
+        assert_eq!(
+            classify(b"CREATE VIEW v AS SELECT 1"),
+            Stmt::View("v".into())
+        );
         assert_eq!(classify(b"/*!50001 CREATE ALGORITHM=UNDEFINED */ /*!50013 DEFINER=`root`@`%` SQL SECURITY DEFINER */ /*!50001 VIEW `v w` AS select 1"), Stmt::View("v w".into()));
     }
 }

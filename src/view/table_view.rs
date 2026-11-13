@@ -8,7 +8,10 @@
 use std::collections::BTreeSet;
 use std::ops::Range;
 
-use egui::{pos2, vec2, Align, Align2, Color32, CursorIcon, Event, EventFilter, FontId, Key, Layout, Painter, Rect, Sense, Stroke, Ui, UiBuilder};
+use egui::{
+    pos2, vec2, Align, Align2, Color32, CursorIcon, Event, EventFilter, FontId, Key, Layout,
+    Painter, Rect, Sense, Stroke, Ui, UiBuilder,
+};
 
 use bigtext::csv::{self, Dialect, DELIMITERS};
 use bigtext::text::rows::{self, Pending, Row};
@@ -77,7 +80,9 @@ pub const LAYOUT_COLUMNS_MAX: usize = 64;
 
 /// FNV-1a (stable across builds, unlike `DefaultHasher`).
 pub fn fnv1a(b: &[u8]) -> u64 {
-    b.iter().fold(0xcbf2_9ce4_8422_2325, |h, &x| (h ^ x as u64).wrapping_mul(0x0000_0100_0000_01b3))
+    b.iter().fold(0xcbf2_9ce4_8422_2325, |h, &x| {
+        (h ^ x as u64).wrapping_mul(0x0000_0100_0000_01b3)
+    })
 }
 
 impl Default for TableState {
@@ -123,8 +128,22 @@ impl TableState {
         if !self.custom {
             return None;
         }
-        let fixed = self.widths.iter().zip(&self.fixed).enumerate().filter(|(_, (_, &f))| f).map(|(c, (&w, _))| (c as u16, w)).take(LAYOUT_COLUMNS_MAX).collect();
-        Some(TableLayout { delim: d.delim, header: self.header, sig, fixed, scroll_x: self.scroll_x })
+        let fixed = self
+            .widths
+            .iter()
+            .zip(&self.fixed)
+            .enumerate()
+            .filter(|(_, (_, &f))| f)
+            .map(|(c, (&w, _))| (c as u16, w))
+            .take(LAYOUT_COLUMNS_MAX)
+            .collect();
+        Some(TableLayout {
+            delim: d.delim,
+            header: self.header,
+            sig,
+            fixed,
+            scroll_x: self.scroll_x,
+        })
     }
 
     /// Splits the columns at `delim` instead (the toolbar's Delimiter).
@@ -178,7 +197,12 @@ impl TableState {
         // The first line changed on purpose; take the new one as it is.
         self.first_line = None;
         let gone = |c: usize| cols.iter().filter(|&&d| d < c).count();
-        self.hidden = self.hidden.iter().filter(|c| !cols.contains(c)).map(|&c| c - gone(c)).collect();
+        self.hidden = self
+            .hidden
+            .iter()
+            .filter(|c| !cols.contains(c))
+            .map(|&c| c - gone(c))
+            .collect();
         self.frozen -= gone(self.frozen);
     }
 
@@ -210,35 +234,71 @@ impl TableState {
 
 pub enum TableAction {
     /// Delete these columns (sorted) with their values from every row, after asking.
-    DeleteColumns { cols: Vec<usize>, names: Vec<String> },
-    Sort { col: usize, desc: bool },
-    Stats { col: usize },
-    Filter { col: usize, name: String },
-    Rename { col: usize, name: String },
+    DeleteColumns {
+        cols: Vec<usize>,
+        names: Vec<String>,
+    },
+    Sort {
+        col: usize,
+        desc: bool,
+    },
+    Stats {
+        col: usize,
+    },
+    Filter {
+        col: usize,
+        name: String,
+    },
+    Rename {
+        col: usize,
+        name: String,
+    },
     /// Exchange column `col` with its neighbour.
-    Move { col: usize, right: bool },
+    Move {
+        col: usize,
+        right: bool,
+    },
     /// Write these columns (sorted) to a new file.
-    Export { cols: Vec<usize> },
+    Export {
+        cols: Vec<usize>,
+    },
     /// Write these columns (all when `None`) as JSON, JSON Lines, Markdown or Excel.
-    ExportAs { cols: Option<Vec<usize>>, format: bigtext::table_export::Format },
+    ExportAs {
+        cols: Option<Vec<usize>>,
+        format: bigtext::table_export::Format,
+    },
     /// Count (and sum) the rows per value of this column.
-    GroupBy { col: usize },
+    GroupBy {
+        col: usize,
+    },
     /// Rows that meet several conditions, starting with one on this column.
-    Conditions { col: usize },
+    Conditions {
+        col: usize,
+    },
     /// Check every row (field counts, quotes, numbers).
     CheckRows,
     /// A pivot table with this column's values as rows.
-    Pivot { col: usize },
+    Pivot {
+        col: usize,
+    },
     /// Compare with another table by this column as the key.
-    CompareBy { col: usize },
+    CompareBy {
+        col: usize,
+    },
     /// A new last column computed by an expression.
     AddColumn,
     /// The distribution of a column's values, under the table.
-    Chart { col: usize },
+    Chart {
+        col: usize,
+    },
     /// Keep columns 0..upto on the left (0: none).
-    Freeze { upto: usize },
+    Freeze {
+        upto: usize,
+    },
     /// Leave these columns out of the view.
-    Hide { cols: Vec<usize> },
+    Hide {
+        cols: Vec<usize>,
+    },
 }
 
 pub struct TableEnv<'a> {
@@ -267,18 +327,25 @@ impl Line {
     /// Index of the field holding document offset `off`.
     fn field_at(&self, off: u64) -> Option<usize> {
         let rel = off.checked_sub(self.base)? as usize;
-        self.fields.iter().position(|r| rel >= r.start && rel <= r.end)
+        self.fields
+            .iter()
+            .position(|r| rel >= r.start && rel <= r.end)
     }
 }
 
 /// Control characters (tabs, line breaks inside quotes) show as spaces.
 fn display(s: &str) -> String {
-    s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect()
+    s.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect()
 }
 
 fn is_number(s: &str) -> bool {
     let t = s.trim();
-    t.bytes().any(|b| b.is_ascii_digit()) && t.bytes().all(|b| b.is_ascii_digit() || b"+-.eE".contains(&b)) && t.parse::<f64>().is_ok()
+    t.bytes().any(|b| b.is_ascii_digit())
+        && t.bytes()
+            .all(|b| b.is_ascii_digit() || b"+-.eE".contains(&b))
+        && t.parse::<f64>().is_ok()
 }
 
 fn read_line(doc: &Document, d: Dialect, row: Row) -> Option<Line> {
@@ -286,7 +353,12 @@ fn read_line(doc: &Document, d: Dialect, row: Row) -> Option<Line> {
     let bytes = doc.buf.read(base..row.end.max(base))?.to_vec();
     let mut fields = Vec::new();
     csv::split_fields(&doc.buf.codec, d, &bytes, &mut fields);
-    Some(Line { row, base, bytes, fields })
+    Some(Line {
+        row,
+        base,
+        bytes,
+        fields,
+    })
 }
 
 fn detect_dialect(doc: &mut Document) {
@@ -296,12 +368,20 @@ fn detect_dialect(doc: &mut Document) {
     let start = doc.min_caret();
     let end = (start + 64 * 1024).min(doc.buf.len());
     // Not loaded yet (slow drive): try again on the next frame.
-    let Some(sample) = doc.buf.read(start..end) else { return };
+    let Some(sample) = doc.buf.read(start..end) else {
+        return;
+    };
     let preferred = match doc.effective_lang() {
         Lang::Csv(sep) => sep,
         _ => b',',
     };
-    let g = csv::detect_table(&doc.buf.codec, &sample, end == doc.buf.len(), preferred, start);
+    let g = csv::detect_table(
+        &doc.buf.codec,
+        &sample,
+        end == doc.buf.len(),
+        preferred,
+        start,
+    );
     let st = &mut doc.table_state;
     st.dialect = Some(g.dialect);
     st.header = g.header;
@@ -310,9 +390,13 @@ fn detect_dialect(doc: &mut Document) {
 
 /// Starts the table after `skip` lines (from the menu), keeping the delimiter and quote.
 fn set_skip(doc: &mut Document, skip: usize) {
-    let Some(mut d) = doc.table_state.dialect else { return };
+    let Some(mut d) = doc.table_state.dialect else {
+        return;
+    };
     let start = doc.min_caret();
-    let Some(sample) = doc.buf.read(start..(start + (1 << 20)).min(doc.buf.len())) else { return };
+    let Some(sample) = doc.buf.read(start..(start + (1 << 20)).min(doc.buf.len())) else {
+        return;
+    };
     let codec = doc.buf.codec;
     let unit = codec.unit();
     let mut at = 0;
@@ -335,18 +419,29 @@ fn set_skip(doc: &mut Document, skip: usize) {
 /// Puts back the layout remembered for the file when its first line is still the one it was
 /// saved with; otherwise the columns may have moved, and it is dropped.
 fn apply_pending(doc: &mut Document) {
-    let Some(d) = doc.table_state.dialect else { return };
+    let Some(d) = doc.table_state.dialect else {
+        return;
+    };
     let start = d.first(&doc.buf).max(doc.min_caret());
-    let Ok(head) = rows::row_at(&doc.buf, start, None) else { return };
-    let Some(first) = doc.buf.read(head.start..head.end) else { return };
-    let Some(p) = doc.table_state.pending.take() else { return };
+    let Ok(head) = rows::row_at(&doc.buf, start, None) else {
+        return;
+    };
+    let Some(first) = doc.buf.read(head.start..head.end) else {
+        return;
+    };
+    let Some(p) = doc.table_state.pending.take() else {
+        return;
+    };
     let sig = fnv1a(&first);
     if p.sig != sig {
         return;
     }
     let st = &mut doc.table_state;
     st.reset_columns();
-    st.dialect = Some(Dialect { delim: p.delim, ..d });
+    st.dialect = Some(Dialect {
+        delim: p.delim,
+        ..d
+    });
     st.header = p.header;
     for &(c, w) in p.fixed.iter().take(LAYOUT_COLUMNS_MAX) {
         let c = c as usize;
@@ -373,7 +468,9 @@ fn step(doc: &mut Document, n: i64) {
 
 pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     let font = FontId::monospace(*env.font_size / ui.ctx().zoom_factor());
-    let (cw, fh) = ui.ctx().fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
+    let (cw, fh) = ui
+        .ctx()
+        .fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
     let cw = cw.max(1.0);
     let rh = (fh + 8.0).round();
     let full = ui.available_rect_before_wrap();
@@ -392,12 +489,28 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     let toolbar_rect = Rect::from_min_max(full.min, pos2(full.right(), full.top() + TOOLBAR_H));
     let area = Rect::from_min_max(pos2(full.left(), toolbar_rect.bottom()), full.max);
     let (line_est, _) = doc.buf.line_count();
-    let gutter_w = if env.show_gutter { text_view::digits(line_est).max(3) as f32 * cw + 16.0 } else { 0.0 };
-    let header_rect = Rect::from_min_max(pos2(area.left() + gutter_w, area.top()), pos2(area.right() - SCROLLBAR, area.top() + rh));
-    let body = Rect::from_min_max(pos2(header_rect.left(), header_rect.bottom()), pos2(header_rect.right(), area.bottom() - SCROLLBAR));
+    let gutter_w = if env.show_gutter {
+        text_view::digits(line_est).max(3) as f32 * cw + 16.0
+    } else {
+        0.0
+    };
+    let header_rect = Rect::from_min_max(
+        pos2(area.left() + gutter_w, area.top()),
+        pos2(area.right() - SCROLLBAR, area.top() + rh),
+    );
+    let body = Rect::from_min_max(
+        pos2(header_rect.left(), header_rect.bottom()),
+        pos2(header_rect.right(), area.bottom() - SCROLLBAR),
+    );
     let gutter = Rect::from_min_max(area.min, pos2(header_rect.left(), body.bottom()));
-    let vbar = Rect::from_min_max(pos2(body.right(), area.top()), pos2(area.right(), body.bottom()));
-    let hbar = Rect::from_min_max(pos2(body.left(), body.bottom()), pos2(body.right(), area.bottom()));
+    let vbar = Rect::from_min_max(
+        pos2(body.right(), area.top()),
+        pos2(area.right(), body.bottom()),
+    );
+    let hbar = Rect::from_min_max(
+        pos2(body.left(), body.bottom()),
+        pos2(body.right(), area.bottom()),
+    );
     let n_rows = ((body.height() / rh).ceil() as usize).max(1);
 
     let mut pending = false;
@@ -427,10 +540,24 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
 
     // Input, against the current layout.
     let resp = ui.interact(body, id, Sense::click_and_drag());
-    if env.focus && (resp.clicked() || resp.is_pointer_button_down_on() || ui.memory(|m| m.focused().is_none())) {
+    if env.focus
+        && (resp.clicked()
+            || resp.is_pointer_button_down_on()
+            || ui.memory(|m| m.focused().is_none()))
+    {
         resp.request_focus();
     }
-    ui.memory_mut(|m| m.set_focus_lock_filter(id, EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }));
+    ui.memory_mut(|m| {
+        m.set_focus_lock_filter(
+            id,
+            EventFilter {
+                tab: false,
+                horizontal_arrows: true,
+                vertical_arrows: true,
+                escape: false,
+            },
+        )
+    });
     let mut delete_key = false;
     if doc.is_ready() {
         if ui.rect_contains_pointer(area) {
@@ -479,32 +606,64 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
             }
         }
     }
-    let head_line = if doc.table_state.header { head.and_then(|h| read_line(doc, dialect, h)) } else { None };
+    let head_line = if doc.table_state.header {
+        head.and_then(|h| read_line(doc, dialect, h))
+    } else {
+        None
+    };
 
     // Columns: measure the visible ones, then lay out.
-    let ncols = lines.iter().chain(head_line.as_ref()).map(|l| l.fields.len()).max().unwrap_or(0).max(doc.table_state.widths.len());
+    let ncols = lines
+        .iter()
+        .chain(head_line.as_ref())
+        .map(|l| l.fields.len())
+        .max()
+        .unwrap_or(0)
+        .max(doc.table_state.widths.len());
     let st = &mut doc.table_state;
     st.widths.resize(ncols, 0.0);
     st.fixed.resize(ncols, false);
     let default_w = (DEFAULT_CHARS as f32 + 1.0) * cw + 2.0 * PAD;
     let name = |col: usize| -> String {
         match &head_line {
-            Some(h) => h.value(&codec, dialect, col).filter(|s| !s.trim().is_empty()).unwrap_or_else(|| format!("({})", col + 1)),
+            Some(h) => h
+                .value(&codec, dialect, col)
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| format!("({})", col + 1)),
             None => tr_f("Column {n}", &[("n", &(col + 1).to_string())]),
         }
     };
     st.hidden.retain(|&c| c < ncols);
-    let measure: Vec<usize> = visible_columns(&st.widths, default_w, st.scroll_x, body.width()).collect();
+    let measure: Vec<usize> =
+        visible_columns(&st.widths, default_w, st.scroll_x, body.width()).collect();
     for col in measure {
         if st.fixed[col] || st.hidden.contains(&col) {
             continue;
         }
-        let chars = lines.iter().filter_map(|l| l.value(&codec, dialect, col)).map(|v| v.chars().count()).chain([name(col).chars().count() + 1]).max().unwrap_or(0);
+        let chars = lines
+            .iter()
+            .filter_map(|l| l.value(&codec, dialect, col))
+            .map(|v| v.chars().count())
+            .chain([name(col).chars().count() + 1])
+            .max()
+            .unwrap_or(0);
         let want = (chars.clamp(MIN_CHARS, MAX_AUTO_CHARS) as f32 + 1.0) * cw + 2.0 * PAD;
         st.widths[col] = st.widths[col].max(want);
     }
-    let width = |st: &TableState, col: usize| if st.widths[col] > 0.0 { st.widths[col] } else { default_w };
-    let shown_w = |st: &TableState, col: usize| if st.hidden.contains(&col) { 0.0 } else { width(st, col) };
+    let width = |st: &TableState, col: usize| {
+        if st.widths[col] > 0.0 {
+            st.widths[col]
+        } else {
+            default_w
+        }
+    };
+    let shown_w = |st: &TableState, col: usize| {
+        if st.hidden.contains(&col) {
+            0.0
+        } else {
+            width(st, col)
+        }
+    };
     let mut xs = Vec::with_capacity(ncols + 1);
     xs.push(0.0f32);
     for col in 0..ncols {
@@ -526,13 +685,24 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     let right = |col: usize| body.left() + xs[col + 1] - shift(col);
     let split = body.left() + strip;
     // The part of `r` a column may paint in: the frozen strip, or right of it.
-    let clip_of = |col: usize, r: Rect| if col < frozen { Rect::from_min_max(r.min, pos2(r.right().min(split), r.bottom())) } else { Rect::from_min_max(pos2(r.left().max(split), r.top()), r.max) };
-    let visible: Vec<usize> = (0..ncols).filter(|&c| !st.hidden.contains(&c) && (c < frozen || (right(c) > split && left(c) < body.right()))).collect();
+    let clip_of = |col: usize, r: Rect| {
+        if col < frozen {
+            Rect::from_min_max(r.min, pos2(r.right().min(split), r.bottom()))
+        } else {
+            Rect::from_min_max(pos2(r.left().max(split), r.top()), r.max)
+        }
+    };
+    let visible: Vec<usize> = (0..ncols)
+        .filter(|&c| {
+            !st.hidden.contains(&c) && (c < frozen || (right(c) > split && left(c) < body.right()))
+        })
+        .collect();
     st.selected.retain(|&c| c < ncols);
     let selected = st.selected.clone();
 
     // Toolbar (it may ask to delete the selected columns), and the Delete key.
-    ui.painter().rect_filled(toolbar_rect, 0.0, visuals.faint_bg_color);
+    ui.painter()
+        .rect_filled(toolbar_rect, 0.0, visuals.faint_bg_color);
     let can_delete = !selected.is_empty() && selected.len() < ncols && doc.editable();
     let request = toolbar(ui, doc, toolbar_rect, ncols, can_delete) || (delete_key && can_delete);
     if request {
@@ -544,20 +714,39 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     // Paint.
     let painter = ui.painter_at(area);
     let grid = visuals.widgets.noninteractive.bg_stroke.color;
-    let zebra = if visuals.dark_mode { Color32::from_white_alpha(6) } else { Color32::from_black_alpha(8) };
+    let zebra = if visuals.dark_mode {
+        Color32::from_white_alpha(6)
+    } else {
+        Color32::from_black_alpha(8)
+    };
     let text_color = visuals.text_color();
     let weak = visuals.weak_text_color();
     painter.rect_filled(area, 0.0, visuals.extreme_bg_color);
     painter.rect_filled(gutter, 0.0, visuals.faint_bg_color);
-    painter.rect_filled(header_rect.union(Rect::from_min_max(pos2(gutter.left(), header_rect.top()), header_rect.max)), 0.0, visuals.faint_bg_color);
+    painter.rect_filled(
+        header_rect.union(Rect::from_min_max(
+            pos2(gutter.left(), header_rect.top()),
+            header_rect.max,
+        )),
+        0.0,
+        visuals.faint_bg_color,
+    );
     let body_painter = painter.with_clip_rect(body);
     let sel_tint = visuals.selection.bg_fill.gamma_multiply(0.35);
     for &col in visible.iter().filter(|c| selected.contains(c)) {
-        let r = Rect::from_min_max(pos2(left(col), body.top()), pos2(right(col), body.top() + lines.len() as f32 * rh));
-        body_painter.with_clip_rect(clip_of(col, body)).rect_filled(r, 0.0, sel_tint);
+        let r = Rect::from_min_max(
+            pos2(left(col), body.top()),
+            pos2(right(col), body.top() + lines.len() as f32 * rh),
+        );
+        body_painter
+            .with_clip_rect(clip_of(col, body))
+            .rect_filled(r, 0.0, sel_tint);
     }
     let caret = doc.view.caret;
-    let (mut line, line_exact) = lines.first().map(|l| doc.buf.line_of(l.row.start)).unwrap_or((0, true));
+    let (mut line, line_exact) = lines
+        .first()
+        .map(|l| doc.buf.line_of(l.row.start))
+        .unwrap_or((0, true));
     for (i, l) in lines.iter().enumerate() {
         let y = body.top() + i as f32 * rh;
         let row_rect = Rect::from_min_max(pos2(body.left(), y), pos2(body.right(), y + rh));
@@ -569,14 +758,30 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
             body_painter.rect_filled(row_rect, 0.0, zebra);
         }
         for &col in &visible {
-            let Some(v) = l.value(&codec, dialect, col) else { continue };
+            let Some(v) = l.value(&codec, dialect, col) else {
+                continue;
+            };
             let cell = Rect::from_min_max(pos2(left(col), y), pos2(right(col), y + rh));
-            paint_text(&body_painter.with_clip_rect(clip_of(col, cell.intersect(body))), cell, &v, &font, text_color, cw, is_number(&v));
+            paint_text(
+                &body_painter.with_clip_rect(clip_of(col, cell.intersect(body))),
+                cell,
+                &v,
+                &font,
+                text_color,
+                cw,
+                is_number(&v),
+            );
         }
         if caret >= l.row.start && caret <= l.row.end.max(l.row.start) {
             if let Some(col) = l.field_at(caret) {
-                let cell = Rect::from_min_max(pos2(left(col), y), pos2(right(col), y + rh)).shrink(1.0);
-                body_painter.with_clip_rect(clip_of(col, body)).rect_stroke(cell, 2.0, Stroke::new(1.5, visuals.selection.stroke.color), egui::StrokeKind::Inside);
+                let cell =
+                    Rect::from_min_max(pos2(left(col), y), pos2(right(col), y + rh)).shrink(1.0);
+                body_painter.with_clip_rect(clip_of(col, body)).rect_stroke(
+                    cell,
+                    2.0,
+                    Stroke::new(1.5, visuals.selection.stroke.color),
+                    egui::StrokeKind::Inside,
+                );
             }
         }
         let label = match (starts_line, line_exact, l.row.seg.line_start) {
@@ -585,32 +790,75 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
             (false, _, false) if l.row.is_first_in_seg() => "↪".into(),
             _ => String::new(),
         };
-        painter.text(pos2(gutter.right() - 8.0, y + rh / 2.0), Align2::RIGHT_CENTER, label, font.clone(), weak);
+        painter.text(
+            pos2(gutter.right() - 8.0, y + rh / 2.0),
+            Align2::RIGHT_CENTER,
+            label,
+            font.clone(),
+            weak,
+        );
         body_painter.hline(body.x_range(), y + rh, Stroke::new(0.5, grid));
     }
     for &col in &visible {
         let x = right(col);
-        painter.with_clip_rect(clip_of(col, header_rect.union(body)).expand2(vec2(1.0, 0.0))).vline(x, header_rect.top()..=body.top() + lines.len() as f32 * rh, Stroke::new(1.0, grid));
+        painter
+            .with_clip_rect(clip_of(col, header_rect.union(body)).expand2(vec2(1.0, 0.0)))
+            .vline(
+                x,
+                header_rect.top()..=body.top() + lines.len() as f32 * rh,
+                Stroke::new(1.0, grid),
+            );
     }
-    painter.hline(gutter.left()..=header_rect.right(), header_rect.bottom(), Stroke::new(1.0, grid));
-    painter.text(pos2(gutter.right() - 8.0, header_rect.center().y), Align2::RIGHT_CENTER, "#", font.clone(), weak);
+    painter.hline(
+        gutter.left()..=header_rect.right(),
+        header_rect.bottom(),
+        Stroke::new(1.0, grid),
+    );
+    painter.text(
+        pos2(gutter.right() - 8.0, header_rect.center().y),
+        Align2::RIGHT_CENTER,
+        "#",
+        font.clone(),
+        weak,
+    );
 
     // Header cells: names, selection, tooltips and resize handles.
     let header_painter = painter.with_clip_rect(header_rect);
     let strong = visuals.strong_text_color();
     let mut header_cells = Vec::with_capacity(visible.len());
     for &col in &visible {
-        let cell = Rect::from_min_max(pos2(left(col), header_rect.top()), pos2(right(col), header_rect.bottom()));
+        let cell = Rect::from_min_max(
+            pos2(left(col), header_rect.top()),
+            pos2(right(col), header_rect.bottom()),
+        );
         let on = selected.contains(&col);
         if on {
-            header_painter.rect_filled(cell.shrink2(vec2(0.5, 0.0)), 0.0, visuals.selection.bg_fill);
+            header_painter.rect_filled(
+                cell.shrink2(vec2(0.5, 0.0)),
+                0.0,
+                visuals.selection.bg_fill,
+            );
         }
         let n = name(col);
-        let color = if on { visuals.selection.stroke.color } else { strong };
+        let color = if on {
+            visuals.selection.stroke.color
+        } else {
+            strong
+        };
         let hit = clip_of(col, cell.intersect(header_rect));
-        paint_text(&header_painter.with_clip_rect(hit), cell, &n, &font, color, cw, false);
+        paint_text(
+            &header_painter.with_clip_rect(hit),
+            cell,
+            &n,
+            &font,
+            color,
+            cw,
+            false,
+        );
         let r = ui.interact(hit, id.with(("head", col)), Sense::click());
-        r.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, on, &n));
+        r.widget_info(|| {
+            egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, on, &n)
+        });
         if r.clicked() {
             let m = ui.input(|i| i.modifiers);
             doc.table_state.click_header(col, m);
@@ -619,17 +867,34 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         let editable = doc.editable();
         // The menu acts on the selected columns when it opens on one of them.
         r.context_menu(|ui| {
-            let cols: Vec<usize> = if selected.contains(&col) { selected.iter().copied().collect() } else { vec![col] };
+            let cols: Vec<usize> = if selected.contains(&col) {
+                selected.iter().copied().collect()
+            } else {
+                vec![col]
+            };
             let names: Vec<String> = cols.iter().map(|&c| name(c)).collect();
             column_menu(ui, env.actions, col, &n, ncols, cols, names, editable);
             ui.separator();
             let unfreeze = frozen == col + 1;
-            if ui.button(tr(if unfreeze { "Unfreeze columns" } else { "Freeze columns up to here" })).clicked() {
-                env.actions.push(TableAction::Freeze { upto: if unfreeze { 0 } else { col + 1 } });
+            if ui
+                .button(tr(if unfreeze {
+                    "Unfreeze columns"
+                } else {
+                    "Freeze columns up to here"
+                }))
+                .clicked()
+            {
+                env.actions.push(TableAction::Freeze {
+                    upto: if unfreeze { 0 } else { col + 1 },
+                });
                 ui.close();
             }
             if ui.button(tr("Hide from the view")).clicked() {
-                let cols: Vec<usize> = if selected.contains(&col) { selected.iter().copied().collect() } else { vec![col] };
+                let cols: Vec<usize> = if selected.contains(&col) {
+                    selected.iter().copied().collect()
+                } else {
+                    vec![col]
+                };
                 env.actions.push(TableAction::Hide { cols });
                 ui.close();
             }
@@ -644,7 +909,10 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
     doc.table_state.header_cells = header_cells;
     for &col in &visible {
         let x = right(col);
-        let handle = Rect::from_min_max(pos2(x - 4.0, header_rect.top()), pos2(x + 4.0, header_rect.bottom()));
+        let handle = Rect::from_min_max(
+            pos2(x - 4.0, header_rect.top()),
+            pos2(x + 4.0, header_rect.bottom()),
+        );
         if !header_rect.intersects(handle) {
             continue;
         }
@@ -669,12 +937,22 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
 
     // Clicks in the body: a click puts the caret in the cell, a double click opens it in the
     // text view.
-    if let Some(pos) = resp.interact_pointer_pos().filter(|_| resp.clicked() || resp.double_clicked()) {
+    if let Some(pos) = resp
+        .interact_pointer_pos()
+        .filter(|_| resp.clicked() || resp.double_clicked())
+    {
         let double = resp.double_clicked();
         let i = ((pos.y - body.top()) / rh).floor().max(0.0) as usize;
-        let col = visible.iter().copied().find(|&c| pos.x >= left(c) && pos.x < right(c) && (c < frozen || pos.x >= split));
+        let col = visible
+            .iter()
+            .copied()
+            .find(|&c| pos.x >= left(c) && pos.x < right(c) && (c < frozen || pos.x >= split));
         if let (Some(l), Some(col)) = (lines.get(i), col) {
-            let off = l.fields.get(col).map(|r| l.base + r.start as u64).unwrap_or(l.row.end);
+            let off = l
+                .fields
+                .get(col)
+                .map(|r| l.base + r.start as u64)
+                .unwrap_or(l.row.end);
             doc.set_caret(off, false);
             doc.view.desired_cell = None;
             if double {
@@ -692,12 +970,29 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
         doc.view.first_paint = Some(std::time::Instant::now());
     }
     if lines.is_empty() && !pending && doc.is_ready() {
-        let msg = tr(if len == 0 { "Empty file" } else { "No data rows" });
-        painter.text(body.center(), Align2::CENTER_CENTER, msg, FontId::proportional(16.0), weak);
+        let msg = tr(if len == 0 {
+            "Empty file"
+        } else {
+            "No data rows"
+        });
+        painter.text(
+            body.center(),
+            Align2::CENTER_CENTER,
+            msg,
+            FontId::proportional(16.0),
+            weak,
+        );
     }
     if pending {
-        painter.text(body.right_top() + vec2(-8.0, 4.0), Align2::RIGHT_TOP, tr("Loading…"), FontId::proportional(13.0), weak);
-        ui.ctx().request_repaint_after(std::time::Duration::from_millis(30));
+        painter.text(
+            body.right_top() + vec2(-8.0, 4.0),
+            Align2::RIGHT_TOP,
+            tr("Loading…"),
+            FontId::proportional(13.0),
+            weak,
+        );
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(30));
     }
 
     if doc.is_ready() {
@@ -708,42 +1003,129 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut TableEnv) {
 
 /// Right-click menu of a column header.
 #[allow(clippy::too_many_arguments)]
-fn column_menu(ui: &mut Ui, actions: &mut Vec<TableAction>, col: usize, name: &str, ncols: usize, cols: Vec<usize>, names: Vec<String>, editable: bool) {
+fn column_menu(
+    ui: &mut Ui,
+    actions: &mut Vec<TableAction>,
+    col: usize,
+    name: &str,
+    ncols: usize,
+    cols: Vec<usize>,
+    names: Vec<String>,
+    editable: bool,
+) {
     let mut act = |ui: &mut Ui, enabled: bool, label: &str, a: TableAction| {
         if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
             actions.push(a);
             ui.close();
         }
     };
-    act(ui, editable, tr("Sort ascending (A → Z, 1 → 9)"), TableAction::Sort { col, desc: false });
-    act(ui, editable, tr("Sort descending (Z → A, 9 → 1)"), TableAction::Sort { col, desc: true });
+    act(
+        ui,
+        editable,
+        tr("Sort ascending (A → Z, 1 → 9)"),
+        TableAction::Sort { col, desc: false },
+    );
+    act(
+        ui,
+        editable,
+        tr("Sort descending (Z → A, 9 → 1)"),
+        TableAction::Sort { col, desc: true },
+    );
     ui.separator();
     act(ui, true, tr("Statistics…"), TableAction::Stats { col });
     act(ui, true, tr("Chart…"), TableAction::Chart { col });
-    act(ui, true, tr("Filter rows by this column…"), TableAction::Filter { col, name: name.to_string() });
-    act(ui, true, tr("Filter rows by conditions…"), TableAction::Conditions { col });
-    act(ui, true, tr("Group rows by this column…"), TableAction::GroupBy { col });
-    act(ui, true, tr("Pivot by this column…"), TableAction::Pivot { col });
-    act(ui, true, tr("Compare table by this column…"), TableAction::CompareBy { col });
+    act(
+        ui,
+        true,
+        tr("Filter rows by this column…"),
+        TableAction::Filter {
+            col,
+            name: name.to_string(),
+        },
+    );
+    act(
+        ui,
+        true,
+        tr("Filter rows by conditions…"),
+        TableAction::Conditions { col },
+    );
+    act(
+        ui,
+        true,
+        tr("Group rows by this column…"),
+        TableAction::GroupBy { col },
+    );
+    act(
+        ui,
+        true,
+        tr("Pivot by this column…"),
+        TableAction::Pivot { col },
+    );
+    act(
+        ui,
+        true,
+        tr("Compare table by this column…"),
+        TableAction::CompareBy { col },
+    );
     act(ui, true, tr("Check rows…"), TableAction::CheckRows);
     ui.separator();
-    act(ui, editable, tr("Rename…"), TableAction::Rename { col, name: name.to_string() });
+    act(
+        ui,
+        editable,
+        tr("Rename…"),
+        TableAction::Rename {
+            col,
+            name: name.to_string(),
+        },
+    );
     act(ui, editable, tr("Add column…"), TableAction::AddColumn);
-    act(ui, editable && col > 0, tr("Move left"), TableAction::Move { col, right: false });
-    act(ui, editable && col + 1 < ncols, tr("Move right"), TableAction::Move { col, right: true });
+    act(
+        ui,
+        editable && col > 0,
+        tr("Move left"),
+        TableAction::Move { col, right: false },
+    );
+    act(
+        ui,
+        editable && col + 1 < ncols,
+        tr("Move right"),
+        TableAction::Move { col, right: true },
+    );
     ui.separator();
-    let label = if cols.len() == 1 { tr("Export this column") } else { tr("Export selected columns") };
+    let label = if cols.len() == 1 {
+        tr("Export this column")
+    } else {
+        tr("Export selected columns")
+    };
     ui.menu_button(label, |ui| {
         act(ui, true, "CSV…", TableAction::Export { cols: cols.clone() });
         for format in bigtext::table_export::Format::ALL {
-            act(ui, true, &format!("{}…", tr(format.name())), TableAction::ExportAs { cols: Some(cols.clone()), format });
+            act(
+                ui,
+                true,
+                &format!("{}…", tr(format.name())),
+                TableAction::ExportAs {
+                    cols: Some(cols.clone()),
+                    format,
+                },
+            );
         }
     });
-    act(ui, editable && cols.len() < ncols, tr("Delete…"), TableAction::DeleteColumns { names, cols });
+    act(
+        ui,
+        editable && cols.len() < ncols,
+        tr("Delete…"),
+        TableAction::DeleteColumns { names, cols },
+    );
 }
 
 /// Columns that overlap the visible width.
-fn visible_columns(widths: &[f32], default_w: f32, scroll_x: f32, view_w: f32) -> impl Iterator<Item = usize> + '_ {
+fn visible_columns(
+    widths: &[f32],
+    default_w: f32,
+    scroll_x: f32,
+    view_w: f32,
+) -> impl Iterator<Item = usize> + '_ {
     let mut x = 0.0f32;
     widths.iter().enumerate().filter_map(move |(col, &w)| {
         let w = if w > 0.0 { w } else { default_w };
@@ -755,18 +1137,45 @@ fn visible_columns(widths: &[f32], default_w: f32, scroll_x: f32, view_w: f32) -
 
 /// Draws `text` in `cell`, cut to fit with an ellipsis; numbers align right.
 #[allow(clippy::too_many_arguments)]
-fn paint_text(painter: &Painter, cell: Rect, text: &str, font: &FontId, color: Color32, cw: f32, right: bool) {
+fn paint_text(
+    painter: &Painter,
+    cell: Rect,
+    text: &str,
+    font: &FontId,
+    color: Color32,
+    cw: f32,
+    right: bool,
+) {
     let max = ((cell.width() - 2.0 * PAD) / cw).floor().max(1.0) as usize;
-    let shown: String = if text.chars().count() > max { text.chars().take(max.saturating_sub(1)).chain(['…']).collect() } else { text.to_string() };
+    let shown: String = if text.chars().count() > max {
+        text.chars()
+            .take(max.saturating_sub(1))
+            .chain(['…'])
+            .collect()
+    } else {
+        text.to_string()
+    };
     if shown.is_empty() {
         return;
     }
     crate::app::fonts::note_missing(painter.ctx(), font, &shown);
     let y = cell.center().y;
     if right {
-        painter.text(pos2(cell.right() - PAD, y), Align2::RIGHT_CENTER, shown, font.clone(), color);
+        painter.text(
+            pos2(cell.right() - PAD, y),
+            Align2::RIGHT_CENTER,
+            shown,
+            font.clone(),
+            color,
+        );
     } else {
-        painter.text(pos2(cell.left() + PAD, y), Align2::LEFT_CENTER, shown, font.clone(), color);
+        painter.text(
+            pos2(cell.left() + PAD, y),
+            Align2::LEFT_CENTER,
+            shown,
+            font.clone(),
+            color,
+        );
     }
 }
 
@@ -776,70 +1185,117 @@ fn toolbar(ui: &mut Ui, doc: &mut Document, rect: Rect, ncols: usize, can_delete
     let read_only = doc.read_only;
     let mut delete = false;
     let mut set_skip_later = None;
-    ui.scope_builder(UiBuilder::new().max_rect(rect.shrink2(vec2(8.0, 3.0))).layout(Layout::left_to_right(Align::Center)), |ui| {
-        let st = &mut doc.table_state;
-        let cur = st.dialect.unwrap_or(Dialect::new(b','));
-        ui.label(tr("Delimiter"));
-        egui::ComboBox::from_id_salt(("delimiter", doc_id)).selected_text(tr(cur.name())).show_ui(ui, |ui| {
-            for delim in DELIMITERS {
-                if ui.selectable_label(cur.delim == delim, tr(Dialect::new(delim).name())).clicked() && cur.delim != delim {
-                    st.set_delim(delim);
-                }
-            }
-        });
-        if ui.checkbox(&mut st.header, tr("First row is header")).changed() {
-            st.changed();
-        }
-        let mut skip = st.skip;
-        ui.menu_button(tr("Table…"), |ui| {
-            ui.horizontal(|ui| {
-                ui.label(tr("Skip lines before the table"));
-                ui.add(egui::DragValue::new(&mut skip).range(0..=1000));
-            });
-            ui.horizontal(|ui| {
-                ui.label(tr("Quote"));
-                for (q, name) in [(b'"', "\""), (b'\'', "'")] {
-                    if ui.selectable_label(cur.quote == q, name).clicked() && cur.quote != q {
-                        st.dialect = Some(Dialect { quote: q, ..cur });
-                        st.reset_columns();
+    ui.scope_builder(
+        UiBuilder::new()
+            .max_rect(rect.shrink2(vec2(8.0, 3.0)))
+            .layout(Layout::left_to_right(Align::Center)),
+        |ui| {
+            let st = &mut doc.table_state;
+            let cur = st.dialect.unwrap_or(Dialect::new(b','));
+            ui.label(tr("Delimiter"));
+            egui::ComboBox::from_id_salt(("delimiter", doc_id))
+                .selected_text(tr(cur.name()))
+                .show_ui(ui, |ui| {
+                    for delim in DELIMITERS {
+                        if ui
+                            .selectable_label(cur.delim == delim, tr(Dialect::new(delim).name()))
+                            .clicked()
+                            && cur.delim != delim
+                        {
+                            st.set_delim(delim);
+                        }
                     }
+                });
+            if ui
+                .checkbox(&mut st.header, tr("First row is header"))
+                .changed()
+            {
+                st.changed();
+            }
+            let mut skip = st.skip;
+            ui.menu_button(tr("Table…"), |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(tr("Skip lines before the table"));
+                    ui.add(egui::DragValue::new(&mut skip).range(0..=1000));
+                });
+                ui.horizontal(|ui| {
+                    ui.label(tr("Quote"));
+                    for (q, name) in [(b'"', "\""), (b'\'', "'")] {
+                        if ui.selectable_label(cur.quote == q, name).clicked() && cur.quote != q {
+                            st.dialect = Some(Dialect { quote: q, ..cur });
+                            st.reset_columns();
+                        }
+                    }
+                });
+            });
+            if skip != st.skip {
+                set_skip_later = Some(skip);
+            }
+            if !st.hidden.is_empty()
+                && ui
+                    .button(tr_f(
+                        "{n} hidden · Show all",
+                        &[("n", &st.hidden.len().to_string())],
+                    ))
+                    .on_hover_text(tr("Show the columns hidden from the view"))
+                    .clicked()
+            {
+                st.hidden.clear();
+            }
+            ui.separator();
+            if st.selected.is_empty() {
+                ui.weak(tr_f(
+                    "{n} columns · click a column header to select it",
+                    &[("n", &ncols.to_string())],
+                ));
+            } else {
+                let n = st.selected.len();
+                ui.label(tr_f(
+                    "{n} of {total} columns selected",
+                    &[("n", &n.to_string()), ("total", &ncols.to_string())],
+                ));
+                let label = tr(if n == 1 {
+                    "Delete column"
+                } else {
+                    "Delete columns"
+                });
+                let tip = tr(if read_only {
+                    "The document is read-only"
+                } else if n >= ncols {
+                    "Keep at least one column"
+                } else {
+                    "Delete the selected columns and their values from every row (Delete key)"
+                });
+                let button = egui::Button::new(
+                    egui::RichText::new(label).color(ui.visuals().error_fg_color),
+                );
+                if ui
+                    .add_enabled(can_delete, button)
+                    .on_hover_text(tip)
+                    .on_disabled_hover_text(tip)
+                    .clicked()
+                {
+                    delete = true;
+                }
+                if ui
+                    .button(tr("Clear selection"))
+                    .on_hover_text("Esc")
+                    .clicked()
+                {
+                    st.selected.clear();
+                }
+            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui
+                    .button(tr("Text view"))
+                    .on_hover_text(tr("Show the file as text (Ctrl+T)"))
+                    .clicked()
+                {
+                    doc.table = false;
                 }
             });
-        });
-        if skip != st.skip {
-            set_skip_later = Some(skip);
-        }
-        if !st.hidden.is_empty() && ui.button(tr_f("{n} hidden · Show all", &[("n", &st.hidden.len().to_string())])).on_hover_text(tr("Show the columns hidden from the view")).clicked() {
-            st.hidden.clear();
-        }
-        ui.separator();
-        if st.selected.is_empty() {
-            ui.weak(tr_f("{n} columns · click a column header to select it", &[("n", &ncols.to_string())]));
-        } else {
-            let n = st.selected.len();
-            ui.label(tr_f("{n} of {total} columns selected", &[("n", &n.to_string()), ("total", &ncols.to_string())]));
-            let label = tr(if n == 1 { "Delete column" } else { "Delete columns" });
-            let tip = tr(if read_only {
-                "The document is read-only"
-            } else if n >= ncols {
-                "Keep at least one column"
-            } else {
-                "Delete the selected columns and their values from every row (Delete key)"
-            });
-            let button = egui::Button::new(egui::RichText::new(label).color(ui.visuals().error_fg_color));
-            if ui.add_enabled(can_delete, button).on_hover_text(tip).on_disabled_hover_text(tip).clicked() {
-                delete = true;
-            }
-            if ui.button(tr("Clear selection")).on_hover_text("Esc").clicked() {
-                st.selected.clear();
-            }
-        }
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if ui.button(tr("Text view")).on_hover_text(tr("Show the file as text (Ctrl+T)")).clicked() {
-                doc.table = false;
-            }
-        });
-    });
+        },
+    );
     if let Some(skip) = set_skip_later {
         set_skip(doc, skip);
     }
@@ -871,7 +1327,15 @@ fn handle_keys(ui: &mut Ui, doc: &mut Document, n_rows: usize, data_start: u64, 
     let events = ui.input(|i| i.events.clone());
     let mut delete = false;
     for ev in events {
-        let Event::Key { key, pressed: true, modifiers, .. } = ev else { continue };
+        let Event::Key {
+            key,
+            pressed: true,
+            modifiers,
+            ..
+        } = ev
+        else {
+            continue;
+        };
         match key {
             Key::Z if modifiers.command && modifiers.shift => doc.redo(),
             Key::Z if modifiers.command => doc.undo(),
@@ -883,7 +1347,9 @@ fn handle_keys(ui: &mut Ui, doc: &mut Document, n_rows: usize, data_start: u64, 
             Key::PageDown => step(doc, page),
             Key::PageUp => step(doc, -page),
             Key::ArrowRight => doc.table_state.scroll_x += 8.0 * cw,
-            Key::ArrowLeft => doc.table_state.scroll_x = (doc.table_state.scroll_x - 8.0 * cw).max(0.0),
+            Key::ArrowLeft => {
+                doc.table_state.scroll_x = (doc.table_state.scroll_x - 8.0 * cw).max(0.0)
+            }
             Key::Home if modifiers.command => {
                 doc.view.top = data_start;
                 doc.table_state.scroll_x = 0.0;
@@ -913,13 +1379,25 @@ fn scroll_to_caret(doc: &mut Document, n_rows: usize) -> Result<(), Pending> {
         shown.iter().any(|r| r.start == row.start)
     };
     if doc.view.center_caret || !on_screen {
-        let back = if doc.view.center_caret || row.start < top { (n_rows / 2) as i64 } else { n_rows.saturating_sub(2) as i64 };
+        let back = if doc.view.center_caret || row.start < top {
+            (n_rows / 2) as i64
+        } else {
+            n_rows.saturating_sub(2) as i64
+        };
         doc.view.top = rows::step_rows(&doc.buf, row, -back, None)?.start;
     }
     Ok(())
 }
 
-fn horizontal_scrollbar(ui: &mut Ui, doc: &mut Document, id: egui::Id, bar: Rect, content: f32, view_w: f32, max_scroll: f32) {
+fn horizontal_scrollbar(
+    ui: &mut Ui,
+    doc: &mut Document,
+    id: egui::Id,
+    bar: Rect,
+    content: f32,
+    view_w: f32,
+    max_scroll: f32,
+) {
     let painter = ui.painter_at(bar);
     let v = ui.visuals();
     painter.rect_filled(bar, 0.0, v.faint_bg_color);
@@ -930,15 +1408,22 @@ fn horizontal_scrollbar(ui: &mut Ui, doc: &mut Document, id: egui::Id, bar: Rect
     let track_w = bar.width();
     let thumb_w = (track_w * view_w / content.max(1.0)).clamp(24.0_f32.min(track_w), track_w);
     let x = bar.left() + (track_w - thumb_w) * (st.scroll_x / max_scroll).clamp(0.0, 1.0);
-    let thumb = Rect::from_min_max(pos2(x, bar.top() + 2.0), pos2(x + thumb_w, bar.bottom() - 2.0));
+    let thumb = Rect::from_min_max(
+        pos2(x, bar.top() + 2.0),
+        pos2(x + thumb_w, bar.bottom() - 2.0),
+    );
     let r = ui.interact(bar, id.with("hbar"), Sense::click_and_drag());
-    let color = if r.dragged() || r.hovered() { v.widgets.hovered.bg_fill } else { v.widgets.inactive.bg_fill };
+    let color = if r.dragged() || r.hovered() {
+        v.widgets.hovered.bg_fill
+    } else {
+        v.widgets.inactive.bg_fill
+    };
     painter.rect_filled(thumb, 4.0, color);
     if r.dragged() || r.is_pointer_button_down_on() {
         if let Some(p) = r.interact_pointer_pos() {
-            let f = ((p.x - bar.left() - thumb_w / 2.0) / (track_w - thumb_w).max(1.0)).clamp(0.0, 1.0);
+            let f =
+                ((p.x - bar.left() - thumb_w / 2.0) / (track_w - thumb_w).max(1.0)).clamp(0.0, 1.0);
             st.scroll_x = f * max_scroll;
         }
     }
 }
-

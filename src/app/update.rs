@@ -52,11 +52,18 @@ enum Stage {
     /// A check the user asked for is running.
     Checking,
     Offer(Box<Offer>),
-    Downloading { offer: Box<Offer>, progress: Progress, cancel: CancelToken },
+    Downloading {
+        offer: Box<Offer>,
+        progress: Progress,
+        cancel: CancelToken,
+    },
     /// `UpdateUi::pending` is set: restart now or later.
     Ready,
     UpToDate,
-    Failed { title: &'static str, message: String },
+    Failed {
+        title: &'static str,
+        message: String,
+    },
 }
 
 pub struct UpdateUi {
@@ -81,7 +88,18 @@ pub struct UpdateUi {
 
 impl Default for UpdateUi {
     fn default() -> Self {
-        UpdateUi { stage: Stage::Idle, running: false, auto: false, asked: false, ask_later: false, skipped: None, last_check: 0, retry_at: None, pending: None, restart: false }
+        UpdateUi {
+            stage: Stage::Idle,
+            running: false,
+            auto: false,
+            asked: false,
+            ask_later: false,
+            skipped: None,
+            last_check: 0,
+            retry_at: None,
+            pending: None,
+            restart: false,
+        }
     }
 }
 
@@ -114,7 +132,12 @@ impl UpdateUi {
         let Version(a, b, c) = Version::current();
         let version = Version(a, b, c + 1);
         let notes = vec![(version, update::parse_notes("- **A note**: what changed."))];
-        self.stage = Stage::Offer(Box::new(Offer { version, page: update::RELEASES_PAGE.into(), notes, method }));
+        self.stage = Stage::Offer(Box::new(Offer {
+            version,
+            page: update::RELEASES_PAGE.into(),
+            notes,
+            method,
+        }));
     }
 
     /// Self-test: closes the dialog.
@@ -152,18 +175,31 @@ pub fn cleanup_in_background() {
 }
 
 fn now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 fn find_update() -> Result<Option<Box<Offer>>, String> {
     let releases = update::check(Version::current())?;
-    let Some(latest) = releases.first() else { return Ok(None) };
+    let Some(latest) = releases.first() else {
+        return Ok(None);
+    };
     let method = match update::current_exe() {
         Ok(exe) => update::method(latest, &exe),
         Err(_) => Method::Manual,
     };
-    let notes = releases.iter().map(|r| (r.version, update::parse_notes(update::whats_new(&r.notes)))).collect();
-    Ok(Some(Box::new(Offer { version: latest.version, page: latest.page.clone(), notes, method })))
+    let notes = releases
+        .iter()
+        .map(|r| (r.version, update::parse_notes(update::whats_new(&r.notes))))
+        .collect();
+    Ok(Some(Box::new(Offer {
+        version: latest.version,
+        page: latest.page.clone(),
+        notes,
+        method,
+    })))
 }
 
 enum Action {
@@ -188,10 +224,18 @@ impl BigTextApp {
             return;
         }
         // Debug builds (development), benchmarks and the self-test never check on their own.
-        if !u.auto || !self.persist || cfg!(debug_assertions) || u.running || u.pending.is_some() || u.dialog_open() {
+        if !u.auto
+            || !self.persist
+            || cfg!(debug_assertions)
+            || u.running
+            || u.pending.is_some()
+            || u.dialog_open()
+        {
             return;
         }
-        if u.retry_at.is_none_or(|t| Instant::now() >= t) && now().abs_diff(u.last_check) >= CHECK_INTERVAL {
+        if u.retry_at.is_none_or(|t| Instant::now() >= t)
+            && now().abs_diff(u.last_check) >= CHECK_INTERVAL
+        {
             self.check_for_updates(false);
         }
     }
@@ -230,7 +274,12 @@ impl BigTextApp {
                         u.last_check = now();
                         u.retry_at = None;
                         match found {
-                            Some(offer) if waiting || (!u.dialog_open() && u.skipped != Some(offer.version)) => u.stage = Stage::Offer(offer),
+                            Some(offer)
+                                if waiting
+                                    || (!u.dialog_open() && u.skipped != Some(offer.version)) =>
+                            {
+                                u.stage = Stage::Offer(offer)
+                            }
                             None if waiting => u.stage = Stage::UpToDate,
                             _ => {}
                         }
@@ -239,7 +288,10 @@ impl BigTextApp {
                     Err(message) => {
                         u.retry_at = Some(Instant::now() + RETRY_AFTER);
                         if waiting {
-                            u.stage = Stage::Failed { title: "Could not check for updates", message };
+                            u.stage = Stage::Failed {
+                                title: "Could not check for updates",
+                                message,
+                            };
                         }
                     }
                 }
@@ -248,43 +300,65 @@ impl BigTextApp {
                 if !matches!(u.stage, Stage::Downloading { .. }) {
                     return;
                 }
-                let Stage::Downloading { offer, cancel, .. } = mem::take(&mut u.stage) else { return };
+                let Stage::Downloading { offer, cancel, .. } = mem::take(&mut u.stage) else {
+                    return;
+                };
                 u.stage = match result {
                     Ok(p) => {
                         u.pending = Some(p);
                         Stage::Ready
                     }
                     Err(_) if cancel.is_cancelled() => Stage::Offer(offer),
-                    Err(message) => Stage::Failed { title: "The update failed", message },
+                    Err(message) => Stage::Failed {
+                        title: "The update failed",
+                        message,
+                    },
                 };
             }
         }
     }
 
     fn start_update(&mut self) {
-        let Stage::Offer(offer) = mem::take(&mut self.update.stage) else { return };
+        let Stage::Offer(offer) = mem::take(&mut self.update.stage) else {
+            return;
+        };
         let (progress, cancel) = (Progress::default(), CancelToken::new());
         let (method, version) = (offer.method.clone(), offer.version);
-        let (p, c, tx, waker) = (progress.clone(), cancel.clone(), self.tx.clone(), self.waker.clone());
+        let (p, c, tx, waker) = (
+            progress.clone(),
+            cancel.clone(),
+            self.tx.clone(),
+            self.waker.clone(),
+        );
         jobs::spawn("update-download", move || {
             let result = match method {
-                Method::Replace { asset, exe } => update::update_exe(&asset, &exe, &p, &c).map(|()| Pending::Replaced { version, exe }),
+                Method::Replace { asset, exe } => update::update_exe(&asset, &exe, &p, &c)
+                    .map(|()| Pending::Replaced { version, exe }),
                 Method::Installer { asset } => {
                     let setup = update::download_dir().join(&asset.name);
-                    update::download(&asset, &setup, &p, &c).map(|()| Pending::Installer { version, setup })
+                    update::download(&asset, &setup, &p, &c)
+                        .map(|()| Pending::Installer { version, setup })
                 }
-                Method::Package(_) | Method::Manual => Err(tr("This copy of BigText cannot update itself.").into()),
+                Method::Package(_) | Method::Manual => {
+                    Err(tr("This copy of BigText cannot update itself.").into())
+                }
             };
             let _ = tx.send(Msg::Update(Event::Downloaded(result)));
             waker();
         });
-        self.update.stage = Stage::Downloading { offer, progress, cancel };
+        self.update.stage = Stage::Downloading {
+            offer,
+            progress,
+            cancel,
+        };
     }
 
     /// On exit: runs the downloaded installer, or starts the new version after "Restart now".
     pub(super) fn apply_update_on_exit(&mut self) {
         let restart = self.update.restart;
-        let Some(p) = self.update.pending.take() else { return };
+        let Some(p) = self.update.pending.take() else {
+            return;
+        };
         if matches!(p, Pending::Replaced { .. }) && !restart {
             return;
         }
@@ -301,7 +375,10 @@ impl BigTextApp {
             rfd::MessageDialog::new()
                 .set_level(rfd::MessageLevel::Error)
                 .set_title("BigText")
-                .set_description(trf("Could not start the update: {e}", &[("e", &e.to_string())]))
+                .set_description(trf(
+                    "Could not start the update: {e}",
+                    &[("e", &e.to_string())],
+                ))
                 .set_buttons(rfd::MessageButtons::Ok)
                 .show();
         }
@@ -445,7 +522,8 @@ impl BigTextApp {
         });
         // Escape or a click outside: the same as "Remind me later" / "Later" / "Close"; the first
         // start's question comes back next time.
-        if action.is_none() && modal.should_close() && !matches!(u.stage, Stage::Downloading { .. }) {
+        if action.is_none() && modal.should_close() && !matches!(u.stage, Stage::Downloading { .. })
+        {
             u.ask_later |= matches!(u.stage, Stage::Ask);
             action = Some(Action::Close);
         }
@@ -469,7 +547,10 @@ impl BigTextApp {
             }
             Some(Action::Restart) => {
                 if self.writes_in_progress() {
-                    self.error = Some(tr("A file is being saved. Restart BigText when saving has finished.").into());
+                    self.error = Some(
+                        tr("A file is being saved. Restart BigText when saving has finished.")
+                            .into(),
+                    );
                 } else {
                     self.update.stage = Stage::Idle;
                     self.update.restart = true;
@@ -498,20 +579,31 @@ fn notes_ui(ui: &mut egui::Ui, o: &Offer) {
 
 /// "What's new in X.Y.Z" and its notes for each version, newest first, in a scrolling box.
 pub(super) fn versions_ui(ui: &mut egui::Ui, notes: &[(Version, Vec<Block>)], max_height: f32) {
-    egui::Frame::new().fill(ui.visuals().extreme_bg_color).corner_radius(4.0).inner_margin(10.0).show(ui, |ui| {
-        egui::ScrollArea::vertical().max_height(max_height).auto_shrink([false, true]).show(ui, |ui| {
-            for (v, blocks) in notes {
-                ui.label(RichText::new(trf("What's new in {v}", &[("v", &v.to_string())])).strong().size(16.0));
-                if blocks.is_empty() {
-                    ui.weak(tr("No release notes."));
-                }
-                for b in blocks {
-                    block_ui(ui, b);
-                }
-                ui.add_space(10.0);
-            }
+    egui::Frame::new()
+        .fill(ui.visuals().extreme_bg_color)
+        .corner_radius(4.0)
+        .inner_margin(10.0)
+        .show(ui, |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(max_height)
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
+                    for (v, blocks) in notes {
+                        ui.label(
+                            RichText::new(trf("What's new in {v}", &[("v", &v.to_string())]))
+                                .strong()
+                                .size(16.0),
+                        );
+                        if blocks.is_empty() {
+                            ui.weak(tr("No release notes."));
+                        }
+                        for b in blocks {
+                            block_ui(ui, b);
+                        }
+                        ui.add_space(10.0);
+                    }
+                });
         });
-    });
 }
 
 pub(super) fn block_ui(ui: &mut egui::Ui, b: &Block) {
@@ -572,7 +664,11 @@ mod tests {
     fn checks_on_its_own_only_after_the_user_agreed() {
         let restored = |check: Option<bool>, asked: Option<bool>| {
             let mut u = UpdateUi::default();
-            u.restore(&Persisted { update_check: check, update_asked: asked, ..Default::default() });
+            u.restore(&Persisted {
+                update_check: check,
+                update_asked: asked,
+                ..Default::default()
+            });
             (u.asked, u.auto)
         };
         // A first start, and settings saved before the question with the old default (on): ask.
@@ -587,15 +683,37 @@ mod tests {
     #[test]
     fn a_package_managers_copy_is_told_its_command() {
         let (scoop, cmd) = package_hint(Manager::Scoop);
-        assert_eq!((scoop.as_str(), cmd), ("This copy was installed with Scoop. To update it, run:", "scoop update bigtext"));
+        assert_eq!(
+            (scoop.as_str(), cmd),
+            (
+                "This copy was installed with Scoop. To update it, run:",
+                "scoop update bigtext"
+            )
+        );
         assert!(package_hint(Manager::Homebrew).0.contains("Homebrew"));
-        assert!(package_hint(Manager::Deb).0.contains("Download the new package"));
+        assert!(package_hint(Manager::Deb)
+            .0
+            .contains("Download the new package"));
         assert!(package_hint(Manager::Aur).0.contains("AUR helper"));
         // Only a copy BigText can replace gets "Update now"; the .deb gets the download page.
-        let asset = update::Asset { name: "bigtext-linux-x64.AppImage".into(), url: String::new(), size: 1, sha256: None };
-        assert_eq!(offer_buttons(&Method::Replace { asset: asset.clone(), exe: PathBuf::from("/a/b.AppImage") }), (true, false));
+        let asset = update::Asset {
+            name: "bigtext-linux-x64.AppImage".into(),
+            url: String::new(),
+            size: 1,
+            sha256: None,
+        };
+        assert_eq!(
+            offer_buttons(&Method::Replace {
+                asset: asset.clone(),
+                exe: PathBuf::from("/a/b.AppImage")
+            }),
+            (true, false)
+        );
         assert_eq!(offer_buttons(&Method::Installer { asset }), (true, false));
-        assert_eq!(offer_buttons(&Method::Package(Manager::Scoop)), (false, false));
+        assert_eq!(
+            offer_buttons(&Method::Package(Manager::Scoop)),
+            (false, false)
+        );
         assert_eq!(offer_buttons(&Method::Package(Manager::Deb)), (false, true));
         assert_eq!(offer_buttons(&Method::Manual), (false, true));
     }

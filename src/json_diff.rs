@@ -19,7 +19,12 @@ pub const CHANGES_MAX: usize = 100_000;
 
 /// Writes the document as `$.path = value` lines, one per leaf value (and per empty object or
 /// array). Returns the number of lines, or `None` when cancelled.
-pub fn flatten<W: Write>(buf: &TextBuf, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> Result<Option<u64>, String> {
+pub fn flatten<W: Write>(
+    buf: &TextBuf,
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> Result<Option<u64>, String> {
     if buf.codec.unit() != 1 {
         return Err("JSON must be UTF-8".into());
     }
@@ -47,7 +52,8 @@ pub fn flatten<W: Write>(buf: &TextBuf, out: &mut W, cancel: &CancelToken, progr
         }
         let leaf = |out: &mut W, raw: &[u8]| -> Result<(), String> {
             let minified: Vec<u8> = minify(raw);
-            out.write_all(json::format_path(&path).as_bytes()).map_err(werr)?;
+            out.write_all(json::format_path(&path).as_bytes())
+                .map_err(werr)?;
             out.write_all(b" = ").map_err(werr)?;
             out.write_all(&minified).map_err(werr)?;
             out.write_all(b"\n").map_err(werr)
@@ -148,7 +154,9 @@ fn read_lines(src: &Source, off: u64, count: u64) -> io::Result<Vec<String>> {
             if !line.ends_with(b"\n") && at + (consumed + line.len()) as u64 != src.len() {
                 break;
             }
-            out.push(String::from_utf8_lossy(line.strip_suffix(b"\n").unwrap_or(line)).into_owned());
+            out.push(
+                String::from_utf8_lossy(line.strip_suffix(b"\n").unwrap_or(line)).into_owned(),
+            );
             consumed += line.len();
             if out.len() as u64 >= count {
                 break;
@@ -163,7 +171,13 @@ fn read_lines(src: &Source, off: u64, count: u64) -> io::Result<Vec<String>> {
 }
 
 /// The changes from the flat form of A to that of B (files written by [`flatten`]).
-pub fn changes(a: &Path, b: &Path, cancel: &CancelToken, progress: Option<&Progress>, mut on_change: impl FnMut(Change) -> bool) -> Result<Option<bool>, String> {
+pub fn changes(
+    a: &Path,
+    b: &Path,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut on_change: impl FnMut(Change) -> bool,
+) -> Result<Option<bool>, String> {
     let sa = Source::open(a, OpenMode::Auto).map_err(|e| e.to_string())?;
     let sb = Source::open(b, OpenMode::Auto).map_err(|e| e.to_string())?;
     let mut err = None;
@@ -183,9 +197,17 @@ pub fn changes(a: &Path, b: &Path, cancel: &CancelToken, progress: Option<&Progr
                     }
                     Some(i) => {
                         let (_, nv) = newer.remove(i);
-                        Change { path: p, old: Some(v), new: Some(nv) }
+                        Change {
+                            path: p,
+                            old: Some(v),
+                            new: Some(nv),
+                        }
                     }
-                    None => Change { path: p, old: Some(v), new: None },
+                    None => Change {
+                        path: p,
+                        old: Some(v),
+                        new: None,
+                    },
                 };
                 any = true;
                 if !on_change(change) {
@@ -194,7 +216,11 @@ pub fn changes(a: &Path, b: &Path, cancel: &CancelToken, progress: Option<&Progr
             }
             for (p, v) in newer {
                 any = true;
-                if !on_change(Change { path: p, old: None, new: Some(v) }) {
+                if !on_change(Change {
+                    path: p,
+                    old: None,
+                    new: Some(v),
+                }) {
                     return Ok(false);
                 }
             }
@@ -219,14 +245,24 @@ pub fn changes(a: &Path, b: &Path, cancel: &CancelToken, progress: Option<&Progr
 }
 
 /// Flattens `buf` into a new temporary file.
-pub fn flatten_to_temp(buf: &TextBuf, name: &str, cancel: &CancelToken, progress: Option<&Progress>) -> Result<Option<std::path::PathBuf>, String> {
+pub fn flatten_to_temp(
+    buf: &TextBuf,
+    name: &str,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> Result<Option<std::path::PathBuf>, String> {
     let path = crate::decompress::temp_file(name);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
-    let file = std::fs::File::options().write(true).create_new(true).open(&path).map_err(|e| e.to_string())?;
+    let file = std::fs::File::options()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|e| e.to_string())?;
     let mut w = BufWriter::with_capacity(8 << 20, file);
-    let r = flatten(buf, &mut w, cancel, progress).and_then(|n| w.flush().map(|_| n).map_err(|e| e.to_string()));
+    let r = flatten(buf, &mut w, cancel, progress)
+        .and_then(|n| w.flush().map(|_| n).map_err(|e| e.to_string()));
     drop(w);
     match r {
         Ok(Some(_)) => Ok(Some(path)),
@@ -261,15 +297,23 @@ mod tests {
     fn flat(data: &str) -> String {
         let (_f, t) = buf(data);
         let mut out = Vec::new();
-        flatten(&t, &mut out, &CancelToken::new(), None).unwrap().unwrap();
+        flatten(&t, &mut out, &CancelToken::new(), None)
+            .unwrap()
+            .unwrap();
         String::from_utf8(out).unwrap()
     }
 
     #[test]
     fn flat_forms() {
-        assert_eq!(flat("{\"b\": [1, {\"x\": \"a b\"}], \"a\": {}, \"c d\": null}"), "$.a = {}\n$.b[0] = 1\n$.b[1].x = \"a b\"\n$[\"c d\"] = null\n");
+        assert_eq!(
+            flat("{\"b\": [1, {\"x\": \"a b\"}], \"a\": {}, \"c d\": null}"),
+            "$.a = {}\n$.b[0] = 1\n$.b[1].x = \"a b\"\n$[\"c d\"] = null\n"
+        );
         // Formatting and key order do not change the flat form.
-        assert_eq!(flat("{\n  \"x\": 1,\n  \"y\": [ 2, 3 ]\n}"), flat("{\"y\":[2,3],\"x\":1}"));
+        assert_eq!(
+            flat("{\n  \"x\": 1,\n  \"y\": [ 2, 3 ]\n}"),
+            flat("{\"y\":[2,3],\"x\":1}")
+        );
         assert_eq!(flat("[]"), "$ = []\n");
         assert_eq!(flat("\"s\""), "$ = \"s\"\n");
     }
@@ -292,10 +336,25 @@ mod tests {
         crate::decompress::remove_temp(&pb);
         assert!(any);
         let s = |x: &str| Some(x.to_string());
-        assert_eq!(got, [
-            Change { path: "$.gone".into(), old: s("true"), new: None },
-            Change { path: "$.items[0].price".into(), old: s("10"), new: s("12") },
-            Change { path: "$.new[0]".into(), old: None, new: s("1") },
-        ]);
+        assert_eq!(
+            got,
+            [
+                Change {
+                    path: "$.gone".into(),
+                    old: s("true"),
+                    new: None
+                },
+                Change {
+                    path: "$.items[0].price".into(),
+                    old: s("10"),
+                    new: s("12")
+                },
+                Change {
+                    path: "$.new[0]".into(),
+                    old: None,
+                    new: s("1")
+                },
+            ]
+        );
     }
 }

@@ -22,28 +22,60 @@ impl Shell {
     /// elsewhere.
     pub fn system() -> Shell {
         if cfg!(windows) {
-            Shell { program: "cmd".into(), args: vec!["/C".into()] }
+            Shell {
+                program: "cmd".into(),
+                args: vec!["/C".into()],
+            }
         } else if cfg!(target_os = "macos") {
-            Shell { program: std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into()), args: vec!["-lc".into()] }
+            Shell {
+                program: std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into()),
+                args: vec!["-lc".into()],
+            }
         } else {
-            Shell { program: "/bin/sh".into(), args: vec!["-c".into()] }
+            Shell {
+                program: "/bin/sh".into(),
+                args: vec!["-c".into()],
+            }
         }
     }
 
     /// Git for Windows' bash, when it is installed.
     pub fn git_bash() -> Option<Shell> {
-        let roots = ["ProgramFiles", "ProgramW6432", "ProgramFiles(x86)", "LOCALAPPDATA"];
+        let roots = [
+            "ProgramFiles",
+            "ProgramW6432",
+            "ProgramFiles(x86)",
+            "LOCALAPPDATA",
+        ];
         roots
             .iter()
             .filter_map(std::env::var_os)
-            .flat_map(|r| [std::path::PathBuf::from(&r).join("Git").join("bin").join("bash.exe"), std::path::PathBuf::from(&r).join("Programs").join("Git").join("bin").join("bash.exe")])
+            .flat_map(|r| {
+                [
+                    std::path::PathBuf::from(&r)
+                        .join("Git")
+                        .join("bin")
+                        .join("bash.exe"),
+                    std::path::PathBuf::from(&r)
+                        .join("Programs")
+                        .join("Git")
+                        .join("bin")
+                        .join("bash.exe"),
+                ]
+            })
             .find(|p| p.is_file())
-            .map(|p| Shell { program: p.to_string_lossy().into_owned(), args: vec!["-c".into()] })
+            .map(|p| Shell {
+                program: p.to_string_lossy().into_owned(),
+                args: vec!["-c".into()],
+            })
     }
 
     /// The Windows Subsystem for Linux's shell.
     pub fn wsl() -> Shell {
-        Shell { program: "wsl".into(), args: vec!["-e".into(), "sh".into(), "-c".into()] }
+        Shell {
+            program: "wsl".into(),
+            args: vec!["-e".into(), "sh".into(), "-c".into()],
+        }
     }
 
     fn command(&self, cmd: &str) -> Command {
@@ -82,7 +114,12 @@ fn kill_tree(c: &mut std::process::Child) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        let _ = Command::new("taskkill").args(["/T", "/F", "/PID", &c.id().to_string()]).creation_flags(CREATE_NO_WINDOW).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        let _ = Command::new("taskkill")
+            .args(["/T", "/F", "/PID", &c.id().to_string()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
     }
     #[cfg(unix)]
     // SAFETY: kill(2) on our own child's process group.
@@ -110,9 +147,23 @@ pub type Feed = Box<dyn FnOnce(&mut dyn Write) -> io::Result<()> + Send>;
 
 /// Runs `cmd` with `shell`: `feed` writes its standard input (on a thread of its own), its
 /// standard output is copied to `out`. Cancelling kills the command and returns `Interrupted`.
-pub fn run(shell: &Shell, cmd: &str, feed: Feed, out: &mut dyn Write, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Ran> {
-    let mut child = shell.command(cmd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
-    let (Some(stdin), Some(mut stdout), Some(mut stderr)) = (child.stdin.take(), child.stdout.take(), child.stderr.take()) else {
+pub fn run(
+    shell: &Shell,
+    cmd: &str,
+    feed: Feed,
+    out: &mut dyn Write,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Ran> {
+    let mut child = shell
+        .command(cmd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let (Some(stdin), Some(mut stdout), Some(mut stderr)) =
+        (child.stdin.take(), child.stdout.take(), child.stderr.take())
+    else {
         let _ = child.kill();
         return Err(io::Error::other("no pipes to the command"));
     };
@@ -183,7 +234,9 @@ pub fn run(shell: &Shell, cmd: &str, feed: Feed, out: &mut dyn Write, cancel: &C
     let status = child.lock().map_err(|_| io::Error::other("lock"))?.wait();
     done.store(true, Ordering::Relaxed);
     let _ = poller.join();
-    let fed = feeder.join().unwrap_or_else(|_| Err(io::Error::other("the input thread failed")));
+    let fed = feeder
+        .join()
+        .unwrap_or_else(|_| Err(io::Error::other("the input thread failed")));
     let stderr = drainer.join().unwrap_or_default();
     if cancel.is_cancelled() {
         return Err(io::Error::new(io::ErrorKind::Interrupted, "cancelled"));
@@ -195,7 +248,11 @@ pub fn run(shell: &Shell, cmd: &str, feed: Feed, out: &mut dyn Write, cancel: &C
     if status.success() {
         fed?;
     }
-    Ok(Ran { code: status.code(), stderr, out_bytes })
+    Ok(Ran {
+        code: status.code(),
+        stderr,
+        out_bytes,
+    })
 }
 
 #[cfg(test)]
@@ -210,17 +267,41 @@ mod tests {
     fn sorts_through_the_shell() {
         let mut out = Vec::new();
         // Words, not letters: Windows' sort.exe takes a few bytes like "b\nc\na\n" for UTF-16.
-        let ran = run(&Shell::system(), "sort", feed("banana\ncherry\napple\n"), &mut out, &CancelToken::new(), None).unwrap();
+        let ran = run(
+            &Shell::system(),
+            "sort",
+            feed("banana\ncherry\napple\n"),
+            &mut out,
+            &CancelToken::new(),
+            None,
+        )
+        .unwrap();
         assert_eq!(ran.code, Some(0));
-        let lines: Vec<&str> = std::str::from_utf8(&out).unwrap().lines().map(str::trim_end).collect();
+        let lines: Vec<&str> = std::str::from_utf8(&out)
+            .unwrap()
+            .lines()
+            .map(str::trim_end)
+            .collect();
         assert_eq!(lines, ["apple", "banana", "cherry"]);
     }
 
     #[test]
     fn exit_codes_and_errors() {
         let mut out = Vec::new();
-        let cmd = if cfg!(windows) { "echo oops 1>&2 & exit 3" } else { "echo oops >&2; exit 3" };
-        let ran = run(&Shell::system(), cmd, feed(""), &mut out, &CancelToken::new(), None).unwrap();
+        let cmd = if cfg!(windows) {
+            "echo oops 1>&2 & exit 3"
+        } else {
+            "echo oops >&2; exit 3"
+        };
+        let ran = run(
+            &Shell::system(),
+            cmd,
+            feed(""),
+            &mut out,
+            &CancelToken::new(),
+            None,
+        )
+        .unwrap();
         assert_eq!(ran.code, Some(3));
         assert!(ran.stderr.contains("oops"), "{:?}", ran.stderr);
     }
@@ -228,10 +309,27 @@ mod tests {
     #[test]
     fn big_input_and_output_do_not_deadlock() {
         // 4 MB through a filter that echoes it all back.
-        let text: &'static str = Box::leak((0..200_000).map(|i| format!("line {i:08}\n")).collect::<String>().into_boxed_str());
+        let text: &'static str = Box::leak(
+            (0..200_000)
+                .map(|i| format!("line {i:08}\n"))
+                .collect::<String>()
+                .into_boxed_str(),
+        );
         let mut out = Vec::new();
-        let cmd = if cfg!(windows) { "findstr \"^\"" } else { "cat" };
-        let ran = run(&Shell::system(), cmd, feed(text), &mut out, &CancelToken::new(), None).unwrap();
+        let cmd = if cfg!(windows) {
+            "findstr \"^\""
+        } else {
+            "cat"
+        };
+        let ran = run(
+            &Shell::system(),
+            cmd,
+            feed(text),
+            &mut out,
+            &CancelToken::new(),
+            None,
+        )
+        .unwrap();
         assert_eq!(ran.code, Some(0));
         assert_eq!(std::str::from_utf8(&out).unwrap().lines().count(), 200_000);
     }
@@ -248,8 +346,19 @@ mod tests {
         let endless: Feed = Box::new(|w| loop {
             w.write_all(&[b'x'; 4096])?;
         });
-        let cmd = if cfg!(windows) { "findstr zzz" } else { "grep zzz" };
-        let r = run(&Shell::system(), cmd, endless, &mut Vec::new(), &cancel, None);
+        let cmd = if cfg!(windows) {
+            "findstr zzz"
+        } else {
+            "grep zzz"
+        };
+        let r = run(
+            &Shell::system(),
+            cmd,
+            endless,
+            &mut Vec::new(),
+            &cancel,
+            None,
+        );
         assert_eq!(r.unwrap_err().kind(), io::ErrorKind::Interrupted);
     }
 }

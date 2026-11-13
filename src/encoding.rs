@@ -52,7 +52,10 @@ impl Encoding {
     }
 
     pub fn is_single_byte(self) -> bool {
-        matches!(self, Encoding::Windows1252 | Encoding::Windows1251 | Encoding::Latin1)
+        matches!(
+            self,
+            Encoding::Windows1252 | Encoding::Windows1251 | Encoding::Latin1
+        )
     }
 
     pub fn bom(self) -> &'static [u8] {
@@ -206,7 +209,11 @@ impl Codec {
     }
 
     pub fn utf8() -> Codec {
-        Codec { enc: Encoding::Utf8, nl: NlByte::Lf, bom_len: 0 }
+        Codec {
+            enc: Encoding::Utf8,
+            nl: NlByte::Lf,
+            bom_len: 0,
+        }
     }
 
     #[inline]
@@ -310,7 +317,10 @@ impl Codec {
             }
             let u = self.nl_unit();
             let (a, b) = (u[0], u[1]);
-            hay[start..].chunks_exact(2).filter(|p| p[0] == a && p[1] == b).count() as u64
+            hay[start..]
+                .chunks_exact(2)
+                .filter(|p| p[0] == a && p[1] == b)
+                .count() as u64
         } else {
             count_byte(hay, self.nl_char_byte())
         }
@@ -359,7 +369,8 @@ impl Codec {
                         if b.len() >= 4 {
                             let l = rd(2);
                             if (0xDC00..=0xDFFF).contains(&l) {
-                                let c = 0x10000 + (((u as u32) - 0xD800) << 10) + ((l as u32) - 0xDC00);
+                                let c =
+                                    0x10000 + (((u as u32) - 0xD800) << 10) + ((l as u32) - 0xDC00);
                                 return (char::from_u32(c).unwrap_or(REPLACEMENT), 4);
                             }
                         }
@@ -402,7 +413,10 @@ impl Codec {
                     }
                 };
                 let last = rd(n - 2);
-                if (0xDC00..=0xDFFF).contains(&last) && n >= 4 && (0xD800..=0xDBFF).contains(&rd(n - 4)) {
+                if (0xDC00..=0xDFFF).contains(&last)
+                    && n >= 4
+                    && (0xD800..=0xDBFF).contains(&rd(n - 4))
+                {
                     4
                 } else {
                     2
@@ -441,7 +455,15 @@ impl Codec {
             Encoding::Utf16Be => s.encode_utf16().flat_map(|u| u.to_be_bytes()).collect(),
             _ => {
                 let rev = single_byte_reverse(self.enc);
-                s.chars().map(|c| if (c as u32) < 0x80 { c as u8 } else { *rev.get(&c).unwrap_or(&b'?') }).collect()
+                s.chars()
+                    .map(|c| {
+                        if (c as u32) < 0x80 {
+                            c as u8
+                        } else {
+                            *rev.get(&c).unwrap_or(&b'?')
+                        }
+                    })
+                    .collect()
             }
         }
     }
@@ -530,11 +552,19 @@ pub fn detect(sample: &[u8], whole_file: bool) -> Detected {
 
 /// Like [`detect`] but with a forced encoding.
 pub fn detect_with(sample: &[u8], whole_file: bool, enc: Encoding, bom_len: usize) -> Detected {
-    let bom_len = if sample.starts_with(enc.bom()) && !enc.bom().is_empty() { enc.bom().len() } else { bom_len.min(sample.len()) };
+    let bom_len = if sample.starts_with(enc.bom()) && !enc.bom().is_empty() {
+        enc.bom().len()
+    } else {
+        bom_len.min(sample.len())
+    };
     let content = &sample[bom_len.min(sample.len())..];
     let (nl, line_ending) = detect_line_endings(content, enc, whole_file);
     let looks_binary = looks_binary(content, enc);
-    Detected { codec: Codec::new(enc, nl, bom_len), line_ending, looks_binary }
+    Detected {
+        codec: Codec::new(enc, nl, bom_len),
+        line_ending,
+        looks_binary,
+    }
 }
 
 pub fn detect_encoding(s: &[u8], whole_file: bool) -> (Encoding, usize) {
@@ -620,11 +650,17 @@ fn looks_binary(content: &[u8], enc: Encoding) -> bool {
     }
     if enc.is_utf16() {
         let units = head.len() / 2;
-        let nul_units = head.chunks_exact(2).filter(|p| p[0] == 0 && p[1] == 0).count();
+        let nul_units = head
+            .chunks_exact(2)
+            .filter(|p| p[0] == 0 && p[1] == 0)
+            .count();
         return units > 0 && nul_units * 100 > units;
     }
     let nul = count_byte(head, 0) as usize;
-    let ctrl = head.iter().filter(|&&b| b < 0x20 && !matches!(b, b'\t' | b'\n' | b'\r' | 0x0C | 0x1B)).count();
+    let ctrl = head
+        .iter()
+        .filter(|&&b| b < 0x20 && !matches!(b, b'\t' | b'\n' | b'\r' | 0x0C | 0x1B))
+        .count();
     nul * 100 > head.len() || ctrl * 10 > head.len()
 }
 
@@ -680,33 +716,64 @@ mod tests {
 
     #[test]
     fn count_byte_matches_naive() {
-        let data: Vec<u8> = (0..100_003u32).map(|i| if i % 7 == 0 { b'\n' } else { (i % 200) as u8 + 20 }).collect();
+        let data: Vec<u8> = (0..100_003u32)
+            .map(|i| {
+                if i % 7 == 0 {
+                    b'\n'
+                } else {
+                    (i % 200) as u8 + 20
+                }
+            })
+            .collect();
         let naive = data.iter().filter(|&&b| b == b'\n').count() as u64;
         assert_eq!(count_byte(&data, b'\n'), naive);
-        assert_eq!(count_byte(&data[..13], b'\n'), data[..13].iter().filter(|&&b| b == b'\n').count() as u64);
+        assert_eq!(
+            count_byte(&data[..13], b'\n'),
+            data[..13].iter().filter(|&&b| b == b'\n').count() as u64
+        );
     }
 
     #[test]
     fn detects_boms() {
-        assert_eq!(detect_encoding(b"\xEF\xBB\xBFhi", true), (Encoding::Utf8, 3));
-        assert_eq!(detect_encoding(b"\xFF\xFEh\0i\0", true), (Encoding::Utf16Le, 2));
-        assert_eq!(detect_encoding(b"\xFE\xFF\0h\0i", true), (Encoding::Utf16Be, 2));
+        assert_eq!(
+            detect_encoding(b"\xEF\xBB\xBFhi", true),
+            (Encoding::Utf8, 3)
+        );
+        assert_eq!(
+            detect_encoding(b"\xFF\xFEh\0i\0", true),
+            (Encoding::Utf16Le, 2)
+        );
+        assert_eq!(
+            detect_encoding(b"\xFE\xFF\0h\0i", true),
+            (Encoding::Utf16Be, 2)
+        );
     }
 
     #[test]
     fn detects_utf16_without_bom() {
-        let le: Vec<u8> = "hello world\nsecond line\n".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        let le: Vec<u8> = "hello world\nsecond line\n"
+            .encode_utf16()
+            .flat_map(|u| u.to_le_bytes())
+            .collect();
         assert_eq!(detect_encoding(&le, true).0, Encoding::Utf16Le);
-        let be: Vec<u8> = "hello world\nsecond line\n".encode_utf16().flat_map(|u| u.to_be_bytes()).collect();
+        let be: Vec<u8> = "hello world\nsecond line\n"
+            .encode_utf16()
+            .flat_map(|u| u.to_be_bytes())
+            .collect();
         assert_eq!(detect_encoding(&be, true).0, Encoding::Utf16Be);
     }
 
     #[test]
     fn detects_utf8_and_single_byte() {
-        assert_eq!(detect_encoding("привет мир\n".as_bytes(), true).0, Encoding::Utf8);
-        let (cp1251, _, _) = encoding_rs::WINDOWS_1251.encode("Съешь же ещё этих мягких французских булок\n");
+        assert_eq!(
+            detect_encoding("привет мир\n".as_bytes(), true).0,
+            Encoding::Utf8
+        );
+        let (cp1251, _, _) =
+            encoding_rs::WINDOWS_1251.encode("Съешь же ещё этих мягких французских булок\n");
         assert_eq!(detect_encoding(&cp1251, true).0, Encoding::Windows1251);
-        let (cp1252, _, _) = encoding_rs::WINDOWS_1252.encode("Le café est très bon à Paris, déjà vu.\n");
+        let (cp1252, _, _) =
+            encoding_rs::WINDOWS_1252.encode("Le café est très bon à Paris, déjà vu.\n");
         assert_eq!(detect_encoding(&cp1252, true).0, Encoding::Windows1252);
         // Truncated multibyte char at the end of a partial sample is still UTF-8.
         let s = "абв".as_bytes();
@@ -756,9 +823,15 @@ mod tests {
             out.push(ch);
             i += l;
         }
-        assert_eq!(out, vec![REPLACEMENT, REPLACEMENT, 'a', REPLACEMENT, REPLACEMENT]);
+        assert_eq!(
+            out,
+            vec![REPLACEMENT, REPLACEMENT, 'a', REPLACEMENT, REPLACEMENT]
+        );
         let u16c = Codec::new(Encoding::Utf16Le, NlByte::Lf, 0);
-        assert_eq!(u16c.decode_char(&[0x00, 0xD8, 0x41, 0x00]), (REPLACEMENT, 2));
+        assert_eq!(
+            u16c.decode_char(&[0x00, 0xD8, 0x41, 0x00]),
+            (REPLACEMENT, 2)
+        );
         assert_eq!(u16c.decode_char(&[0x3D, 0xD8, 0x00, 0xDE]), ('😀', 4));
         assert_eq!(u16c.decode_char(&[0x41]), (REPLACEMENT, 1));
     }

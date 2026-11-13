@@ -27,9 +27,12 @@ pub fn state_file() -> Option<PathBuf> {
     let base = if cfg!(windows) {
         std::env::var_os("APPDATA").map(PathBuf::from)
     } else if cfg!(target_os = "macos") {
-        std::env::var_os("HOME").map(|h| PathBuf::from(h).join("Library").join("Application Support"))
+        std::env::var_os("HOME")
+            .map(|h| PathBuf::from(h).join("Library").join("Application Support"))
     } else {
-        std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
     }?;
     Some(base.join("BigText").join("state.txt"))
 }
@@ -47,11 +50,26 @@ pub struct SavedSearch {
 
 /// A query's switches as letters: r(egex), c(ase), w(ord), d(ot all).
 pub fn query_flags(q: &Query) -> String {
-    [(q.regex, 'r'), (q.case_sensitive, 'c'), (q.whole_word, 'w'), (q.dot_all, 'd')].iter().filter(|x| x.0).map(|x| x.1).collect()
+    [
+        (q.regex, 'r'),
+        (q.case_sensitive, 'c'),
+        (q.whole_word, 'w'),
+        (q.dot_all, 'd'),
+    ]
+    .iter()
+    .filter(|x| x.0)
+    .map(|x| x.1)
+    .collect()
 }
 
 pub fn query_from(pattern: String, flags: &str) -> Query {
-    Query { pattern, regex: flags.contains('r'), case_sensitive: flags.contains('c'), whole_word: flags.contains('w'), dot_all: flags.contains('d') }
+    Query {
+        pattern,
+        regex: flags.contains('r'),
+        case_sensitive: flags.contains('c'),
+        whole_word: flags.contains('w'),
+        dot_all: flags.contains('d'),
+    }
 }
 
 /// "name|flags|invert|column|pattern" (a `saved=` line).
@@ -62,13 +80,22 @@ pub fn parse_saved(v: &str) -> Option<SavedSearch> {
     let invert = it.next()? == "1";
     let column = it.next()?.parse().ok();
     let query = query_from(it.next()?.to_string(), flags);
-    Some(SavedSearch { name, query, invert, column })
+    Some(SavedSearch {
+        name,
+        query,
+        invert,
+        column,
+    })
 }
 
 /// The saved searches of a settings file (the app's, or one exported from it).
 pub fn saved_searches(path: &Path) -> std::io::Result<Vec<SavedSearch>> {
     let text = std::fs::read_to_string(path)?;
-    Ok(text.lines().filter_map(|l| l.strip_prefix("saved=")).filter_map(parse_saved).collect())
+    Ok(text
+        .lines()
+        .filter_map(|l| l.strip_prefix("saved="))
+        .filter_map(parse_saved)
+        .collect())
 }
 
 #[cfg(test)]
@@ -79,10 +106,22 @@ mod tests {
     fn saved_lines() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("state.txt");
-        std::fs::write(&p, "font_size=14\nsaved=Timeouts|ri|0||time ?out\nsaved=No health|c|1|2|healthcheck\n").unwrap();
+        std::fs::write(
+            &p,
+            "font_size=14\nsaved=Timeouts|ri|0||time ?out\nsaved=No health|c|1|2|healthcheck\n",
+        )
+        .unwrap();
         let s = saved_searches(&p).unwrap();
         assert_eq!(s.len(), 2);
-        assert_eq!((s[0].name.as_str(), s[0].query.regex, s[0].query.case_sensitive, s[0].query.pattern.as_str()), ("Timeouts", true, false, "time ?out"));
+        assert_eq!(
+            (
+                s[0].name.as_str(),
+                s[0].query.regex,
+                s[0].query.case_sensitive,
+                s[0].query.pattern.as_str()
+            ),
+            ("Timeouts", true, false, "time ?out")
+        );
         assert_eq!((s[1].invert, s[1].column), (true, Some(2)));
         assert_eq!(query_flags(&s[0].query), "r");
     }

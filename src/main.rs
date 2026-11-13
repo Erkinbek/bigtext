@@ -21,7 +21,11 @@ fn tell(title: &str, text: &str, error: bool) {
     }
     if cfg!(all(windows, not(debug_assertions))) {
         rfd::MessageDialog::new()
-            .set_level(if error { rfd::MessageLevel::Error } else { rfd::MessageLevel::Info })
+            .set_level(if error {
+                rfd::MessageLevel::Error
+            } else {
+                rfd::MessageLevel::Info
+            })
             .set_title(title)
             .set_description(text)
             .set_buttons(rfd::MessageButtons::Ok)
@@ -36,9 +40,11 @@ fn stdin_to_temp() -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(&dir)?;
     let path = dir.join("stdin.txt");
     let mut file = std::fs::File::create(&path)?;
-    std::thread::Builder::new().name("stdin".into()).spawn(move || {
-        let _ = std::io::copy(&mut std::io::stdin().lock(), &mut file);
-    })?;
+    std::thread::Builder::new()
+        .name("stdin".into())
+        .spawn(move || {
+            let _ = std::io::copy(&mut std::io::stdin().lock(), &mut file);
+        })?;
     Ok(path)
 }
 
@@ -59,12 +65,19 @@ fn attach_console() {
 fn main() -> eframe::Result {
     // `bigtext --filter …` and the other script commands run without a window.
     let raw: Vec<String> = std::env::args().skip(1).collect();
-    if raw.first().is_some_and(|a| bigtext::headless::is_command(a)) {
+    if raw
+        .first()
+        .is_some_and(|a| bigtext::headless::is_command(a))
+    {
         #[cfg(windows)]
         if cfg!(not(debug_assertions)) {
             attach_console();
         }
-        let code = bigtext::headless::run(&raw, &mut std::io::stdout().lock(), &mut std::io::stderr().lock());
+        let code = bigtext::headless::run(
+            &raw,
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr().lock(),
+        );
         std::process::exit(code);
     }
     let process_start = Instant::now();
@@ -80,21 +93,48 @@ fn main() -> eframe::Result {
     while let Some(a) = args.next() {
         match a.to_str() {
             Some("--bench-ui") => {
-                let file = args.next().map(PathBuf::from).expect("--bench-ui needs a file");
+                let file = args
+                    .next()
+                    .map(PathBuf::from)
+                    .expect("--bench-ui needs a file");
                 bench = Some((file, PathBuf::from("bench-ui-report.txt")));
             }
             Some("--screenshot") => screenshot = args.next().map(PathBuf::from),
             Some("--self-test") => self_test = Some(PathBuf::from("self-test-report.txt")),
-            Some("--screenshots") => tour = Some(args.next().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("docs/img"))),
-            Some("--demo") => demo = Some(args.next().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("target/demo"))),
+            Some("--screenshots") => {
+                tour = Some(
+                    args.next()
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| PathBuf::from("docs/img")),
+                )
+            }
+            Some("--demo") => {
+                demo = Some(
+                    args.next()
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| PathBuf::from("target/demo")),
+                )
+            }
             Some("--scenario") => {
-                let s = args.next().and_then(|s| s.into_string().ok()).unwrap_or_default();
+                let s = args
+                    .next()
+                    .and_then(|s| s.into_string().ok())
+                    .unwrap_or_default();
                 scenario = match s.split_once(':') {
                     Some(("search", p)) => bench_ui::Scenario::Search(p.to_string()),
                     _ if s == "edit" => bench_ui::Scenario::Edit,
-                    _ if s == "view" => bench_ui::Scenario::View { hex: false, wrap: false },
-                    _ if s == "wrap" => bench_ui::Scenario::View { hex: false, wrap: true },
-                    _ if s == "hex" => bench_ui::Scenario::View { hex: true, wrap: false },
+                    _ if s == "view" => bench_ui::Scenario::View {
+                        hex: false,
+                        wrap: false,
+                    },
+                    _ if s == "wrap" => bench_ui::Scenario::View {
+                        hex: false,
+                        wrap: true,
+                    },
+                    _ if s == "hex" => bench_ui::Scenario::View {
+                        hex: true,
+                        wrap: false,
+                    },
                     _ if s == "close-search" => bench_ui::Scenario::CloseDuring { replace: false },
                     _ if s == "close-replace" => bench_ui::Scenario::CloseDuring { replace: true },
                     _ => bench_ui::Scenario::Scroll,
@@ -107,7 +147,12 @@ fn main() -> eframe::Result {
                 }
             }
             Some(s) => {
-                if let Err(e) = cli::take(&mut user, s, &mut || args.next().and_then(|x| x.into_string().ok()), &|p| p.exists()) {
+                if let Err(e) = cli::take(
+                    &mut user,
+                    s,
+                    &mut || args.next().and_then(|x| x.into_string().ok()),
+                    &|p| p.exists(),
+                ) {
                     errors.push(e);
                 }
             }
@@ -120,14 +165,23 @@ fn main() -> eframe::Result {
         return Ok(());
     }
     if !errors.is_empty() {
-        tell("BigText", &format!("{}\n\n{}", errors.join("\n"), cli::USAGE), true);
+        tell(
+            "BigText",
+            &format!("{}\n\n{}", errors.join("\n"), cli::USAGE),
+            true,
+        );
         std::process::exit(2);
     }
 
     // Files go to the BigText already running, unless asked otherwise.
     let tools = bench.is_some() || self_test.is_some() || tour.is_some() || demo.is_some();
     if !tools && !user.new_window && !user.stdin && !user.files.is_empty() {
-        let start = app::StartOptions { files: user.files.clone(), find: user.find.clone(), follow: user.follow, stdin: None };
+        let start = app::StartOptions {
+            files: user.files.clone(),
+            find: user.find.clone(),
+            follow: user.follow,
+            stdin: None,
+        };
         if instance::lock_path().is_some_and(|lock| instance::try_send(&lock, &start)) {
             return Ok(());
         }
@@ -135,17 +189,35 @@ fn main() -> eframe::Result {
 
     // The screenshot tour and the demo recording open their big file themselves, after the
     // demo files are created.
-    let default_big = if demo.is_some() { "testdata/random-lines-50g.txt" } else { "testdata/random-lines-10g.txt" };
-    let tour_file = (tour.is_some() || demo.is_some()).then(|| user.files.pop().map(|f| f.0).unwrap_or_else(|| PathBuf::from(default_big)));
+    let default_big = if demo.is_some() {
+        "testdata/random-lines-50g.txt"
+    } else {
+        "testdata/random-lines-10g.txt"
+    };
+    let tour_file = (tour.is_some() || demo.is_some()).then(|| {
+        user.files
+            .pop()
+            .map(|f| f.0)
+            .unwrap_or_else(|| PathBuf::from(default_big))
+    });
     let stdin = match user.stdin.then(stdin_to_temp) {
         Some(Ok(p)) => Some(p),
         Some(Err(e)) => {
-            tell("BigText", &format!("Could not read standard input: {e}"), true);
+            tell(
+                "BigText",
+                &format!("Could not read standard input: {e}"),
+                true,
+            );
             None
         }
         None => None,
     };
-    let start = app::StartOptions { files: user.files, find: user.find, follow: user.follow, stdin };
+    let start = app::StartOptions {
+        files: user.files,
+        find: user.find,
+        follow: user.follow,
+        stdin,
+    };
     if !tools {
         // The Linux desktop's dark or light preference, asked while the window is created.
         app::theme::probe_desktop();
@@ -161,12 +233,16 @@ fn main() -> eframe::Result {
     if let Ok(icon) = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon-256.png")) {
         viewport = viewport.with_icon(icon);
     }
-    let options = eframe::NativeOptions { viewport, ..Default::default() };
+    let options = eframe::NativeOptions {
+        viewport,
+        ..Default::default()
+    };
     let result = eframe::run_native(
         "BigText",
         options,
         Box::new(move |cc| {
-            let persist = bench.is_none() && self_test.is_none() && tour.is_none() && demo.is_none();
+            let persist =
+                bench.is_none() && self_test.is_none() && tour.is_none() && demo.is_none();
             let mut app = app::BigTextApp::new(cc, start, process_start, persist);
             if persist {
                 if let Some(lock) = instance::lock_path() {
@@ -180,12 +256,18 @@ fn main() -> eframe::Result {
                 app.bench = Some(b);
             }
             if let Some(report) = self_test {
-                let dir = screenshot.as_ref().and_then(|p| p.parent().map(|d| d.to_path_buf()));
+                let dir = screenshot
+                    .as_ref()
+                    .and_then(|p| p.parent().map(|d| d.to_path_buf()));
                 app.self_test = Some(self_test::SelfTest::new(report, dir));
             }
             if let (Some(dir), Some(file)) = (tour.or(demo.clone()), tour_file) {
                 let _ = std::fs::create_dir_all(&dir);
-                app.self_test = Some(if demo.is_some() { self_test::SelfTest::demo(dir, file) } else { self_test::SelfTest::tour(dir, file) });
+                app.self_test = Some(if demo.is_some() {
+                    self_test::SelfTest::demo(dir, file)
+                } else {
+                    self_test::SelfTest::tour(dir, file)
+                });
             }
             Ok(Box::new(app))
         }),

@@ -72,8 +72,15 @@ impl State {
     /// The state at the start of the file (`file_start`), or at a point after a jump: PHP files
     /// start as HTML, though a point inside one is more likely code.
     pub fn start(lang: Lang, file_start: bool) -> State {
-        let mode = if lang == Lang::Php && file_start { Mode::Html } else { Mode::Code };
-        State { mode, ..State::default() }
+        let mode = if lang == Lang::Php && file_start {
+            Mode::Html
+        } else {
+            Mode::Code
+        };
+        State {
+            mode,
+            ..State::default()
+        }
     }
 
     /// Inside a block comment.
@@ -83,7 +90,10 @@ impl State {
 
     /// Inside a string.
     pub fn in_string(self) -> bool {
-        matches!(self.mode, Mode::Str(_) | Mode::Delim | Mode::Heredoc | Mode::Block)
+        matches!(
+            self.mode,
+            Mode::Str(_) | Mode::Delim | Mode::Heredoc | Mode::Block
+        )
     }
 
     /// In the HTML of a PHP file.
@@ -197,24 +207,49 @@ impl Lang {
     ];
 
     pub fn from_path(p: Option<&Path>) -> Lang {
-        let name = p.and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-        if matches!(name.as_str(), ".bashrc" | ".bash_profile" | ".bash_aliases" | ".bash_logout" | ".profile" | ".zshrc" | ".zprofile" | ".zshenv" | "pkgbuild") {
+        let name = p
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        if matches!(
+            name.as_str(),
+            ".bashrc"
+                | ".bash_profile"
+                | ".bash_aliases"
+                | ".bash_logout"
+                | ".profile"
+                | ".zshrc"
+                | ".zprofile"
+                | ".zshenv"
+                | "pkgbuild"
+        ) {
             return Lang::Shell;
         }
-        if matches!(name.as_str(), "gemfile" | "rakefile" | "podfile" | "vagrantfile" | "guardfile" | "brewfile") {
+        if matches!(
+            name.as_str(),
+            "gemfile" | "rakefile" | "podfile" | "vagrantfile" | "guardfile" | "brewfile"
+        ) {
             return Lang::Ruby;
         }
-        if name == "dockerfile" || name == "containerfile" || name.starts_with("dockerfile.") || name.ends_with(".dockerfile") {
+        if name == "dockerfile"
+            || name == "containerfile"
+            || name.starts_with("dockerfile.")
+            || name.ends_with(".dockerfile")
+        {
             return Lang::Dockerfile;
         }
         if matches!(name.as_str(), "makefile" | "gnumakefile" | "bsdmakefile") {
             return Lang::Makefile;
         }
-        let ext = p.and_then(|p| p.extension()).map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        let ext = p
+            .and_then(|p| p.extension())
+            .map(|e| e.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
         match ext.as_str() {
             "log" | "out" | "err" => Lang::Log,
             "json" | "jsonl" | "ndjson" | "geojson" | "har" => Lang::Json,
-            "xml" | "html" | "htm" | "xhtml" | "svg" | "xaml" | "csproj" | "vcxproj" | "props" | "config" | "plist" | "xsd" | "wsdl" => Lang::Xml,
+            "xml" | "html" | "htm" | "xhtml" | "svg" | "xaml" | "csproj" | "vcxproj" | "props"
+            | "config" | "plist" | "xsd" | "wsdl" => Lang::Xml,
             "csv" => Lang::Csv(b','),
             "tsv" | "tab" => Lang::Csv(b'\t'),
             "sql" | "ddl" | "dml" => Lang::Sql,
@@ -223,7 +258,8 @@ impl Lang {
             "css" | "scss" | "less" => Lang::Css,
             "md" | "markdown" | "mdown" | "mkd" | "mdx" => Lang::Markdown,
             "mk" | "mak" => Lang::Makefile,
-            "c" | "h" | "cpp" | "cc" | "cxx" | "c++" | "hpp" | "hh" | "hxx" | "h++" | "inl" | "ipp" | "ino" => Lang::C,
+            "c" | "h" | "cpp" | "cc" | "cxx" | "c++" | "hpp" | "hh" | "hxx" | "h++" | "inl"
+            | "ipp" | "ino" => Lang::C,
             "cs" | "csx" => Lang::CSharp,
             "java" => Lang::Java,
             "js" | "mjs" | "cjs" | "jsx" => Lang::JavaScript,
@@ -247,11 +283,24 @@ impl Lang {
     /// names a script's language, most lines starting with a time make a log, a `{` or `[` JSON,
     /// `<?xml` or a tag XML.
     pub fn sniff(text: &str) -> Lang {
-        if let Some(bang) = text.trim_start_matches('\u{FEFF}').strip_prefix("#!").and_then(|t| t.lines().next()) {
+        if let Some(bang) = text
+            .trim_start_matches('\u{FEFF}')
+            .strip_prefix("#!")
+            .and_then(|t| t.lines().next())
+        {
             // #!/usr/bin/env python3, #!/bin/bash -e: the interpreter's name.
             let mut words = bang.split_whitespace();
-            let first = words.next().unwrap_or_default().rsplit('/').next().unwrap_or_default();
-            let prog = if first == "env" { words.find(|w| !w.starts_with('-')).unwrap_or_default() } else { first };
+            let first = words
+                .next()
+                .unwrap_or_default()
+                .rsplit('/')
+                .next()
+                .unwrap_or_default();
+            let prog = if first == "env" {
+                words.find(|w| !w.starts_with('-')).unwrap_or_default()
+            } else {
+                first
+            };
             let prog = prog.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
             match prog {
                 "python" | "pypy" => return Lang::Python,
@@ -264,12 +313,26 @@ impl Lang {
                 _ => {}
             }
         }
-        let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).take(8).collect();
-        let Some(first) = lines.first().map(|l| l.trim_start()) else { return Lang::Plain };
-        let stamped = lines.iter().filter(|l| bigtext::timestamp::parse(&l.chars().take(40).collect::<String>()).is_some()).count();
+        let lines: Vec<&str> = text
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .take(8)
+            .collect();
+        let Some(first) = lines.first().map(|l| l.trim_start()) else {
+            return Lang::Plain;
+        };
+        let stamped = lines
+            .iter()
+            .filter(|l| {
+                bigtext::timestamp::parse(&l.chars().take(40).collect::<String>()).is_some()
+            })
+            .count();
         if stamped > 0 && stamped * 2 >= lines.len() {
             Lang::Log
-        } else if first.starts_with("<?xml") || first.starts_with("<!DOCTYPE") || first.starts_with("<html") {
+        } else if first.starts_with("<?xml")
+            || first.starts_with("<!DOCTYPE")
+            || first.starts_with("<html")
+        {
             Lang::Xml
         } else if first.starts_with('{') || first.starts_with("[{") || first == "[" {
             Lang::Json
@@ -306,7 +369,11 @@ impl Lang {
     /// Code or a format written like it (CSS, Markdown, YAML, Dockerfile, Makefile), not a data
     /// or log format: it gets the code editor's look and conveniences.
     pub fn is_code(self) -> bool {
-        code::spec(self).is_some() || matches!(self, Lang::Css | Lang::Markdown | Lang::Yaml | Lang::Dockerfile | Lang::Makefile)
+        code::spec(self).is_some()
+            || matches!(
+                self,
+                Lang::Css | Lang::Markdown | Lang::Yaml | Lang::Dockerfile | Lang::Makefile
+            )
     }
 
     /// True if `line`, at the start of a line, almost surely begins outside any comment or string
@@ -365,14 +432,26 @@ pub enum Comment {
 pub fn toggle_comment(text: &str, c: Comment) -> (String, Vec<(usize, usize, usize)>) {
     let lines: Vec<&str> = text.split('\n').collect();
     // Each line without its CR (the CR goes back after it).
-    let bodies: Vec<&str> = lines.iter().map(|l| l.strip_suffix('\r').unwrap_or(l)).collect();
+    let bodies: Vec<&str> = lines
+        .iter()
+        .map(|l| l.strip_suffix('\r').unwrap_or(l))
+        .collect();
     let all_blank = bodies.iter().all(|l| l.trim().is_empty());
     let has_text = |l: &str| all_blank || !l.trim().is_empty();
     let indent = |l: &str| l.len() - l.trim_start_matches([' ', '\t']).len();
     match c {
         Comment::Line(t) => {
-            let commented = !all_blank && bodies.iter().filter(|l| has_text(l)).all(|l| l.trim_start().starts_with(t));
-            let col = bodies.iter().filter(|l| has_text(l)).map(|l| indent(l)).min().unwrap_or(0);
+            let commented = !all_blank
+                && bodies
+                    .iter()
+                    .filter(|l| has_text(l))
+                    .all(|l| l.trim_start().starts_with(t));
+            let col = bodies
+                .iter()
+                .filter(|l| has_text(l))
+                .map(|l| indent(l))
+                .min()
+                .unwrap_or(0);
             let mut out = Vec::with_capacity(lines.len());
             let mut changes = Vec::with_capacity(lines.len());
             for (l, b) in lines.iter().zip(&bodies) {
@@ -399,7 +478,10 @@ pub fn toggle_comment(text: &str, c: Comment) -> (String, Vec<(usize, usize, usi
         Comment::Block(open, close) => {
             let joined = bodies.join("\n");
             let trimmed = joined.trim();
-            let new = if trimmed.len() >= open.len() + close.len() && trimmed.starts_with(open) && trimmed.ends_with(close) {
+            let new = if trimmed.len() >= open.len() + close.len()
+                && trimmed.starts_with(open)
+                && trimmed.ends_with(close)
+            {
                 let s = joined.find(open).unwrap_or(0);
                 let e = joined.rfind(close).unwrap_or(joined.len());
                 let inner = &joined[s + open.len()..e];
@@ -409,11 +491,20 @@ pub fn toggle_comment(text: &str, c: Comment) -> (String, Vec<(usize, usize, usi
             } else {
                 let s = joined.len() - joined.trim_start().len();
                 let e = joined.trim_end().len().max(s);
-                format!("{}{open} {} {close}{}", &joined[..s], &joined[s..e], &joined[e..])
+                format!(
+                    "{}{open} {} {close}{}",
+                    &joined[..s],
+                    &joined[s..e],
+                    &joined[e..]
+                )
             };
             // CR LF line breaks stay CR LF.
-            let crlf = lines.len() > 1 && lines[..lines.len() - 1].iter().all(|l| l.ends_with('\r'));
-            (if crlf { new.replace('\n', "\r\n") } else { new }, Vec::new())
+            let crlf =
+                lines.len() > 1 && lines[..lines.len() - 1].iter().all(|l| l.ends_with('\r'));
+            (
+                if crlf { new.replace('\n', "\r\n") } else { new },
+                Vec::new(),
+            )
         }
     }
 }
@@ -467,8 +558,22 @@ pub fn color(kind: Kind, dark: bool) -> Color32 {
         Kind::Var => ((224, 108, 117), (200, 50, 40)),
         Kind::Decorator => ((86, 182, 194), (0, 120, 160)),
         Kind::Col(i) => {
-            const DARK: [(u8, u8, u8); 6] = [(229, 192, 123), (97, 175, 239), (152, 195, 121), (198, 120, 221), (86, 182, 194), (224, 108, 117)];
-            const LIGHT: [(u8, u8, u8); 6] = [(150, 100, 0), (10, 90, 170), (40, 120, 30), (152, 24, 160), (0, 110, 130), (180, 30, 50)];
+            const DARK: [(u8, u8, u8); 6] = [
+                (229, 192, 123),
+                (97, 175, 239),
+                (152, 195, 121),
+                (198, 120, 221),
+                (86, 182, 194),
+                (224, 108, 117),
+            ];
+            const LIGHT: [(u8, u8, u8); 6] = [
+                (150, 100, 0),
+                (10, 90, 170),
+                (40, 120, 30),
+                (152, 24, 160),
+                (0, 110, 130),
+                (180, 30, 50),
+            ];
             (DARK[i as usize % 6], LIGHT[i as usize % 6])
         }
     };
@@ -519,12 +624,94 @@ fn word_end(t: &[u8], i: usize) -> usize {
 }
 
 const SQL_KEYWORDS: &[&str] = &[
-    "select", "from", "where", "insert", "into", "values", "update", "set", "delete", "create", "table", "drop", "alter", "add", "index", "primary",
-    "key", "foreign", "references", "not", "null", "and", "or", "in", "is", "like", "between", "join", "left", "right", "inner", "outer", "on",
-    "as", "group", "by", "order", "having", "limit", "offset", "union", "all", "distinct", "case", "when", "then", "else", "end", "begin",
-    "commit", "rollback", "transaction", "default", "unique", "constraint", "exists", "if", "view", "database", "use", "lock", "tables",
-    "unlock", "engine", "charset", "int", "integer", "bigint", "smallint", "varchar", "char", "text", "date", "datetime", "timestamp",
-    "decimal", "float", "double", "boolean", "true", "false", "auto_increment", "with", "returning", "grant", "revoke", "desc", "asc",
+    "select",
+    "from",
+    "where",
+    "insert",
+    "into",
+    "values",
+    "update",
+    "set",
+    "delete",
+    "create",
+    "table",
+    "drop",
+    "alter",
+    "add",
+    "index",
+    "primary",
+    "key",
+    "foreign",
+    "references",
+    "not",
+    "null",
+    "and",
+    "or",
+    "in",
+    "is",
+    "like",
+    "between",
+    "join",
+    "left",
+    "right",
+    "inner",
+    "outer",
+    "on",
+    "as",
+    "group",
+    "by",
+    "order",
+    "having",
+    "limit",
+    "offset",
+    "union",
+    "all",
+    "distinct",
+    "case",
+    "when",
+    "then",
+    "else",
+    "end",
+    "begin",
+    "commit",
+    "rollback",
+    "transaction",
+    "default",
+    "unique",
+    "constraint",
+    "exists",
+    "if",
+    "view",
+    "database",
+    "use",
+    "lock",
+    "tables",
+    "unlock",
+    "engine",
+    "charset",
+    "int",
+    "integer",
+    "bigint",
+    "smallint",
+    "varchar",
+    "char",
+    "text",
+    "date",
+    "datetime",
+    "timestamp",
+    "decimal",
+    "float",
+    "double",
+    "boolean",
+    "true",
+    "false",
+    "auto_increment",
+    "with",
+    "returning",
+    "grant",
+    "revoke",
+    "desc",
+    "asc",
 ];
 
 /// Byte spans (into `text`, one line or the visible slice of one row) with their kinds, for text
@@ -536,7 +723,13 @@ pub fn spans(lang: Lang, text: &str, out: &mut Vec<(usize, usize, Kind)>) {
 
 /// Spans of `text` starting in state `st`; returns the state after it. `ends_line`: the text
 /// ends at a line break (not at a wrap or the edge of the screen).
-pub fn spans_from(lang: Lang, st: State, text: &str, ends_line: bool, out: &mut Vec<(usize, usize, Kind)>) -> State {
+pub fn spans_from(
+    lang: Lang,
+    st: State,
+    text: &str,
+    ends_line: bool,
+    out: &mut Vec<(usize, usize, Kind)>,
+) -> State {
     run(lang, st, text.as_bytes(), ends_line, Sink(Some(out)))
 }
 
@@ -601,13 +794,21 @@ fn log_spans(t: &[u8], out: &mut Vec<(usize, usize, Kind)>) {
         } else if is_ident(c) {
             let e = word_end(t, i);
             let w = &t[i..e];
-            let kind = if w.eq_ignore_ascii_case(b"ERROR") || w.eq_ignore_ascii_case(b"FATAL") || w.eq_ignore_ascii_case(b"CRITICAL") || w.eq_ignore_ascii_case(b"SEVERE") || w.eq_ignore_ascii_case(b"EXCEPTION") {
+            let kind = if w.eq_ignore_ascii_case(b"ERROR")
+                || w.eq_ignore_ascii_case(b"FATAL")
+                || w.eq_ignore_ascii_case(b"CRITICAL")
+                || w.eq_ignore_ascii_case(b"SEVERE")
+                || w.eq_ignore_ascii_case(b"EXCEPTION")
+            {
                 Some(Kind::Error)
             } else if w.eq_ignore_ascii_case(b"WARN") || w.eq_ignore_ascii_case(b"WARNING") {
                 Some(Kind::Warn)
             } else if w.eq_ignore_ascii_case(b"INFO") || w.eq_ignore_ascii_case(b"NOTICE") {
                 Some(Kind::Info)
-            } else if w.eq_ignore_ascii_case(b"DEBUG") || w.eq_ignore_ascii_case(b"TRACE") || w.eq_ignore_ascii_case(b"VERBOSE") {
+            } else if w.eq_ignore_ascii_case(b"DEBUG")
+                || w.eq_ignore_ascii_case(b"TRACE")
+                || w.eq_ignore_ascii_case(b"VERBOSE")
+            {
                 Some(Kind::Debug)
             } else if c.is_ascii_digit() {
                 Some(Kind::Number)
@@ -634,9 +835,18 @@ fn json_spans(t: &[u8], out: &mut Vec<(usize, usize, Kind)>) {
             while k < t.len() && t[k] == b' ' {
                 k += 1;
             }
-            out.push((i, e, if k < t.len() && t[k] == b':' { Kind::Key } else { Kind::Str }));
+            out.push((
+                i,
+                e,
+                if k < t.len() && t[k] == b':' {
+                    Kind::Key
+                } else {
+                    Kind::Str
+                },
+            ));
             i = e;
-        } else if c.is_ascii_digit() || (c == b'-' && t.get(i + 1).is_some_and(u8::is_ascii_digit)) {
+        } else if c.is_ascii_digit() || (c == b'-' && t.get(i + 1).is_some_and(u8::is_ascii_digit))
+        {
             let e = number_end(t, i + 1);
             out.push((i, e, Kind::Number));
             i = e;
@@ -660,7 +870,11 @@ fn xml_spans(st: &mut State, t: &[u8], out: &mut Sink) {
     while i < t.len() {
         match st.mode {
             Mode::Comment(_) | Mode::CData => {
-                let (kind, pat) = if st.mode == Mode::CData { (Kind::Str, &b"]]>"[..]) } else { (Kind::Comment, &b"-->"[..]) };
+                let (kind, pat) = if st.mode == Mode::CData {
+                    (Kind::Str, &b"]]>"[..])
+                } else {
+                    (Kind::Comment, &b"-->"[..])
+                };
                 let (e, closed) = close(t, i, pat);
                 out.push(i, e, kind);
                 if closed {
@@ -668,7 +882,13 @@ fn xml_spans(st: &mut State, t: &[u8], out: &mut Sink) {
                 }
                 i = e;
             }
-            Mode::Code | Mode::LineComment | Mode::Str(_) | Mode::Delim | Mode::Heredoc | Mode::Html | Mode::Block => {
+            Mode::Code
+            | Mode::LineComment
+            | Mode::Str(_)
+            | Mode::Delim
+            | Mode::Heredoc
+            | Mode::Html
+            | Mode::Block => {
                 if t[i..].starts_with(b"<!--") {
                     let (e, closed) = close(t, i + 4, b"-->");
                     out.push(i, e, Kind::Comment);
@@ -685,14 +905,21 @@ fn xml_spans(st: &mut State, t: &[u8], out: &mut Sink) {
                     while e < t.len() && (t[e] == b'/' || t[e] == b'?' || t[e] == b'!') {
                         e += 1;
                     }
-                    while e < t.len() && (is_ident(t[e]) || t[e] == b':' || t[e] == b'-' || t[e] == b'.') {
+                    while e < t.len()
+                        && (is_ident(t[e]) || t[e] == b':' || t[e] == b'-' || t[e] == b'.')
+                    {
                         e += 1;
                     }
                     out.push(i, e, Kind::Tag);
                     st.mode = Mode::Tag;
                     i = e;
                 } else if t[i] == b'&' {
-                    let e = t[i..].iter().position(|&b| b == b';' || b == b' ').map(|p| i + p + 1).unwrap_or(t.len()).min(i + 12);
+                    let e = t[i..]
+                        .iter()
+                        .position(|&b| b == b';' || b == b' ')
+                        .map(|p| i + p + 1)
+                        .unwrap_or(t.len())
+                        .min(i + 12);
                     out.push(i, e, Kind::Keyword);
                     i = e;
                 } else {
@@ -701,7 +928,10 @@ fn xml_spans(st: &mut State, t: &[u8], out: &mut Sink) {
             }
             Mode::Tag => {
                 let c = t[i];
-                if c == b'>' || (c == b'/' && t.get(i + 1) == Some(&b'>')) || (c == b'?' && t.get(i + 1) == Some(&b'>')) {
+                if c == b'>'
+                    || (c == b'/' && t.get(i + 1) == Some(&b'>'))
+                    || (c == b'?' && t.get(i + 1) == Some(&b'>'))
+                {
                     let e = if c == b'>' { i + 1 } else { i + 2 };
                     out.push(i, e, Kind::Tag);
                     st.mode = Mode::Code;
@@ -712,7 +942,9 @@ fn xml_spans(st: &mut State, t: &[u8], out: &mut Sink) {
                     i = e;
                 } else if is_ident(c) {
                     let mut e = i;
-                    while e < t.len() && (is_ident(t[e]) || t[e] == b':' || t[e] == b'-' || t[e] == b'.') {
+                    while e < t.len()
+                        && (is_ident(t[e]) || t[e] == b':' || t[e] == b'-' || t[e] == b'.')
+                    {
                         e += 1;
                     }
                     out.push(i, e, Kind::Attr);
@@ -833,13 +1065,17 @@ fn ini_spans(t: &[u8], out: &mut Vec<(usize, usize, Kind)>) {
         } else if c == b'#' && i > 0 && t[i - 1] == b' ' {
             out.push((i, t.len(), Kind::Comment));
             return;
-        } else if c.is_ascii_digit() || (c == b'-' && t.get(i + 1).is_some_and(u8::is_ascii_digit)) {
+        } else if c.is_ascii_digit() || (c == b'-' && t.get(i + 1).is_some_and(u8::is_ascii_digit))
+        {
             let e = number_end(t, i + 1);
             out.push((i, e, Kind::Number));
             i = e;
         } else if is_ident(c) {
             let e = word_end(t, i);
-            if matches!(&t[i..e], b"true" | b"false" | b"yes" | b"no" | b"on" | b"off" | b"null") {
+            if matches!(
+                &t[i..e],
+                b"true" | b"false" | b"yes" | b"no" | b"on" | b"off" | b"null"
+            ) {
                 out.push((i, e, Kind::Keyword));
             }
             i = e;
@@ -856,7 +1092,9 @@ mod tests {
     fn kinds(lang: Lang, s: &str) -> Vec<(String, Kind)> {
         let mut v = Vec::new();
         spans(lang, s, &mut v);
-        v.into_iter().map(|(a, b, k)| (s[a..b].to_string(), k)).collect()
+        v.into_iter()
+            .map(|(a, b, k)| (s[a..b].to_string(), k))
+            .collect()
     }
 
     #[test]
@@ -903,15 +1141,25 @@ mod tests {
             .map(|l| {
                 let mut v = Vec::new();
                 st = spans_from(lang, st, l, true, &mut v);
-                v.into_iter().map(|(a, b, k)| (l[a..b].to_string(), k)).collect()
+                v.into_iter()
+                    .map(|(a, b, k)| (l[a..b].to_string(), k))
+                    .collect()
             })
             .collect()
     }
 
     #[test]
     fn comments_and_tags_over_lines() {
-        let x = lines(Lang::Xml, "<a href=\"x\"\n   id=\"y\">t</a>\n<!-- one\ntwo -->\n<b/>\n<![CDATA[\n<raw>\n]]>");
-        assert!(x[1].contains(&("id".into(), Kind::Attr)) && x[1].contains(&("\"y\"".into(), Kind::Str)), "{:?}", x[1]);
+        let x = lines(
+            Lang::Xml,
+            "<a href=\"x\"\n   id=\"y\">t</a>\n<!-- one\ntwo -->\n<b/>\n<![CDATA[\n<raw>\n]]>",
+        );
+        assert!(
+            x[1].contains(&("id".into(), Kind::Attr))
+                && x[1].contains(&("\"y\"".into(), Kind::Str)),
+            "{:?}",
+            x[1]
+        );
         assert_eq!(x[3], vec![("two -->".into(), Kind::Comment)]);
         assert!(x[4].contains(&("<b".into(), Kind::Tag)));
         assert_eq!(x[6], vec![("<raw>".into(), Kind::Str)]);
@@ -928,15 +1176,39 @@ mod tests {
     #[test]
     fn c_cpp_csharp_java() {
         let k = kinds(Lang::C, "#include <stdio.h>");
-        assert_eq!(k, vec![("#include".into(), Kind::Keyword), ("<stdio.h>".into(), Kind::Str)]);
-        let k = kinds(Lang::C, "static int count(const char *s) { return MAX_LEN + 1'000; } // done");
-        for want in [("static", Kind::Keyword), ("int", Kind::Type), ("count", Kind::Function), ("char", Kind::Type), ("MAX_LEN", Kind::Number), ("1'000", Kind::Number), ("// done", Kind::Comment)] {
+        assert_eq!(
+            k,
+            vec![
+                ("#include".into(), Kind::Keyword),
+                ("<stdio.h>".into(), Kind::Str)
+            ]
+        );
+        let k = kinds(
+            Lang::C,
+            "static int count(const char *s) { return MAX_LEN + 1'000; } // done",
+        );
+        for want in [
+            ("static", Kind::Keyword),
+            ("int", Kind::Type),
+            ("count", Kind::Function),
+            ("char", Kind::Type),
+            ("MAX_LEN", Kind::Number),
+            ("1'000", Kind::Number),
+            ("// done", Kind::Comment),
+        ] {
             assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
         }
         assert!(!k.iter().any(|(s, _)| s == "s"));
         let k = kinds(Lang::C, r#"auto s = R"x(a "quoted" )x" + L"wide";"#);
-        assert!(k.contains(&(r#"R"x(a "quoted" )x""#.into(), Kind::Str)) && k.contains(&("L\"wide\"".into(), Kind::Str)), "{k:?}");
-        let l = lines(Lang::C, "a /* one\ntwo */ b\nstd::string s = R\"(raw\nstill)\";");
+        assert!(
+            k.contains(&(r#"R"x(a "quoted" )x""#.into(), Kind::Str))
+                && k.contains(&("L\"wide\"".into(), Kind::Str)),
+            "{k:?}"
+        );
+        let l = lines(
+            Lang::C,
+            "a /* one\ntwo */ b\nstd::string s = R\"(raw\nstill)\";",
+        );
         assert_eq!(l[1][0], ("two */".into(), Kind::Comment));
         assert!(l[2].contains(&("string".into(), Kind::Type)));
         assert_eq!(l[3], vec![("still)\"".into(), Kind::Str)]);
@@ -946,61 +1218,162 @@ mod tests {
         let after = spans_from(Lang::C, st, "goes on", true, &mut v);
         assert_eq!((v, after), (vec![(0, 7, Kind::Comment)], State::default()));
 
-        let k = kinds(Lang::CSharp, r#"var p = @"C:\dir\"; var s = $"{x}\n"; public class Foo : IBar { }"#);
-        for want in [("var", Kind::Keyword), (r#"@"C:\dir\""#, Kind::Str), (r#"$"{x}\n""#, Kind::Str), ("Foo", Kind::Type), ("IBar", Kind::Type)] {
+        let k = kinds(
+            Lang::CSharp,
+            r#"var p = @"C:\dir\"; var s = $"{x}\n"; public class Foo : IBar { }"#,
+        );
+        for want in [
+            ("var", Kind::Keyword),
+            (r#"@"C:\dir\""#, Kind::Str),
+            (r#"$"{x}\n""#, Kind::Str),
+            ("Foo", Kind::Type),
+            ("IBar", Kind::Type),
+        ] {
             assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
         }
         let l = lines(Lang::CSharp, "var q = \"\"\"\nraw \" text\n\"\"\";");
         assert_eq!(l[1], vec![("raw \" text".into(), Kind::Str)]);
         assert_eq!(l[2][0], ("\"\"\"".into(), Kind::Str));
 
-        let k = kinds(Lang::Java, "@Override public String toString() { return new StringBuilder().toString(); }");
-        assert_eq!(k[..4], [("@Override".into(), Kind::Decorator), ("public".into(), Kind::Keyword), ("String".into(), Kind::Type), ("toString".into(), Kind::Function)]);
-        assert!(k.contains(&("StringBuilder".into(), Kind::Type)) && k.last() == Some(&("toString".into(), Kind::Function)), "{k:?}");
-        let l = lines(Lang::Java, "String s = \"\"\"\n  text \"block\"\n  \"\"\";\n/**\n * Docs.\n */\nclass A {}");
+        let k = kinds(
+            Lang::Java,
+            "@Override public String toString() { return new StringBuilder().toString(); }",
+        );
+        assert_eq!(
+            k[..4],
+            [
+                ("@Override".into(), Kind::Decorator),
+                ("public".into(), Kind::Keyword),
+                ("String".into(), Kind::Type),
+                ("toString".into(), Kind::Function)
+            ]
+        );
+        assert!(
+            k.contains(&("StringBuilder".into(), Kind::Type))
+                && k.last() == Some(&("toString".into(), Kind::Function)),
+            "{k:?}"
+        );
+        let l = lines(
+            Lang::Java,
+            "String s = \"\"\"\n  text \"block\"\n  \"\"\";\n/**\n * Docs.\n */\nclass A {}",
+        );
         assert_eq!(l[1], vec![("  text \"block\"".into(), Kind::Str)]);
         assert_eq!(l[4], vec![(" * Docs.".into(), Kind::Comment)]);
-        assert_eq!(l[6][..2], [("class".into(), Kind::Keyword), ("A".into(), Kind::Type)]);
+        assert_eq!(
+            l[6][..2],
+            [("class".into(), Kind::Keyword), ("A".into(), Kind::Type)]
+        );
     }
 
     #[test]
     fn javascript_typescript() {
-        let k = kinds(Lang::JavaScript, r#"export async function load(url) { const re = /"[a-z/]+"/gi; return x / 2 / y; }"#);
-        for want in [("export", Kind::Keyword), ("async", Kind::Keyword), ("load", Kind::Function), (r#"/"[a-z/]+"/gi"#, Kind::Str), ("2", Kind::Number)] {
+        let k = kinds(
+            Lang::JavaScript,
+            r#"export async function load(url) { const re = /"[a-z/]+"/gi; return x / 2 / y; }"#,
+        );
+        for want in [
+            ("export", Kind::Keyword),
+            ("async", Kind::Keyword),
+            ("load", Kind::Function),
+            (r#"/"[a-z/]+"/gi"#, Kind::Str),
+            ("2", Kind::Number),
+        ] {
             assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
         }
         assert_eq!(k.iter().filter(|s| s.1 == Kind::Str).count(), 1, "{k:?}");
         // Values among the keywords are constants, `this` a variable.
         let k = kinds(Lang::JavaScript, "return this.ok ?? null;");
-        assert_eq!(k, vec![("return".into(), Kind::Keyword), ("this".into(), Kind::Var), ("null".into(), Kind::Number)]);
+        assert_eq!(
+            k,
+            vec![
+                ("return".into(), Kind::Keyword),
+                ("this".into(), Kind::Var),
+                ("null".into(), Kind::Number)
+            ]
+        );
         // A regular expression with a backtick does not open a template literal.
         let k = kinds(Lang::JavaScript, "if (ok) return /`/.test(s);");
-        assert!(k.contains(&("/`/".into(), Kind::Str)) && k.contains(&("test".into(), Kind::Function)), "{k:?}");
-        assert_eq!(scan(Lang::JavaScript, State::default(), "if (ok) return /`/.test(s);", true), State::default());
-        let l = lines(Lang::TypeScript, "const html = `<p>\n  ${name}\n</p>`;\ninterface User { id: number }");
+        assert!(
+            k.contains(&("/`/".into(), Kind::Str)) && k.contains(&("test".into(), Kind::Function)),
+            "{k:?}"
+        );
+        assert_eq!(
+            scan(
+                Lang::JavaScript,
+                State::default(),
+                "if (ok) return /`/.test(s);",
+                true
+            ),
+            State::default()
+        );
+        let l = lines(
+            Lang::TypeScript,
+            "const html = `<p>\n  ${name}\n</p>`;\ninterface User { id: number }",
+        );
         assert_eq!(l[1], vec![("  ${name}".into(), Kind::Str)]);
         assert_eq!(l[2][0], ("</p>`".into(), Kind::Str));
-        assert_eq!(l[3], vec![("interface".into(), Kind::Keyword), ("User".into(), Kind::Type), ("number".into(), Kind::Type)]);
-        let k = kinds(Lang::TypeScript, "@Component({}) class A { private x: string = 'a'; }");
-        for want in [("@Component", Kind::Decorator), ("private", Kind::Keyword), ("string", Kind::Type), ("'a'", Kind::Str)] {
+        assert_eq!(
+            l[3],
+            vec![
+                ("interface".into(), Kind::Keyword),
+                ("User".into(), Kind::Type),
+                ("number".into(), Kind::Type)
+            ]
+        );
+        let k = kinds(
+            Lang::TypeScript,
+            "@Component({}) class A { private x: string = 'a'; }",
+        );
+        for want in [
+            ("@Component", Kind::Decorator),
+            ("private", Kind::Keyword),
+            ("string", Kind::Type),
+            ("'a'", Kind::Str),
+        ] {
             assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
         }
-        assert_eq!((Lang::from_path(Some(Path::new("a.tsx"))), Lang::from_path(Some(Path::new("b.mjs")))), (Lang::TypeScript, Lang::JavaScript));
+        assert_eq!(
+            (
+                Lang::from_path(Some(Path::new("a.tsx"))),
+                Lang::from_path(Some(Path::new("b.mjs")))
+            ),
+            (Lang::TypeScript, Lang::JavaScript)
+        );
     }
 
     #[test]
     fn go_rust() {
-        let k = kinds(Lang::Go, r#"func (s *Server) Handle(w http.ResponseWriter) error { return fmt.Errorf(`bad "%s"`, nil) }"#);
-        for want in [("func", Kind::Keyword), ("Handle", Kind::Function), ("error", Kind::Type), ("Errorf", Kind::Function), ("`bad \"%s\"`", Kind::Str), ("nil", Kind::Number)] {
+        let k = kinds(
+            Lang::Go,
+            r#"func (s *Server) Handle(w http.ResponseWriter) error { return fmt.Errorf(`bad "%s"`, nil) }"#,
+        );
+        for want in [
+            ("func", Kind::Keyword),
+            ("Handle", Kind::Function),
+            ("error", Kind::Type),
+            ("Errorf", Kind::Function),
+            ("`bad \"%s\"`", Kind::Str),
+            ("nil", Kind::Number),
+        ] {
             assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
         }
         // Capitalised names are exported, not types, in Go.
-        assert!(!k.iter().any(|(s, _)| s == "Server" || s == "ResponseWriter"), "{k:?}");
+        assert!(
+            !k.iter()
+                .any(|(s, _)| s == "Server" || s == "ResponseWriter"),
+            "{k:?}"
+        );
         let l = lines(Lang::Go, "q := `SELECT\n  *\nFROM t`\nvar n int");
         assert_eq!(l[1], vec![("  *".into(), Kind::Str)]);
-        assert_eq!(l[3], vec![("var".into(), Kind::Keyword), ("int".into(), Kind::Type)]);
+        assert_eq!(
+            l[3],
+            vec![("var".into(), Kind::Keyword), ("int".into(), Kind::Type)]
+        );
 
-        let k = kinds(Lang::Rust, r#"#[derive(Debug)] pub fn get<'a>(s: &'a str) -> Option<i32> { println!("{}", 'x'); Some('\n') }"#);
+        let k = kinds(
+            Lang::Rust,
+            r#"#[derive(Debug)] pub fn get<'a>(s: &'a str) -> Option<i32> { println!("{}", 'x'); Some('\n') }"#,
+        );
         for want in [
             ("#[derive(Debug)]", Kind::Decorator),
             ("fn", Kind::Keyword),
@@ -1017,8 +1390,14 @@ mod tests {
         }
         let l = lines(Lang::Rust, "let s = r#\"raw \"quoted\"\nstill\"#;\n/* outer /* inner */ still\n*/ let x = 1;\nlet t = \"a\nb\";");
         assert_eq!(l[1], vec![("still\"#".into(), Kind::Str)]);
-        assert_eq!(l[2], vec![("/* outer /* inner */ still".into(), Kind::Comment)]);
-        assert_eq!(l[3][..2], [("*/".into(), Kind::Comment), ("let".into(), Kind::Keyword)]);
+        assert_eq!(
+            l[2],
+            vec![("/* outer /* inner */ still".into(), Kind::Comment)]
+        );
+        assert_eq!(
+            l[3][..2],
+            [("*/".into(), Kind::Comment), ("let".into(), Kind::Keyword)]
+        );
         assert_eq!(l[5][0], ("b\"".into(), Kind::Str));
     }
 
@@ -1026,20 +1405,67 @@ mod tests {
     fn php() {
         let text = "<h1 class=\"t\">Hi</h1>\n<?php\n$name = 'Ann'; // greet ?> <b>x</b>\n<?= strtoupper($name) ?>\n<?php\n$t = <<<EOT\n  Hello $name\n  EOT;\necho TRUE; #[Route('/')]\nfunction show(int $id): string {}";
         let l = lines_from(Lang::Php, State::start(Lang::Php, true), text);
-        assert_eq!(l[0][..3], [("<h1".into(), Kind::Tag), ("class".into(), Kind::Attr), ("\"t\"".into(), Kind::Str)]);
+        assert_eq!(
+            l[0][..3],
+            [
+                ("<h1".into(), Kind::Tag),
+                ("class".into(), Kind::Attr),
+                ("\"t\"".into(), Kind::Str)
+            ]
+        );
         assert_eq!(l[1], vec![("<?php".into(), Kind::Tag)]);
-        assert_eq!(l[2][..4], [("$name".into(), Kind::Var), ("'Ann'".into(), Kind::Str), ("// greet ".into(), Kind::Comment), ("?>".into(), Kind::Tag)]);
+        assert_eq!(
+            l[2][..4],
+            [
+                ("$name".into(), Kind::Var),
+                ("'Ann'".into(), Kind::Str),
+                ("// greet ".into(), Kind::Comment),
+                ("?>".into(), Kind::Tag)
+            ]
+        );
         assert!(l[2].contains(&("<b".into(), Kind::Tag)), "{:?}", l[2]);
-        assert_eq!(l[3], vec![("<?=".into(), Kind::Tag), ("strtoupper".into(), Kind::Function), ("$name".into(), Kind::Var), ("?>".into(), Kind::Tag)]);
-        assert_eq!(l[5], vec![("$t".into(), Kind::Var), ("<<<EOT".into(), Kind::Str)]);
+        assert_eq!(
+            l[3],
+            vec![
+                ("<?=".into(), Kind::Tag),
+                ("strtoupper".into(), Kind::Function),
+                ("$name".into(), Kind::Var),
+                ("?>".into(), Kind::Tag)
+            ]
+        );
+        assert_eq!(
+            l[5],
+            vec![("$t".into(), Kind::Var), ("<<<EOT".into(), Kind::Str)]
+        );
         assert_eq!(l[6], vec![("  Hello $name".into(), Kind::Str)]);
         assert_eq!(l[7], vec![("EOT".into(), Kind::Str)]);
-        assert_eq!(l[8], vec![("echo".into(), Kind::Keyword), ("TRUE".into(), Kind::Number), ("#[Route('/')]".into(), Kind::Decorator)]);
-        for want in [("function", Kind::Keyword), ("show", Kind::Function), ("int", Kind::Type), ("$id", Kind::Var), ("string", Kind::Type)] {
-            assert!(l[9].contains(&(want.0.into(), want.1)), "{want:?} in {:?}", l[9]);
+        assert_eq!(
+            l[8],
+            vec![
+                ("echo".into(), Kind::Keyword),
+                ("TRUE".into(), Kind::Number),
+                ("#[Route('/')]".into(), Kind::Decorator)
+            ]
+        );
+        for want in [
+            ("function", Kind::Keyword),
+            ("show", Kind::Function),
+            ("int", Kind::Type),
+            ("$id", Kind::Var),
+            ("string", Kind::Type),
+        ] {
+            assert!(
+                l[9].contains(&(want.0.into(), want.1)),
+                "{want:?} in {:?}",
+                l[9]
+            );
         }
         // <?xml is not PHP; after a jump a PHP file is assumed to be in code.
-        let l = lines_from(Lang::Php, State::start(Lang::Php, true), "<?xml version=\"1.0\"?>\n$x");
+        let l = lines_from(
+            Lang::Php,
+            State::start(Lang::Php, true),
+            "<?xml version=\"1.0\"?>\n$x",
+        );
         assert!(l[1].is_empty(), "{:?}", l[1]);
         assert_eq!(kinds(Lang::Php, "$x"), vec![("$x".into(), Kind::Var)]);
     }
@@ -1051,12 +1477,38 @@ mod tests {
             "@dataclass\nclass User(Base):\n    \"\"\"A user.\n\n    More text.\n    \"\"\"\n    def greet(self, name: str) -> str:\n        return f\"hi {name}\"  # say hi\nMAX = 3\nx = 'open\ny = 1",
         );
         assert_eq!(l[0], vec![("@dataclass".into(), Kind::Decorator)]);
-        assert_eq!(l[1], vec![("class".into(), Kind::Keyword), ("User".into(), Kind::Type), ("Base".into(), Kind::Type)]);
+        assert_eq!(
+            l[1],
+            vec![
+                ("class".into(), Kind::Keyword),
+                ("User".into(), Kind::Type),
+                ("Base".into(), Kind::Type)
+            ]
+        );
         assert_eq!(l[2], vec![("\"\"\"A user.".into(), Kind::Str)]);
         assert_eq!(l[4], vec![("    More text.".into(), Kind::Str)]);
-        assert_eq!(l[6], vec![("def".into(), Kind::Keyword), ("greet".into(), Kind::Function), ("self".into(), Kind::Var), ("str".into(), Kind::Type), ("str".into(), Kind::Type)]);
-        assert_eq!(l[7], vec![("return".into(), Kind::Keyword), ("f\"hi {name}\"".into(), Kind::Str), ("# say hi".into(), Kind::Comment)]);
-        assert_eq!(l[8], vec![("MAX".into(), Kind::Number), ("3".into(), Kind::Number)]);
+        assert_eq!(
+            l[6],
+            vec![
+                ("def".into(), Kind::Keyword),
+                ("greet".into(), Kind::Function),
+                ("self".into(), Kind::Var),
+                ("str".into(), Kind::Type),
+                ("str".into(), Kind::Type)
+            ]
+        );
+        assert_eq!(
+            l[7],
+            vec![
+                ("return".into(), Kind::Keyword),
+                ("f\"hi {name}\"".into(), Kind::Str),
+                ("# say hi".into(), Kind::Comment)
+            ]
+        );
+        assert_eq!(
+            l[8],
+            vec![("MAX".into(), Kind::Number), ("3".into(), Kind::Number)]
+        );
         // A '…' string ends with its line.
         assert_eq!(l[10], vec![("1".into(), Kind::Number)]);
 
@@ -1065,99 +1517,275 @@ mod tests {
             "#!/bin/bash\nNAME=\"world\"  # greet\nif [ -n \"$NAME\" ]; then echo \"hi ${NAME}\"; fi\ncat <<-'EOF' | grep x\n  body $NAME\n\tEOF\necho done a#b $# my-done.sh",
         );
         assert_eq!(l[0], vec![("#!/bin/bash".into(), Kind::Comment)]);
-        assert_eq!(l[1], vec![("NAME".into(), Kind::Var), ("\"world\"".into(), Kind::Str), ("# greet".into(), Kind::Comment)]);
+        assert_eq!(
+            l[1],
+            vec![
+                ("NAME".into(), Kind::Var),
+                ("\"world\"".into(), Kind::Str),
+                ("# greet".into(), Kind::Comment)
+            ]
+        );
         assert_eq!(
             l[2],
-            vec![("if".into(), Kind::Keyword), ("\"$NAME\"".into(), Kind::Str), ("then".into(), Kind::Keyword), ("echo".into(), Kind::Function), ("\"hi ${NAME}\"".into(), Kind::Str), ("fi".into(), Kind::Keyword)]
+            vec![
+                ("if".into(), Kind::Keyword),
+                ("\"$NAME\"".into(), Kind::Str),
+                ("then".into(), Kind::Keyword),
+                ("echo".into(), Kind::Function),
+                ("\"hi ${NAME}\"".into(), Kind::Str),
+                ("fi".into(), Kind::Keyword)
+            ]
         );
         assert_eq!(l[3], vec![("<<-'EOF'".into(), Kind::Str)]);
         assert_eq!(l[4], vec![("  body $NAME".into(), Kind::Str)]);
         assert_eq!(l[5], vec![("EOF".into(), Kind::Str)]);
-        assert_eq!(l[6], vec![("echo".into(), Kind::Function), ("done".into(), Kind::Keyword), ("$#".into(), Kind::Var)]);
-        assert_eq!(kinds(Lang::Shell, "local dir=/tmp"), vec![("local".into(), Kind::Keyword), ("dir".into(), Kind::Var)]);
+        assert_eq!(
+            l[6],
+            vec![
+                ("echo".into(), Kind::Function),
+                ("done".into(), Kind::Keyword),
+                ("$#".into(), Kind::Var)
+            ]
+        );
+        assert_eq!(
+            kinds(Lang::Shell, "local dir=/tmp"),
+            vec![("local".into(), Kind::Keyword), ("dir".into(), Kind::Var)]
+        );
 
-        assert_eq!(Lang::sniff("#!/usr/bin/env python3\nprint(1)\n"), Lang::Python);
+        assert_eq!(
+            Lang::sniff("#!/usr/bin/env python3\nprint(1)\n"),
+            Lang::Python
+        );
         assert_eq!(Lang::sniff("\u{FEFF}#!/bin/bash -e\n"), Lang::Shell);
-        assert_eq!(Lang::sniff("#!/usr/bin/env -S node --x\n"), Lang::JavaScript);
+        assert_eq!(
+            Lang::sniff("#!/usr/bin/env -S node --x\n"),
+            Lang::JavaScript
+        );
         assert_eq!(Lang::sniff("#!/usr/bin/perl\n"), Lang::Plain);
-        assert_eq!((Lang::from_path(Some(Path::new("/home/a/.bashrc"))), Lang::from_path(Some(Path::new("t.pyi")))), (Lang::Shell, Lang::Python));
+        assert_eq!(
+            (
+                Lang::from_path(Some(Path::new("/home/a/.bashrc"))),
+                Lang::from_path(Some(Path::new("t.pyi")))
+            ),
+            (Lang::Shell, Lang::Python)
+        );
     }
 
     #[test]
     fn kotlin_swift_dart() {
-        let k = kinds(Lang::Kotlin, "@JvmStatic suspend fun load(id: Int): String? = null");
-        for want in [("@JvmStatic", Kind::Decorator), ("suspend", Kind::Keyword), ("fun", Kind::Keyword), ("load", Kind::Function), ("Int", Kind::Type), ("String", Kind::Type), ("null", Kind::Number)] {
+        let k = kinds(
+            Lang::Kotlin,
+            "@JvmStatic suspend fun load(id: Int): String? = null",
+        );
+        for want in [
+            ("@JvmStatic", Kind::Decorator),
+            ("suspend", Kind::Keyword),
+            ("fun", Kind::Keyword),
+            ("load", Kind::Function),
+            ("Int", Kind::Type),
+            ("String", Kind::Type),
+            ("null", Kind::Number),
+        ] {
             assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
         }
-        let l = lines(Lang::Kotlin, "val s = \"\"\"\n  raw \\n $x\n\"\"\"\n/* a /* b */ c */ val y = 1");
+        let l = lines(
+            Lang::Kotlin,
+            "val s = \"\"\"\n  raw \\n $x\n\"\"\"\n/* a /* b */ c */ val y = 1",
+        );
         assert_eq!(l[1], vec![("  raw \\n $x".into(), Kind::Str)]);
-        assert_eq!(l[3][..2], [("/* a /* b */ c */".into(), Kind::Comment), ("val".into(), Kind::Keyword)]);
+        assert_eq!(
+            l[3][..2],
+            [
+                ("/* a /* b */ c */".into(), Kind::Comment),
+                ("val".into(), Kind::Keyword)
+            ]
+        );
 
-        let k = kinds(Lang::Swift, "#if DEBUG\nstruct Point: Codable { let x: Int; func move() { self.x } }");
+        let k = kinds(
+            Lang::Swift,
+            "#if DEBUG\nstruct Point: Codable { let x: Int; func move() { self.x } }",
+        );
         assert_eq!(k[0], ("#if".into(), Kind::Keyword));
-        for want in [("struct", Kind::Keyword), ("Point", Kind::Type), ("let", Kind::Keyword), ("Int", Kind::Type), ("move", Kind::Function), ("self", Kind::Var)] {
+        for want in [
+            ("struct", Kind::Keyword),
+            ("Point", Kind::Type),
+            ("let", Kind::Keyword),
+            ("Int", Kind::Type),
+            ("move", Kind::Function),
+            ("self", Kind::Var),
+        ] {
             assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
         }
         let l = lines(Lang::Swift, "let t = \"\"\"\n  line \\(x)\n  \"\"\"");
         assert_eq!(l[1], vec![("  line \\(x)".into(), Kind::Str)]);
 
-        let k = kinds(Lang::Dart, "Future<void> main() async { final s = r'\\d+'; }");
-        for want in [("Future", Kind::Type), ("void", Kind::Type), ("main", Kind::Function), ("async", Kind::Keyword), ("final", Kind::Keyword), ("r'\\d+'", Kind::Str)] {
+        let k = kinds(
+            Lang::Dart,
+            "Future<void> main() async { final s = r'\\d+'; }",
+        );
+        for want in [
+            ("Future", Kind::Type),
+            ("void", Kind::Type),
+            ("main", Kind::Function),
+            ("async", Kind::Keyword),
+            ("final", Kind::Keyword),
+            ("r'\\d+'", Kind::Str),
+        ] {
             assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
         }
         let l = lines(Lang::Dart, "var m = '''\nmulti\n''';");
         assert_eq!(l[1], vec![("multi".into(), Kind::Str)]);
         assert_eq!(
-            (Lang::from_path(Some(Path::new("App.kt"))), Lang::from_path(Some(Path::new("main.swift"))), Lang::from_path(Some(Path::new("lib.dart")))),
+            (
+                Lang::from_path(Some(Path::new("App.kt"))),
+                Lang::from_path(Some(Path::new("main.swift"))),
+                Lang::from_path(Some(Path::new("lib.dart")))
+            ),
             (Lang::Kotlin, Lang::Swift, Lang::Dart)
         );
     }
 
     #[test]
     fn ruby_lua_powershell() {
-        let k = kinds(Lang::Ruby, "def valid?(x) = @items.empty? && $debug || :ok if defined?(Foo) # done");
-        for want in [("def", Kind::Keyword), ("valid?", Kind::Function), ("@items", Kind::Var), ("$debug", Kind::Var), (":ok", Kind::Number), ("defined?", Kind::Keyword), ("Foo", Kind::Type), ("# done", Kind::Comment)] {
+        let k = kinds(
+            Lang::Ruby,
+            "def valid?(x) = @items.empty? && $debug || :ok if defined?(Foo) # done",
+        );
+        for want in [
+            ("def", Kind::Keyword),
+            ("valid?", Kind::Function),
+            ("@items", Kind::Var),
+            ("$debug", Kind::Var),
+            (":ok", Kind::Number),
+            ("defined?", Kind::Keyword),
+            ("Foo", Kind::Type),
+            ("# done", Kind::Comment),
+        ] {
             assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
         }
-        let l = lines(Lang::Ruby, "=begin\ndef hidden\n=end\nsql = <<~SQL\n  SELECT 1\nSQL\nx = A::B");
+        let l = lines(
+            Lang::Ruby,
+            "=begin\ndef hidden\n=end\nsql = <<~SQL\n  SELECT 1\nSQL\nx = A::B",
+        );
         assert_eq!(l[1], vec![("def hidden".into(), Kind::Comment)]);
         assert_eq!(l[2], vec![("=end".into(), Kind::Comment)]);
         assert_eq!(l[4], vec![("  SELECT 1".into(), Kind::Str)]);
         assert!(!l[6].iter().any(|s| s.1 == Kind::Number), "{:?}", l[6]);
 
-        let l = lines(Lang::Lua, "--[[ block\nstill ]] local s = [==[\nraw ]] here\n]==] -- end\nprint(#t)");
-        assert_eq!(l[1][..2], [("still ]]".into(), Kind::Comment), ("local".into(), Kind::Keyword)]);
+        let l = lines(
+            Lang::Lua,
+            "--[[ block\nstill ]] local s = [==[\nraw ]] here\n]==] -- end\nprint(#t)",
+        );
+        assert_eq!(
+            l[1][..2],
+            [
+                ("still ]]".into(), Kind::Comment),
+                ("local".into(), Kind::Keyword)
+            ]
+        );
         assert_eq!(l[2], vec![("raw ]] here".into(), Kind::Str)]);
-        assert_eq!(l[3], vec![("]==]".into(), Kind::Str), ("-- end".into(), Kind::Comment)]);
+        assert_eq!(
+            l[3],
+            vec![("]==]".into(), Kind::Str), ("-- end".into(), Kind::Comment)]
+        );
         assert_eq!(l[4], vec![("print".into(), Kind::Function)]);
 
         let k = kinds(Lang::PowerShell, "Function Get-Info([string]$Path) { if ($env:DEBUG -eq $true) { Write-Host \"a`\"b\" } }");
-        for want in [("Function", Kind::Keyword), ("Get-Info", Kind::Function), ("string", Kind::Type), ("$Path", Kind::Var), ("$env:DEBUG", Kind::Var), ("-eq", Kind::Keyword), ("$true", Kind::Var), ("Write-Host", Kind::Function)] {
+        for want in [
+            ("Function", Kind::Keyword),
+            ("Get-Info", Kind::Function),
+            ("string", Kind::Type),
+            ("$Path", Kind::Var),
+            ("$env:DEBUG", Kind::Var),
+            ("-eq", Kind::Keyword),
+            ("$true", Kind::Var),
+            ("Write-Host", Kind::Function),
+        ] {
             assert!(k.contains(&(want.0.into(), want.1)), "{want:?} in {k:?}");
         }
         let l = lines(Lang::PowerShell, "<# help\n#> $t = @\"\nhere $x\n\"@");
         assert_eq!(l[1][0], ("#>".into(), Kind::Comment));
         assert_eq!(l[2], vec![("here $x".into(), Kind::Str)]);
         assert_eq!(
-            (Lang::from_path(Some(Path::new("Gemfile"))), Lang::from_path(Some(Path::new("init.lua"))), Lang::from_path(Some(Path::new("build.ps1"))), Lang::sniff("#!/usr/bin/env ruby\n")),
+            (
+                Lang::from_path(Some(Path::new("Gemfile"))),
+                Lang::from_path(Some(Path::new("init.lua"))),
+                Lang::from_path(Some(Path::new("build.ps1"))),
+                Lang::sniff("#!/usr/bin/env ruby\n")
+            ),
             (Lang::Ruby, Lang::Lua, Lang::PowerShell, Lang::Ruby)
         );
-        assert_eq!((Lang::Lua.comment(), Lang::PowerShell.comment()), (Some(Comment::Line("--")), Some(Comment::Line("#"))));
+        assert_eq!(
+            (Lang::Lua.comment(), Lang::PowerShell.comment()),
+            (Some(Comment::Line("--")), Some(Comment::Line("#")))
+        );
     }
 
     #[test]
     fn css_markdown_yaml_docker_make() {
         let l = lines(Lang::Css, "@media (max-width: 600px) {\n  .card:hover, #main > a {\n    color: #fff !important; /* a\n  comment */ margin: 0 auto;\n    background: url(http://x/y.png);\n  }\n}\n$gap: 4px; // scss");
-        assert_eq!(l[0][..2], [("@media".into(), Kind::Keyword), ("max-width".into(), Kind::Key)]);
-        assert_eq!(l[1], vec![(".card".into(), Kind::Attr), (":hover".into(), Kind::Decorator), ("#main".into(), Kind::Attr), ("a".into(), Kind::Tag)]);
-        assert_eq!(l[2], vec![("color".into(), Kind::Key), ("#fff".into(), Kind::Number), ("!important".into(), Kind::Keyword), ("/* a".into(), Kind::Comment)]);
-        assert_eq!(l[3], vec![("  comment */".into(), Kind::Comment), ("margin".into(), Kind::Key), ("0".into(), Kind::Number)]);
-        assert_eq!(l[4], vec![("background".into(), Kind::Key), ("url".into(), Kind::Function), ("http://x/y.png".into(), Kind::Str)]);
-        assert_eq!(l[7], vec![("$gap".into(), Kind::Var), ("4px".into(), Kind::Number), ("// scss".into(), Kind::Comment)]);
+        assert_eq!(
+            l[0][..2],
+            [
+                ("@media".into(), Kind::Keyword),
+                ("max-width".into(), Kind::Key)
+            ]
+        );
+        assert_eq!(
+            l[1],
+            vec![
+                (".card".into(), Kind::Attr),
+                (":hover".into(), Kind::Decorator),
+                ("#main".into(), Kind::Attr),
+                ("a".into(), Kind::Tag)
+            ]
+        );
+        assert_eq!(
+            l[2],
+            vec![
+                ("color".into(), Kind::Key),
+                ("#fff".into(), Kind::Number),
+                ("!important".into(), Kind::Keyword),
+                ("/* a".into(), Kind::Comment)
+            ]
+        );
+        assert_eq!(
+            l[3],
+            vec![
+                ("  comment */".into(), Kind::Comment),
+                ("margin".into(), Kind::Key),
+                ("0".into(), Kind::Number)
+            ]
+        );
+        assert_eq!(
+            l[4],
+            vec![
+                ("background".into(), Kind::Key),
+                ("url".into(), Kind::Function),
+                ("http://x/y.png".into(), Kind::Str)
+            ]
+        );
+        assert_eq!(
+            l[7],
+            vec![
+                ("$gap".into(), Kind::Var),
+                ("4px".into(), Kind::Number),
+                ("// scss".into(), Kind::Comment)
+            ]
+        );
 
         let l = lines(Lang::Markdown, "# Title\nSome **bold**, *it*, `code` and [a link](https://x).\n- item\n```rust\n# not a heading\n```\n> quote\nsnake_case_word stays");
         assert_eq!(l[0], vec![("# Title".into(), Kind::Var)]);
-        assert_eq!(l[1], vec![("**bold**".into(), Kind::Number), ("*it*".into(), Kind::Keyword), ("`code`".into(), Kind::Str), ("[a link]".into(), Kind::Function), ("(https://x)".into(), Kind::Decorator)]);
+        assert_eq!(
+            l[1],
+            vec![
+                ("**bold**".into(), Kind::Number),
+                ("*it*".into(), Kind::Keyword),
+                ("`code`".into(), Kind::Str),
+                ("[a link]".into(), Kind::Function),
+                ("(https://x)".into(), Kind::Decorator)
+            ]
+        );
         assert_eq!(l[2], vec![("-".into(), Kind::Var)]);
         assert_eq!(l[3], vec![("```rust".into(), Kind::Comment)]);
         assert_eq!(l[4], vec![("# not a heading".into(), Kind::Str)]);
@@ -1167,30 +1795,105 @@ mod tests {
 
         let l = lines(Lang::Yaml, "---\nserver:\n  port: 8080 # web\n  name: \"api\"\n  tags: [a, b]\n  on: true\n  ref: &base !!str x\nscript: |\n  echo key: not a key\n  done\nnext: ~");
         assert_eq!(l[0], vec![("---".into(), Kind::Keyword)]);
-        assert_eq!(l[2], vec![("port".into(), Kind::Key), ("8080".into(), Kind::Number), ("# web".into(), Kind::Comment)]);
-        assert_eq!(l[3], vec![("name".into(), Kind::Key), ("\"api\"".into(), Kind::Str)]);
-        assert_eq!(l[4], vec![("tags".into(), Kind::Key), ("a".into(), Kind::Str), ("b".into(), Kind::Str)]);
-        assert_eq!(l[5], vec![("on".into(), Kind::Key), ("true".into(), Kind::Number)]);
-        assert_eq!(l[6], vec![("ref".into(), Kind::Key), ("&base".into(), Kind::Var), ("!!str".into(), Kind::Decorator), ("x".into(), Kind::Str)]);
+        assert_eq!(
+            l[2],
+            vec![
+                ("port".into(), Kind::Key),
+                ("8080".into(), Kind::Number),
+                ("# web".into(), Kind::Comment)
+            ]
+        );
+        assert_eq!(
+            l[3],
+            vec![("name".into(), Kind::Key), ("\"api\"".into(), Kind::Str)]
+        );
+        assert_eq!(
+            l[4],
+            vec![
+                ("tags".into(), Kind::Key),
+                ("a".into(), Kind::Str),
+                ("b".into(), Kind::Str)
+            ]
+        );
+        assert_eq!(
+            l[5],
+            vec![("on".into(), Kind::Key), ("true".into(), Kind::Number)]
+        );
+        assert_eq!(
+            l[6],
+            vec![
+                ("ref".into(), Kind::Key),
+                ("&base".into(), Kind::Var),
+                ("!!str".into(), Kind::Decorator),
+                ("x".into(), Kind::Str)
+            ]
+        );
         assert_eq!(l[8], vec![("  echo key: not a key".into(), Kind::Str)]);
-        assert_eq!(l[10], vec![("next".into(), Kind::Key), ("~".into(), Kind::Number)]);
+        assert_eq!(
+            l[10],
+            vec![("next".into(), Kind::Key), ("~".into(), Kind::Number)]
+        );
 
         let l = lines(Lang::Dockerfile, "# build\nFROM rust:1.80 AS builder\nRUN apt-get update && \\\n    echo \"$HOME\"\nENV PATH=/x");
         assert_eq!(l[0], vec![("# build".into(), Kind::Comment)]);
-        assert_eq!(l[1], vec![("FROM".into(), Kind::Keyword), ("AS".into(), Kind::Keyword), ("builder".into(), Kind::Type)]);
+        assert_eq!(
+            l[1],
+            vec![
+                ("FROM".into(), Kind::Keyword),
+                ("AS".into(), Kind::Keyword),
+                ("builder".into(), Kind::Type)
+            ]
+        );
         assert_eq!(l[2][0], ("RUN".into(), Kind::Keyword));
-        assert!(!l[3].iter().any(|s| s.1 == Kind::Keyword) && l[3].contains(&("\"$HOME\"".into(), Kind::Str)), "{:?}", l[3]);
-        assert!(l[4].contains(&("ENV".into(), Kind::Keyword)) && l[4].contains(&("PATH".into(), Kind::Var)), "{:?}", l[4]);
+        assert!(
+            !l[3].iter().any(|s| s.1 == Kind::Keyword)
+                && l[3].contains(&("\"$HOME\"".into(), Kind::Str)),
+            "{:?}",
+            l[3]
+        );
+        assert!(
+            l[4].contains(&("ENV".into(), Kind::Keyword))
+                && l[4].contains(&("PATH".into(), Kind::Var)),
+            "{:?}",
+            l[4]
+        );
 
         let l = lines(Lang::Makefile, "CC ?= gcc\n.PHONY: all\nall: main.o $(OBJS)\n\t$(CC) -o app $@ # link\nifeq ($(OS),Windows_NT)");
         assert_eq!(l[0], vec![("CC".into(), Kind::Var)]);
         assert_eq!(l[1], vec![(".PHONY".into(), Kind::Keyword)]);
-        assert_eq!(l[2], vec![("all".into(), Kind::Function), ("$(OBJS)".into(), Kind::Var)]);
-        assert!(l[3].contains(&("$(CC)".into(), Kind::Var)) && l[3].contains(&("$@".into(), Kind::Var)) && l[3].contains(&("# link".into(), Kind::Comment)), "{:?}", l[3]);
-        assert_eq!(l[4][..2], [("ifeq".into(), Kind::Keyword), ("$(OS)".into(), Kind::Var)]);
         assert_eq!(
-            [Lang::from_path(Some(Path::new("a.scss"))), Lang::from_path(Some(Path::new("README.md"))), Lang::from_path(Some(Path::new("ci.yml"))), Lang::from_path(Some(Path::new("Dockerfile"))), Lang::from_path(Some(Path::new("Makefile")))],
-            [Lang::Css, Lang::Markdown, Lang::Yaml, Lang::Dockerfile, Lang::Makefile]
+            l[2],
+            vec![
+                ("all".into(), Kind::Function),
+                ("$(OBJS)".into(), Kind::Var)
+            ]
+        );
+        assert!(
+            l[3].contains(&("$(CC)".into(), Kind::Var))
+                && l[3].contains(&("$@".into(), Kind::Var))
+                && l[3].contains(&("# link".into(), Kind::Comment)),
+            "{:?}",
+            l[3]
+        );
+        assert_eq!(
+            l[4][..2],
+            [("ifeq".into(), Kind::Keyword), ("$(OS)".into(), Kind::Var)]
+        );
+        assert_eq!(
+            [
+                Lang::from_path(Some(Path::new("a.scss"))),
+                Lang::from_path(Some(Path::new("README.md"))),
+                Lang::from_path(Some(Path::new("ci.yml"))),
+                Lang::from_path(Some(Path::new("Dockerfile"))),
+                Lang::from_path(Some(Path::new("Makefile")))
+            ],
+            [
+                Lang::Css,
+                Lang::Markdown,
+                Lang::Yaml,
+                Lang::Dockerfile,
+                Lang::Makefile
+            ]
         );
         assert!(Lang::Yaml.is_code() && !Lang::Json.is_code());
     }
@@ -1205,7 +1908,10 @@ mod tests {
         assert_eq!(ch, vec![(4, 0, 2), (0, 0, 0), (4, 0, 2)]);
         assert_eq!(toggle_comment(&on, c).0, "    a = 1\n\n        b = 2");
         // Partly commented lines are all commented; CR LF kept; an empty line gets one.
-        assert_eq!(toggle_comment("// x\r\ny\r\n", Comment::Line("//")).0, "// // x\r\n// y\r\n");
+        assert_eq!(
+            toggle_comment("// x\r\ny\r\n", Comment::Line("//")).0,
+            "// // x\r\n// y\r\n"
+        );
         assert_eq!(toggle_comment("", Comment::Line("//")).0, "// ");
         assert_eq!(toggle_comment("  //x", Comment::Line("//")).0, "  x");
         // A block comment around the lines, and off again.
@@ -1213,7 +1919,10 @@ mod tests {
         let (on, _) = toggle_comment("  <a/>\r\n  <b/>", x);
         assert_eq!(on, "  <!-- <a/>\r\n  <b/> -->");
         assert_eq!(toggle_comment(&on, x).0, "  <a/>\r\n  <b/>");
-        assert_eq!((Lang::Sql.comment(), Lang::Json.comment(), Lang::C.comment()), (Some(Comment::Line("--")), None, Some(Comment::Line("//"))));
+        assert_eq!(
+            (Lang::Sql.comment(), Lang::Json.comment(), Lang::C.comment()),
+            (Some(Comment::Line("--")), None, Some(Comment::Line("//")))
+        );
     }
 
     #[test]
@@ -1227,13 +1936,21 @@ mod tests {
         assert!(words::LITERALS.windows(2).all(|w| w[0] < w[1]));
         assert!(Lang::C.sync_line("#include <x>") && Lang::C.sync_line("int main(void)"));
         assert!(!Lang::C.sync_line(" * int") && !Lang::C.sync_line("integer = 1"));
-        assert!(Lang::Java.sync_line("@Override") && Lang::Java.sync_line("public class A") && !Lang::Json.sync_line("{"));
+        assert!(
+            Lang::Java.sync_line("@Override")
+                && Lang::Java.sync_line("public class A")
+                && !Lang::Json.sync_line("{")
+        );
     }
 
     #[test]
     fn never_panics_on_odd_input() {
         for lang in Lang::ALL {
-            for s in ["\"", "<", "<!--", "'", "\"\\", "-", "a,\"", "[", "=", "/*", "R\"", "R\"(", "@\"", "$@", "\"\"\"", "#", "u8'", "/*/", "0x", "1e", "r#", "r#\"", "'\\", "#[", "b'", "x!", "'é", "<<<", "<<<'", "<<<\"A", "<?", "?>", "$", "$$"] {
+            for s in [
+                "\"", "<", "<!--", "'", "\"\\", "-", "a,\"", "[", "=", "/*", "R\"", "R\"(", "@\"",
+                "$@", "\"\"\"", "#", "u8'", "/*/", "0x", "1e", "r#", "r#\"", "'\\", "#[", "b'",
+                "x!", "'é", "<<<", "<<<'", "<<<\"A", "<?", "?>", "$", "$$",
+            ] {
                 let mut v = Vec::new();
                 spans(lang, s, &mut v);
                 assert!(v.iter().all(|&(a, b, _)| a <= b && b <= s.len()));

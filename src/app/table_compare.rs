@@ -22,44 +22,76 @@ pub struct CompareTablesDialog {
 impl BigTextApp {
     /// Indices of the tabs showing a ready table.
     fn ready_tables(&self) -> Vec<usize> {
-        (0..self.docs.len()).filter(|&i| self.docs[i].is_ready() && self.docs[i].table && self.docs[i].table_state.dialect.is_some()).collect()
+        (0..self.docs.len())
+            .filter(|&i| {
+                self.docs[i].is_ready()
+                    && self.docs[i].table
+                    && self.docs[i].table_state.dialect.is_some()
+            })
+            .collect()
     }
 
     /// The other table's column named like `name` (or at `fallback`).
     fn same_column(&self, doc: usize, name: &str, fallback: usize) -> usize {
         let names = self.column_names_of(doc);
-        names.iter().position(|n| n.trim().eq_ignore_ascii_case(name.trim())).unwrap_or(fallback.min(names.len().saturating_sub(1)))
+        names
+            .iter()
+            .position(|n| n.trim().eq_ignore_ascii_case(name.trim()))
+            .unwrap_or(fallback.min(names.len().saturating_sub(1)))
     }
 
     pub(crate) fn open_table_compare(&mut self, col: usize) {
         let tables = self.ready_tables();
         let Some(&b) = tables.iter().find(|&&i| i != self.active) else {
-            self.notify(tr("Open the other table too (CSV / TSV in the table view), then compare.").into(), None);
+            self.notify(
+                tr("Open the other table too (CSV / TSV in the table view), then compare.").into(),
+                None,
+            );
             return;
         };
-        let name = self.column_names_of(self.active).get(col).cloned().unwrap_or_default();
+        let name = self
+            .column_names_of(self.active)
+            .get(col)
+            .cloned()
+            .unwrap_or_default();
         let key_b = self.same_column(b, &name, col);
-        self.table_compare = Some(CompareTablesDialog { a: self.docs[self.active].id, key_a: col, b: self.docs[b].id, key_b, all: false });
+        self.table_compare = Some(CompareTablesDialog {
+            a: self.docs[self.active].id,
+            key_a: col,
+            b: self.docs[b].id,
+            key_b,
+            all: false,
+        });
     }
 
     pub(super) fn table_compare_window(&mut self, ctx: &egui::Context) {
-        let Some((aid, bid)) = self.table_compare.as_ref().map(|c| (c.a, c.b)) else { return };
+        let Some((aid, bid)) = self.table_compare.as_ref().map(|c| (c.a, c.b)) else {
+            return;
+        };
         let index = |id: u64| self.docs.iter().position(|d| d.id == id);
         let (Some(ai), bi) = (index(aid), index(bid)) else {
             self.table_compare = None;
             return;
         };
-        let tables: Vec<(u64, String)> = self.ready_tables().into_iter().filter(|&i| i != ai).map(|i| (self.docs[i].id, self.docs[i].title.clone())).collect();
+        let tables: Vec<(u64, String)> = self
+            .ready_tables()
+            .into_iter()
+            .filter(|&i| i != ai)
+            .map(|i| (self.docs[i].id, self.docs[i].title.clone()))
+            .collect();
         let a_names = self.column_names_of(ai);
         let b_names = bi.map(|i| self.column_names_of(i)).unwrap_or_default();
         let a_title = self.docs[ai].title.clone();
-        let key_a_name = |c: &CompareTablesDialog| a_names.get(c.key_a).cloned().unwrap_or_default();
+        let key_a_name =
+            |c: &CompareTablesDialog| a_names.get(c.key_a).cloned().unwrap_or_default();
         // Picking another table picks its column of the same name.
         let picked: Option<(u64, String)> = {
             let c = self.table_compare.as_ref().expect("dialog");
             Some((c.b, key_a_name(c)))
         };
-        let Some(c) = self.table_compare.as_mut() else { return };
+        let Some(c) = self.table_compare.as_mut() else {
+            return;
+        };
         let mut open = true;
         let mut go = false;
         let mut new_b = None;
@@ -114,10 +146,19 @@ impl BigTextApp {
 
     pub(crate) fn start_table_compare(&mut self, c: CompareTablesDialog) {
         let index = |id: u64| self.docs.iter().position(|d| d.id == id);
-        let (Some(ai), Some(bi)) = (index(c.a), index(c.b)) else { return };
+        let (Some(ai), Some(bi)) = (index(c.a), index(c.b)) else {
+            return;
+        };
         let (a, b) = (&self.docs[ai], &self.docs[bi]);
-        let (Some(ad), Some(bd)) = (a.table_state.dialect, b.table_state.dialect) else { return };
-        let spec = KeyedSpec { key_a: c.key_a, key_b: c.key_b, header: a.table_state.header && b.table_state.header, all: c.all };
+        let (Some(ad), Some(bd)) = (a.table_state.dialect, b.table_state.dialect) else {
+            return;
+        };
+        let spec = KeyedSpec {
+            key_a: c.key_a,
+            key_b: c.key_b,
+            header: a.table_state.header && b.table_state.header,
+            all: c.all,
+        };
         let (asnap, bsnap) = (a.buf.snapshot(), b.buf.snapshot());
         let title = format!("{} vs {}", a.title, b.title);
         let target = bigtext::decompress::temp_file("compared.csv");

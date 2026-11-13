@@ -35,9 +35,14 @@ pub enum Scenario {
     Scroll,
     Search(String),
     Edit,
-    View { hex: bool, wrap: bool },
+    View {
+        hex: bool,
+        wrap: bool,
+    },
     /// Close the window while a Find All (`replace == false`) or an on-disk Replace All runs.
-    CloseDuring { replace: bool },
+    CloseDuring {
+        replace: bool,
+    },
 }
 
 pub struct BenchUi {
@@ -71,7 +76,13 @@ fn stats(v: &[f32]) -> String {
     s.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let avg = s.iter().sum::<f32>() / s.len() as f32;
     let p99 = s[((s.len() as f32 * 0.99) as usize).min(s.len() - 1)];
-    format!("n={} avg={:.2} ms p99={:.2} ms max={:.2} ms", s.len(), avg, p99, s[s.len() - 1])
+    format!(
+        "n={} avg={:.2} ms p99={:.2} ms max={:.2} ms",
+        s.len(),
+        avg,
+        p99,
+        s[s.len() - 1]
+    )
 }
 
 impl BenchUi {
@@ -192,7 +203,9 @@ impl BenchUi {
             }
             Phase::Idle => {
                 if self.n == 20 && self.screenshot.is_some() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
+                        egui::UserData::default(),
+                    ));
                 }
                 let shot = ctx.input(|i| {
                     i.raw.events.iter().find_map(|e| match e {
@@ -201,7 +214,11 @@ impl BenchUi {
                     })
                 });
                 if let (Some(img), Some(path)) = (shot, self.screenshot.as_ref()) {
-                    let rgba: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_srgba_unmultiplied()).collect();
+                    let rgba: Vec<u8> = img
+                        .pixels
+                        .iter()
+                        .flat_map(|c| c.to_srgba_unmultiplied())
+                        .collect();
                     let _ = write_png(path, img.size[0] as u32, img.size[1] as u32, &rgba);
                 }
                 if self.n > 60 {
@@ -213,10 +230,16 @@ impl BenchUi {
             }
             Phase::Done => {}
             Phase::CloseDuring => {
-                let Scenario::CloseDuring { replace } = self.scenario.clone() else { return };
+                let Scenario::CloseDuring { replace } = self.scenario.clone() else {
+                    return;
+                };
                 if self.n == 1 {
                     // Rare enough that Find All is not capped early.
-                    app.search.query.pattern = if replace { "timeout".into() } else { "timeout connection".into() };
+                    app.search.query.pattern = if replace {
+                        "timeout".into()
+                    } else {
+                        "timeout connection".into()
+                    };
                     app.search.query.case_sensitive = true;
                     if replace {
                         app.search.replace_with = "TIMEOUT!".into();
@@ -240,7 +263,12 @@ impl BenchUi {
                 });
                 if let Some(p) = progress {
                     if p > 0.05 {
-                        let _ = writeln!(self.log, "closing at {:.0}% of the {}", p * 100.0, if replace { "replace" } else { "search" });
+                        let _ = writeln!(
+                            self.log,
+                            "closing at {:.0}% of the {}",
+                            p * 100.0,
+                            if replace { "replace" } else { "search" }
+                        );
                         self.write_report(app);
                         self.set(Phase::Done);
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -248,7 +276,9 @@ impl BenchUi {
                 }
             }
             Phase::SearchStart => {
-                let Scenario::Search(p) = self.scenario.clone() else { return };
+                let Scenario::Search(p) = self.scenario.clone() else {
+                    return;
+                };
                 app.search.query.pattern = p;
                 app.open_search(false);
                 self.t_phase = Some(Instant::now());
@@ -264,7 +294,12 @@ impl BenchUi {
                     drop(g);
                     let t = self.t_phase.map(|t| t.elapsed()).unwrap_or_default();
                     let mb = d.buf.len() as f64 / 1048576.0;
-                    let _ = writeln!(self.log, "find all: {n} matches in {:.3} s ({:.0} MB/s, through the GUI job)", t.as_secs_f64(), mb / t.as_secs_f64().max(1e-9));
+                    let _ = writeln!(
+                        self.log,
+                        "find all: {n} matches in {:.3} s ({:.0} MB/s, through the GUI job)",
+                        t.as_secs_f64(),
+                        mb / t.as_secs_f64().max(1e-9)
+                    );
                     self.set(Phase::FindNext);
                 }
             }
@@ -283,7 +318,10 @@ impl BenchUi {
                 let indexing = !d.buf.index.is_done();
                 d.set_caret(d.min_caret(), false);
                 d.insert_text("EDITED BY BIGTEXT BENCH\n");
-                let _ = writeln!(self.log, "inserted text at start (index still running: {indexing}); saving");
+                let _ = writeln!(
+                    self.log,
+                    "inserted text at start (index still running: {indexing}); saving"
+                );
                 self.t_phase = Some(Instant::now());
                 app.save(false);
                 self.set(Phase::SaveWait);
@@ -292,7 +330,10 @@ impl BenchUi {
                 let Some(d) = app.active_doc() else { return };
                 if d.save_job.is_none() && d.is_ready() && !d.is_modified() {
                     let t = self.t_phase.map(|t| t.elapsed()).unwrap_or_default();
-                    let head = d.path.as_ref().and_then(|p| std::fs::read(p).ok().map(|b| b[..b.len().min(24)].to_vec()));
+                    let head = d
+                        .path
+                        .as_ref()
+                        .and_then(|p| std::fs::read(p).ok().map(|b| b[..b.len().min(24)].to_vec()));
                     let _ = writeln!(
                         self.log,
                         "save finished in {:.3} s; file now starts with {:?}; new size {}",
@@ -329,7 +370,14 @@ impl BenchUi {
         let _ = writeln!(s, "BigText GUI benchmark");
         let _ = writeln!(s, "file: {}", self.file.display());
         if let Some(d) = d {
-            let _ = writeln!(s, "size: {} ({} bytes), backing: {}, encoding: {}", human_bytes(d.buf.len()), d.buf.len(), d.buf.source.kind_name(), d.buf.codec.enc.name());
+            let _ = writeln!(
+                s,
+                "size: {} ({} bytes), backing: {}, encoding: {}",
+                human_bytes(d.buf.len()),
+                d.buf.len(),
+                d.buf.source.kind_name(),
+                d.buf.codec.enc.name()
+            );
             let (lines, exact) = d.buf.line_count();
             let _ = writeln!(s, "lines: {}{}", if exact { "" } else { "~" }, lines);
         }
@@ -340,16 +388,42 @@ impl BenchUi {
             let _ = writeln!(s, "open + detect (worker): {:.1} ms", o.as_secs_f64() * 1e3);
         }
         if let Some(fp) = self.first_paint {
-            let _ = writeln!(s, "open request -> first screen of text: {:.1} ms", fp.as_secs_f64() * 1e3);
+            let _ = writeln!(
+                s,
+                "open request -> first screen of text: {:.1} ms",
+                fp.as_secs_f64() * 1e3
+            );
         }
-        let _ = writeln!(s, "go-to line before indexing (frame time incl. jump+layout): {}", stats(&self.goto_pre));
-        let _ = writeln!(s, "page-down frames while indexing: {}", stats(&self.scroll_indexing));
+        let _ = writeln!(
+            s,
+            "go-to line before indexing (frame time incl. jump+layout): {}",
+            stats(&self.goto_pre)
+        );
+        let _ = writeln!(
+            s,
+            "page-down frames while indexing: {}",
+            stats(&self.scroll_indexing)
+        );
         if let Some(t) = self.index_time {
             let mb = d.map(|d| d.buf.len()).unwrap_or(0) as f64 / (1024.0 * 1024.0);
-            let _ = writeln!(s, "background index: {:.2} s ({:.0} MB/s), index memory {}", t.as_secs_f64(), mb / t.as_secs_f64().max(1e-9), human_bytes(self.index_mem as u64));
+            let _ = writeln!(
+                s,
+                "background index: {:.2} s ({:.0} MB/s), index memory {}",
+                t.as_secs_f64(),
+                mb / t.as_secs_f64().max(1e-9),
+                human_bytes(self.index_mem as u64)
+            );
         }
-        let _ = writeln!(s, "go-to line after indexing (frame time): {}", stats(&self.goto_post));
-        let _ = writeln!(s, "page-down frames after indexing: {}", stats(&self.scroll_idle));
+        let _ = writeln!(
+            s,
+            "go-to line after indexing (frame time): {}",
+            stats(&self.goto_post)
+        );
+        let _ = writeln!(
+            s,
+            "page-down frames after indexing: {}",
+            stats(&self.scroll_idle)
+        );
         if let Some(m) = self.idle_mem {
             let _ = writeln!(s, "idle private memory: {}", human_bytes(m));
         }
@@ -377,7 +451,11 @@ pub fn write_png(path: &std::path::Path, w: u32, h: u32, rgba: &[u8]) -> std::io
         for (i, t) in table.iter_mut().enumerate() {
             let mut c = i as u32;
             for _ in 0..8 {
-                c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+                c = if c & 1 != 0 {
+                    0xEDB8_8320 ^ (c >> 1)
+                } else {
+                    c >> 1
+                };
             }
             *t = c;
         }

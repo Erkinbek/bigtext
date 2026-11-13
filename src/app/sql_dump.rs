@@ -49,7 +49,13 @@ pub struct DumpUi {
 
 impl Default for DumpUi {
     fn default() -> Self {
-        DumpUi { open: false, filter: String::new(), largest_first: false, settings: true, checked: BTreeSet::new() }
+        DumpUi {
+            open: false,
+            filter: String::new(),
+            largest_first: false,
+            settings: true,
+            checked: BTreeSet::new(),
+        }
     }
 }
 
@@ -65,14 +71,19 @@ impl BigTextApp {
     /// File → SQL dump tables…
     pub(crate) fn open_sql_dump(&mut self) {
         self.sql_dump.open = true;
-        let fresh = self.docs.get(self.active).and_then(|d| d.sql_dump.as_ref().map(|r| r.version == d.version));
+        let fresh = self
+            .docs
+            .get(self.active)
+            .and_then(|d| d.sql_dump.as_ref().map(|r| r.version == d.version));
         if fresh != Some(true) {
             self.start_sql_dump();
         }
     }
 
     pub(crate) fn start_sql_dump(&mut self) {
-        let Some(d) = self.docs.get_mut(self.active) else { return };
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
         if !d.is_ready() {
             return;
         }
@@ -82,7 +93,12 @@ impl BigTextApp {
         self.sql_dump.checked.clear();
         let data = Arc::new(Mutex::new(DumpData::default()));
         let (cancel, progress) = (CancelToken::new(), Progress::new(d.buf.len()));
-        d.sql_dump = Some(DumpResults { version: d.version, data: data.clone(), cancel: cancel.clone(), progress: progress.clone() });
+        d.sql_dump = Some(DumpResults {
+            version: d.version,
+            data: data.clone(),
+            cancel: cancel.clone(),
+            progress: progress.clone(),
+        });
         let snap = d.buf.snapshot();
         let waker = self.waker.clone();
         jobs::spawn("sql-dump", move || {
@@ -245,7 +261,12 @@ impl BigTextApp {
         let d = self.docs.get(self.active)?;
         let r = d.sql_dump.as_ref().filter(|r| r.version == d.version)?;
         let dump = r.data.lock().unwrap().d.clone()?;
-        let name = d.title.trim_end_matches(".gz").trim_end_matches(".zst").trim_end_matches(".xz").trim_end_matches(".bz2");
+        let name = d
+            .title
+            .trim_end_matches(".gz")
+            .trim_end_matches(".zst")
+            .trim_end_matches(".xz")
+            .trim_end_matches(".bz2");
         let stem = name.strip_suffix(".sql").unwrap_or(name).to_string();
         Some((dump, stem, d.buf.snapshot()))
     }
@@ -253,14 +274,34 @@ impl BigTextApp {
     /// Writes the tables `names` to a file the user picks, or (`tab`) to a temporary copy that
     /// opens read-only.
     pub(crate) fn save_dump_tables(&mut self, names: Vec<String>, tab: bool) {
-        let Some((dump, stem, snap)) = self.dump_parts() else { return };
-        let which: Vec<usize> = names.iter().filter_map(|n| dump.tables.iter().position(|t| &t.name == n)).collect();
+        let Some((dump, stem, snap)) = self.dump_parts() else {
+            return;
+        };
+        let which: Vec<usize> = names
+            .iter()
+            .filter_map(|n| dump.tables.iter().position(|t| &t.name == n))
+            .collect();
         if which.is_empty() {
             return;
         }
-        let x = if self.sql_dump.settings { Extract::WHOLE } else { Extract::BARE };
-        let file = if which.len() == 1 { sqldump::file_name(&stem, &dump.tables[which[0]].name) } else { format!("{stem}.tables.sql") };
-        let title = if which.len() == 1 { format!("{} ({stem})", dump.tables[which[0]].name) } else { trf("{n} tables ({name})", &[("n", &which.len().to_string()), ("name", &stem)]) };
+        let x = if self.sql_dump.settings {
+            Extract::WHOLE
+        } else {
+            Extract::BARE
+        };
+        let file = if which.len() == 1 {
+            sqldump::file_name(&stem, &dump.tables[which[0]].name)
+        } else {
+            format!("{stem}.tables.sql")
+        };
+        let title = if which.len() == 1 {
+            format!("{} ({stem})", dump.tables[which[0]].name)
+        } else {
+            trf(
+                "{n} tables ({name})",
+                &[("n", &which.len().to_string()), ("name", &stem)],
+            )
+        };
         if tab {
             let (path, f) = match super::remote::temp_copy(&file) {
                 Ok(x) => x,
@@ -269,35 +310,72 @@ impl BigTextApp {
                     return;
                 }
             };
-            self.spawn_task(tr("Writing the tables").into(), move |progress: &Progress, cancel: &CancelToken| -> TaskOutcome {
-                let mut w = std::io::BufWriter::new(f);
-                let r = sqldump::write_tables(&snap, &dump, &which, x, &mut w, cancel, Some(progress)).and_then(|n| std::io::Write::flush(&mut w).map(|_| n));
-                match r {
-                    Ok(Some(bytes)) => TaskOutcome::Remote(Box::new(super::remote::RemoteDone { path, title, bytes })),
-                    Ok(None) => {
-                        bigtext::decompress::remove_temp(&path);
-                        TaskOutcome::Cancelled
+            self.spawn_task(
+                tr("Writing the tables").into(),
+                move |progress: &Progress, cancel: &CancelToken| -> TaskOutcome {
+                    let mut w = std::io::BufWriter::new(f);
+                    let r = sqldump::write_tables(
+                        &snap,
+                        &dump,
+                        &which,
+                        x,
+                        &mut w,
+                        cancel,
+                        Some(progress),
+                    )
+                    .and_then(|n| std::io::Write::flush(&mut w).map(|_| n));
+                    match r {
+                        Ok(Some(bytes)) => {
+                            TaskOutcome::Remote(Box::new(super::remote::RemoteDone {
+                                path,
+                                title,
+                                bytes,
+                            }))
+                        }
+                        Ok(None) => {
+                            bigtext::decompress::remove_temp(&path);
+                            TaskOutcome::Cancelled
+                        }
+                        Err(e) => {
+                            bigtext::decompress::remove_temp(&path);
+                            TaskOutcome::Failed(e.to_string())
+                        }
                     }
-                    Err(e) => {
-                        bigtext::decompress::remove_temp(&path);
-                        TaskOutcome::Failed(e.to_string())
-                    }
-                }
-            });
+                },
+            );
             return;
         }
-        let Some(target) = self.pick_output_file(tr("Save the tables as"), &file) else { return };
-        self.spawn_task(tr("Writing the tables").into(), move |progress: &Progress, cancel: &CancelToken| -> TaskOutcome {
-            tasks::write_via_temp(&target, |w| {
-                Ok(sqldump::write_tables(&snap, &dump, &which, x, w, cancel, Some(progress))?.map(|n| trf("Saved {size} to {file}.", &[("size", &human_bytes(n)), ("file", &file_name(&target))])))
-            })
-        });
+        let Some(target) = self.pick_output_file(tr("Save the tables as"), &file) else {
+            return;
+        };
+        self.spawn_task(
+            tr("Writing the tables").into(),
+            move |progress: &Progress, cancel: &CancelToken| -> TaskOutcome {
+                tasks::write_via_temp(&target, |w| {
+                    Ok(
+                        sqldump::write_tables(&snap, &dump, &which, x, w, cancel, Some(progress))?
+                            .map(|n| {
+                                trf(
+                                    "Saved {size} to {file}.",
+                                    &[("size", &human_bytes(n)), ("file", &file_name(&target))],
+                                )
+                            }),
+                    )
+                })
+            },
+        );
     }
 
     /// Writes a file per table into a folder the user picks.
     pub(crate) fn split_dump(&mut self) {
-        let Some((dump, stem, snap)) = self.dump_parts() else { return };
-        let start = self.docs.get(self.active).and_then(|d| d.path.as_ref()).and_then(|p| p.parent().map(|p| p.to_path_buf()));
+        let Some((dump, stem, snap)) = self.dump_parts() else {
+            return;
+        };
+        let start = self
+            .docs
+            .get(self.active)
+            .and_then(|d| d.path.as_ref())
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()));
         let mut dlg = rfd::FileDialog::new().set_title(tr("Folder for the files"));
         if let Some(s) = start {
             dlg = dlg.set_directory(s);

@@ -80,46 +80,63 @@ impl BigTextApp {
         match parsed {
             None => {}
             Some(Parsed::TooLong) => {
-                ui.weak(trf("The line is longer than {size}.", &[("size", &bigtext::jobs::human_bytes(LINE_MAX))]));
+                ui.weak(trf(
+                    "The line is longer than {size}.",
+                    &[("size", &bigtext::jobs::human_bytes(LINE_MAX))],
+                ));
             }
             Some(Parsed::NotStructured) => {
-                ui.weak(tr("The caret's line is not a JSON object or logfmt key=value pairs."));
+                ui.weak(tr(
+                    "The caret's line is not a JSON object or logfmt key=value pairs.",
+                ));
             }
             Some(Parsed::Fields(syntax, list)) => {
-                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                    egui::Grid::new("log-fields").num_columns(3).striped(true).show(ui, |ui| {
-                        for f in &list {
-                            ui.label(egui::RichText::new(&f.key).monospace().strong());
-                            let resp = ui.label(egui::RichText::new(shown(&f.value)).monospace());
-                            if f.value.chars().count() > SHOW_MAX || f.value.lines().count() > SHOW_LINES {
-                                resp.on_hover_text(&f.value);
-                            }
-                            ui.menu_button("…", |ui| {
-                                if ui.button(tr("Filter: lines with this value")).clicked() {
-                                    act = Some(Act::Filter(query_for(f, syntax), false));
-                                    ui.close();
-                                }
-                                if ui.button(tr("Filter: lines without it")).clicked() {
-                                    act = Some(Act::Filter(query_for(f, syntax), true));
-                                    ui.close();
-                                }
-                                if ui.button(tr("Highlight this value")).clicked() {
-                                    act = Some(Act::Highlight(query_for(f, syntax)));
-                                    ui.close();
-                                }
-                                if ui.button(tr("Count the values of this field…")).clicked() {
-                                    act = Some(Act::Count(f.key.clone(), syntax));
-                                    ui.close();
-                                }
-                                if ui.button(tr("Copy value")).clicked() {
-                                    ui.ctx().copy_text(f.value.clone());
-                                    ui.close();
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        egui::Grid::new("log-fields")
+                            .num_columns(3)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                for f in &list {
+                                    ui.label(egui::RichText::new(&f.key).monospace().strong());
+                                    let resp =
+                                        ui.label(egui::RichText::new(shown(&f.value)).monospace());
+                                    if f.value.chars().count() > SHOW_MAX
+                                        || f.value.lines().count() > SHOW_LINES
+                                    {
+                                        resp.on_hover_text(&f.value);
+                                    }
+                                    ui.menu_button("…", |ui| {
+                                        if ui.button(tr("Filter: lines with this value")).clicked()
+                                        {
+                                            act = Some(Act::Filter(query_for(f, syntax), false));
+                                            ui.close();
+                                        }
+                                        if ui.button(tr("Filter: lines without it")).clicked() {
+                                            act = Some(Act::Filter(query_for(f, syntax), true));
+                                            ui.close();
+                                        }
+                                        if ui.button(tr("Highlight this value")).clicked() {
+                                            act = Some(Act::Highlight(query_for(f, syntax)));
+                                            ui.close();
+                                        }
+                                        if ui
+                                            .button(tr("Count the values of this field…"))
+                                            .clicked()
+                                        {
+                                            act = Some(Act::Count(f.key.clone(), syntax));
+                                            ui.close();
+                                        }
+                                        if ui.button(tr("Copy value")).clicked() {
+                                            ui.ctx().copy_text(f.value.clone());
+                                            ui.close();
+                                        }
+                                    });
+                                    ui.end_row();
                                 }
                             });
-                            ui.end_row();
-                        }
                     });
-                });
             }
         }
         match act {
@@ -137,10 +154,15 @@ impl BigTextApp {
     /// Counts the values of `key` over the whole document in the background and opens them as a
     /// table, most frequent first.
     pub(crate) fn count_field_values(&mut self, key: String, syntax: Syntax) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let snap = d.buf.snapshot();
         let doc = d.title.clone();
-        let safe: String = key.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect();
+        let safe: String = key
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { '_' })
+            .collect();
         let target = bigtext::decompress::temp_file(&format!("{safe}-values.csv"));
         let title = trf("{key} values ({name})", &[("key", &key), ("name", &doc)]);
         self.spawn_task(tr("Counting values").into(), move |progress: &Progress, cancel: &CancelToken| {
@@ -184,7 +206,11 @@ impl BigTextApp {
 /// A value cut to what a row shows.
 fn shown(v: &str) -> String {
     let mut lines = v.lines();
-    let mut out: String = lines.by_ref().take(SHOW_LINES).collect::<Vec<_>>().join("\n");
+    let mut out: String = lines
+        .by_ref()
+        .take(SHOW_LINES)
+        .collect::<Vec<_>>()
+        .join("\n");
     let mut cut = lines.next().is_some();
     if out.chars().count() > SHOW_MAX {
         out = out.chars().take(SHOW_MAX).collect();
@@ -206,7 +232,13 @@ pub(crate) fn query_for(f: &Field, syntax: Syntax) -> Query {
         }
         Syntax::Logfmt => format!(r"(?:^|\s){}={raw}(?:\s|$)", regex_syntax::escape(&f.key)),
     };
-    Query { pattern, regex: true, case_sensitive: true, whole_word: false, dot_all: false }
+    Query {
+        pattern,
+        regex: true,
+        case_sensitive: true,
+        whole_word: false,
+        dot_all: false,
+    }
 }
 
 #[cfg(test)]
@@ -218,23 +250,38 @@ mod tests {
     fn hits(q: &Query, line: &str) -> bool {
         let m = Matcher::new(q, Codec::utf8()).unwrap();
         let mut found = false;
-        m.find_in(line.as_bytes(), 0, 0, line.len(), line.len(), &mut None, &mut |_, _| {
-            found = true;
-            false
-        });
+        m.find_in(
+            line.as_bytes(),
+            0,
+            0,
+            line.len(),
+            line.len(),
+            &mut None,
+            &mut |_, _| {
+                found = true;
+                false
+            },
+        );
         found
     }
 
     #[test]
     fn filter_patterns_match_the_value_only() {
-        let (s, f) = fields::line_fields(r#"{"status": 42, "msg": "a.b (c)", "u": {"id": 7}}"#).unwrap();
+        let (s, f) =
+            fields::line_fields(r#"{"status": 42, "msg": "a.b (c)", "u": {"id": 7}}"#).unwrap();
         let q = query_for(&f[0], s);
         assert!(hits(&q, r#"{"status":42}"#) && hits(&q, r#"{"status": 42, "x": 1}"#));
         assert!(!hits(&q, r#"{"status": 420}"#));
-        assert!(hits(&query_for(&f[1], s), r#"{"msg": "a.b (c)"}"#) && !hits(&query_for(&f[1], s), r#"{"msg": "aXb (c)"}"#));
+        assert!(
+            hits(&query_for(&f[1], s), r#"{"msg": "a.b (c)"}"#)
+                && !hits(&query_for(&f[1], s), r#"{"msg": "aXb (c)"}"#)
+        );
         assert!(hits(&query_for(&f[2], s), r#"{"u": {"id": 7}}"#));
         let (s, f) = fields::line_fields("level=info msg=\"x y\"").unwrap();
-        assert!(hits(&query_for(&f[0], s), "a=1 level=info b=2") && !hits(&query_for(&f[0], s), "level=infos"));
+        assert!(
+            hits(&query_for(&f[0], s), "a=1 level=info b=2")
+                && !hits(&query_for(&f[0], s), "level=infos")
+        );
         assert!(hits(&query_for(&f[1], s), "msg=\"x y\""));
     }
 

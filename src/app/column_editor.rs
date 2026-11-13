@@ -24,7 +24,16 @@ pub struct ColumnEditor {
 
 impl Default for ColumnEditor {
     fn default() -> Self {
-        ColumnEditor { numbers: true, start: "1".into(), step: "1".into(), width: "".into(), hex: false, text: String::new(), to_end: false, error: None }
+        ColumnEditor {
+            numbers: true,
+            start: "1".into(),
+            step: "1".into(),
+            width: "".into(),
+            hex: false,
+            text: String::new(),
+            to_end: false,
+            error: None,
+        }
     }
 }
 
@@ -33,16 +42,36 @@ impl ColumnEditor {
         if !self.numbers {
             return Ok(ColumnGen::Text(self.text.clone()));
         }
-        let num = |s: &str, what: &str| s.trim().parse::<i64>().map_err(|_| trf("{what} is not a whole number.", &[("what", what)]));
-        let width = if self.width.trim().is_empty() { 0 } else { self.width.trim().parse::<usize>().map_err(|_| tr("The width is not a number.").to_string())?.min(64) };
-        Ok(ColumnGen::Numbers { start: num(&self.start, tr("The first number"))?, step: num(&self.step, tr("The step"))?, width, hex: self.hex })
+        let num = |s: &str, what: &str| {
+            s.trim()
+                .parse::<i64>()
+                .map_err(|_| trf("{what} is not a whole number.", &[("what", what)]))
+        };
+        let width = if self.width.trim().is_empty() {
+            0
+        } else {
+            self.width
+                .trim()
+                .parse::<usize>()
+                .map_err(|_| tr("The width is not a number.").to_string())?
+                .min(64)
+        };
+        Ok(ColumnGen::Numbers {
+            start: num(&self.start, tr("The first number"))?,
+            step: num(&self.step, tr("The step"))?,
+            width,
+            hex: self.hex,
+        })
     }
 }
 
 impl BigTextApp {
     pub(crate) fn open_column_editor(&mut self) {
         match self.docs.get(self.active) {
-            Some(d) if d.view.wrap => self.notify(tr("The column editor works without word wrap (View → Word wrap).").into(), None),
+            Some(d) if d.view.wrap => self.notify(
+                tr("The column editor works without word wrap (View → Word wrap).").into(),
+                None,
+            ),
             Some(d) if d.editable() => self.column_editor = Some(ColumnEditor::default()),
             Some(_) => self.notify(tr("The document is read-only").into(), None),
             None => {}
@@ -62,10 +91,16 @@ impl BigTextApp {
 
     /// Fills the column; `false` when it could not.
     pub(crate) fn apply_column_edit(&mut self, gen: ColumnGen, to_end: bool) -> bool {
-        let Some(mut b) = self.editor_block() else { return false };
-        let Some(d) = self.docs.get_mut(self.active) else { return false };
+        let Some(mut b) = self.editor_block() else {
+            return false;
+        };
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return false;
+        };
         if !to_end {
-            let Ok(n) = block_rows(d, &b).map(|r| r.len()) else { return false };
+            let Ok(n) = block_rows(d, &b).map(|r| r.len()) else {
+                return false;
+            };
             let values = (0..n as u64).map(|i| gen.value(i)).collect();
             if !edit_block(d, &mut b, BlockEdit::PerRow(values)) {
                 return false;
@@ -74,7 +109,9 @@ impl BigTextApp {
             return true;
         }
         if d.path.is_none() {
-            self.error = Some(tr("Save the document to a file first; then the column is filled on disk.").into());
+            self.error = Some(
+                tr("Save the document to a file first; then the column is filled on disk.").into(),
+            );
             return false;
         }
         let (from, cells) = (b.span().0, b.cells());
@@ -87,19 +124,45 @@ impl BigTextApp {
         self.confirm = Some(Confirm {
             title: tr("Column editor").into(),
             message,
-            action: ConfirmAction::ColumnEditOnDisk { doc, from, cells, gen },
+            action: ConfirmAction::ColumnEditOnDisk {
+                doc,
+                from,
+                cells,
+                gen,
+            },
             checkbox: Some((tr("Keep a backup (.bak)").into(), true)),
         });
         true
     }
 
-    pub(super) fn column_edit_on_disk(&mut self, doc: u64, from: u64, cells: (u32, u32), gen: ColumnGen, backup: bool) {
-        let Some(path) = self.docs.iter().find(|d| d.id == doc).and_then(|d| d.path.clone()) else { return };
-        self.start_write(doc, path, WriteSpec::ColumnEdit { from, cells, gen }, backup);
+    pub(super) fn column_edit_on_disk(
+        &mut self,
+        doc: u64,
+        from: u64,
+        cells: (u32, u32),
+        gen: ColumnGen,
+        backup: bool,
+    ) {
+        let Some(path) = self
+            .docs
+            .iter()
+            .find(|d| d.id == doc)
+            .and_then(|d| d.path.clone())
+        else {
+            return;
+        };
+        self.start_write(
+            doc,
+            path,
+            WriteSpec::ColumnEdit { from, cells, gen },
+            backup,
+        );
     }
 
     pub(super) fn column_editor_window(&mut self, ctx: &egui::Context) {
-        let Some(e) = self.column_editor.as_mut() else { return };
+        let Some(e) = self.column_editor.as_mut() else {
+            return;
+        };
         let mut open = true;
         let mut go = false;
         egui::Window::new(tr("Column editor")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {

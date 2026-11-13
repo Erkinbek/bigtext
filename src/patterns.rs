@@ -42,7 +42,10 @@ fn is_hex(c: u8) -> bool {
 }
 
 fn run(b: &[u8], i: usize, f: impl Fn(u8) -> bool) -> usize {
-    b[i..].iter().position(|&c| !f(c)).map_or(b.len(), |n| i + n)
+    b[i..]
+        .iter()
+        .position(|&c| !f(c))
+        .map_or(b.len(), |n| i + n)
 }
 
 /// A UUID at `i`: 8-4-4-4-12 hex digits.
@@ -112,7 +115,13 @@ fn level_word(w: &[u8], before: Option<u8>) -> Option<Level> {
 
 /// Length of a leading timestamp: a run of digits and date punctuation with a ':' in it.
 pub(crate) fn time_prefix(b: &[u8]) -> usize {
-    let e = run(b, 0, |c| c.is_ascii_digit() || matches!(c, b'-' | b':' | b'.' | b'/' | b' ' | b'T' | b'Z' | b'+' | b',' | b'[' | b']'));
+    let e = run(b, 0, |c| {
+        c.is_ascii_digit()
+            || matches!(
+                c,
+                b'-' | b':' | b'.' | b'/' | b' ' | b'T' | b'Z' | b'+' | b',' | b'[' | b']'
+            )
+    });
     if e >= 8 && b[..e].contains(&b':') {
         e
     } else {
@@ -152,7 +161,10 @@ pub fn template(line: &[u8]) -> (String, Option<Level>) {
                 i = e;
                 continue;
             }
-            if c == b'0' && matches!(b.get(i + 1), Some(b'x') | Some(b'X')) && b.get(i + 2).is_some_and(|&c| is_hex(c)) {
+            if c == b'0'
+                && matches!(b.get(i + 1), Some(b'x') | Some(b'X'))
+                && b.get(i + 2).is_some_and(|&c| is_hex(c))
+            {
                 out.push_str("<hex>");
                 i = run(b, i + 2, is_hex);
                 continue;
@@ -177,7 +189,9 @@ pub fn template(line: &[u8]) -> (String, Option<Level>) {
             continue;
         }
         if c == b'/' && word_start {
-            let e = run(b, i, |c| c.is_ascii_alphanumeric() || matches!(c, b'/' | b'_' | b'.' | b'-' | b'~' | b'%'));
+            let e = run(b, i, |c| {
+                c.is_ascii_alphanumeric() || matches!(c, b'/' | b'_' | b'.' | b'-' | b'~' | b'%')
+            });
             if b[i..e].iter().filter(|&&c| c == b'/').count() >= 2 {
                 out.push_str("<path>");
                 i = e;
@@ -230,7 +244,10 @@ pub fn regex_for(template: &str) -> String {
             ("<n>", r"[0-9]+(?:\.[0-9]+)?"),
             ("<ip>", r"[0-9]{1,3}(?:\.[0-9]{1,3}){3}(?::[0-9]+)?"),
             ("<hex>", r"(?:0[xX])?[0-9a-fA-F]+"),
-            ("<uuid>", r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"),
+            (
+                "<uuid>",
+                r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+            ),
             ("<path>", r"/[A-Za-z0-9/_.\-~%]*"),
         ];
         if let Some((h, re)) = holes.iter().find(|(h, _)| rest.starts_with(h)) {
@@ -254,7 +271,13 @@ pub fn regex_for(template: &str) -> String {
 /// Groups the lines of the document (or, with `only`, those starting at these offsets, in order)
 /// by template in one pass. `partial` gets the most frequent templates so far now and then.
 /// Returns `None` when cancelled.
-pub fn build(buf: &TextBuf, only: Option<&[u64]>, cancel: &CancelToken, progress: Option<&Progress>, mut partial: impl FnMut(&Patterns)) -> io::Result<Option<Patterns>> {
+pub fn build(
+    buf: &TextBuf,
+    only: Option<&[u64]>,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut partial: impl FnMut(&Patterns),
+) -> io::Result<Option<Patterns>> {
     if buf.codec.unit() != 1 {
         return Err(io::Error::other("Message patterns need a UTF-8 file"));
     }
@@ -269,13 +292,26 @@ pub fn build(buf: &TextBuf, only: Option<&[u64]>, cancel: &CancelToken, progress
             t.count += 1;
             t.last = off;
         } else if map.len() < TEMPLATES_MAX {
-            map.insert(text.clone(), Template { text, count: 1, level, first: off, last: off });
+            map.insert(
+                text.clone(),
+                Template {
+                    text,
+                    count: 1,
+                    level,
+                    first: off,
+                    last: off,
+                },
+            );
         } else {
             out.other += 1;
         }
     };
     let snapshot = |map: &HashMap<String, Template>, out: &Patterns| {
-        let mut p = Patterns { templates: map.values().cloned().collect(), lines: out.lines, other: out.other };
+        let mut p = Patterns {
+            templates: map.values().cloned().collect(),
+            lines: out.lines,
+            other: out.other,
+        };
         sort(&mut p.templates, false);
         p.templates.truncate(1000);
         p
@@ -288,9 +324,13 @@ pub fn build(buf: &TextBuf, only: Option<&[u64]>, cancel: &CancelToken, progress
                 p.set_total(starts.len() as u64);
             }
             for (k, &ls) in starts.iter().enumerate() {
-                let Some(le) = crate::filter::line_end_at(buf, ls) else { return Err(io::Error::other("Could not read the document")) };
+                let Some(le) = crate::filter::line_end_at(buf, ls) else {
+                    return Err(io::Error::other("Could not read the document"));
+                };
                 let from = ls.max(bom);
-                let Some(b) = buf.read(from..le.min(from + LINE_MAX as u64 + 1)) else { return Err(io::Error::other("Could not read the document")) };
+                let Some(b) = buf.read(from..le.min(from + LINE_MAX as u64 + 1)) else {
+                    return Err(io::Error::other("Could not read the document"));
+                };
                 add(&mut out, &mut map, ls, &b);
                 if k % 4096 == 0 {
                     if cancel.is_cancelled() {
@@ -311,7 +351,11 @@ pub fn build(buf: &TextBuf, only: Option<&[u64]>, cancel: &CancelToken, progress
             }
             let mut lines = LineReader::new(buf);
             while let Some((off, line)) = lines.next()? {
-                let line = if off == 0 { &line[(bom as usize).min(line.len())..] } else { line };
+                let line = if off == 0 {
+                    &line[(bom as usize).min(line.len())..]
+                } else {
+                    line
+                };
                 add(&mut out, &mut map, off, line);
                 n += 1;
                 if n.is_multiple_of(4096) {
@@ -344,10 +388,24 @@ pub fn sort(t: &mut [Template], rare: bool) {
 
 /// The templates as CSV: count, level, template, and the first and last line's offsets.
 pub fn to_csv<W: Write>(p: &[Template], out: &mut W) -> io::Result<()> {
-    let q = |s: &str| if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() };
+    let q = |s: &str| {
+        if s.contains([',', '"', '\n', '\r']) {
+            format!("\"{}\"", s.replace('"', "\"\""))
+        } else {
+            s.to_string()
+        }
+    };
     writeln!(out, "lines,level,template,first offset,last offset")?;
     for t in p {
-        writeln!(out, "{},{},{},{},{}", t.count, t.level.map(|l| l.name()).unwrap_or(""), q(&t.text), t.first, t.last)?;
+        writeln!(
+            out,
+            "{},{},{},{},{}",
+            t.count,
+            t.level.map(|l| l.name()).unwrap_or(""),
+            q(&t.text),
+            t.first,
+            t.last
+        )?;
     }
     Ok(())
 }
@@ -364,10 +422,22 @@ mod tests {
 
     #[test]
     fn templates() {
-        assert_eq!(t("2024-05-01 10:00:00.123 ERROR db timeout after 30.5 s (attempt 3)"), "ERROR db timeout after <n> s (attempt <n>)");
-        assert_eq!(t("[2024-05-01 10:00:01] INFO GET /api/v2/users/42 from 10.0.0.7:5513"), "INFO GET <path> from <ip>");
-        assert_eq!(t("WARN  job 123e4567-e89b-12d3-a456-426614174000 slow, id=0x1F3a"), "WARN job <uuid> slow, id=<hex>");
-        assert_eq!(t("session 4bf92f3577b34da6 closed\tuser42"), "session <hex> closed user<n>");
+        assert_eq!(
+            t("2024-05-01 10:00:00.123 ERROR db timeout after 30.5 s (attempt 3)"),
+            "ERROR db timeout after <n> s (attempt <n>)"
+        );
+        assert_eq!(
+            t("[2024-05-01 10:00:01] INFO GET /api/v2/users/42 from 10.0.0.7:5513"),
+            "INFO GET <path> from <ip>"
+        );
+        assert_eq!(
+            t("WARN  job 123e4567-e89b-12d3-a456-426614174000 slow, id=0x1F3a"),
+            "WARN job <uuid> slow, id=<hex>"
+        );
+        assert_eq!(
+            t("session 4bf92f3577b34da6 closed\tuser42"),
+            "session <hex> closed user<n>"
+        );
         assert_eq!(t("deadbeef stays a word"), "deadbeef stays a word");
         assert_eq!(template(b"ts=1 level=error msg=x").1, Some(Level::Error));
         assert_eq!(template(b"10:00:00 WARNING disk").1, Some(Level::Warn));
@@ -388,23 +458,57 @@ mod tests {
         ];
         for l in lines {
             let re = regex_for(&t(l));
-            let m = Matcher::new(&Query { pattern: re.clone(), regex: true, case_sensitive: true, ..Default::default() }, Codec::utf8()).unwrap();
+            let m = Matcher::new(
+                &Query {
+                    pattern: re.clone(),
+                    regex: true,
+                    case_sensitive: true,
+                    ..Default::default()
+                },
+                Codec::utf8(),
+            )
+            .unwrap();
             let mut hit = false;
-            m.find_in(l.as_bytes(), 0, 0, l.len(), l.len(), &mut None, &mut |_, _| {
-                hit = true;
-                false
-            });
+            m.find_in(
+                l.as_bytes(),
+                0,
+                0,
+                l.len(),
+                l.len(),
+                &mut None,
+                &mut |_, _| {
+                    hit = true;
+                    false
+                },
+            );
             assert!(hit, "{l:?} does not match {re:?}");
         }
         // A longer line of another template does not.
         let re = regex_for(&t("connection reset"));
-        let m = Matcher::new(&Query { pattern: re, regex: true, case_sensitive: true, ..Default::default() }, Codec::utf8()).unwrap();
+        let m = Matcher::new(
+            &Query {
+                pattern: re,
+                regex: true,
+                case_sensitive: true,
+                ..Default::default()
+            },
+            Codec::utf8(),
+        )
+        .unwrap();
         let l = "connection reset by peer";
         let mut hit = false;
-        m.find_in(l.as_bytes(), 0, 0, l.len(), l.len(), &mut None, &mut |_, _| {
-            hit = true;
-            false
-        });
+        m.find_in(
+            l.as_bytes(),
+            0,
+            0,
+            l.len(),
+            l.len(),
+            &mut None,
+            &mut |_, _| {
+                hit = true;
+                false
+            },
+        );
         assert!(!hit);
     }
 
@@ -414,7 +518,10 @@ mod tests {
         use std::sync::Arc;
         let mut data = String::new();
         for i in 0..5 {
-            data.push_str(&format!("2024-05-01 10:00:0{i} INFO request {i} done in {} ms\n", i * 7));
+            data.push_str(&format!(
+                "2024-05-01 10:00:0{i} INFO request {i} done in {} ms\n",
+                i * 7
+            ));
         }
         data.push_str("2024-05-01 10:00:09 ERROR disk /var/data/x full\n");
         data.push_str("2024-05-01 10:00:10 INFO request 9 done in 3 ms\n");
@@ -425,16 +532,36 @@ mod tests {
         let idx = crate::index::build_blocking(&src, Codec::utf8());
         let mut buf = TextBuf::new(src, idx, Codec::utf8());
         buf.blocking = true;
-        let p = build(&buf, None, &CancelToken::new(), None, |_| {}).unwrap().unwrap();
+        let p = build(&buf, None, &CancelToken::new(), None, |_| {})
+            .unwrap()
+            .unwrap();
         assert_eq!(p.lines, 7);
         assert_eq!(p.templates.len(), 2);
-        assert_eq!((p.templates[0].text.as_str(), p.templates[0].count, p.templates[0].level), ("INFO request <n> done in <n> ms", 6, Some(Level::Info)));
-        assert_eq!((p.templates[1].text.as_str(), p.templates[1].level), ("ERROR disk <path> full", Some(Level::Error)));
+        assert_eq!(
+            (
+                p.templates[0].text.as_str(),
+                p.templates[0].count,
+                p.templates[0].level
+            ),
+            ("INFO request <n> done in <n> ms", 6, Some(Level::Info))
+        );
+        assert_eq!(
+            (p.templates[1].text.as_str(), p.templates[1].level),
+            ("ERROR disk <path> full", Some(Level::Error))
+        );
         let mut rare = p.templates.clone();
         sort(&mut rare, true);
         assert_eq!(rare[0].count, 1);
         // Only some lines.
-        let only = build(&buf, Some(&[p.templates[1].first]), &CancelToken::new(), None, |_| {}).unwrap().unwrap();
+        let only = build(
+            &buf,
+            Some(&[p.templates[1].first]),
+            &CancelToken::new(),
+            None,
+            |_| {},
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!((only.lines, only.templates.len()), (1, 1));
         let mut csv = Vec::new();
         to_csv(&p.templates, &mut csv).unwrap();

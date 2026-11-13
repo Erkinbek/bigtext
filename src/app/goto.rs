@@ -28,26 +28,49 @@ fn number(t: &str, hex: bool) -> Option<u64> {
 
 /// Parses `text` for the Line (`by_offset` false) or Byte offset mode.
 pub fn parse(text: &str, by_offset: bool) -> Option<GotoTarget> {
-    let t: String = text.chars().filter(|c| !matches!(c, '_' | ',' | ' ')).collect();
+    let t: String = text
+        .chars()
+        .filter(|c| !matches!(c, '_' | ',' | ' '))
+        .collect();
     if let Some(p) = t.strip_suffix('%') {
         let v: f64 = p.parse().ok()?;
         return (0.0..=100.0).contains(&v).then_some(GotoTarget::Percent(v));
     }
     if let Some(rest) = t.strip_prefix('$') {
-        let n = if rest.is_empty() { 0 } else { number(rest.strip_prefix('-')?, by_offset)? };
-        return Some(if by_offset { GotoTarget::OffsetFromEnd(n) } else { GotoTarget::FromEnd(n) });
+        let n = if rest.is_empty() {
+            0
+        } else {
+            number(rest.strip_prefix('-')?, by_offset)?
+        };
+        return Some(if by_offset {
+            GotoTarget::OffsetFromEnd(n)
+        } else {
+            GotoTarget::FromEnd(n)
+        });
     }
     let signed = |s: &str| -> Option<i64> { i64::try_from(number(s, by_offset)?).ok() };
     if let Some(rest) = t.strip_prefix('+') {
         let n = signed(rest)?;
-        return Some(if by_offset { GotoTarget::OffsetFrom(n) } else { GotoTarget::LinesFrom(n) });
+        return Some(if by_offset {
+            GotoTarget::OffsetFrom(n)
+        } else {
+            GotoTarget::LinesFrom(n)
+        });
     }
     if let Some(rest) = t.strip_prefix('-') {
         let n = -signed(rest)?;
-        return Some(if by_offset { GotoTarget::OffsetFrom(n) } else { GotoTarget::LinesFrom(n) });
+        return Some(if by_offset {
+            GotoTarget::OffsetFrom(n)
+        } else {
+            GotoTarget::LinesFrom(n)
+        });
     }
     let n = number(&t, true)?;
-    Some(if by_offset { GotoTarget::Offset(n) } else { GotoTarget::Line(n) })
+    Some(if by_offset {
+        GotoTarget::Offset(n)
+    } else {
+        GotoTarget::Line(n)
+    })
 }
 
 impl Document {
@@ -76,7 +99,9 @@ impl Document {
                 self.goto_offset(off);
             }
             GotoTarget::Offset(o) => self.goto_offset(o),
-            GotoTarget::OffsetFrom(d) => self.goto_offset((self.view.caret as i64 + d).max(0) as u64),
+            GotoTarget::OffsetFrom(d) => {
+                self.goto_offset((self.view.caret as i64 + d).max(0) as u64)
+            }
             GotoTarget::OffsetFromEnd(n) => self.goto_offset(len.saturating_sub(n)),
         }
     }

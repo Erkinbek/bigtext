@@ -56,7 +56,11 @@ impl<'a> Src<'a> {
                 return Err((at, String::new()));
             }
             let to = (at + CHUNK).min(self.end);
-            self.data = self.buf.read(at..to).ok_or((at, "could not read the file".to_string()))?.to_vec();
+            self.data = self
+                .buf
+                .read(at..to)
+                .ok_or((at, "could not read the file".to_string()))?
+                .to_vec();
             self.start = at;
             self.i = 0;
         }
@@ -92,7 +96,9 @@ impl<'a> Src<'a> {
         let mut more = 0u8;
         loop {
             let at = self.pos();
-            let Some(c) = self.next()? else { return self.fail(open, "a string that is never closed") };
+            let Some(c) = self.next()? else {
+                return self.fail(open, "a string that is never closed");
+            };
             if more > 0 {
                 if c & 0xC0 != 0x80 {
                     return self.fail(at, "invalid UTF-8");
@@ -116,7 +122,12 @@ impl<'a> Src<'a> {
                     Some(x) => return self.fail(at, format!("a bad escape \\{}", x as char)),
                     None => return self.fail(open, "a string that is never closed"),
                 },
-                0..=0x1F => return self.fail(at, "a control character in a string (write it as \\n, \\t or \\u00XX)"),
+                0..=0x1F => {
+                    return self.fail(
+                        at,
+                        "a control character in a string (write it as \\n, \\t or \\u00XX)",
+                    )
+                }
                 0x80..=0xBF | 0xF8..=0xFF => return self.fail(at, "invalid UTF-8"),
                 0xC0..=0xDF => more = 1,
                 0xE0..=0xEF => more = 2,
@@ -188,7 +199,13 @@ impl<'a> Src<'a> {
                 let c = self.peek()?.map(|c| c as char).unwrap_or(' ');
                 self.fail(at, format!("unexpected {c}"))
             }
-            other => self.fail(at, format!("{} is not a JSON value (true, false, null, a number or \"text\")", String::from_utf8_lossy(other))),
+            other => self.fail(
+                at,
+                format!(
+                    "{} is not a JSON value (true, false, null, a number or \"text\")",
+                    String::from_utf8_lossy(other)
+                ),
+            ),
         }
     }
 
@@ -224,7 +241,14 @@ impl<'a> Src<'a> {
                         want = Want::CommaOrEnd;
                     } else {
                         if c == b']' || c == b'}' {
-                            return self.fail(at, if after_colon { "a value is missing after the key" } else { "a comma before a closing bracket (a trailing comma)" });
+                            return self.fail(
+                                at,
+                                if after_colon {
+                                    "a value is missing after the key"
+                                } else {
+                                    "a comma before a closing bracket (a trailing comma)"
+                                },
+                            );
                         }
                         after_colon = false;
                         values += 1;
@@ -257,7 +281,8 @@ impl<'a> Src<'a> {
                         self.string()?;
                         want = Want::Colon;
                     } else if c == b'}' {
-                        return self.fail(at, "a comma before a closing bracket (a trailing comma)");
+                        return self
+                            .fail(at, "a comma before a closing bracket (a trailing comma)");
                     } else {
                         return self.fail(at, "a key must be a \"quoted\" string");
                     }
@@ -271,7 +296,9 @@ impl<'a> Src<'a> {
                     after_colon = true;
                 }
                 Want::CommaOrEnd => {
-                    let Some(&(open, _)) = stack.last() else { return Ok(values) };
+                    let Some(&(open, _)) = stack.last() else {
+                        return Ok(values);
+                    };
                     match (open, c) {
                         (_, b',') => {
                             self.i += 1;
@@ -281,8 +308,21 @@ impl<'a> Src<'a> {
                             self.i += 1;
                             stack.pop();
                         }
-                        (b'{', b']') | (b'[', b'}') => return self.fail(at, format!("{} does not match the bracket it closes", c as char)),
-                        _ => return self.fail(at, format!("a comma or {} is missing", if open == b'{' { '}' } else { ']' })),
+                        (b'{', b']') | (b'[', b'}') => {
+                            return self.fail(
+                                at,
+                                format!("{} does not match the bracket it closes", c as char),
+                            )
+                        }
+                        _ => {
+                            return self.fail(
+                                at,
+                                format!(
+                                    "a comma or {} is missing",
+                                    if open == b'{' { '}' } else { ']' }
+                                ),
+                            )
+                        }
                     }
                 }
             }
@@ -294,18 +334,32 @@ impl<'a> Src<'a> {
 }
 
 /// Checks the document as one JSON value. Returns `None` when cancelled.
-pub fn check_document(buf: &TextBuf, cancel: &CancelToken, progress: Option<&Progress>) -> Option<JsonChecked> {
+pub fn check_document(
+    buf: &TextBuf,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> Option<JsonChecked> {
     if let Some(p) = progress {
         p.set_total(buf.len());
     }
     let start = buf.codec.bom_len as u64;
-    let mut src = Src { buf, data: Vec::new(), start, i: 0, end: buf.len(), cancel };
+    let mut src = Src {
+        buf,
+        data: Vec::new(),
+        start,
+        i: 0,
+        end: buf.len(),
+        cancel,
+    };
     let mut out = JsonChecked::default();
     let r = (|| -> Res<u64> {
         let n = src.value()?;
         src.ws()?;
         if src.peek()?.is_some() {
-            return src.fail(src.pos(), "more text after the JSON value (JSON Lines? check them as lines)");
+            return src.fail(
+                src.pos(),
+                "more text after the JSON value (JSON Lines? check them as lines)",
+            );
         }
         Ok(n)
     })();
@@ -321,7 +375,12 @@ pub fn check_document(buf: &TextBuf, cancel: &CancelToken, progress: Option<&Pro
 }
 
 /// Checks each line as a JSON value (blank lines are fine). Returns `None` when cancelled.
-pub fn check_lines(buf: &TextBuf, cancel: &CancelToken, progress: Option<&Progress>, mut on_problem: impl FnMut(&JsonProblem)) -> std::io::Result<Option<JsonChecked>> {
+pub fn check_lines(
+    buf: &TextBuf,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut on_problem: impl FnMut(&JsonProblem),
+) -> std::io::Result<Option<JsonChecked>> {
     if let Some(p) = progress {
         p.set_total(buf.len());
     }
@@ -344,7 +403,14 @@ pub fn check_lines(buf: &TextBuf, cancel: &CancelToken, progress: Option<&Progre
         }
         out.lines += 1;
         let end = off + line.len() as u64;
-        let mut src = Src { buf, data: line.to_vec(), start: off, i: 0, end, cancel };
+        let mut src = Src {
+            buf,
+            data: line.to_vec(),
+            start: off,
+            i: 0,
+            end,
+            cancel,
+        };
         let res = (|| -> Res<u64> {
             let v = src.value()?;
             src.ws()?;
@@ -397,11 +463,22 @@ mod tests {
 
     #[test]
     fn valid_documents() {
-        for ok in [r#"{"a": [1, -2.5e3, "x\né", true, false, null, {}, []]}"#, "  [ ]  \n", "\"just text\"", "0", "-0.5"] {
+        for ok in [
+            r#"{"a": [1, -2.5e3, "x\né", true, false, null, {}, []]}"#,
+            "  [ ]  \n",
+            "\"just text\"",
+            "0",
+            "-0.5",
+        ] {
             assert_eq!(doc(ok), None, "{ok}");
         }
         let (_f, t) = buf(br#"{"a": [1, 2], "b": {"c": "d"}}"#);
-        assert_eq!(check_document(&t, &CancelToken::new(), None).unwrap().values, 6);
+        assert_eq!(
+            check_document(&t, &CancelToken::new(), None)
+                .unwrap()
+                .values,
+            6
+        );
     }
 
     #[test]
@@ -427,20 +504,32 @@ mod tests {
             assert!(got.0 == at && got.1.contains(msg), "{src}: {got:?}");
         }
         let (_f, t) = buf(&[b'"', 0xFF, b'"']);
-        assert!(check_document(&t, &CancelToken::new(), None).unwrap().problems[0].message.contains("UTF-8"));
+        assert!(check_document(&t, &CancelToken::new(), None)
+            .unwrap()
+            .problems[0]
+            .message
+            .contains("UTF-8"));
     }
 
     #[test]
     fn lines_one_by_one_and_large_values() {
         let (_f, t) = buf(b"{\"a\":1}\n\n{\"a\":}\nnot json\n[1,2]\n");
-        let c = check_lines(&t, &CancelToken::new(), None, |_| {}).unwrap().unwrap();
+        let c = check_lines(&t, &CancelToken::new(), None, |_| {})
+            .unwrap()
+            .unwrap();
         assert_eq!(c.lines, 4);
-        assert_eq!(c.problems.iter().map(|p| p.at).collect::<Vec<_>>(), [14, 16]);
+        assert_eq!(
+            c.problems.iter().map(|p| p.at).collect::<Vec<_>>(),
+            [14, 16]
+        );
         // A string across the chunk boundary of the reader.
         let mut big = b"[\"".to_vec();
         big.extend(std::iter::repeat_n(b'x', CHUNK as usize + 10));
         big.extend_from_slice(b"\", 1]");
         let (_g, t) = buf(&big);
-        assert!(check_document(&t, &CancelToken::new(), None).unwrap().problems.is_empty());
+        assert!(check_document(&t, &CancelToken::new(), None)
+            .unwrap()
+            .problems
+            .is_empty());
     }
 }

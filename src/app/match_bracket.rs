@@ -41,7 +41,9 @@ impl BigTextApp {
     }
 
     pub(crate) fn goto_matching_bracket(&mut self) {
-        let Some(d) = self.docs.get_mut(self.active) else { return };
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
         if !d.is_ready() || d.hex {
             return;
         }
@@ -49,7 +51,9 @@ impl BigTextApp {
             j.cancel.cancel();
         }
         let cancel = CancelToken::new();
-        d.find_job = Some(FindJob { cancel: cancel.clone() });
+        d.find_job = Some(FindJob {
+            cancel: cancel.clone(),
+        });
         let (snap, caret, id, version) = (d.buf.snapshot(), d.view.caret, d.id, d.version);
         let (tx, waker) = (self.tx.clone(), self.waker.clone());
         jobs::spawn("match-bracket", move || {
@@ -62,14 +66,20 @@ impl BigTextApp {
                 brackets::enclosing(&snap, caret, all, &cancel)
             };
             if !cancel.is_cancelled() {
-                let _ = tx.send(Msg::BracketJump(Box::new(BracketJump { doc: id, version, to })));
+                let _ = tx.send(Msg::BracketJump(Box::new(BracketJump {
+                    doc: id,
+                    version,
+                    to,
+                })));
                 waker();
             }
         });
     }
 
     pub(super) fn on_bracket_jump(&mut self, j: BracketJump) {
-        let Some(d) = self.docs.iter_mut().find(|d| d.id == j.doc) else { return };
+        let Some(d) = self.docs.iter_mut().find(|d| d.id == j.doc) else {
+            return;
+        };
         d.find_job = None;
         if d.version != j.version {
             return;

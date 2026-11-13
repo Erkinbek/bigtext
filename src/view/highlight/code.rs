@@ -81,7 +81,8 @@ pub(super) fn sync_line(lang: Lang, line: &str) -> bool {
     let t = line.as_bytes();
     spec.sync.iter().any(|w| {
         let w = w.as_bytes();
-        t.starts_with(w) && (!is_ident(w[w.len() - 1]) || t.get(w.len()).is_none_or(|&b| !is_ident(b)))
+        t.starts_with(w)
+            && (!is_ident(w[w.len() - 1]) || t.get(w.len()).is_none_or(|&b| !is_ident(b)))
     })
 }
 
@@ -179,14 +180,22 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
         let first = !st.inked;
         st.inked = true;
         // In a shell `#` starts a comment only at the start of a word (not in `a#b` or `${#x}`).
-        let shell_word = lang != Lang::Shell || i == 0 || matches!(t[i - 1], b' ' | b'\t' | b';' | b'|' | b'&' | b'(' | b')');
+        let shell_word = lang != Lang::Shell
+            || i == 0
+            || matches!(t[i - 1], b' ' | b'\t' | b';' | b'|' | b'&' | b'(' | b')');
         // A block comment first: Lua's `--[[` starts like its line comment.
-        if let Some((open, _)) = spec.block.filter(|(o, _)| t[i..].starts_with(o.as_bytes()) && (!o.starts_with('=') || i == 0)) {
+        if let Some((open, _)) = spec
+            .block
+            .filter(|(o, _)| t[i..].starts_with(o.as_bytes()) && (!o.starts_with('=') || i == 0))
+        {
             st.mode = Mode::Comment(1);
             i = block_comment(st, t, i, i + open.len(), spec, out);
             continue;
         }
-        if spec.line.iter().any(|o| t[i..].starts_with(o.as_bytes())) && !(lang == Lang::Php && t[i..].starts_with(b"#[")) && shell_word {
+        if spec.line.iter().any(|o| t[i..].starts_with(o.as_bytes()))
+            && !(lang == Lang::Php && t[i..].starts_with(b"#["))
+            && shell_word
+        {
             // In PHP a line comment ends at `?>` too.
             if let Some(p) = memchr::memmem::find(&t[i..], b"?>").filter(|_| lang == Lang::Php) {
                 out.push(i, i + p, Kind::Comment);
@@ -241,7 +250,13 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                 continue;
             }
             if t.get(i + 1) == Some(&b'\'') {
-                st.mode = Mode::Str(Str { q: b'\'', n: 1, esc: true, ml: true, dbl: false });
+                st.mode = Mode::Str(Str {
+                    q: b'\'',
+                    n: 1,
+                    esc: true,
+                    ml: true,
+                    dbl: false,
+                });
                 i = string(st, t, i, i + 2, out);
                 prev = Prev::Value;
                 continue;
@@ -260,7 +275,11 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                 prev = Prev::Name;
                 continue;
             }
-            if c == b':' && t.get(i + 1).is_some_and(|&b| is_ident(b) && !b.is_ascii_digit()) && (i == 0 || (t[i - 1] != b':' && !is_ident(t[i - 1]))) {
+            if c == b':'
+                && t.get(i + 1)
+                    .is_some_and(|&b| is_ident(b) && !b.is_ascii_digit())
+                && (i == 0 || (t[i - 1] != b':' && !is_ident(t[i - 1])))
+            {
                 let mut e = super::word_end(t, i + 1);
                 if matches!(t.get(e), Some(b'?' | b'!')) {
                     e += 1;
@@ -275,10 +294,19 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
             // $name, ${any name}, $env:PATH, $script:x, $_, $?
             if c == b'$' {
                 let e = match t.get(i + 1) {
-                    Some(b'{') => Some(memchr::memchr(b'}', &t[i..]).map_or(t.len(), |p| i + p + 1)),
+                    Some(b'{') => {
+                        Some(memchr::memchr(b'}', &t[i..]).map_or(t.len(), |p| i + p + 1))
+                    }
                     Some(&b) if is_ident(b) => {
                         let e = super::word_end(t, i + 1);
-                        Some(if t.get(e) == Some(&b':') && t.get(e + 1).is_some_and(|&b| is_ident(b)) { super::word_end(t, e + 1) } else { e })
+                        Some(
+                            if t.get(e) == Some(&b':') && t.get(e + 1).is_some_and(|&b| is_ident(b))
+                            {
+                                super::word_end(t, e + 1)
+                            } else {
+                                e
+                            },
+                        )
                     }
                     Some(b'?' | b'$' | b'^') => Some(i + 2),
                     _ => None,
@@ -333,7 +361,10 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
             prev = Prev::Value;
             continue;
         }
-        if matches!(lang, Lang::Rust | Lang::Php) && c == b'#' && (t[i + 1..].starts_with(b"[") || t[i + 1..].starts_with(b"![")) {
+        if matches!(lang, Lang::Rust | Lang::Php)
+            && c == b'#'
+            && (t[i + 1..].starts_with(b"[") || t[i + 1..].starts_with(b"!["))
+        {
             // #[derive(Debug)], #![allow(x)], #[Route('/')]: up to the matching bracket on this row.
             let mut depth = 0;
             let mut e = i;
@@ -369,7 +400,9 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
         if c == b'/' && is_js(lang) {
             let operand = match prev {
                 Prev::Start | Prev::Punct => true,
-                Prev::Name => super::words::JS_BEFORE_REGEX.iter().any(|k| k.as_bytes() == &t[last_name.0..last_name.1]),
+                Prev::Name => super::words::JS_BEFORE_REGEX
+                    .iter()
+                    .any(|k| k.as_bytes() == &t[last_name.0..last_name.1]),
                 _ => false,
             };
             if let Some(e) = regex_end(t, i).filter(|_| operand) {
@@ -394,8 +427,14 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                     e = super::word_end(t, e + 1);
                 }
                 // NAME=value, local name=value
-                let declared = prev == Prev::Name && matches!(&t[last_name.0..last_name.1], b"local" | b"export" | b"readonly" | b"declare" | b"typeset");
-                if t.get(e) == Some(&b'=') && (matches!(prev, Prev::Start | Prev::Punct) || declared) {
+                let declared = prev == Prev::Name
+                    && matches!(
+                        &t[last_name.0..last_name.1],
+                        b"local" | b"export" | b"readonly" | b"declare" | b"typeset"
+                    );
+                if t.get(e) == Some(&b'=')
+                    && (matches!(prev, Prev::Start | Prev::Punct) || declared)
+                {
                     out.push(i, e, Kind::Var);
                     i = e;
                     prev = Prev::Name;
@@ -403,11 +442,17 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
                 }
             }
             // Ruby's predicate and bang methods: empty?, save!, defined?
-            if lang == Lang::Ruby && matches!(t.get(e), Some(b'?' | b'!')) && t.get(e + 1) != Some(&b'=') {
+            if lang == Lang::Ruby
+                && matches!(t.get(e), Some(b'?' | b'!'))
+                && t.get(e + 1) != Some(&b'=')
+            {
                 e += 1;
             }
             // PowerShell's Verb-Noun commands: Get-ChildItem.
-            if lang == Lang::PowerShell && t.get(e) == Some(&b'-') && t.get(e + 1).is_some_and(u8::is_ascii_alphabetic) {
+            if lang == Lang::PowerShell
+                && t.get(e) == Some(&b'-')
+                && t.get(e + 1).is_some_and(u8::is_ascii_alphabetic)
+            {
                 while t.get(e) == Some(&b'-') && t.get(e + 1).is_some_and(u8::is_ascii_alphabetic) {
                     e = super::word_end(t, e + 1);
                 }
@@ -438,9 +483,17 @@ pub(super) fn spans(lang: Lang, st: &mut State, t: &[u8], out: &mut Sink) {
             if colour {
                 let w = &t[i..e];
                 let kind = if prev != Prev::Dot && has_word(spec.keywords, w, spec.ci) {
-                    next = if spec.type_kw.iter().any(|k| k.as_bytes().eq_ignore_ascii_case(w)) {
+                    next = if spec
+                        .type_kw
+                        .iter()
+                        .any(|k| k.as_bytes().eq_ignore_ascii_case(w))
+                    {
                         Some(Kind::Type)
-                    } else if spec.fn_kw.iter().any(|k| k.as_bytes().eq_ignore_ascii_case(w)) {
+                    } else if spec
+                        .fn_kw
+                        .iter()
+                        .any(|k| k.as_bytes().eq_ignore_ascii_case(w))
+                    {
                         Some(Kind::Function)
                     } else {
                         None
@@ -563,25 +616,133 @@ fn open_string(lang: Lang, t: &[u8], i: usize) -> Option<(Mode, usize)> {
     let c = t[i];
     let three = t[i..].starts_with(b"\"\"\"");
     match lang {
-        Lang::Java if three => Some((Mode::Str(Str { q: b'"', n: 3, esc: true, ml: true, dbl: false }), i + 3)),
+        Lang::Java if three => Some((
+            Mode::Str(Str {
+                q: b'"',
+                n: 3,
+                esc: true,
+                ml: true,
+                dbl: false,
+            }),
+            i + 3,
+        )),
         // Kotlin's """raw strings""" have no escapes; Swift's and Dart's multi-line ones do.
         // Ruby's strings may span lines; PowerShell's too, where a backtick escapes, not a
         // backslash, and '' is a quote inside '…'.
-        Lang::Ruby if matches!(c, b'"' | b'\'' | b'`') => Some((Mode::Str(Str { q: c, n: 1, esc: true, ml: true, dbl: false }), i + 1)),
-        Lang::PowerShell if c == b'"' || c == b'\'' => Some((Mode::Str(Str { q: c, n: 1, esc: false, ml: true, dbl: true }), i + 1)),
-        Lang::Kotlin if three =>Some((Mode::Str(Str { q: b'"', n: 3, esc: false, ml: true, dbl: false }), i + 3)),
-        Lang::Swift if three => Some((Mode::Str(Str { q: b'"', n: 3, esc: true, ml: true, dbl: false }), i + 3)),
-        Lang::Dart if three || t[i..].starts_with(b"'''") => Some((Mode::Str(Str { q: c, n: 3, esc: true, ml: true, dbl: false }), i + 3)),
+        Lang::Ruby if matches!(c, b'"' | b'\'' | b'`') => Some((
+            Mode::Str(Str {
+                q: c,
+                n: 1,
+                esc: true,
+                ml: true,
+                dbl: false,
+            }),
+            i + 1,
+        )),
+        Lang::PowerShell if c == b'"' || c == b'\'' => Some((
+            Mode::Str(Str {
+                q: c,
+                n: 1,
+                esc: false,
+                ml: true,
+                dbl: true,
+            }),
+            i + 1,
+        )),
+        Lang::Kotlin if three => Some((
+            Mode::Str(Str {
+                q: b'"',
+                n: 3,
+                esc: false,
+                ml: true,
+                dbl: false,
+            }),
+            i + 3,
+        )),
+        Lang::Swift if three => Some((
+            Mode::Str(Str {
+                q: b'"',
+                n: 3,
+                esc: true,
+                ml: true,
+                dbl: false,
+            }),
+            i + 3,
+        )),
+        Lang::Dart if three || t[i..].starts_with(b"'''") => Some((
+            Mode::Str(Str {
+                q: c,
+                n: 3,
+                esc: true,
+                ml: true,
+                dbl: false,
+            }),
+            i + 3,
+        )),
         // A template literal; what is inside `${}` is coloured as the string.
-        Lang::JavaScript | Lang::TypeScript if c == b'`' => Some((Mode::Str(Str { q: c, n: 1, esc: true, ml: true, dbl: false }), i + 1)),
+        Lang::JavaScript | Lang::TypeScript if c == b'`' => Some((
+            Mode::Str(Str {
+                q: c,
+                n: 1,
+                esc: true,
+                ml: true,
+                dbl: false,
+            }),
+            i + 1,
+        )),
         // Go's raw strings; Rust's strings may span lines.
-        Lang::Go if c == b'`' => Some((Mode::Str(Str { q: c, n: 1, esc: false, ml: true, dbl: false }), i + 1)),
-        Lang::Rust if c == b'"' => Some((Mode::Str(Str { q: c, n: 1, esc: true, ml: true, dbl: false }), i + 1)),
+        Lang::Go if c == b'`' => Some((
+            Mode::Str(Str {
+                q: c,
+                n: 1,
+                esc: false,
+                ml: true,
+                dbl: false,
+            }),
+            i + 1,
+        )),
+        Lang::Rust if c == b'"' => Some((
+            Mode::Str(Str {
+                q: c,
+                n: 1,
+                esc: true,
+                ml: true,
+                dbl: false,
+            }),
+            i + 1,
+        )),
         // PHP's strings (and `shell` commands) may span lines.
-        Lang::Php if matches!(c, b'"' | b'\'' | b'`') => Some((Mode::Str(Str { q: c, n: 1, esc: true, ml: true, dbl: false }), i + 1)),
-        Lang::Python if t[i..].starts_with(b"\"\"\"") || t[i..].starts_with(b"'''") => Some((Mode::Str(Str { q: c, n: 3, esc: true, ml: true, dbl: false }), i + 3)),
+        Lang::Php if matches!(c, b'"' | b'\'' | b'`') => Some((
+            Mode::Str(Str {
+                q: c,
+                n: 1,
+                esc: true,
+                ml: true,
+                dbl: false,
+            }),
+            i + 1,
+        )),
+        Lang::Python if t[i..].starts_with(b"\"\"\"") || t[i..].starts_with(b"'''") => Some((
+            Mode::Str(Str {
+                q: c,
+                n: 3,
+                esc: true,
+                ml: true,
+                dbl: false,
+            }),
+            i + 3,
+        )),
         // A shell's quotes may span lines; '…' has no escapes.
-        Lang::Shell if c == b'"' || c == b'\'' => Some((Mode::Str(Str { q: c, n: 1, esc: c == b'"', ml: true, dbl: false }), i + 1)),
+        Lang::Shell if c == b'"' || c == b'\'' => Some((
+            Mode::Str(Str {
+                q: c,
+                n: 1,
+                esc: c == b'"',
+                ml: true,
+                dbl: false,
+            }),
+            i + 1,
+        )),
         Lang::CSharp if c == b'@' || c == b'$' || three => {
             let mut j = i;
             let mut verbatim = false;
@@ -593,21 +754,63 @@ fn open_string(lang: Lang, t: &[u8], i: usize) -> Option<(Mode, usize)> {
                 return None;
             }
             Some(if t[j..].starts_with(b"\"\"\"") {
-                (Mode::Str(Str { q: b'"', n: 3, esc: false, ml: true, dbl: false }), j + 3)
+                (
+                    Mode::Str(Str {
+                        q: b'"',
+                        n: 3,
+                        esc: false,
+                        ml: true,
+                        dbl: false,
+                    }),
+                    j + 3,
+                )
             } else if verbatim {
-                (Mode::Str(Str { q: b'"', n: 1, esc: false, ml: true, dbl: true }), j + 1)
+                (
+                    Mode::Str(Str {
+                        q: b'"',
+                        n: 1,
+                        esc: false,
+                        ml: true,
+                        dbl: true,
+                    }),
+                    j + 1,
+                )
             } else {
-                (Mode::Str(Str { q: b'"', n: 1, esc: true, ml: false, dbl: false }), j + 1)
+                (
+                    Mode::Str(Str {
+                        q: b'"',
+                        n: 1,
+                        esc: true,
+                        ml: false,
+                        dbl: false,
+                    }),
+                    j + 1,
+                )
             })
         }
-        _ if c == b'"' || c == b'\'' => Some((Mode::Str(Str { q: c, n: 1, esc: true, ml: false, dbl: false }), i + 1)),
+        _ if c == b'"' || c == b'\'' => Some((
+            Mode::Str(Str {
+                q: c,
+                n: 1,
+                esc: true,
+                ml: false,
+                dbl: false,
+            }),
+            i + 1,
+        )),
         _ => None,
     }
 }
 
 /// A string whose prefix is the name `w` (ending at `e`): C's `L"…"`, `u8"…"` and raw `R"x(…)x"`;
 /// Rust's `b"…"`, `b'x'` and raw `r#"…"#`.
-fn prefixed_string(lang: Lang, st: &mut State, w: &[u8], t: &[u8], e: usize) -> Option<(Mode, usize)> {
+fn prefixed_string(
+    lang: Lang,
+    st: &mut State,
+    w: &[u8],
+    t: &[u8],
+    e: usize,
+) -> Option<(Mode, usize)> {
     let q = *t.get(e)?;
     if q != b'"' && q != b'\'' && !(lang == Lang::Rust && q == b'#') {
         return None;
@@ -616,11 +819,38 @@ fn prefixed_string(lang: Lang, st: &mut State, w: &[u8], t: &[u8], e: usize) -> 
         // r"…", b'…', f"""…""", rb"…"
         Lang::Python if q != b'#' && w.len() <= 2 && w.iter().all(|b| b"rRbBuUfF".contains(b)) => {
             let n = if t[e..].starts_with(&[q; 3]) { 3 } else { 1 };
-            Some((Mode::Str(Str { q, n, esc: true, ml: n == 3, dbl: false }), e + n as usize))
+            Some((
+                Mode::Str(Str {
+                    q,
+                    n,
+                    esc: true,
+                    ml: n == 3,
+                    dbl: false,
+                }),
+                e + n as usize,
+            ))
         }
         Lang::Rust => match (w, q) {
-            (b"b" | b"c", b'"') => Some((Mode::Str(Str { q, n: 1, esc: true, ml: true, dbl: false }), e + 1)),
-            (b"b", b'\'') => Some((Mode::Str(Str { q, n: 1, esc: true, ml: false, dbl: false }), e + 1)),
+            (b"b" | b"c", b'"') => Some((
+                Mode::Str(Str {
+                    q,
+                    n: 1,
+                    esc: true,
+                    ml: true,
+                    dbl: false,
+                }),
+                e + 1,
+            )),
+            (b"b", b'\'') => Some((
+                Mode::Str(Str {
+                    q,
+                    n: 1,
+                    esc: true,
+                    ml: false,
+                    dbl: false,
+                }),
+                e + 1,
+            )),
             (b"r" | b"br" | b"cr", _) => {
                 let hashes = t[e..].iter().take_while(|&&b| b == b'#').count();
                 if t.get(e + hashes) != Some(&b'"') || hashes + 1 > DELIM {
@@ -635,17 +865,39 @@ fn prefixed_string(lang: Lang, st: &mut State, w: &[u8], t: &[u8], e: usize) -> 
             // R"delim( … )delim"
             let d = &t[e + 1..];
             let p = d.iter().take(17).position(|&b| b == b'(')?;
-            if p + 2 > DELIM || d[..p].iter().any(|&b| matches!(b, b' ' | b')' | b'\\' | b'\t')) {
+            if p + 2 > DELIM
+                || d[..p]
+                    .iter()
+                    .any(|&b| matches!(b, b' ' | b')' | b'\\' | b'\t'))
+            {
                 return None;
             }
             st.set_delim(&[b")", &d[..p], b"\""].concat());
             Some((Mode::Delim, e + 1 + p + 1))
         }
-        Lang::C if matches!(w, b"L" | b"u" | b"U" | b"u8") => Some((Mode::Str(Str { q, n: 1, esc: true, ml: false, dbl: false }), e + 1)),
+        Lang::C if matches!(w, b"L" | b"u" | b"U" | b"u8") => Some((
+            Mode::Str(Str {
+                q,
+                n: 1,
+                esc: true,
+                ml: false,
+                dbl: false,
+            }),
+            e + 1,
+        )),
         // Dart's raw strings: r'…', r"""…""".
         Lang::Dart if w == b"r" && q != b'#' => {
             let n = if t[e..].starts_with(&[q; 3]) { 3 } else { 1 };
-            Some((Mode::Str(Str { q, n, esc: false, ml: n == 3, dbl: false }), e + n as usize))
+            Some((
+                Mode::Str(Str {
+                    q,
+                    n,
+                    esc: false,
+                    ml: n == 3,
+                    dbl: false,
+                }),
+                e + n as usize,
+            ))
         }
         _ => None,
     }
@@ -658,7 +910,10 @@ fn php_open(t: &[u8], p: usize) -> Option<usize> {
     if !r.starts_with(b"<?") {
         return None;
     }
-    if r.len() >= 5 && r[2..5].eq_ignore_ascii_case(b"php") && r.get(5).is_none_or(|&b| !is_ident(b)) {
+    if r.len() >= 5
+        && r[2..5].eq_ignore_ascii_case(b"php")
+        && r.get(5).is_none_or(|&b| !is_ident(b))
+    {
         Some(5)
     } else if r.starts_with(b"<?=") {
         Some(3)
@@ -691,7 +946,11 @@ fn php_html(st: &mut State, t: &[u8], i: usize, out: &mut Sink) -> usize {
 fn html(t: &[u8], from: usize, to: usize, out: &mut Sink) {
     if let Some(v) = out.0.as_deref_mut() {
         let n = v.len();
-        super::xml_spans(&mut State::default(), &t[from..to], &mut Sink(Some(&mut *v)));
+        super::xml_spans(
+            &mut State::default(),
+            &t[from..to],
+            &mut Sink(Some(&mut *v)),
+        );
         for s in &mut v[n..] {
             s.0 += from;
             s.1 += from;
@@ -705,10 +964,18 @@ fn heredoc_open(lang: Lang, st: &mut State, t: &[u8], i: usize) -> Option<usize>
     let mut j = match lang {
         Lang::Php if t[i..].starts_with(b"<<<") => i + 3,
         // `<<<` is a shell's here-string, not a heredoc.
-        Lang::Shell if t[i..].starts_with(b"<<") && !t[i..].starts_with(b"<<<") => i + 2 + t[i + 2..].starts_with(b"-") as usize,
+        Lang::Shell if t[i..].starts_with(b"<<") && !t[i..].starts_with(b"<<<") => {
+            i + 2 + t[i + 2..].starts_with(b"-") as usize
+        }
         // <<~EOS, <<-EOS, <<EOS (a capital or a quote right after: `a << b` appends).
         Lang::Ruby if t[i..].starts_with(b"<<~") || t[i..].starts_with(b"<<-") => i + 3,
-        Lang::Ruby if t[i..].starts_with(b"<<") && t.get(i + 2).is_some_and(|&b| b.is_ascii_uppercase() || b == b'"' || b == b'\'') => i + 2,
+        Lang::Ruby
+            if t[i..].starts_with(b"<<")
+                && t.get(i + 2)
+                    .is_some_and(|&b| b.is_ascii_uppercase() || b == b'"' || b == b'\'') =>
+        {
+            i + 2
+        }
         _ => return None,
     };
     while j < t.len() && (t[j] == b' ' || t[j] == b'\t') {
@@ -716,7 +983,10 @@ fn heredoc_open(lang: Lang, st: &mut State, t: &[u8], i: usize) -> Option<usize>
     }
     let quote = t.get(j).filter(|&&b| b == b'\'' || b == b'"').is_some();
     let w = j + quote as usize;
-    if !t.get(w).is_some_and(|&b| is_ident(b) && !b.is_ascii_digit()) {
+    if !t
+        .get(w)
+        .is_some_and(|&b| is_ident(b) && !b.is_ascii_digit())
+    {
         return None;
     }
     let e = super::word_end(t, w);
@@ -732,7 +1002,10 @@ fn heredoc_open(lang: Lang, st: &mut State, t: &[u8], i: usize) -> Option<usize>
 /// line, after which the code goes on.
 fn heredoc(st: &mut State, t: &[u8], i: usize, out: &mut Sink) -> usize {
     if !st.inked {
-        let at = i + t[i..].iter().take_while(|&&b| b == b' ' || b == b'\t').count();
+        let at = i + t[i..]
+            .iter()
+            .take_while(|&&b| b == b' ' || b == b'\t')
+            .count();
         let d = st.delim().len();
         if t[at..].starts_with(st.delim()) && t.get(at + d).is_none_or(|&b| !is_ident(b)) {
             st.inked = true;
@@ -752,7 +1025,11 @@ fn heredoc(st: &mut State, t: &[u8], i: usize, out: &mut Sink) -> usize {
 fn rust_quote(t: &[u8], i: usize, out: &mut Sink) -> usize {
     let rest = &t[i + 1..];
     if rest.first() == Some(&b'\\') {
-        let e = rest.iter().skip(2).position(|&b| b == b'\'').map_or(t.len(), |p| i + 1 + 2 + p + 1);
+        let e = rest
+            .iter()
+            .skip(2)
+            .position(|&b| b == b'\'')
+            .map_or(t.len(), |p| i + 1 + 2 + p + 1);
         out.push(i, e, Kind::Str);
         return e;
     }
@@ -777,9 +1054,20 @@ fn rust_quote(t: &[u8], i: usize, out: &mut Sink) -> usize {
 }
 
 /// A block comment from `from` (the comment's text pushed from `start`); returns where it ends.
-fn block_comment(st: &mut State, t: &[u8], start: usize, from: usize, spec: &Spec, out: &mut Sink) -> usize {
-    let Mode::Comment(mut depth) = st.mode else { return from };
-    let Some((open, close)) = spec.block else { return from };
+fn block_comment(
+    st: &mut State,
+    t: &[u8],
+    start: usize,
+    from: usize,
+    spec: &Spec,
+    out: &mut Sink,
+) -> usize {
+    let Mode::Comment(mut depth) = st.mode else {
+        return from;
+    };
+    let Some((open, close)) = spec.block else {
+        return from;
+    };
     let (open, close) = (open.as_bytes(), close.as_bytes());
     // Ruby's `=end` counts only at the start of a line.
     let line_start = close.starts_with(b"=");

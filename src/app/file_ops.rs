@@ -40,7 +40,12 @@ pub struct FileOps {
 impl Default for FileOps {
     fn default() -> Self {
         let (tx, rx) = channel();
-        FileOps { dialog: None, tx, rx, trashing: 0 }
+        FileOps {
+            dialog: None,
+            tx,
+            rx,
+            trashing: 0,
+        }
     }
 }
 
@@ -50,7 +55,11 @@ pub fn bad_name(name: &str) -> Option<&'static str> {
     if n.is_empty() {
         return Some("Type a name.");
     }
-    if n == "." || n == ".." || n.contains(['/', '\\']) || (cfg!(windows) && n.contains(['<', '>', ':', '"', '|', '?', '*'])) {
+    if n == "."
+        || n == ".."
+        || n.contains(['/', '\\'])
+        || (cfg!(windows) && n.contains(['<', '>', ':', '"', '|', '?', '*']))
+    {
         return Some("This name cannot be used for a file.");
     }
     None
@@ -67,23 +76,43 @@ pub fn trash_label() -> &'static str {
 
 /// `p` is `root` or inside it (with or without the long-path prefix).
 fn under(p: &Path, root: &Path) -> bool {
-    let (p, root) = (PathBuf::from(display_path(p)), PathBuf::from(display_path(root)));
+    let (p, root) = (
+        PathBuf::from(display_path(p)),
+        PathBuf::from(display_path(root)),
+    );
     p == root || p.starts_with(&root)
 }
 
 impl BigTextApp {
     pub(crate) fn ask_name(&mut self, kind: NameKind, base: PathBuf) {
-        let name = if kind == NameKind::Rename { base.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default() } else { String::new() };
-        self.file_ops.dialog = Some(NameDialog { kind, base, name, error: None, focus: true });
+        let name = if kind == NameKind::Rename {
+            base.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        self.file_ops.dialog = Some(NameDialog {
+            kind,
+            base,
+            name,
+            error: None,
+            focus: true,
+        });
     }
 
     /// The tabs of files at or under `path`; an error naming one with unsaved changes.
     fn tabs_under(&self, path: &Path) -> Result<Vec<(u64, PathBuf)>, String> {
         let mut v = Vec::new();
         for d in &self.docs {
-            let Some(p) = d.path.as_deref().filter(|p| under(p, path)) else { continue };
+            let Some(p) = d.path.as_deref().filter(|p| under(p, path)) else {
+                continue;
+            };
             if d.is_modified() {
-                return Err(trf("Save or close “{name}” first: it has unsaved changes.", &[("name", &d.title)]));
+                return Err(trf(
+                    "Save or close “{name}” first: it has unsaved changes.",
+                    &[("name", &d.title)],
+                ));
             }
             v.push((d.id, p.to_path_buf()));
         }
@@ -97,22 +126,35 @@ impl BigTextApp {
     }
 
     fn apply_name(&mut self) -> Result<(), String> {
-        let Some(d) = &self.file_ops.dialog else { return Ok(()) };
+        let Some(d) = &self.file_ops.dialog else {
+            return Ok(());
+        };
         let (kind, base, name) = (d.kind, d.base.clone(), d.name.trim().to_string());
         if let Some(e) = bad_name(&name) {
             return Err(tr(e).into());
         }
-        let parent = if kind == NameKind::Rename { base.parent().map(Path::to_path_buf).unwrap_or_default() } else { base.clone() };
+        let parent = if kind == NameKind::Rename {
+            base.parent().map(Path::to_path_buf).unwrap_or_default()
+        } else {
+            base.clone()
+        };
         let target = parent.join(&name);
         // A rename that only changes the case of letters is fine on case-insensitive disks.
-        let same = kind == NameKind::Rename && base.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(&name));
+        let same = kind == NameKind::Rename
+            && base
+                .file_name()
+                .is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(&name));
         if target.exists() && !same {
             return Err(tr("A file or folder with this name is already there.").into());
         }
         let io = |e: std::io::Error| super::friendly_io(&e, &target);
         match kind {
             NameKind::NewFile => {
-                std::fs::OpenOptions::new().write(true).create_new(true).open(&target).map_err(io)?;
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&target)
+                    .map_err(io)?;
                 self.reread(&parent);
                 self.open_path(target);
             }
@@ -133,7 +175,13 @@ impl BigTextApp {
                     return Err(io(e));
                 }
                 // Expanded folders inside a renamed folder stay expanded.
-                let moved: Vec<PathBuf> = self.folder.expanded.iter().filter(|p| under(p, &base)).cloned().collect();
+                let moved: Vec<PathBuf> = self
+                    .folder
+                    .expanded
+                    .iter()
+                    .filter(|p| under(p, &base))
+                    .cloned()
+                    .collect();
                 for p in moved {
                     self.folder.expanded.remove(&p);
                     if let Ok(rest) = p.strip_prefix(&base) {
@@ -141,8 +189,15 @@ impl BigTextApp {
                     }
                 }
                 for (_, p) in tabs {
-                    let rest = p.strip_prefix(&base).map(Path::to_path_buf).unwrap_or_default();
-                    self.open_path(if rest.as_os_str().is_empty() { target.clone() } else { target.join(rest) });
+                    let rest = p
+                        .strip_prefix(&base)
+                        .map(Path::to_path_buf)
+                        .unwrap_or_default();
+                    self.open_path(if rest.as_os_str().is_empty() {
+                        target.clone()
+                    } else {
+                        target.join(rest)
+                    });
                 }
                 self.reread(&parent);
             }
@@ -153,9 +208,27 @@ impl BigTextApp {
 
     /// Asks before moving `path` to the trash.
     pub(crate) fn ask_trash(&mut self, path: PathBuf) {
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| display_path(&path));
-        let message = if cfg!(windows) { trf("Move “{name}” to the Recycle Bin? It can be restored from there.", &[("name", &name)]) } else { trf("Move “{name}” to the Trash? It can be put back from there.", &[("name", &name)]) };
-        self.confirm = Some(super::Confirm { title: trash_label().into(), message, action: super::ConfirmAction::Trash(path), checkbox: None });
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| display_path(&path));
+        let message = if cfg!(windows) {
+            trf(
+                "Move “{name}” to the Recycle Bin? It can be restored from there.",
+                &[("name", &name)],
+            )
+        } else {
+            trf(
+                "Move “{name}” to the Trash? It can be put back from there.",
+                &[("name", &name)],
+            )
+        };
+        self.confirm = Some(super::Confirm {
+            title: trash_label().into(),
+            message,
+            action: super::ConfirmAction::Trash(path),
+            checkbox: None,
+        });
     }
 
     /// Moves `path` to the trash on a worker, its tabs closed first.
@@ -183,20 +256,34 @@ impl BigTextApp {
     pub(super) fn file_ops_window(&mut self, ctx: &egui::Context) {
         while let Ok((path, r)) = self.file_ops.rx.try_recv() {
             self.file_ops.trashing = self.file_ops.trashing.saturating_sub(1);
-            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
             match r {
                 Ok(()) => {
-                    let text = if cfg!(windows) { trf("Moved {name} to the Recycle Bin.", &[("name", &name)]) } else { trf("Moved {name} to the Trash.", &[("name", &name)]) };
+                    let text = if cfg!(windows) {
+                        trf("Moved {name} to the Recycle Bin.", &[("name", &name)])
+                    } else {
+                        trf("Moved {name} to the Trash.", &[("name", &name)])
+                    };
                     self.notify(text, None);
                     self.folder.expanded.retain(|p| !under(p, &path));
                     if let Some(parent) = path.parent() {
                         self.reread(parent);
                     }
                 }
-                Err(e) => self.error = Some(format!("{}: {e}", trf("Could not move {name}", &[("name", &name)]))),
+                Err(e) => {
+                    self.error = Some(format!(
+                        "{}: {e}",
+                        trf("Could not move {name}", &[("name", &name)])
+                    ))
+                }
             }
         }
-        let Some(d) = &mut self.file_ops.dialog else { return };
+        let Some(d) = &mut self.file_ops.dialog else {
+            return;
+        };
         let title = match d.kind {
             NameKind::NewFile => tr("New file"),
             NameKind::NewFolder => tr("New folder"),
@@ -206,15 +293,28 @@ impl BigTextApp {
         egui::Modal::new(egui::Id::new("name-dialog")).show(ctx, |ui| {
             ui.set_width(380.0);
             ui.heading(title);
-            ui.weak(display_path(if d.kind == NameKind::Rename { d.base.parent().unwrap_or(&d.base) } else { &d.base }));
-            let r = ui.add(egui::TextEdit::singleline(&mut d.name).hint_text(tr("Name")).desired_width(f32::INFINITY));
+            ui.weak(display_path(if d.kind == NameKind::Rename {
+                d.base.parent().unwrap_or(&d.base)
+            } else {
+                &d.base
+            }));
+            let r = ui.add(
+                egui::TextEdit::singleline(&mut d.name)
+                    .hint_text(tr("Name"))
+                    .desired_width(f32::INFINITY),
+            );
             if d.focus {
                 r.request_focus();
                 // A rename selects the name without its extension.
                 if d.kind == NameKind::Rename {
                     let stem = d.name.rfind('.').filter(|&i| i > 0).unwrap_or(d.name.len());
                     let mut state = egui::TextEdit::load_state(ui.ctx(), r.id).unwrap_or_default();
-                    state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(d.name[..stem].chars().count()))));
+                    state
+                        .cursor
+                        .set_char_range(Some(egui::text::CCursorRange::two(
+                            egui::text::CCursor::new(0),
+                            egui::text::CCursor::new(d.name[..stem].chars().count()),
+                        )));
                     state.store(ui.ctx(), r.id);
                 }
                 d.focus = false;
@@ -227,9 +327,14 @@ impl BigTextApp {
             }
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                let label = if d.kind == NameKind::Rename { tr("Rename") } else { tr("Create") };
+                let label = if d.kind == NameKind::Rename {
+                    tr("Rename")
+                } else {
+                    tr("Create")
+                };
                 ok = ui.button(label).clicked() || ui.input(|i| i.key_pressed(Key::Enter));
-                cancel = ui.button(tr("Cancel")).clicked() || ui.input(|i| i.key_pressed(Key::Escape));
+                cancel =
+                    ui.button(tr("Cancel")).clicked() || ui.input(|i| i.key_pressed(Key::Escape));
             });
         });
         if cancel {

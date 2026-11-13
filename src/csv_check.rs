@@ -16,13 +16,24 @@ pub const PROBLEMS_MAX: usize = 1_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
-    Fields { got: usize, want: usize },
+    Fields {
+        got: usize,
+        want: usize,
+    },
     /// A quote inside a field that is not quoted, or text after a field's closing quote.
-    StrayQuote { col: usize },
+    StrayQuote {
+        col: usize,
+    },
     /// A quoted field that runs to the end of the file.
-    Unclosed { col: usize },
-    Control { col: usize },
-    NotNumber { col: usize },
+    Unclosed {
+        col: usize,
+    },
+    Control {
+        col: usize,
+    },
+    NotNumber {
+        col: usize,
+    },
     /// Longer than [`RECORD_MAX`]: not looked into.
     Huge,
 }
@@ -62,7 +73,10 @@ fn expected_fields(buf: &TextBuf, d: Dialect, header: bool, cancel: &CancelToken
     for c in &counts {
         *tally.entry(*c).or_insert(0usize) += 1;
     }
-    tally.into_iter().max_by_key(|&(c, n)| (n, c)).map(|(c, _)| c)
+    tally
+        .into_iter()
+        .max_by_key(|&(c, n)| (n, c))
+        .map(|(c, _)| c)
 }
 
 /// Checks every record; `numeric` lists the (0-based) columns whose non-empty values must be
@@ -77,7 +91,10 @@ pub fn check(
     mut on_problem: impl FnMut(&Problem),
 ) -> io::Result<Option<Checked>> {
     let codec = buf.codec;
-    let mut out = Checked { fields: expected_fields(buf, d, header, cancel).unwrap_or(0), ..Default::default() };
+    let mut out = Checked {
+        fields: expected_fields(buf, d, header, cancel).unwrap_or(0),
+        ..Default::default()
+    };
     let len = buf.len();
     let q = d.quote;
     let unit = codec.unit() as u64;
@@ -88,7 +105,10 @@ pub fn check(
         if r.content.end - r.content.start > RECORD_MAX {
             found = Some(Kind::Huge);
         } else if r.fields.len() != out.fields && out.fields > 0 {
-            found = Some(Kind::Fields { got: r.fields.len(), want: out.fields });
+            found = Some(Kind::Fields {
+                got: r.fields.len(),
+                want: out.fields,
+            });
         } else {
             for (col, f) in r.fields.iter().enumerate() {
                 let Some(b) = buf.read(f.start..f.end) else {
@@ -101,21 +121,33 @@ pub fn check(
                 if quoted {
                     // "…" with doubled quotes inside; at the end of the file it may be unclosed.
                     let inner = &t[1..];
-                    let closes = !inner.is_empty() && inner.last() == Some(&q) && inner[..inner.len() - 1].split(|&c| c == q).count() % 2 == 1;
+                    let closes = !inner.is_empty()
+                        && inner.last() == Some(&q)
+                        && inner[..inner.len() - 1].split(|&c| c == q).count() % 2 == 1;
                     if !closes {
-                        found = Some(if r.next >= len && f.end >= len { Kind::Unclosed { col } } else { Kind::StrayQuote { col } });
+                        found = Some(if r.next >= len && f.end >= len {
+                            Kind::Unclosed { col }
+                        } else {
+                            Kind::StrayQuote { col }
+                        });
                         break;
                     }
                 } else if t.contains(&q) {
                     found = Some(Kind::StrayQuote { col });
                     break;
                 }
-                if t.iter().any(|&c| c < 0x20 && !matches!(c, b'\t' | b'\n' | b'\r')) {
+                if t.iter()
+                    .any(|&c| c < 0x20 && !matches!(c, b'\t' | b'\n' | b'\r'))
+                {
                     found = Some(Kind::Control { col });
                     break;
                 }
                 if numeric.contains(&col) && !(header && out.records == 1) {
-                    let v = if quoted { text[1..text.len() - 1].replace("\"\"", "\"") } else { text.clone() };
+                    let v = if quoted {
+                        text[1..text.len() - 1].replace("\"\"", "\"")
+                    } else {
+                        text.clone()
+                    };
                     if !v.trim().is_empty() && csv::parse_number(&v).is_none() {
                         found = Some(Kind::NotNumber { col });
                         break;
@@ -124,7 +156,11 @@ pub fn check(
             }
         }
         if let Some(kind) = found {
-            let p = Problem { start: r.content.start, next: r.next.max(r.content.end + unit).min(len), kind };
+            let p = Problem {
+                start: r.content.start,
+                next: r.next.max(r.content.end + unit).min(len),
+                kind,
+            };
             on_problem(&p);
             if out.problems.len() < PROBLEMS_MAX {
                 out.problems.push(p);
@@ -158,8 +194,29 @@ mod tests {
         let idx = crate::index::build_blocking(&src, Codec::utf8());
         let mut t = TextBuf::new(src, idx, Codec::utf8());
         t.blocking = true;
-        let c = check(&t, Dialect::new(b','), header, numeric, &CancelToken::new(), None, |_| {}).unwrap().unwrap();
-        let rows = c.problems.iter().map(|p| (String::from_utf8_lossy(&data[p.start as usize..p.next as usize]).trim_end().to_string(), p.kind)).collect();
+        let c = check(
+            &t,
+            Dialect::new(b','),
+            header,
+            numeric,
+            &CancelToken::new(),
+            None,
+            |_| {},
+        )
+        .unwrap()
+        .unwrap();
+        let rows = c
+            .problems
+            .iter()
+            .map(|p| {
+                (
+                    String::from_utf8_lossy(&data[p.start as usize..p.next as usize])
+                        .trim_end()
+                        .to_string(),
+                    p.kind,
+                )
+            })
+            .collect();
         (c, rows)
     }
 
@@ -169,12 +226,15 @@ mod tests {
         let (c, rows) = checked(data, true, &[2]);
         assert_eq!(c.fields, 3);
         assert_eq!(c.records, 8);
-        assert_eq!(rows, [
-            ("2,bob".to_string(), Kind::Fields { got: 2, want: 3 }),
-            ("4,d\"x,5".to_string(), Kind::StrayQuote { col: 1 }),
-            ("5,e,six".to_string(), Kind::NotNumber { col: 2 }),
-            ("7,f\x01,8".to_string(), Kind::Control { col: 1 }),
-        ]);
+        assert_eq!(
+            rows,
+            [
+                ("2,bob".to_string(), Kind::Fields { got: 2, want: 3 }),
+                ("4,d\"x,5".to_string(), Kind::StrayQuote { col: 1 }),
+                ("5,e,six".to_string(), Kind::NotNumber { col: 2 }),
+                ("7,f\x01,8".to_string(), Kind::Control { col: 1 }),
+            ]
+        );
     }
 
     #[test]
@@ -186,8 +246,13 @@ mod tests {
         assert_eq!(rows[1].1, Kind::Unclosed { col: 1 });
         // Text after a closing quote.
         let (_, rows) = checked(b"a,b\n\"x\"y,z\n", false, &[]);
-        assert_eq!(rows, [("\"x\"y,z".to_string(), Kind::StrayQuote { col: 0 })]);
+        assert_eq!(
+            rows,
+            [("\"x\"y,z".to_string(), Kind::StrayQuote { col: 0 })]
+        );
         // A clean file.
-        assert!(checked(b"x,y\n1,2\n\"a\"\"b\",3\n", true, &[1]).1.is_empty());
+        assert!(checked(b"x,y\n1,2\n\"a\"\"b\",3\n", true, &[1])
+            .1
+            .is_empty());
     }
 }

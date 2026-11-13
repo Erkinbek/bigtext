@@ -48,7 +48,11 @@ pub fn split_line(arg: &str, exists: impl Fn(&Path) -> bool) -> (PathBuf, Option
     if exists(Path::new(arg)) {
         return (PathBuf::from(arg), None);
     }
-    let num = |s: &str| (!s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())).then(|| s.parse::<u64>().ok()).flatten();
+    let num = |s: &str| {
+        (!s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| s.parse::<u64>().ok())
+            .flatten()
+    };
     if let Some((rest, last)) = arg.rsplit_once(':').filter(|(_, n)| num(n).is_some()) {
         if !rest.is_empty() && exists(Path::new(rest)) {
             return (PathBuf::from(rest), num(last));
@@ -63,7 +67,12 @@ pub fn split_line(arg: &str, exists: impl Fn(&Path) -> bool) -> (PathBuf, Option
 }
 
 /// Handles one user argument (an option or a file); `next` yields an option's value.
-pub fn take(args: &mut UserArgs, arg: &str, next: &mut dyn FnMut() -> Option<String>, exists: &dyn Fn(&Path) -> bool) -> Result<(), String> {
+pub fn take(
+    args: &mut UserArgs,
+    arg: &str,
+    next: &mut dyn FnMut() -> Option<String>,
+    exists: &dyn Fn(&Path) -> bool,
+) -> Result<(), String> {
     match arg {
         "-h" | "--help" | "/?" => args.help = true,
         "-" => args.stdin = true,
@@ -71,7 +80,10 @@ pub fn take(args: &mut UserArgs, arg: &str, next: &mut dyn FnMut() -> Option<Str
         "--new-window" => args.new_window = true,
         "-n" | "--line" | "--goto" => {
             let v = next().ok_or_else(|| format!("{arg} needs a line number"))?;
-            let n = v.trim().parse::<u64>().map_err(|_| format!("{arg}: “{v}” is not a line number"))?;
+            let n = v
+                .trim()
+                .parse::<u64>()
+                .map_err(|_| format!("{arg}: “{v}” is not a line number"))?;
             match args.files.last_mut() {
                 Some(f) => f.1 = Some(n),
                 None => return Err(format!("{arg} goes after the file it applies to")),
@@ -79,9 +91,16 @@ pub fn take(args: &mut UserArgs, arg: &str, next: &mut dyn FnMut() -> Option<Str
         }
         "--find" | "--regex" => {
             let v = next().ok_or_else(|| format!("{arg} needs a pattern"))?;
-            args.find = Some(Query { pattern: v, regex: arg == "--regex", case_sensitive: true, ..Default::default() });
+            args.find = Some(Query {
+                pattern: v,
+                regex: arg == "--regex",
+                case_sensitive: true,
+                ..Default::default()
+            });
         }
-        _ if arg.starts_with("--") => return Err(format!("Unknown option {arg}. Run bigtext --help.")),
+        _ if arg.starts_with("--") => {
+            return Err(format!("Unknown option {arg}. Run bigtext --help."))
+        }
         _ => args.files.push(split_line(arg, exists)),
     }
     Ok(())
@@ -103,15 +122,37 @@ mod tests {
 
     #[test]
     fn files_with_lines() {
-        let a = parse(&["app.log:120", r"C:\logs\b.log:7:3", "c.txt", "d.log", "--line", "50"], &["app.log", r"C:\logs\b.log", "c.txt", "d.log"]).unwrap();
+        let a = parse(
+            &[
+                "app.log:120",
+                r"C:\logs\b.log:7:3",
+                "c.txt",
+                "d.log",
+                "--line",
+                "50",
+            ],
+            &["app.log", r"C:\logs\b.log", "c.txt", "d.log"],
+        )
+        .unwrap();
         assert_eq!(
             a.files,
-            vec![(PathBuf::from("app.log"), Some(120)), (PathBuf::from(r"C:\logs\b.log"), Some(7)), (PathBuf::from("c.txt"), None), (PathBuf::from("d.log"), Some(50))]
+            vec![
+                (PathBuf::from("app.log"), Some(120)),
+                (PathBuf::from(r"C:\logs\b.log"), Some(7)),
+                (PathBuf::from("c.txt"), None),
+                (PathBuf::from("d.log"), Some(50))
+            ]
         );
         // A file whose name really ends in :12 opens as it is.
-        assert_eq!(parse(&["odd:12"], &["odd:12", "odd"]).unwrap().files, vec![(PathBuf::from("odd:12"), None)]);
+        assert_eq!(
+            parse(&["odd:12"], &["odd:12", "odd"]).unwrap().files,
+            vec![(PathBuf::from("odd:12"), None)]
+        );
         // Unknown files are passed on unchanged (the editor reports them).
-        assert_eq!(parse(&["missing.log:5"], &[]).unwrap().files, vec![(PathBuf::from("missing.log:5"), None)]);
+        assert_eq!(
+            parse(&["missing.log:5"], &[]).unwrap().files,
+            vec![(PathBuf::from("missing.log:5"), None)]
+        );
     }
 
     #[test]

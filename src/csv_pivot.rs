@@ -119,7 +119,9 @@ fn bucket(v: &str, b: Bucket) -> (String, bool) {
         return (v.to_string(), false);
     }
     // "2024-05-01 10:15" without seconds too.
-    let Some(st) = timestamp::parse(v).or_else(|| timestamp::parse(&format!("{v}:00"))) else { return (v.to_string(), false) };
+    let Some(st) = timestamp::parse(v).or_else(|| timestamp::parse(&format!("{v}:00"))) else {
+        return (v.to_string(), false);
+    };
     let k = timestamp::format_key(st.ms, st.has_date, true);
     let key = match (b, st.has_date) {
         (Bucket::Hour, true) => format!("{}:00", &k[..13]),
@@ -132,10 +134,17 @@ fn bucket(v: &str, b: Bucket) -> (String, bool) {
 }
 
 /// Builds the pivot table in one pass over the records.
-pub fn pivot(buf: &TextBuf, d: Dialect, spec: PivotSpec, cancel: &CancelToken, progress: Option<&Progress>) -> Result<Pivot, ScanEnd> {
+pub fn pivot(
+    buf: &TextBuf,
+    d: Dialect,
+    spec: PivotSpec,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> Result<Pivot, ScanEnd> {
     let codec = buf.codec;
     let mut p = Pivot::default();
-    let (mut row_ids, mut col_ids): (HashMap<String, u32>, HashMap<String, u32>) = (HashMap::new(), HashMap::new());
+    let (mut row_ids, mut col_ids): (HashMap<String, u32>, HashMap<String, u32>) =
+        (HashMap::new(), HashMap::new());
     let mut first = spec.header;
     let mut failed = false;
     let mut timed = true;
@@ -215,7 +224,13 @@ fn number(x: f64) -> String {
 /// The pivot table as CSV: the row column, one column per value (in number order when they are
 /// all numbers), and Total; rows by time when the rows are times, otherwise largest total first.
 pub fn pivot_to_csv<W: Write>(p: &Pivot, agg: Agg, out: &mut W) -> io::Result<()> {
-    let q = |s: &str| if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() };
+    let q = |s: &str| {
+        if s.contains([',', '"', '\n', '\r']) {
+            format!("\"{}\"", s.replace('"', "\"\""))
+        } else {
+            s.to_string()
+        }
+    };
     let mut cols: Vec<usize> = (0..p.cols.len()).collect();
     let nums: Option<Vec<f64>> = p.cols.iter().map(|c| csv::parse_number(c)).collect();
     match nums {
@@ -226,12 +241,30 @@ pub fn pivot_to_csv<W: Write>(p: &Pivot, agg: Agg, out: &mut W) -> io::Result<()
     if p.time_rows {
         rows.sort_by(|&a, &b| p.rows[a].cmp(&p.rows[b]));
     } else {
-        rows.sort_by(|&a, &b| p.totals[b].get(agg).unwrap_or(f64::MIN).total_cmp(&p.totals[a].get(agg).unwrap_or(f64::MIN)).then(a.cmp(&b)));
+        rows.sort_by(|&a, &b| {
+            p.totals[b]
+                .get(agg)
+                .unwrap_or(f64::MIN)
+                .total_cmp(&p.totals[a].get(agg).unwrap_or(f64::MIN))
+                .then(a.cmp(&b))
+        });
     }
-    let name = if p.row_name.trim().is_empty() { "value" } else { p.row_name.as_str() };
+    let name = if p.row_name.trim().is_empty() {
+        "value"
+    } else {
+        p.row_name.as_str()
+    };
     write!(out, "{}", q(name))?;
     for &c in &cols {
-        write!(out, ",{}", q(if p.cols[c].is_empty() { "(empty)" } else { &p.cols[c] }))?;
+        write!(
+            out,
+            ",{}",
+            q(if p.cols[c].is_empty() {
+                "(empty)"
+            } else {
+                &p.cols[c]
+            })
+        )?;
     }
     writeln!(out, ",Total")?;
     for &r in &rows {
@@ -244,7 +277,11 @@ pub fn pivot_to_csv<W: Write>(p: &Pivot, agg: Agg, out: &mut W) -> io::Result<()
             };
             write!(out, ",{v}")?;
         }
-        writeln!(out, ",{}", p.totals[r].get(agg).map(number).unwrap_or_default())?;
+        writeln!(
+            out,
+            ",{}",
+            p.totals[r].get(agg).map(number).unwrap_or_default()
+        )?;
     }
     Ok(())
 }
@@ -274,19 +311,61 @@ mod tests {
 
     #[test]
     fn counts_and_sums() {
-        let spec = PivotSpec { rows: 0, cols: 1, value: None, agg: Agg::Count, bucket: Bucket::AsIs, header: true };
-        assert_eq!(csv_of(SALES, spec), "city,rice,tea,Total\nTashkent,1,2,3\nBukhara,0,1,1\n");
-        let sum = PivotSpec { value: Some(2), agg: Agg::Sum, ..spec };
-        assert_eq!(csv_of(SALES, sum), "city,rice,tea,Total\nTashkent,7,4,11\nBukhara,,5,5\n");
-        let max = PivotSpec { value: Some(2), agg: Agg::Max, ..spec };
-        assert_eq!(csv_of(SALES, max), "city,rice,tea,Total\nTashkent,7,3,7\nBukhara,,5,5\n");
+        let spec = PivotSpec {
+            rows: 0,
+            cols: 1,
+            value: None,
+            agg: Agg::Count,
+            bucket: Bucket::AsIs,
+            header: true,
+        };
+        assert_eq!(
+            csv_of(SALES, spec),
+            "city,rice,tea,Total\nTashkent,1,2,3\nBukhara,0,1,1\n"
+        );
+        let sum = PivotSpec {
+            value: Some(2),
+            agg: Agg::Sum,
+            ..spec
+        };
+        assert_eq!(
+            csv_of(SALES, sum),
+            "city,rice,tea,Total\nTashkent,7,4,11\nBukhara,,5,5\n"
+        );
+        let max = PivotSpec {
+            value: Some(2),
+            agg: Agg::Max,
+            ..spec
+        };
+        assert_eq!(
+            csv_of(SALES, max),
+            "city,rice,tea,Total\nTashkent,7,3,7\nBukhara,,5,5\n"
+        );
     }
 
     #[test]
     fn time_buckets() {
-        let by_day = PivotSpec { rows: 3, cols: 0, value: Some(2), agg: Agg::Sum, bucket: Bucket::Day, header: true };
-        assert_eq!(csv_of(SALES, by_day), "ts,Bukhara,Tashkent,Total\n2024-05-01,5,3,8\n2024-05-02,,8,8\n");
-        let by_hour = PivotSpec { bucket: Bucket::Hour, agg: Agg::Count, value: None, ..by_day };
-        assert_eq!(csv_of(SALES, by_hour).lines().nth(1), Some("2024-05-01 10:00,0,1,1"));
+        let by_day = PivotSpec {
+            rows: 3,
+            cols: 0,
+            value: Some(2),
+            agg: Agg::Sum,
+            bucket: Bucket::Day,
+            header: true,
+        };
+        assert_eq!(
+            csv_of(SALES, by_day),
+            "ts,Bukhara,Tashkent,Total\n2024-05-01,5,3,8\n2024-05-02,,8,8\n"
+        );
+        let by_hour = PivotSpec {
+            bucket: Bucket::Hour,
+            agg: Agg::Count,
+            value: None,
+            ..by_day
+        };
+        assert_eq!(
+            csv_of(SALES, by_hour).lines().nth(1),
+            Some("2024-05-01 10:00,0,1,1")
+        );
     }
 }

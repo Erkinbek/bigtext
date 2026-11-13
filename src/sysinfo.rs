@@ -19,14 +19,26 @@ mod space {
 
     #[link(name = "kernel32")]
     extern "system" {
-        fn GetDiskFreeSpaceExW(dir: *const u16, available: *mut u64, total: *mut u64, free: *mut u64) -> i32;
+        fn GetDiskFreeSpaceExW(
+            dir: *const u16,
+            available: *mut u64,
+            total: *mut u64,
+            free: *mut u64,
+        ) -> i32;
     }
 
     pub fn free(dir: &std::path::Path) -> Option<u64> {
         let wide: Vec<u16> = dir.as_os_str().encode_wide().chain(Some(0)).collect();
         let mut available = 0u64;
         // SAFETY: `wide` is NUL-terminated; the totals it does not need may be null.
-        let ok = unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut available, std::ptr::null_mut(), std::ptr::null_mut()) };
+        let ok = unsafe {
+            GetDiskFreeSpaceExW(
+                wide.as_ptr(),
+                &mut available,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
         (ok != 0).then_some(available)
     }
 }
@@ -82,7 +94,11 @@ mod imp {
     #[link(name = "kernel32")]
     extern "system" {
         fn GetCurrentProcess() -> isize;
-        fn K32GetProcessMemoryInfo(process: isize, counters: *mut ProcessMemoryCountersEx, cb: u32) -> i32;
+        fn K32GetProcessMemoryInfo(
+            process: isize,
+            counters: *mut ProcessMemoryCountersEx,
+            cb: u32,
+        ) -> i32;
     }
 
     fn counters() -> Option<ProcessMemoryCountersEx> {
@@ -107,7 +123,11 @@ mod imp {
     fn status_kb(key: &str) -> Option<u64> {
         let s = std::fs::read_to_string("/proc/self/status").ok()?;
         let line = s.lines().find(|l| l.starts_with(key))?;
-        line.split_whitespace().nth(1)?.parse::<u64>().ok().map(|kb| kb * 1024)
+        line.split_whitespace()
+            .nth(1)?
+            .parse::<u64>()
+            .ok()
+            .map(|kb| kb * 1024)
     }
     pub fn private_bytes() -> Option<u64> {
         status_kb("RssAnon:")

@@ -20,7 +20,22 @@ const SHOWN: usize = 60;
 /// A listing older than this is made again when Go to file opens.
 const STALE: Duration = Duration::from_secs(15);
 /// Folders not listed: version control, dependencies, caches and build output.
-const SKIP_DIRS: &[&str] = &[".git", ".hg", ".svn", "CVS", "node_modules", "__pycache__", ".venv", "venv", ".idea", ".vs", ".mypy_cache", ".pytest_cache", ".gradle", "target"];
+const SKIP_DIRS: &[&str] = &[
+    ".git",
+    ".hg",
+    ".svn",
+    "CVS",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".idea",
+    ".vs",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".gradle",
+    "target",
+];
 
 /// The dialog's state.
 #[derive(Default)]
@@ -53,7 +68,8 @@ impl FileIndex {
 
     /// Lists `root` again on a worker unless a fresh listing of it is at hand.
     pub fn refresh(&mut self, root: &Path, waker: bigtext::jobs::Waker, force: bool) {
-        let fresh = self.root.as_deref() == Some(root) && self.listed.is_some_and(|t| t.elapsed() < STALE);
+        let fresh =
+            self.root.as_deref() == Some(root) && self.listed.is_some_and(|t| t.elapsed() < STALE);
         if (fresh && !force) || self.rx.is_some() {
             return;
         }
@@ -97,12 +113,18 @@ pub fn walk(root: &Path, max: usize) -> (Vec<String>, bool) {
     let mut out = Vec::new();
     let mut stack = vec![(root.to_path_buf(), String::new())];
     while let Some((dir, rel)) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         let mut subdirs = Vec::new();
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
             let Ok(t) = e.file_type() else { continue };
-            let path = if rel.is_empty() { name.clone() } else { format!("{rel}/{name}") };
+            let path = if rel.is_empty() {
+                name.clone()
+            } else {
+                format!("{rel}/{name}")
+            };
             if t.is_dir() {
                 if !SKIP_DIRS.contains(&name.as_str()) {
                     subdirs.push((e.path(), path));
@@ -128,7 +150,9 @@ pub fn walk(root: &Path, max: usize) -> (Vec<String>, bool) {
 pub fn split_query(q: &str) -> (&str, Option<u64>) {
     let q = q.trim();
     match q.rsplit_once(':') {
-        Some((name, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => (name.trim_end(), n.parse().ok()),
+        Some((name, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => {
+            (name.trim_end(), n.parse().ok())
+        }
         _ => (q, None),
     }
 }
@@ -136,7 +160,10 @@ pub fn split_query(q: &str) -> (&str, Option<u64>) {
 fn boundary(prev: Option<char>, c: char) -> bool {
     match prev {
         None => true,
-        Some(p) => matches!(p, '/' | '\\' | '_' | '-' | '.' | ' ') || (p.is_lowercase() && c.is_uppercase()),
+        Some(p) => {
+            matches!(p, '/' | '\\' | '_' | '-' | '.' | ' ')
+                || (p.is_lowercase() && c.is_uppercase())
+        }
     }
 }
 
@@ -144,16 +171,25 @@ fn boundary(prev: Option<char>, c: char) -> bool {
 /// characters; `None` when the query's characters do not all occur in order. Matches in the file
 /// name, at the start of a word and next to each other count more; shorter paths win ties.
 pub fn fuzzy(query: &str, path: &str) -> Option<(i32, Vec<usize>)> {
-    let q: Vec<char> = query.chars().filter(|c| !c.is_whitespace()).flat_map(char::to_lowercase).collect();
+    let q: Vec<char> = query
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .flat_map(char::to_lowercase)
+        .collect();
     let p: Vec<char> = path.chars().collect();
-    let name_at = path.rfind(['/', '\\']).map_or(0, |i| path[..=i].chars().count());
+    let name_at = path
+        .rfind(['/', '\\'])
+        .map_or(0, |i| path[..=i].chars().count());
     if q.is_empty() {
         return Some((-(p.len() as i32), Vec::new()));
     }
     if !subsequence(&q, path) {
         return None;
     }
-    let lower: Vec<char> = p.iter().map(|c| c.to_lowercase().next().unwrap_or(*c)).collect();
+    let lower: Vec<char> = p
+        .iter()
+        .map(|c| c.to_lowercase().next().unwrap_or(*c))
+        .collect();
     // The whole query in the file name, else from the start of the path; at each step a word's
     // start is preferred to the next plain occurrence when there is one before the next match.
     let attempt = |from: usize| -> Option<Vec<usize>> {
@@ -162,9 +198,16 @@ pub fn fuzzy(query: &str, path: &str) -> Option<(i32, Vec<usize>)> {
         for (k, &qc) in q.iter().enumerate() {
             let next = (i..p.len()).find(|&j| lower[j] == qc)?;
             // A later occurrence at a word start, if the rest still fits after it.
-            let better = (next + 1..p.len()).find(|&j| lower[j] == qc && boundary(j.checked_sub(1).map(|b| p[b]), p[j]));
+            let better = (next + 1..p.len())
+                .find(|&j| lower[j] == qc && boundary(j.checked_sub(1).map(|b| p[b]), p[j]));
             let pick = match better {
-                Some(b) if !boundary(next.checked_sub(1).map(|x| p[x]), p[next]) && pos.last().is_none_or(|&l: &usize| l + 1 != next) && fits(&lower, &q[k + 1..], b + 1) => b,
+                Some(b)
+                    if !boundary(next.checked_sub(1).map(|x| p[x]), p[next])
+                        && pos.last().is_none_or(|&l: &usize| l + 1 != next)
+                        && fits(&lower, &q[k + 1..], b + 1) =>
+                {
+                    b
+                }
                 _ => next,
             };
             pos.push(pick);
@@ -222,8 +265,15 @@ fn fits(lower: &[char], rest: &[char], from: usize) -> bool {
 
 /// The best `n` of `candidates` for `query`: (index, score, matched characters).
 pub fn best(query: &str, candidates: &[String], n: usize) -> Vec<(usize, Vec<usize>)> {
-    let mut v: Vec<(usize, i32, Vec<usize>)> = candidates.iter().enumerate().filter_map(|(i, c)| fuzzy(query, c).map(|(s, p)| (i, s, p))).collect();
-    let by = |a: &(usize, i32, Vec<usize>), b: &(usize, i32, Vec<usize>)| b.1.cmp(&a.1).then_with(|| super::folder_tree::natural(&candidates[a.0], &candidates[b.0]));
+    let mut v: Vec<(usize, i32, Vec<usize>)> = candidates
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| fuzzy(query, c).map(|(s, p)| (i, s, p)))
+        .collect();
+    let by = |a: &(usize, i32, Vec<usize>), b: &(usize, i32, Vec<usize>)| {
+        b.1.cmp(&a.1)
+            .then_with(|| super::folder_tree::natural(&candidates[a.0], &candidates[b.0]))
+    };
     if v.len() > n {
         v.select_nth_unstable_by(n, by);
         v.truncate(n);
@@ -238,13 +288,21 @@ impl BigTextApp {
         if let Some(root) = self.folder.root.clone() {
             self.file_index.refresh(&root, self.waker.clone(), false);
         }
-        self.quick_open = Some(QuickOpen { focus: true, ..Default::default() });
+        self.quick_open = Some(QuickOpen {
+            focus: true,
+            ..Default::default()
+        });
     }
 
     /// With no folder, Go to file chooses from the open tabs and recent files (full paths).
     fn recent_candidates(&self) -> Vec<String> {
         let mut v: Vec<String> = Vec::new();
-        for p in self.docs.iter().filter_map(|d| d.path.as_deref()).chain(self.recent.iter().map(PathBuf::as_path)) {
+        for p in self
+            .docs
+            .iter()
+            .filter_map(|d| d.path.as_deref())
+            .chain(self.recent.iter().map(PathBuf::as_path))
+        {
             let s = bigtext::file::display_path(p);
             if !v.contains(&s) {
                 v.push(s);
@@ -255,7 +313,9 @@ impl BigTextApp {
 
     pub(super) fn quick_open_window(&mut self, ctx: &egui::Context) {
         self.file_index.poll();
-        let Some(q) = &mut self.quick_open else { return };
+        let Some(q) = &mut self.quick_open else {
+            return;
+        };
         let (up, down, enter, esc) = ctx.input_mut(|i| {
             (
                 i.consume_key(Modifiers::NONE, Key::ArrowUp),
@@ -266,7 +326,11 @@ impl BigTextApp {
         });
         let (name, mut line) = split_query(&q.query);
         let name = name.to_string();
-        let root = self.folder.root.clone().filter(|r| self.file_index.root.as_deref() == Some(r.as_path()));
+        let root = self
+            .folder
+            .root
+            .clone()
+            .filter(|r| self.file_index.root.as_deref() == Some(r.as_path()));
         let recent;
         let (candidates, generation): (&[String], u64) = if root.is_some() {
             (&self.file_index.files, self.file_index.generation)
@@ -298,7 +362,11 @@ impl BigTextApp {
             .fixed_size(egui::vec2(600.0, 0.0))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    let r = ui.add(egui::TextEdit::singleline(&mut q.query).hint_text(tr("Go to file (name:line)")).desired_width(ui.available_width() - if listing { 24.0 } else { 0.0 }));
+                    let r = ui.add(
+                        egui::TextEdit::singleline(&mut q.query)
+                            .hint_text(tr("Go to file (name:line)"))
+                            .desired_width(ui.available_width() - if listing { 24.0 } else { 0.0 }),
+                    );
                     if q.focus {
                         r.request_focus();
                         q.focus = false;
@@ -315,41 +383,73 @@ impl BigTextApp {
                 let weak = ui.visuals().weak_text_color();
                 let hit = super::theme::info_text(ui);
                 let font = egui::TextStyle::Body.resolve(ui.style());
-                egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
-                    for (k, (i, pos)) in found.iter().enumerate() {
-                        let path = &candidates[*i];
-                        let name_at = path.rfind(['/', '\\']).map_or(0, |n| n + 1);
-                        let mut job = LayoutJob::default();
-                        let char_at: Vec<usize> = path.char_indices().map(|(b, _)| b).collect();
-                        let push = |job: &mut LayoutJob, from: usize, to: usize, color: egui::Color32| {
-                            for (ci, &b) in char_at.iter().enumerate() {
-                                if b < from || b >= to {
-                                    continue;
-                                }
-                                let e = char_at.get(ci + 1).copied().unwrap_or(path.len());
-                                let c = if pos.contains(&ci) { hit } else { color };
-                                job.append(&path[b..e], 0.0, TextFormat { font_id: font.clone(), color: c, ..Default::default() });
+                egui::ScrollArea::vertical()
+                    .max_height(400.0)
+                    .show(ui, |ui| {
+                        for (k, (i, pos)) in found.iter().enumerate() {
+                            let path = &candidates[*i];
+                            let name_at = path.rfind(['/', '\\']).map_or(0, |n| n + 1);
+                            let mut job = LayoutJob::default();
+                            let char_at: Vec<usize> = path.char_indices().map(|(b, _)| b).collect();
+                            let push =
+                                |job: &mut LayoutJob,
+                                 from: usize,
+                                 to: usize,
+                                 color: egui::Color32| {
+                                    for (ci, &b) in char_at.iter().enumerate() {
+                                        if b < from || b >= to {
+                                            continue;
+                                        }
+                                        let e = char_at.get(ci + 1).copied().unwrap_or(path.len());
+                                        let c = if pos.contains(&ci) { hit } else { color };
+                                        job.append(
+                                            &path[b..e],
+                                            0.0,
+                                            TextFormat {
+                                                font_id: font.clone(),
+                                                color: c,
+                                                ..Default::default()
+                                            },
+                                        );
+                                    }
+                                };
+                            push(&mut job, name_at, path.len(), normal);
+                            if name_at > 0 {
+                                job.append(
+                                    "   ",
+                                    0.0,
+                                    TextFormat {
+                                        font_id: font.clone(),
+                                        color: weak,
+                                        ..Default::default()
+                                    },
+                                );
+                                push(&mut job, 0, name_at.saturating_sub(1), weak);
                             }
-                        };
-                        push(&mut job, name_at, path.len(), normal);
-                        if name_at > 0 {
-                            job.append("   ", 0.0, TextFormat { font_id: font.clone(), color: weak, ..Default::default() });
-                            push(&mut job, 0, name_at.saturating_sub(1), weak);
+                            let r = ui.add(
+                                egui::Button::selectable(k == q.selected, job)
+                                    .min_size(egui::vec2(ui.available_width(), 0.0)),
+                            );
+                            if k == q.selected {
+                                r.scroll_to_me(None);
+                            }
+                            if r.clicked() {
+                                chosen = Some(*i);
+                            }
                         }
-                        let r = ui.add(egui::Button::selectable(k == q.selected, job).min_size(egui::vec2(ui.available_width(), 0.0)));
-                        if k == q.selected {
-                            r.scroll_to_me(None);
+                        if found.is_empty() && !listing {
+                            ui.weak(if candidates.is_empty() && no_folder {
+                                tr("Open a folder (Ctrl+Shift+O) to find its files here.")
+                            } else {
+                                tr("No file matches.")
+                            });
                         }
-                        if r.clicked() {
-                            chosen = Some(*i);
-                        }
-                    }
-                    if found.is_empty() && !listing {
-                        ui.weak(if candidates.is_empty() && no_folder { tr("Open a folder (Ctrl+Shift+O) to find its files here.") } else { tr("No file matches.") });
-                    }
-                });
+                    });
                 if truncated {
-                    ui.weak(trf("Only the first {n} files of the folder are listed.", &[("n", &super::filter_panel::fmt_count(MAX_FILES as u64))]));
+                    ui.weak(trf(
+                        "Only the first {n} files of the folder are listed.",
+                        &[("n", &super::filter_panel::fmt_count(MAX_FILES as u64))],
+                    ));
                 }
             });
         // Enter takes the text typed in this frame too.
@@ -383,7 +483,17 @@ mod tests {
 
     #[test]
     fn fuzzy_prefers_names_and_word_starts() {
-        let files: Vec<String> = ["src/app/mod.rs", "src/app/folder_tree.rs", "src/view/text_view.rs", "docs/index.html", "src/app/find_in_files.rs", "README.md"].iter().map(|s| s.to_string()).collect();
+        let files: Vec<String> = [
+            "src/app/mod.rs",
+            "src/app/folder_tree.rs",
+            "src/view/text_view.rs",
+            "docs/index.html",
+            "src/app/find_in_files.rs",
+            "README.md",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         let top = |q: &str| best(q, &files, 3).first().map(|(i, _)| files[*i].clone());
         assert_eq!(top("ftree").as_deref(), Some("src/app/folder_tree.rs"));
         assert_eq!(top("tv").as_deref(), Some("src/view/text_view.rs"));
@@ -407,7 +517,17 @@ mod tests {
         for f in ["a.txt", "src/b.rs", "src/sub/c.rs", "node_modules/x/d.js"] {
             std::fs::write(dir.join(f), "x").unwrap();
         }
-        assert_eq!(walk(&dir, 10), (vec!["a.txt".to_string(), "src/b.rs".into(), "src/sub/c.rs".into()], false));
+        assert_eq!(
+            walk(&dir, 10),
+            (
+                vec![
+                    "a.txt".to_string(),
+                    "src/b.rs".into(),
+                    "src/sub/c.rs".into()
+                ],
+                false
+            )
+        );
         assert!(walk(&dir, 2).1);
         let _ = std::fs::remove_dir_all(&dir);
     }

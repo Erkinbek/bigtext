@@ -34,15 +34,27 @@ pub struct Scan {
 
 /// Looks at the complete lines from `from` (a line start) on. `None` when cancelled or the file
 /// could not be read.
-pub fn scan(buf: &TextBuf, matchers: &[Matcher], from: u64, keep: usize, cancel: &CancelToken) -> Option<Scan> {
+pub fn scan(
+    buf: &TextBuf,
+    matchers: &[Matcher],
+    from: u64,
+    keep: usize,
+    cancel: &CancelToken,
+) -> Option<Scan> {
     let to = filter::line_start_at(buf, buf.len())?;
     if to <= from {
-        return Some(Scan { next: from, ..Default::default() });
+        return Some(Scan {
+            next: from,
+            ..Default::default()
+        });
     }
     // Line start → (end, pattern); a line matched by several patterns counts once.
     let mut lines: BTreeMap<u64, (u64, usize)> = BTreeMap::new();
     for (i, m) in matchers.iter().enumerate() {
-        let spec = FilterSpec { range: Some((from, to)), ..Default::default() };
+        let spec = FilterSpec {
+            range: Some((from, to)),
+            ..Default::default()
+        };
         filter::filter_lines(buf, m, spec, cancel, None, |ls, le, _| {
             lines.entry(ls).or_insert((le, i));
             true
@@ -58,9 +70,17 @@ pub fn scan(buf: &TextBuf, matchers: &[Matcher], from: u64, keep: usize, cancel:
         let start = ls.max(buf.codec.bom_len as u64);
         let b = buf.read(start..le.min(start + TEXT_MAX))?;
         let text = buf.codec.decode_lossy(&b);
-        hits.push(Hit { offset: ls, text: text.trim_end_matches(['\r', '\n']).to_string(), pattern });
+        hits.push(Hit {
+            offset: ls,
+            text: text.trim_end_matches(['\r', '\n']).to_string(),
+            pattern,
+        });
     }
-    Some(Scan { next: to, count, hits })
+    Some(Scan {
+        next: to,
+        count,
+        hits,
+    })
 }
 
 #[cfg(test)]
@@ -83,7 +103,16 @@ mod tests {
     }
 
     fn matcher(p: &str, regex: bool) -> Matcher {
-        Matcher::new(&Query { pattern: p.into(), regex, case_sensitive: true, ..Default::default() }, encoding::Codec::utf8()).unwrap()
+        Matcher::new(
+            &Query {
+                pattern: p.into(),
+                regex,
+                case_sensitive: true,
+                ..Default::default()
+            },
+            encoding::Codec::utf8(),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -91,12 +120,46 @@ mod tests {
         let text = b"INFO start\nERROR old\nINFO ok\nERROR boom\nWARN disk 91%\nERROR half";
         let (_d, b) = buf(text);
         let from = 21; // after "ERROR old\n"
-        let s = scan(&b, &[matcher("ERROR", false), matcher(r"disk \d+%", true)], from, 10, &CancelToken::new()).unwrap();
+        let s = scan(
+            &b,
+            &[matcher("ERROR", false), matcher(r"disk \d+%", true)],
+            from,
+            10,
+            &CancelToken::new(),
+        )
+        .unwrap();
         assert_eq!(s.count, 2);
-        assert_eq!(s.hits, [Hit { offset: 29, text: "ERROR boom".into(), pattern: 0 }, Hit { offset: 40, text: "WARN disk 91%".into(), pattern: 1 }]);
+        assert_eq!(
+            s.hits,
+            [
+                Hit {
+                    offset: 29,
+                    text: "ERROR boom".into(),
+                    pattern: 0
+                },
+                Hit {
+                    offset: 40,
+                    text: "WARN disk 91%".into(),
+                    pattern: 1
+                }
+            ]
+        );
         // The unfinished last line waits.
         assert_eq!(s.next, text.len() as u64 - "ERROR half".len() as u64);
-        assert_eq!(scan(&b, &[matcher("ERROR", false)], s.next, 10, &CancelToken::new()).unwrap(), Scan { next: s.next, ..Default::default() });
+        assert_eq!(
+            scan(
+                &b,
+                &[matcher("ERROR", false)],
+                s.next,
+                10,
+                &CancelToken::new()
+            )
+            .unwrap(),
+            Scan {
+                next: s.next,
+                ..Default::default()
+            }
+        );
     }
 
     #[test]
@@ -106,9 +169,19 @@ mod tests {
             text.push_str(&format!("ERROR fatal {i}\r\n"));
         }
         let (_d, b) = buf(text.as_bytes());
-        let s = scan(&b, &[matcher("ERROR", false), matcher("fatal", false)], 0, 3, &CancelToken::new()).unwrap();
+        let s = scan(
+            &b,
+            &[matcher("ERROR", false), matcher("fatal", false)],
+            0,
+            3,
+            &CancelToken::new(),
+        )
+        .unwrap();
         assert_eq!((s.count, s.next), (50, text.len() as u64));
-        assert_eq!(s.hits.iter().map(|h| h.text.as_str()).collect::<Vec<_>>(), ["ERROR fatal 47", "ERROR fatal 48", "ERROR fatal 49"]);
+        assert_eq!(
+            s.hits.iter().map(|h| h.text.as_str()).collect::<Vec<_>>(),
+            ["ERROR fatal 47", "ERROR fatal 48", "ERROR fatal 49"]
+        );
         assert!(s.hits.iter().all(|h| h.pattern == 0));
     }
 }

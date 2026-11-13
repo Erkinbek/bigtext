@@ -32,7 +32,13 @@ impl HlCache {
 
 /// The state at the start of each of `rows` (the rows on screen, in order; folds may skip lines).
 /// Rows whose text is not loaded yet get the default state and are not remembered.
-pub fn row_states(cache: &mut HlCache, buf: &TextBuf, version: u64, lang: Lang, rows: &[Row]) -> Vec<State> {
+pub fn row_states(
+    cache: &mut HlCache,
+    buf: &TextBuf,
+    version: u64,
+    lang: Lang,
+    rows: &[Row],
+) -> Vec<State> {
     if !lang.stateful() {
         return Vec::new();
     }
@@ -83,7 +89,12 @@ fn text_of(buf: &TextBuf, from: u64, to: u64) -> Result<String, Pending> {
 /// The state after row `p`, which starts in state `st`.
 fn after_row(buf: &TextBuf, lang: Lang, p: &Row, st: State) -> Result<State, Pending> {
     let text = text_of(buf, p.start, p.end)?;
-    Ok(highlight::scan(lang, st, &text, p.is_last_in_seg() && p.seg.has_nl))
+    Ok(highlight::scan(
+        lang,
+        st,
+        &text,
+        p.is_last_in_seg() && p.seg.has_nl,
+    ))
 }
 
 /// The state at offset `at`, read from at most [`LOOKBACK`] bytes above it (from the file start
@@ -148,7 +159,10 @@ mod tests {
         // Wrapped rows of one line carry the state too.
         let rows = super::super::text_view::layout_rows(&b, 0, 8, Some(4)).unwrap();
         let st = row_states(&mut HlCache::default(), &b, 1, Lang::Sql, &rows);
-        let two = rows.iter().position(|r| r.start == text.find("two").unwrap() as u64).unwrap();
+        let two = rows
+            .iter()
+            .position(|r| r.start == text.find("two").unwrap() as u64)
+            .unwrap();
         assert!(st[two].in_comment() && st[two - 1].in_comment());
         assert!(row_states(&mut cache, &b, 1, Lang::Json, &rows).is_empty());
     }

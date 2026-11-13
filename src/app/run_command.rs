@@ -56,13 +56,18 @@ impl ShellChoice {
     }
 
     pub fn from_id(v: &str) -> ShellChoice {
-        [ShellChoice::GitBash, ShellChoice::Wsl].into_iter().find(|s| s.id() == v).unwrap_or_default()
+        [ShellChoice::GitBash, ShellChoice::Wsl]
+            .into_iter()
+            .find(|s| s.id() == v)
+            .unwrap_or_default()
     }
 
     fn shell(self) -> Result<Shell, String> {
         match self {
             ShellChoice::System => Ok(Shell::system()),
-            ShellChoice::GitBash => Shell::git_bash().ok_or_else(|| tr("Git Bash was not found (it comes with Git for Windows).").to_string()),
+            ShellChoice::GitBash => Shell::git_bash().ok_or_else(|| {
+                tr("Git Bash was not found (it comes with Git for Windows).").to_string()
+            }),
             ShellChoice::Wsl => Ok(Shell::wsl()),
         }
     }
@@ -126,7 +131,9 @@ fn write_utf8(buf: &TextBuf, range: Range<u64>, w: &mut dyn Write) -> std::io::R
         if to <= at {
             break;
         }
-        let b = buf.read(at..to).ok_or_else(|| std::io::Error::other("could not read the document"))?;
+        let b = buf
+            .read(at..to)
+            .ok_or_else(|| std::io::Error::other("could not read the document"))?;
         if codec.enc == Encoding::Utf8 {
             w.write_all(&b)?;
         } else {
@@ -138,10 +145,24 @@ fn write_utf8(buf: &TextBuf, range: Range<u64>, w: &mut dyn Write) -> std::io::R
 }
 
 /// `{file}`, `{dir}`, `{line}`, `{col}` and `{selection}` in a tool's command.
-pub fn expand(command: &str, file: Option<&std::path::Path>, line: u64, col: u64, selection: &str) -> String {
+pub fn expand(
+    command: &str,
+    file: Option<&std::path::Path>,
+    line: u64,
+    col: u64,
+    selection: &str,
+) -> String {
     let path = file.map(file::display_path).unwrap_or_default();
-    let dir = file.and_then(|f| f.parent()).map(file::display_path).unwrap_or_default();
-    command.replace("{file}", &path).replace("{dir}", &dir).replace("{line}", &line.to_string()).replace("{col}", &col.to_string()).replace("{selection}", selection)
+    let dir = file
+        .and_then(|f| f.parent())
+        .map(file::display_path)
+        .unwrap_or_default();
+    command
+        .replace("{file}", &path)
+        .replace("{dir}", &dir)
+        .replace("{line}", &line.to_string())
+        .replace("{col}", &col.to_string())
+        .replace("{selection}", selection)
 }
 
 impl BigTextApp {
@@ -151,8 +172,15 @@ impl BigTextApp {
         ui.focus = true;
         ui.history_at = None;
         // With nothing selected the whole document goes in.
-        let selected = self.docs.get(self.active).is_some_and(|d| d.has_selection());
-        ui.input = if selected { RunInput::Selection } else { RunInput::Document };
+        let selected = self
+            .docs
+            .get(self.active)
+            .is_some_and(|d| d.has_selection());
+        ui.input = if selected {
+            RunInput::Selection
+        } else {
+            RunInput::Document
+        };
     }
 
     pub(super) fn run_command_window(&mut self, ctx: &egui::Context) {
@@ -163,7 +191,10 @@ impl BigTextApp {
         let mut run = false;
         let mut save_tool = false;
         let editable = self.docs.get(self.active).is_some_and(|d| d.editable());
-        let selected = self.docs.get(self.active).is_some_and(|d| d.has_selection());
+        let selected = self
+            .docs
+            .get(self.active)
+            .is_some_and(|d| d.has_selection());
         egui::Window::new(tr("Run command")).open(&mut open).collapsible(false).default_width(560.0).show(ctx, |ui| {
             let r = &mut self.run_cmd;
             ui.label(tr("The text goes to the command's standard input; its standard output comes back. Up and Down go through earlier commands."));
@@ -255,7 +286,9 @@ impl BigTextApp {
                 return;
             }
         };
-        let Some(d) = self.docs.get(self.active).filter(|d| d.is_ready()) else { return };
+        let Some(d) = self.docs.get(self.active).filter(|d| d.is_ready()) else {
+            return;
+        };
         let range = match self.run_cmd.input {
             RunInput::Selection if d.has_selection() => {
                 let (s, e) = d.selection();
@@ -271,7 +304,11 @@ impl BigTextApp {
         let label = trf("Running {cmd}", &[("cmd", &short(&command))]);
         self.spawn_task(label, move |progress: &Progress, cancel| {
             let path = bigtext::decompress::temp_file("output.txt");
-            let file = path.parent().map(std::fs::create_dir_all).transpose().and_then(|_| std::fs::File::create(&path));
+            let file = path
+                .parent()
+                .map(std::fs::create_dir_all)
+                .transpose()
+                .and_then(|_| std::fs::File::create(&path));
             let mut file = match file {
                 Ok(f) => std::io::BufWriter::new(f),
                 Err(e) => return TaskOutcome::Failed(e.to_string()),
@@ -281,7 +318,16 @@ impl BigTextApp {
             match pipe::run(&shell, &command, feed, &mut file, cancel, Some(progress)) {
                 Ok(ran) => {
                     drop(file);
-                    TaskOutcome::Command(Box::new(CommandOutput { doc, version, range, output, command, path, code: ran.code, stderr: ran.stderr }))
+                    TaskOutcome::Command(Box::new(CommandOutput {
+                        doc,
+                        version,
+                        range,
+                        output,
+                        command,
+                        path,
+                        code: ran.code,
+                        stderr: ran.stderr,
+                    }))
                 }
                 Err(e) => {
                     drop(file);
@@ -289,7 +335,10 @@ impl BigTextApp {
                     if e.kind() == std::io::ErrorKind::Interrupted {
                         TaskOutcome::Cancelled
                     } else {
-                        TaskOutcome::Failed(trf("Could not run “{cmd}”: {e}", &[("cmd", &command), ("e", &e.to_string())]))
+                        TaskOutcome::Failed(trf(
+                            "Could not run “{cmd}”: {e}",
+                            &[("cmd", &command), ("e", &e.to_string())],
+                        ))
                     }
                 }
             }
@@ -301,7 +350,10 @@ impl BigTextApp {
         if o.code != Some(0) {
             bigtext::decompress::remove_temp(&o.path);
             let err = o.stderr.trim();
-            let mut msg = trf("“{cmd}” exited with {code}; nothing was changed.", &[("cmd", &o.command), ("code", &code)]);
+            let mut msg = trf(
+                "“{cmd}” exited with {code}; nothing was changed.",
+                &[("cmd", &o.command), ("code", &code)],
+            );
             if !err.is_empty() {
                 msg.push_str("\n\n");
                 msg.push_str(err);
@@ -317,20 +369,43 @@ impl BigTextApp {
         match output {
             RunOutput::ExitCode => {
                 bigtext::decompress::remove_temp(&o.path);
-                self.notify(trf("“{cmd}” exited with {code} and wrote {size}.", &[("cmd", &short(&o.command)), ("code", &code), ("size", &human_bytes(size))]), None);
+                self.notify(
+                    trf(
+                        "“{cmd}” exited with {code} and wrote {size}.",
+                        &[
+                            ("cmd", &short(&o.command)),
+                            ("code", &code),
+                            ("size", &human_bytes(size)),
+                        ],
+                    ),
+                    None,
+                );
             }
             RunOutput::Replace => {
                 let text = std::fs::read(&o.path).map(|b| String::from_utf8_lossy(&b).into_owned());
                 bigtext::decompress::remove_temp(&o.path);
-                let Some(d) = self.docs.iter_mut().find(|d| d.id == o.doc) else { return };
+                let Some(d) = self.docs.iter_mut().find(|d| d.id == o.doc) else {
+                    return;
+                };
                 match text {
-                    _ if d.version != o.version || !d.editable() => self.error = Some(tr("The document changed while the command ran; nothing was changed.").into()),
+                    _ if d.version != o.version || !d.editable() => {
+                        self.error = Some(
+                            tr("The document changed while the command ran; nothing was changed.")
+                                .into(),
+                        )
+                    }
                     Ok(text) => {
                         let bytes = d.buf.codec.encode(&text);
                         let start = o.range.start;
                         d.edit(o.range, &bytes, EditKind::Other);
                         d.select(start, start + bytes.len() as u64);
-                        self.notify(trf("“{cmd}”: done (Ctrl+Z undoes it).", &[("cmd", &short(&o.command))]), None);
+                        self.notify(
+                            trf(
+                                "“{cmd}”: done (Ctrl+Z undoes it).",
+                                &[("cmd", &short(&o.command))],
+                            ),
+                            None,
+                        );
                     }
                     Err(e) => self.error = Some(e.to_string()),
                 }
@@ -347,11 +422,20 @@ impl BigTextApp {
 
     /// Edit → External tools: runs `tool` with the active file, line and selection filled in.
     pub(crate) fn run_tool(&mut self, tool: &Tool) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let caret = d.view.caret;
         let (line, _) = d.buf.line_of(caret);
-        let col = d.buf.line_start(line).map(|(ls, _)| caret.saturating_sub(ls) + 1).unwrap_or(1);
-        let selection = d.selection_text(64 * 1024).and_then(|r| r.ok()).unwrap_or_default();
+        let col = d
+            .buf
+            .line_start(line)
+            .map(|(ls, _)| caret.saturating_sub(ls) + 1)
+            .unwrap_or(1);
+        let selection = d
+            .selection_text(64 * 1024)
+            .and_then(|r| r.ok())
+            .unwrap_or_default();
         let path = d.unpacked_from.as_deref().or(d.path.as_deref());
         let command = expand(&tool.command, path, line + 1, col, &selection);
         let shell = match self.run_cmd.shell.shell() {
@@ -364,9 +448,31 @@ impl BigTextApp {
         let name = tool.name.clone();
         self.spawn_task(name.clone(), move |_, cancel| {
             let mut out = Vec::new();
-            match pipe::run(&shell, &command, Box::new(|_| Ok(())), &mut out, cancel, None) {
-                Ok(r) if r.code == Some(0) => TaskOutcome::Done { message: trf("{tool}: done.", &[("tool", &name)]), open: None },
-                Ok(r) => TaskOutcome::Failed(trf("{tool} exited with {code}.", &[("tool", &name), ("code", &r.code.map(|c| c.to_string()).unwrap_or_else(|| "?".into()))]) + "\n\n" + r.stderr.trim()),
+            match pipe::run(
+                &shell,
+                &command,
+                Box::new(|_| Ok(())),
+                &mut out,
+                cancel,
+                None,
+            ) {
+                Ok(r) if r.code == Some(0) => TaskOutcome::Done {
+                    message: trf("{tool}: done.", &[("tool", &name)]),
+                    open: None,
+                },
+                Ok(r) => TaskOutcome::Failed(
+                    trf(
+                        "{tool} exited with {code}.",
+                        &[
+                            ("tool", &name),
+                            (
+                                "code",
+                                &r.code.map(|c| c.to_string()).unwrap_or_else(|| "?".into()),
+                            ),
+                        ],
+                    ) + "\n\n"
+                        + r.stderr.trim(),
+                ),
                 Err(e) if e.kind() == std::io::ErrorKind::Interrupted => TaskOutcome::Cancelled,
                 Err(e) => TaskOutcome::Failed(e.to_string()),
             }
@@ -417,8 +523,20 @@ mod tests {
     #[test]
     fn tools_get_the_file_and_line() {
         let p = std::path::Path::new("/logs/app.log");
-        assert_eq!(expand("code -g \"{file}:{line}:{col}\" # {dir} {selection}", Some(p), 12, 5, "x"), "code -g \"/logs/app.log:12:5\" # /logs x");
-        assert_eq!(ShellChoice::from_id(ShellChoice::Wsl.id()), ShellChoice::Wsl);
+        assert_eq!(
+            expand(
+                "code -g \"{file}:{line}:{col}\" # {dir} {selection}",
+                Some(p),
+                12,
+                5,
+                "x"
+            ),
+            "code -g \"/logs/app.log:12:5\" # /logs x"
+        );
+        assert_eq!(
+            ShellChoice::from_id(ShellChoice::Wsl.id()),
+            ShellChoice::Wsl
+        );
         assert_eq!(ShellChoice::from_id("nope"), ShellChoice::System);
     }
 }

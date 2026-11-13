@@ -36,18 +36,45 @@ pub struct SaveJob {
 pub enum WriteSpec {
     Identity,
     Eol(LineEnding),
-    Replace { matcher: Arc<Matcher>, template: Template, range: std::ops::Range<u64> },
-    DeleteColumns { dialect: Dialect, cols: Vec<usize> },
-    Transcode { enc: Encoding, bom: bool, eol: Option<LineEnding> },
-    Csv { dialect: Dialect, rewrite: bigtext::csv::Rewrite },
+    Replace {
+        matcher: Arc<Matcher>,
+        template: Template,
+        range: std::ops::Range<u64>,
+    },
+    DeleteColumns {
+        dialect: Dialect,
+        cols: Vec<usize>,
+    },
+    Transcode {
+        enc: Encoding,
+        bom: bool,
+        eol: Option<LineEnding>,
+    },
+    Csv {
+        dialect: Dialect,
+        rewrite: bigtext::csv::Rewrite,
+    },
     /// Delete the lines a filter shows (or, with `keep`, all the others).
-    Lines { sel: Arc<super::lines_edit::LineSel>, keep: bool },
+    Lines {
+        sel: Arc<super::lines_edit::LineSel>,
+        keep: bool,
+    },
     /// A text operation over a range too large to change in memory.
-    TextOp { op: bigtext::textops::Op, range: std::ops::Range<u64> },
+    TextOp {
+        op: bigtext::textops::Op,
+        range: std::ops::Range<u64>,
+    },
     /// A column filled from a line to the end of the file.
-    ColumnEdit { from: u64, cells: (u32, u32), gen: bigtext::column_edit::ColumnGen },
+    ColumnEdit {
+        from: u64,
+        cells: (u32, u32),
+        gen: bigtext::column_edit::ColumnGen,
+    },
     /// The lines sorted on disk.
-    Sort { spec: bigtext::extsort::SortSpec, eol: Vec<u8> },
+    Sort {
+        spec: bigtext::extsort::SortSpec,
+        eol: Vec<u8>,
+    },
 }
 
 /// What a write to disk does, for its progress label and the message when it is done.
@@ -96,7 +123,9 @@ impl BigTextApp {
     /// Save, or Save As when `save_as`; with `encoding` (and whether to write a byte order
     /// mark) the document is re-encoded, always through the Save As dialog.
     pub(crate) fn save_with(&mut self, save_as: bool, encoding: Option<(Encoding, bool)>) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         if !d.is_ready() || d.save_job.is_some() {
             return;
         }
@@ -105,9 +134,20 @@ impl BigTextApp {
             // An unpacked copy lives in the temp folder: Save means Save As.
             (Some(p), false) if !d.temporary => p.clone(),
             _ => {
-                let name = d.unpacked_from.as_deref().map(bigtext::decompress::inner_name).unwrap_or_else(|| d.title.clone());
-                let mut dlg = rfd::FileDialog::new().set_title(super::i18n::tr("Save As")).set_file_name(name);
-                if let Some(dir) = d.unpacked_from.as_ref().or(d.path.as_ref()).and_then(|p| p.parent()) {
+                let name = d
+                    .unpacked_from
+                    .as_deref()
+                    .map(bigtext::decompress::inner_name)
+                    .unwrap_or_else(|| d.title.clone());
+                let mut dlg = rfd::FileDialog::new()
+                    .set_title(super::i18n::tr("Save As"))
+                    .set_file_name(name);
+                if let Some(dir) = d
+                    .unpacked_from
+                    .as_ref()
+                    .or(d.path.as_ref())
+                    .and_then(|p| p.parent())
+                {
                     dlg = dlg.set_directory(file::display_path(dir));
                 }
                 match dlg.save_file() {
@@ -132,7 +172,14 @@ impl BigTextApp {
 
     /// [`Self::start_write`]; with `check`, a document that would not fit on the target's drive
     /// asks first.
-    pub(crate) fn start_write_checked(&mut self, id: u64, target: PathBuf, spec: WriteSpec, backup: bool, check: bool) {
+    pub(crate) fn start_write_checked(
+        &mut self,
+        id: u64,
+        target: PathBuf,
+        spec: WriteSpec,
+        backup: bool,
+        check: bool,
+    ) {
         // A comparison holding the file (or its backup) open would hold up replacing it.
         let holds = self.diff.as_ref().is_some_and(|r| {
             let running = !r.data.lock().unwrap().done;
@@ -144,10 +191,14 @@ impl BigTextApp {
                 r.cancel.cancel();
             }
         }
-        let Some(d) = self.docs.iter_mut().find(|d| d.id == id) else { return };
+        let Some(d) = self.docs.iter_mut().find(|d| d.id == id) else {
+            return;
+        };
         let same_file = d.path.as_deref().is_some_and(|p| same_path(p, &target));
         let prefix = match spec {
-            WriteSpec::Identity if same_file => Some(d.buf.index.prefix_checkpoints(d.buf.pristine_prefix())),
+            WriteSpec::Identity if same_file => {
+                Some(d.buf.index.prefix_checkpoints(d.buf.pristine_prefix()))
+            }
             _ => None,
         };
         let kind = match &spec {
@@ -173,7 +224,11 @@ impl BigTextApp {
             WriteKind::ColumnEdit => "Column editor",
             WriteKind::Sort => "Sorting",
         };
-        d.save_job = Some(SaveJob { cancel: cancel.clone(), progress: progress.clone(), label: super::i18n::tr(label).into() });
+        d.save_job = Some(SaveJob {
+            cancel: cancel.clone(),
+            progress: progress.clone(),
+            label: super::i18n::tr(label).into(),
+        });
         let snap = d.buf.snapshot();
         let tx = self.tx.clone();
         let waker = self.waker.clone();
@@ -182,14 +237,29 @@ impl BigTextApp {
             if check {
                 // About the document's size (twice that when it becomes UTF-16).
                 let need = match &spec {
-                    WriteSpec::Transcode { enc, .. } if enc.unit() == 2 => snap.len().saturating_mul(2),
+                    WriteSpec::Transcode { enc, .. } if enc.unit() == 2 => {
+                        snap.len().saturating_mul(2)
+                    }
                     _ => snap.len(),
                 };
-                let dir = target.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
+                let dir = target
+                    .parent()
+                    .map(std::path::Path::to_path_buf)
+                    .unwrap_or_default();
                 if let Some(free) = bigtext::sysinfo::free_space(&dir) {
                     if need > free {
-                        let resume = super::Resume::Write { doc: id, target, spec, backup };
-                        let _ = tx.send(Msg::LowSpace(Box::new(super::LowSpace { need, free, dir, resume })));
+                        let resume = super::Resume::Write {
+                            doc: id,
+                            target,
+                            spec,
+                            backup,
+                        };
+                        let _ = tx.send(Msg::LowSpace(Box::new(super::LowSpace {
+                            need,
+                            free,
+                            dir,
+                            resume,
+                        })));
                         waker();
                         return;
                     }
@@ -198,21 +268,60 @@ impl BigTextApp {
             let transform = match &spec {
                 WriteSpec::Identity => Transform::Identity,
                 WriteSpec::Eol(le) => Transform::Eol(*le),
-                WriteSpec::Replace { matcher, template, range } => Transform::Replace { matcher, template, range: range.clone() },
-                WriteSpec::DeleteColumns { dialect, cols } => Transform::DeleteColumns { dialect: *dialect, cols },
-                WriteSpec::Transcode { enc, bom, eol } => Transform::Transcode { enc: *enc, bom: *bom, eol: *eol },
-                WriteSpec::Csv { dialect, rewrite } => Transform::Csv { dialect: *dialect, rewrite },
-                WriteSpec::Lines { sel, keep } => Transform::Lines { keep: &|l: &[u8]| sel.shows(l) == *keep },
-                WriteSpec::TextOp { op, range } => Transform::TextOp { op: *op, range: range.clone() },
-                WriteSpec::ColumnEdit { from, cells, gen } => Transform::ColumnEdit { from: *from, cells: *cells, gen },
+                WriteSpec::Replace {
+                    matcher,
+                    template,
+                    range,
+                } => Transform::Replace {
+                    matcher,
+                    template,
+                    range: range.clone(),
+                },
+                WriteSpec::DeleteColumns { dialect, cols } => Transform::DeleteColumns {
+                    dialect: *dialect,
+                    cols,
+                },
+                WriteSpec::Transcode { enc, bom, eol } => Transform::Transcode {
+                    enc: *enc,
+                    bom: *bom,
+                    eol: *eol,
+                },
+                WriteSpec::Csv { dialect, rewrite } => Transform::Csv {
+                    dialect: *dialect,
+                    rewrite,
+                },
+                WriteSpec::Lines { sel, keep } => Transform::Lines {
+                    keep: &|l: &[u8]| sel.shows(l) == *keep,
+                },
+                WriteSpec::TextOp { op, range } => Transform::TextOp {
+                    op: *op,
+                    range: range.clone(),
+                },
+                WriteSpec::ColumnEdit { from, cells, gen } => Transform::ColumnEdit {
+                    from: *from,
+                    cells: *cells,
+                    gen,
+                },
                 WriteSpec::Sort { spec, eol } => Transform::Sort { spec: *spec, eol },
             };
             let r = save::write_temp(&snap, &target, transform, &cancel, &progress);
             drop(snap);
             let msg = match r {
-                Ok((temp, stats)) => Msg::TempWritten(Box::new(TempWritten { doc: id, temp, target, backup, prefix, stats, kind, elapsed: t.elapsed() })),
+                Ok((temp, stats)) => Msg::TempWritten(Box::new(TempWritten {
+                    doc: id,
+                    temp,
+                    target,
+                    backup,
+                    prefix,
+                    stats,
+                    kind,
+                    elapsed: t.elapsed(),
+                })),
                 Err(SaveError::Cancelled) => Msg::JobFailed { doc: id, msg: None },
-                Err(SaveError::Io(e)) => Msg::JobFailed { doc: id, msg: Some(e) },
+                Err(SaveError::Io(e)) => Msg::JobFailed {
+                    doc: id,
+                    msg: Some(e),
+                },
             };
             let _ = tx.send(msg);
             waker();
@@ -230,7 +339,9 @@ impl BigTextApp {
         d.cancel_jobs();
         d.watch_cancel.cancel();
         let weak: Weak<Source> = Arc::downgrade(&d.buf.source);
-        d.buf = d.buf.with_source(Arc::new(Source::empty()), LineIndex::new(0));
+        d.buf = d
+            .buf
+            .with_source(Arc::new(Source::empty()), LineIndex::new(0));
         d.state = DocState::Finalizing(match tw.kind {
             WriteKind::Save | WriteKind::Transcode(_) => tr("Saving…").into(),
             WriteKind::Replace => tr("Replacing on disk…").into(),
@@ -248,10 +359,20 @@ impl BigTextApp {
                 std::thread::sleep(Duration::from_millis(5));
             }
             let result = match save::finalize(&tw.temp, &tw.target, tw.backup) {
-                Ok(()) => open_worker(&tw.target, match tw.kind {
-                    WriteKind::Transcode(enc) => Some(enc),
-                    _ => None,
-                }, bigtext::file::OpenMode::Auto).map_err(|e| (trf("Saved, but reopening failed: {e}", &[("e", &e)]), Err(e))),
+                Ok(()) => open_worker(
+                    &tw.target,
+                    match tw.kind {
+                        WriteKind::Transcode(enc) => Some(enc),
+                        _ => None,
+                    },
+                    bigtext::file::OpenMode::Auto,
+                )
+                .map_err(|e| {
+                    (
+                        trf("Saved, but reopening failed: {e}", &[("e", &e)]),
+                        Err(e),
+                    )
+                }),
                 Err(e) => {
                     let reopened = match &original {
                         Some(p) => open_worker(p, None, bigtext::file::OpenMode::Auto),
@@ -276,7 +397,9 @@ impl BigTextApp {
         let waker = self.waker.clone();
         let mut close = None;
         let mut error = None;
-        let Some(d) = self.docs.iter_mut().find(|d| d.id == f.doc) else { return };
+        let Some(d) = self.docs.iter_mut().find(|d| d.id == f.doc) else {
+            return;
+        };
         d.save_job = None;
         match f.result {
             Ok(o) => {
@@ -287,10 +410,15 @@ impl BigTextApp {
                     d.temporary = false;
                     d.unpacked_from = None;
                     if let Some(temp) = d.path.clone() {
-                        jobs::spawn("remove-unpacked", move || bigtext::decompress::remove_temp(&temp));
+                        jobs::spawn("remove-unpacked", move || {
+                            bigtext::decompress::remove_temp(&temp)
+                        });
                     }
                 }
-                d.title = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                d.title = target
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
                 d.path = Some(target);
                 let codec = d.buf.codec;
                 let mut det = o.detected;
@@ -298,7 +426,12 @@ impl BigTextApp {
                 if !matches!(f.kind, WriteKind::Transcode(_)) {
                     det.codec.enc = codec.enc;
                 }
-                d.install(o.source, det, if same { f.prefix } else { None }, waker.clone());
+                d.install(
+                    o.source,
+                    det,
+                    if same { f.prefix } else { None },
+                    waker.clone(),
+                );
                 d.eol_on_save = None;
                 let secs = f.elapsed.as_secs_f64();
                 d.banner = Some(Banner::Info(match &f.kind {
@@ -358,7 +491,9 @@ impl BigTextApp {
             d.save_job = None;
             d.close_after_save = false;
             if msg.is_none() {
-                d.banner = Some(Banner::Info(tr("Cancelled. The file on disk was not modified.").into()));
+                d.banner = Some(Banner::Info(
+                    tr("Cancelled. The file on disk was not modified.").into(),
+                ));
             }
         }
         if let Some(m) = msg {
@@ -396,10 +531,13 @@ impl BigTextApp {
     }
 
     pub(super) fn replace_current(&mut self) {
-        let Some((_, m, tpl, _)) = self.replace_setup() else { return };
+        let Some((_, m, tpl, _)) = self.replace_setup() else {
+            return;
+        };
         let d = &mut self.docs[self.active];
         let (s, e) = d.selection();
-        let is_match = s != e && bigtext::search::matches_in_view(&d.buf, &m, s..e, 64).contains(&(s, e));
+        let is_match =
+            s != e && bigtext::search::matches_in_view(&d.buf, &m, s..e, 64).contains(&(s, e));
         if is_match && d.editable() {
             let snap = d.buf.snapshot();
             let bytes = tpl.expand(&snap, &m, s, e);
@@ -410,26 +548,53 @@ impl BigTextApp {
     }
 
     pub(crate) fn replace_all(&mut self) {
-        let Some((id, m, tpl, range)) = self.replace_setup() else { return };
+        let Some((id, m, tpl, range)) = self.replace_setup() else {
+            return;
+        };
         let d = &mut self.docs[self.active];
         if d.save_job.is_some() {
             return;
         }
         let cancel = CancelToken::new();
         let progress = Progress::new(range.end - range.start);
-        d.save_job = Some(SaveJob { cancel: cancel.clone(), progress: progress.clone(), label: tr("Counting matches").into() });
+        d.save_job = Some(SaveJob {
+            cancel: cancel.clone(),
+            progress: progress.clone(),
+            label: tr("Counting matches").into(),
+        });
         let snap = d.buf.snapshot();
         let version = d.version;
         let tx = self.tx.clone();
         let waker = self.waker.clone();
         jobs::spawn("replace-collect", move || {
-            let msg = match replace::collect(&snap, &m, &tpl, range.clone(), UNDO_THRESHOLD, &cancel, Some(&progress)) {
+            let msg = match replace::collect(
+                &snap,
+                &m,
+                &tpl,
+                range.clone(),
+                UNDO_THRESHOLD,
+                &cancel,
+                Some(&progress),
+            ) {
                 Collected::Edits(edits) => {
                     let count = edits.len();
                     let (pieces, add) = snap.build_batch(&edits);
-                    Msg::ReplaceBatch { doc: id, version, add_len: snap.add_len(), pieces, add, count }
+                    Msg::ReplaceBatch {
+                        doc: id,
+                        version,
+                        add_len: snap.add_len(),
+                        pieces,
+                        add,
+                        count,
+                    }
                 }
-                Collected::TooMany => Msg::ReplaceTooMany { doc: id, version, matcher: m, template: tpl, range },
+                Collected::TooMany => Msg::ReplaceTooMany {
+                    doc: id,
+                    version,
+                    matcher: m,
+                    template: tpl,
+                    range,
+                },
                 Collected::Cancelled => Msg::JobFailed { doc: id, msg: None },
             };
             let _ = tx.send(msg);
@@ -437,8 +602,18 @@ impl BigTextApp {
         });
     }
 
-    pub(super) fn on_replace_batch(&mut self, doc: u64, version: u64, add_len: u64, pieces: Vec<Piece>, add: Vec<u8>, count: usize) {
-        let Some(d) = self.docs.iter_mut().find(|d| d.id == doc) else { return };
+    pub(super) fn on_replace_batch(
+        &mut self,
+        doc: u64,
+        version: u64,
+        add_len: u64,
+        pieces: Vec<Piece>,
+        add: Vec<u8>,
+        count: usize,
+    ) {
+        let Some(d) = self.docs.iter_mut().find(|d| d.id == doc) else {
+            return;
+        };
         d.save_job = None;
         if d.version != version || d.buf.add_len() != add_len {
             self.search.status = tr("Document changed during replace; nothing replaced").into();
@@ -451,11 +626,23 @@ impl BigTextApp {
         let (s, _) = d.selection();
         let swap = d.buf.apply_batch(pieces, &add);
         d.record(swap, (s, s));
-        self.search.status = trf("Replaced {n} matches (undo with Ctrl+Z)", &[("n", &count.to_string())]);
+        self.search.status = trf(
+            "Replaced {n} matches (undo with Ctrl+Z)",
+            &[("n", &count.to_string())],
+        );
     }
 
-    pub(super) fn on_replace_too_many(&mut self, doc: u64, version: u64, matcher: Arc<Matcher>, template: Template, range: std::ops::Range<u64>) {
-        let Some(d) = self.docs.iter_mut().find(|d| d.id == doc) else { return };
+    pub(super) fn on_replace_too_many(
+        &mut self,
+        doc: u64,
+        version: u64,
+        matcher: Arc<Matcher>,
+        template: Template,
+        range: std::ops::Range<u64>,
+    ) {
+        let Some(d) = self.docs.iter_mut().find(|d| d.id == doc) else {
+            return;
+        };
         d.save_job = None;
         if d.version != version {
             return;
@@ -481,25 +668,51 @@ impl BigTextApp {
     }
 
     pub(crate) fn replace_on_disk(&mut self, doc: u64, backup: bool) {
-        let Some((id, matcher, template, range)) = self.pending_replace.take() else { return };
+        let Some((id, matcher, template, range)) = self.pending_replace.take() else {
+            return;
+        };
         if id != doc {
             return;
         }
-        let Some(path) = self.docs.iter().find(|d| d.id == doc).and_then(|d| d.path.clone()) else { return };
-        self.start_write(doc, path, WriteSpec::Replace { matcher, template, range }, backup);
+        let Some(path) = self
+            .docs
+            .iter()
+            .find(|d| d.id == doc)
+            .and_then(|d| d.path.clone())
+        else {
+            return;
+        };
+        self.start_write(
+            doc,
+            path,
+            WriteSpec::Replace {
+                matcher,
+                template,
+                range,
+            },
+            backup,
+        );
     }
 
     pub(super) fn replace_preview(&mut self) {
-        let Some((id, m, tpl, range)) = self.replace_setup() else { return };
+        let Some((id, m, tpl, range)) = self.replace_setup() else {
+            return;
+        };
         let snap = self.docs[self.active].buf.snapshot();
         let tx = self.tx.clone();
         let waker = self.waker.clone();
         jobs::spawn("replace-preview", move || {
             let items = replace::preview(&snap, &m, &tpl, range, 200, &CancelToken::new());
-            let lines = items.iter().map(|(off, _, _)| snap.line_of(*off).0 + 1).collect();
-            let _ = tx.send(Msg::Preview { doc: id, items, lines });
+            let lines = items
+                .iter()
+                .map(|(off, _, _)| snap.line_of(*off).0 + 1)
+                .collect();
+            let _ = tx.send(Msg::Preview {
+                doc: id,
+                items,
+                lines,
+            });
             waker();
         });
     }
 }
-

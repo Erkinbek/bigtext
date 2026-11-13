@@ -73,8 +73,14 @@ impl BigTextApp {
             m.enabled = true;
         } else {
             let used: Vec<usize> = self.settings.marks.iter().map(|m| m.color).collect();
-            let color = (0..COLORS.len()).find(|c| !used.contains(c)).unwrap_or(self.settings.marks.len() % COLORS.len());
-            self.settings.marks.push(Mark { query, color, enabled: true });
+            let color = (0..COLORS.len())
+                .find(|c| !used.contains(c))
+                .unwrap_or(self.settings.marks.len() % COLORS.len());
+            self.settings.marks.push(Mark {
+                query,
+                color,
+                enabled: true,
+            });
         }
         self.persist_state();
     }
@@ -86,8 +92,17 @@ impl BigTextApp {
                 return v.clone();
             }
         }
-        let v: MarkMatchers =
-            self.settings.marks.iter().filter(|m| m.enabled).filter_map(|m| Matcher::new(&m.query, codec).ok().map(|x| (Arc::new(x), m.color))).collect();
+        let v: MarkMatchers = self
+            .settings
+            .marks
+            .iter()
+            .filter(|m| m.enabled)
+            .filter_map(|m| {
+                Matcher::new(&m.query, codec)
+                    .ok()
+                    .map(|x| (Arc::new(x), m.color))
+            })
+            .collect();
         self.marks.cache = Some((self.settings.marks.clone(), codec, v.clone()));
         v
     }

@@ -47,8 +47,19 @@ impl BigTextApp {
         self.track_mru();
         let n = self.mru.len();
         match &mut self.switcher {
-            Some(s) => s.selected = if forward { (s.selected + 1) % n } else { (s.selected + n - 1) % n },
-            None => self.switcher = Some(TabSwitcher { order: self.mru.clone(), selected: if forward { 1 } else { n - 1 } }),
+            Some(s) => {
+                s.selected = if forward {
+                    (s.selected + 1) % n
+                } else {
+                    (s.selected + n - 1) % n
+                }
+            }
+            None => {
+                self.switcher = Some(TabSwitcher {
+                    order: self.mru.clone(),
+                    selected: if forward { 1 } else { n - 1 },
+                })
+            }
         }
     }
 
@@ -61,10 +72,13 @@ impl BigTextApp {
             (
                 i.consume_key(Modifiers::CTRL, Key::Tab),
                 i.consume_key(Modifiers::CTRL | Modifiers::SHIFT, Key::Tab),
-                i.consume_key(Modifiers::NONE, Key::ArrowUp) || i.consume_key(Modifiers::CTRL, Key::ArrowUp),
-                i.consume_key(Modifiers::NONE, Key::ArrowDown) || i.consume_key(Modifiers::CTRL, Key::ArrowDown),
+                i.consume_key(Modifiers::NONE, Key::ArrowUp)
+                    || i.consume_key(Modifiers::CTRL, Key::ArrowUp),
+                i.consume_key(Modifiers::NONE, Key::ArrowDown)
+                    || i.consume_key(Modifiers::CTRL, Key::ArrowDown),
                 i.consume_key(Modifiers::NONE, Key::Enter),
-                i.consume_key(Modifiers::NONE, Key::Escape) || i.consume_key(Modifiers::CTRL, Key::Escape),
+                i.consume_key(Modifiers::NONE, Key::Escape)
+                    || i.consume_key(Modifiers::CTRL, Key::Escape),
                 i.modifiers.ctrl,
             )
         });
@@ -88,27 +102,32 @@ impl BigTextApp {
     pub(super) fn switcher_window(&mut self, ctx: &egui::Context) {
         let Some(s) = &self.switcher else { return };
         let mut pick = None;
-        egui::Area::new(egui::Id::new("tab-switcher")).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 80.0)).order(egui::Order::Foreground).show(ctx, |ui| {
-            egui::Frame::popup(ui.style()).show(ui, |ui| {
-                ui.set_min_width(360.0);
-                ui.weak(tr("Hold Ctrl, press Tab to step, release to switch"));
-                ui.separator();
-                for (k, id) in s.order.iter().enumerate() {
-                    let Some(d) = self.docs.iter().find(|d| d.id == *id) else { continue };
-                    let mut label = d.title.clone();
-                    if d.is_modified() {
-                        label.push_str(" *");
+        egui::Area::new(egui::Id::new("tab-switcher"))
+            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 80.0))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_min_width(360.0);
+                    ui.weak(tr("Hold Ctrl, press Tab to step, release to switch"));
+                    ui.separator();
+                    for (k, id) in s.order.iter().enumerate() {
+                        let Some(d) = self.docs.iter().find(|d| d.id == *id) else {
+                            continue;
+                        };
+                        let mut label = d.title.clone();
+                        if d.is_modified() {
+                            label.push_str(" *");
+                        }
+                        let r = ui.selectable_label(k == s.selected, RichText::new(label).strong());
+                        if r.clicked() {
+                            pick = Some(*id);
+                        }
+                        if let Some(p) = d.path.as_deref() {
+                            ui.weak(file::display_path(p));
+                        }
                     }
-                    let r = ui.selectable_label(k == s.selected, RichText::new(label).strong());
-                    if r.clicked() {
-                        pick = Some(*id);
-                    }
-                    if let Some(p) = d.path.as_deref() {
-                        ui.weak(file::display_path(p));
-                    }
-                }
+                });
             });
-        });
         if let Some(id) = pick {
             self.switcher = None;
             self.activate(id);
@@ -136,7 +155,11 @@ impl BigTextApp {
         let pinned = self.docs[from].pinned;
         let (lo, hi) = {
             let n_pinned = self.docs.iter().filter(|d| d.pinned).count();
-            if pinned { (0, n_pinned.saturating_sub(1)) } else { (n_pinned, self.docs.len() - 1) }
+            if pinned {
+                (0, n_pinned.saturating_sub(1))
+            } else {
+                (n_pinned, self.docs.len() - 1)
+            }
         };
         let to = to.clamp(lo, hi);
         let active = self.docs.get(self.active).map(|d| d.id);
@@ -158,21 +181,38 @@ impl BigTextApp {
             }
         }
         if kept > 0 {
-            self.notify(trf("{n} tabs with unsaved changes were kept open.", &[("n", &kept.to_string())]), None);
+            self.notify(
+                trf(
+                    "{n} tabs with unsaved changes were kept open.",
+                    &[("n", &kept.to_string())],
+                ),
+                None,
+            );
         }
     }
 
     /// Closes every unpinned tab but `keep`.
     pub(crate) fn close_others(&mut self, keep: u64) {
-        let ids = self.docs.iter().filter(|d| d.id != keep && !d.pinned).map(|d| d.id).collect();
+        let ids = self
+            .docs
+            .iter()
+            .filter(|d| d.id != keep && !d.pinned)
+            .map(|d| d.id)
+            .collect();
         self.close_many(ids);
         self.activate(keep);
     }
 
     /// Closes the unpinned tabs to the right of `of`.
     pub(crate) fn close_to_right(&mut self, of: u64) {
-        let Some(i) = self.docs.iter().position(|d| d.id == of) else { return };
-        let ids = self.docs[i + 1..].iter().filter(|d| !d.pinned).map(|d| d.id).collect();
+        let Some(i) = self.docs.iter().position(|d| d.id == of) else {
+            return;
+        };
+        let ids = self.docs[i + 1..]
+            .iter()
+            .filter(|d| !d.pinned)
+            .map(|d| d.id)
+            .collect();
         self.close_many(ids);
     }
 
@@ -182,11 +222,19 @@ impl BigTextApp {
         let mut moved = None;
         let mut menu: Option<(u64, &'static str)> = None;
         let active_id = self.docs.get(self.active).map(|d| d.id);
-        let active_link = self.docs.get(self.active).and_then(|d| d.link.as_ref()).map(|l| l.partner);
+        let active_link = self
+            .docs
+            .get(self.active)
+            .and_then(|d| d.link.as_ref())
+            .map(|l| l.partner);
         egui::ScrollArea::horizontal().show(ui, |ui| {
             ui.horizontal(|ui| {
                 for (i, d) in self.docs.iter().enumerate() {
-                    let mut label = if d.pinned { format!("📌 {}", d.title) } else { d.title.clone() };
+                    let mut label = if d.pinned {
+                        format!("📌 {}", d.title)
+                    } else {
+                        d.title.clone()
+                    };
                     if d.is_modified() {
                         label.push_str(" *");
                     }
@@ -194,17 +242,43 @@ impl BigTextApp {
                     let label = if unseen > 0 {
                         let mut job = egui::text::LayoutJob::default();
                         let style = ui.style();
-                        egui::RichText::new(format!("{label} ")).append_to(&mut job, style, egui::FontSelection::Default, egui::Align::Center);
-                        egui::RichText::new(format!("🔔{unseen}")).color(ui.visuals().error_fg_color).strong().append_to(&mut job, style, egui::FontSelection::Default, egui::Align::Center);
+                        egui::RichText::new(format!("{label} ")).append_to(
+                            &mut job,
+                            style,
+                            egui::FontSelection::Default,
+                            egui::Align::Center,
+                        );
+                        egui::RichText::new(format!("🔔{unseen}"))
+                            .color(ui.visuals().error_fg_color)
+                            .strong()
+                            .append_to(
+                                &mut job,
+                                style,
+                                egui::FontSelection::Default,
+                                egui::Align::Center,
+                            );
                         egui::WidgetText::from(job)
                     } else {
                         egui::WidgetText::from(label)
                     };
-                    let r = ui.add(egui::Button::selectable(i == self.active, label).sense(egui::Sense::click_and_drag()));
+                    let r = ui.add(
+                        egui::Button::selectable(i == self.active, label)
+                            .sense(egui::Sense::click_and_drag()),
+                    );
                     r.dnd_set_drag_payload(i);
-                    if r.dnd_hover_payload::<usize>().is_some_and(|from| *from != i) {
-                        let x = if r.dnd_hover_payload::<usize>().is_some_and(|from| *from < i) { r.rect.right() } else { r.rect.left() };
-                        ui.painter().vline(x, r.rect.y_range(), egui::Stroke::new(2.0, ui.visuals().selection.stroke.color));
+                    if r.dnd_hover_payload::<usize>()
+                        .is_some_and(|from| *from != i)
+                    {
+                        let x = if r.dnd_hover_payload::<usize>().is_some_and(|from| *from < i) {
+                            r.rect.right()
+                        } else {
+                            r.rect.left()
+                        };
+                        ui.painter().vline(
+                            x,
+                            r.rect.y_range(),
+                            egui::Stroke::new(2.0, ui.visuals().selection.stroke.color),
+                        );
                     }
                     if let Some(from) = r.dnd_release_payload::<usize>() {
                         moved = Some((*from, i));
@@ -215,7 +289,12 @@ impl BigTextApp {
                     if r.middle_clicked() && !d.pinned {
                         close = Some(d.id);
                     }
-                    let r = r.on_hover_text(d.path.as_deref().map(file::display_path).unwrap_or_default());
+                    let r = r.on_hover_text(
+                        d.path
+                            .as_deref()
+                            .map(file::display_path)
+                            .unwrap_or_default(),
+                    );
                     let link_here = active_id != Some(d.id) && d.is_ready() && !d.hex && !d.table;
                     let linked_here = active_link == Some(d.id);
                     r.context_menu(|ui| {
@@ -270,9 +349,16 @@ impl BigTextApp {
                 "Close tabs to the right" => self.close_to_right(id),
                 "Show in folder" => self.shell_doc(id, super::shell::ShellAction::Reveal),
                 "Open terminal here" => self.shell_doc(id, super::shell::ShellAction::Terminal),
-                "Open with the default app" => self.shell_doc(id, super::shell::ShellAction::Default),
+                "Open with the default app" => {
+                    self.shell_doc(id, super::shell::ShellAction::Default)
+                }
                 "Copy path" => {
-                    if let Some(p) = self.docs.iter().find(|d| d.id == id).and_then(|d| d.unpacked_from.as_deref().or(d.path.as_deref())) {
+                    if let Some(p) = self
+                        .docs
+                        .iter()
+                        .find(|d| d.id == id)
+                        .and_then(|d| d.unpacked_from.as_deref().or(d.path.as_deref()))
+                    {
                         ui.ctx().copy_text(file::display_path(p));
                     }
                 }

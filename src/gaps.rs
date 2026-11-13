@@ -54,7 +54,13 @@ fn stamp(codec: Codec, line: &[u8]) -> Option<Stamp> {
 /// A single line whose time is far from both neighbours (a time inside a message, misread as
 /// the line's) does not make a gap. `partial` gets the gaps so far now and then. Returns `None`
 /// when cancelled.
-pub fn scan(buf: &TextBuf, min_ms: i64, cancel: &CancelToken, progress: Option<&Progress>, mut partial: impl FnMut(&Gaps)) -> io::Result<Option<Gaps>> {
+pub fn scan(
+    buf: &TextBuf,
+    min_ms: i64,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut partial: impl FnMut(&Gaps),
+) -> io::Result<Option<Gaps>> {
     let min_ms = min_ms.max(1);
     if let Some(p) = progress {
         p.set_total(buf.len());
@@ -99,7 +105,17 @@ pub fn scan(buf: &TextBuf, min_ms: i64, cancel: &CancelToken, progress: Option<&
                 }
             }
             match prev {
-                Some((pl, pk)) if far(pk, key) => pending = Some((Gap { before: pl, after: off, from: pk, to: key }, before)),
+                Some((pl, pk)) if far(pk, key) => {
+                    pending = Some((
+                        Gap {
+                            before: pl,
+                            after: off,
+                            from: pk,
+                            to: key,
+                        },
+                        before,
+                    ))
+                }
                 _ => prev = Some((off, key)),
             }
         }
@@ -127,7 +143,9 @@ pub fn scan(buf: &TextBuf, min_ms: i64, cancel: &CancelToken, progress: Option<&
 /// "30s", "5m", "1h", "500ms", "2d" or a number of seconds, in milliseconds.
 pub fn parse_duration(s: &str) -> Option<i64> {
     let t = s.trim().to_ascii_lowercase();
-    let split = t.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(t.len());
+    let split = t
+        .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .unwrap_or(t.len());
     let (num, unit) = t.split_at(split);
     let v: f64 = num.parse().ok()?;
     let mul = match unit.trim() {
@@ -158,26 +176,45 @@ mod tests {
         let idx = index::build_blocking(&src, Codec::utf8());
         let mut t = TextBuf::new(src, idx, Codec::utf8());
         t.blocking = true;
-        let g = scan(&t, min_ms, &CancelToken::new(), None, |_| {}).unwrap().unwrap();
+        let g = scan(&t, min_ms, &CancelToken::new(), None, |_| {})
+            .unwrap()
+            .unwrap();
         let line = |off: u64| data[off as usize..].lines().next().unwrap().to_string();
-        g.gaps.iter().map(|x| (line(x.before), line(x.after), x.ms())).collect()
+        g.gaps
+            .iter()
+            .map(|x| (line(x.before), line(x.after), x.ms()))
+            .collect()
     }
 
     #[test]
     fn finds_gaps_and_back_jumps() {
         let log = "2024-05-01 10:00:00 a\n2024-05-01 10:00:05 b\n  at trace\n2024-05-01 10:02:05 c\n2024-05-01 10:02:06 d\n2024-05-01 09:00:00 e\n2024-05-01 09:00:01 f\n";
         let g = gaps(log, 30_000);
-        assert_eq!(g, [
-            ("2024-05-01 10:00:05 b".into(), "2024-05-01 10:02:05 c".into(), 120_000),
-            ("2024-05-01 10:02:06 d".into(), "2024-05-01 09:00:00 e".into(), -3_726_000),
-        ]);
+        assert_eq!(
+            g,
+            [
+                (
+                    "2024-05-01 10:00:05 b".into(),
+                    "2024-05-01 10:02:05 c".into(),
+                    120_000
+                ),
+                (
+                    "2024-05-01 10:02:06 d".into(),
+                    "2024-05-01 09:00:00 e".into(),
+                    -3_726_000
+                ),
+            ]
+        );
         assert!(gaps(log, 10 * 3_600_000).is_empty());
     }
 
     #[test]
     fn a_single_odd_time_is_not_a_gap() {
         let log = "10:00:00 a\n10:00:01 b\n23:59:00 retry scheduled\n10:00:02 c\n10:01:00 d\n";
-        assert_eq!(gaps(log, 30_000), [("10:00:02 c".into(), "10:01:00 d".into(), 58_000)]);
+        assert_eq!(
+            gaps(log, 30_000),
+            [("10:00:02 c".into(), "10:01:00 d".into(), 58_000)]
+        );
         // A gap right at the end is kept.
         assert_eq!(gaps("10:00:00 a\n10:05:00 b\n", 60_000).len(), 1);
     }

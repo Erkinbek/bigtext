@@ -41,7 +41,11 @@ pub struct FieldQuery {
 /// Whether `text` looks like a field query rather than a search pattern.
 pub fn looks_like_query(text: &str) -> bool {
     let t = text.trim_start();
-    t.starts_with('.') && t[1..].chars().next().is_some_and(|c| c.is_alphabetic() || c == '_' || c == '@' || c == '"')
+    t.starts_with('.')
+        && t[1..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphabetic() || c == '_' || c == '@' || c == '"')
 }
 
 fn words(src: &str) -> Result<Vec<String>, String> {
@@ -75,11 +79,18 @@ fn words(src: &str) -> Result<Vec<String>, String> {
             out.push(s);
         } else if "=!<>~".contains(c) {
             let two: String = b[i..(i + 2).min(b.len())].iter().collect();
-            let op = ["==", "!=", ">=", "<="].into_iter().find(|o| *o == two).map(str::to_string).unwrap_or_else(|| c.to_string());
+            let op = ["==", "!=", ">=", "<="]
+                .into_iter()
+                .find(|o| *o == two)
+                .map(str::to_string)
+                .unwrap_or_else(|| c.to_string());
             i += op.chars().count();
             out.push(op);
         } else {
-            let end = b[i..].iter().position(|x| x.is_whitespace() || "=!<>~\"".contains(*x)).map_or(b.len(), |n| i + n);
+            let end = b[i..]
+                .iter()
+                .position(|x| x.is_whitespace() || "=!<>~\"".contains(*x))
+                .map_or(b.len(), |n| i + n);
             out.push(b[i..end].iter().collect());
             i = end;
         }
@@ -93,12 +104,16 @@ impl FieldQuery {
         let mut conds = Vec::new();
         let mut i = 0;
         while i < w.len() {
-            let key = w[i].strip_prefix('.').ok_or_else(|| format!("a field starts with a dot: .{}", w[i]))?;
+            let key = w[i]
+                .strip_prefix('.')
+                .ok_or_else(|| format!("a field starts with a dot: .{}", w[i]))?;
             let key = key.trim_matches('"').to_string();
             if key.is_empty() {
                 return Err("a field name is missing after the dot".into());
             }
-            let op_word = w.get(i + 1).ok_or_else(|| format!("what about .{key}? (==, !=, >, <, contains, ~, exists)"))?;
+            let op_word = w
+                .get(i + 1)
+                .ok_or_else(|| format!("what about .{key}? (==, !=, >, <, contains, ~, exists)"))?;
             let (op, takes) = match op_word.to_ascii_lowercase().as_str() {
                 "==" | "=" => (Op::Eq, true),
                 "!=" => (Op::Ne, true),
@@ -115,11 +130,20 @@ impl FieldQuery {
             let mut value = String::new();
             let mut next = i + 2;
             if takes {
-                let v = w.get(i + 2).ok_or_else(|| format!("a value is missing after .{key} {op_word}"))?;
-                value = v.strip_prefix('"').map(str::to_string).unwrap_or_else(|| v.clone());
+                let v = w
+                    .get(i + 2)
+                    .ok_or_else(|| format!("a value is missing after .{key} {op_word}"))?;
+                value = v
+                    .strip_prefix('"')
+                    .map(str::to_string)
+                    .unwrap_or_else(|| v.clone());
                 next = i + 3;
             }
-            let op = if op_word == "~" { Op::Regex(Regex::new(&value).map_err(|e| format!("regex: {e}"))?) } else { op };
+            let op = if op_word == "~" {
+                Op::Regex(Regex::new(&value).map_err(|e| format!("regex: {e}"))?)
+            } else {
+                op
+            };
             conds.push(Cond { key, op, value });
             match w.get(next).map(|s| s.to_ascii_lowercase()) {
                 None => break,
@@ -173,7 +197,10 @@ impl FieldQuery {
 
     /// Text to highlight in the matching lines: the fields' names.
     pub fn highlight(&self) -> String {
-        self.conds.first().map(|c| format!("\"{}\"", c.key.rsplit('.').next().unwrap_or(&c.key))).unwrap_or_default()
+        self.conds
+            .first()
+            .map(|c| format!("\"{}\"", c.key.rsplit('.').next().unwrap_or(&c.key)))
+            .unwrap_or_default()
     }
 }
 
@@ -182,7 +209,9 @@ mod tests {
     use super::*;
 
     fn q(src: &str, line: &str) -> bool {
-        FieldQuery::parse(src).unwrap_or_else(|e| panic!("{src}: {e}")).matches(line.as_bytes())
+        FieldQuery::parse(src)
+            .unwrap_or_else(|e| panic!("{src}: {e}"))
+            .matches(line.as_bytes())
     }
 
     const L: &str = r#"{"level":"error","duration":750,"user":{"id":42,"name":"Ann"},"msg":"db timeout after 3 tries","path":"/api/v1/x","ok":false}"#;
@@ -210,7 +239,15 @@ mod tests {
 
     #[test]
     fn errors_and_detection() {
-        for bad in ["level == x", ".level", ".level === x", ".level == x or .a == b", ".x ~ \"(\"", ".a == 1 and", ""] {
+        for bad in [
+            "level == x",
+            ".level",
+            ".level === x",
+            ".level == x or .a == b",
+            ".x ~ \"(\"",
+            ".a == 1 and",
+            "",
+        ] {
             assert!(FieldQuery::parse(bad).is_err(), "{bad} parsed");
         }
         assert!(looks_like_query(".level == error"));

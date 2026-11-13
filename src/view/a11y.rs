@@ -26,7 +26,16 @@ pub struct Row {
 
 impl Row {
     pub fn new(start: u64, end: u64, rect: Rect) -> Row {
-        Row { value: String::new(), lens: Vec::new(), xs: Vec::new(), ws: Vec::new(), offs: Vec::new(), start, end, rect }
+        Row {
+            value: String::new(),
+            lens: Vec::new(),
+            xs: Vec::new(),
+            ws: Vec::new(),
+            offs: Vec::new(),
+            start,
+            end,
+            rect,
+        }
     }
 
     pub fn push(&mut self, ch: char, off: u64, x: f32, w: f32) {
@@ -67,13 +76,22 @@ fn run_id(id: Id, row: usize, chunk: usize) -> Id {
 /// Row `row`, character `k` as a position in its runs.
 fn position(id: Id, row: usize, k: usize) -> TextPosition {
     // At a chunk boundary the position is the end of the previous chunk.
-    let chunk = if k > 0 && k.is_multiple_of(RUN_MAX) { k / RUN_MAX - 1 } else { k / RUN_MAX };
-    TextPosition { node: run_id(id, row, chunk).accesskit_id(), character_index: k - chunk * RUN_MAX }
+    let chunk = if k > 0 && k.is_multiple_of(RUN_MAX) {
+        k / RUN_MAX - 1
+    } else {
+        k / RUN_MAX
+    };
+    TextPosition {
+        node: run_id(id, row, chunk).accesskit_id(),
+        character_index: k - chunk * RUN_MAX,
+    }
 }
 
 /// The row and character of document offset `off`, when it is on screen.
 fn locate(rows: &[Row], off: u64) -> Option<(usize, usize)> {
-    rows.iter().position(|r| off >= r.start && off <= r.end).map(|i| (i, rows[i].index_of(off)))
+    rows.iter()
+        .position(|r| off >= r.start && off <= r.end)
+        .map(|i| (i, rows[i].index_of(off)))
 }
 
 /// Fills the view's node `id` and adds a text run per row (split every 255 characters).
@@ -82,7 +100,8 @@ pub fn text_widget(ui: &mut Ui, id: Id, w: &TextWidget) -> String {
     let ctx = ui.ctx().clone();
     // The runs hang under the view's node (through a container: only a `Ui` can set a parent).
     let runs = ui.new_child(UiBuilder::new().accessibility_parent(id));
-    let sel = locate(w.rows, w.caret).map(|focus| (locate(w.rows, w.anchor).unwrap_or(focus), focus));
+    let sel =
+        locate(w.rows, w.caret).map(|focus| (locate(w.rows, w.anchor).unwrap_or(focus), focus));
     ctx.accesskit_node_builder(id, |b| {
         b.set_role(Role::MultilineTextInput);
         b.set_label(w.label);
@@ -91,7 +110,10 @@ pub fn text_widget(ui: &mut Ui, id: Id, w: &TextWidget) -> String {
             b.set_read_only();
         }
         if let Some((a, f)) = sel {
-            b.set_text_selection(TextSelection { anchor: position(id, a.0, a.1), focus: position(id, f.0, f.1) });
+            b.set_text_selection(TextSelection {
+                anchor: position(id, a.0, a.1),
+                focus: position(id, f.0, f.1),
+            });
         }
     });
     for (i, r) in w.rows.iter().enumerate() {
@@ -109,7 +131,12 @@ pub fn text_widget(ui: &mut Ui, id: Id, w: &TextWidget) -> String {
                 b.set_text_direction(accesskit::TextDirection::LeftToRight);
                 let x0 = r.xs.get(a).copied().unwrap_or(0.0);
                 let x1 = if z > a { r.xs[z - 1] + r.ws[z - 1] } else { x0 };
-                b.set_bounds(accesskit::Rect { x0: (r.rect.left() + x0).into(), y0: r.rect.top().into(), x1: (r.rect.left() + x1).into(), y1: r.rect.bottom().into() });
+                b.set_bounds(accesskit::Rect {
+                    x0: (r.rect.left() + x0).into(),
+                    y0: r.rect.top().into(),
+                    x1: (r.rect.left() + x1).into(),
+                    y1: r.rect.bottom().into(),
+                });
                 b.set_value(value);
                 b.set_character_lengths(&r.lens[a..z]);
                 b.set_character_positions(r.xs[a..z].iter().map(|x| x - x0).collect::<Vec<f32>>());
@@ -123,8 +150,16 @@ pub fn text_widget(ui: &mut Ui, id: Id, w: &TextWidget) -> String {
             });
         }
     }
-    let first = w.rows.first().map(|r| r.value.trim_end_matches('\n')).unwrap_or_default();
-    format!("{} rows; {}; first: {first}; selection {sel:?}", w.rows.len(), w.position)
+    let first = w
+        .rows
+        .first()
+        .map(|r| r.value.trim_end_matches('\n'))
+        .unwrap_or_default();
+    format!(
+        "{} rows; {}; first: {first}; selection {sel:?}",
+        w.rows.len(),
+        w.position
+    )
 }
 
 /// A polite live region: screen readers say `text` when it changes.
@@ -144,8 +179,20 @@ mod tests {
     fn positions_split_long_rows() {
         let id = Id::new("v");
         assert_eq!(position(id, 0, 0).node, run_id(id, 0, 0).accesskit_id());
-        assert_eq!((position(id, 2, 255).node, position(id, 2, 255).character_index), (run_id(id, 2, 0).accesskit_id(), 255));
-        assert_eq!((position(id, 2, 256).node, position(id, 2, 256).character_index), (run_id(id, 2, 1).accesskit_id(), 1));
+        assert_eq!(
+            (
+                position(id, 2, 255).node,
+                position(id, 2, 255).character_index
+            ),
+            (run_id(id, 2, 0).accesskit_id(), 255)
+        );
+        assert_eq!(
+            (
+                position(id, 2, 256).node,
+                position(id, 2, 256).character_index
+            ),
+            (run_id(id, 2, 1).accesskit_id(), 1)
+        );
         let mut r = Row::new(10, 14, Rect::ZERO);
         for (i, ch) in "añb\n".chars().enumerate() {
             r.push(ch, 10 + i as u64, i as f32 * 8.0, 8.0);

@@ -29,12 +29,28 @@ pub fn encode(start: &StartOptions, token: &str) -> String {
     for (p, line) in &start.files {
         // A remote address (user@host:/path, https://…) goes as it is.
         let remote = !p.exists() && crate::app::remote::parse(&p.to_string_lossy()).is_some();
-        let abs = if remote { p.clone() } else { std::path::absolute(p).unwrap_or_else(|_| p.clone()) };
-        s.push_str(&format!("file\t{}\t{}\n", abs.display(), line.map(|l| l.to_string()).unwrap_or_default()));
+        let abs = if remote {
+            p.clone()
+        } else {
+            std::path::absolute(p).unwrap_or_else(|_| p.clone())
+        };
+        s.push_str(&format!(
+            "file\t{}\t{}\n",
+            abs.display(),
+            line.map(|l| l.to_string()).unwrap_or_default()
+        ));
     }
     if let Some(q) = &start.find {
-        let flags = format!("{}{}{}", if q.regex { "r" } else { "" }, if q.case_sensitive { "c" } else { "" }, if q.whole_word { "w" } else { "" });
-        s.push_str(&format!("find\t{flags}\t{}\n", q.pattern.replace(['\n', '\r'], " ")));
+        let flags = format!(
+            "{}{}{}",
+            if q.regex { "r" } else { "" },
+            if q.case_sensitive { "c" } else { "" },
+            if q.whole_word { "w" } else { "" }
+        );
+        s.push_str(&format!(
+            "find\t{flags}\t{}\n",
+            q.pattern.replace(['\n', '\r'], " ")
+        ));
     }
     if start.follow {
         s.push_str("follow\n");
@@ -49,7 +65,12 @@ pub fn decode(lines: &[String], token: &str) -> Option<StartOptions> {
     if head.strip_prefix(MAGIC)?.trim() != token {
         return None;
     }
-    let mut start = StartOptions { files: Vec::new(), find: None, follow: false, stdin: None };
+    let mut start = StartOptions {
+        files: Vec::new(),
+        find: None,
+        follow: false,
+        stdin: None,
+    };
     for l in rest {
         let mut it = l.splitn(3, '\t');
         match it.next()? {
@@ -61,7 +82,13 @@ pub fn decode(lines: &[String], token: &str) -> Option<StartOptions> {
             "find" => {
                 let flags = it.next()?;
                 let pattern = it.next()?.to_string();
-                start.find = Some(Query { pattern, regex: flags.contains('r'), case_sensitive: flags.contains('c'), whole_word: flags.contains('w'), ..Default::default() });
+                start.find = Some(Query {
+                    pattern,
+                    regex: flags.contains('r'),
+                    case_sensitive: flags.contains('c'),
+                    whole_word: flags.contains('w'),
+                    ..Default::default()
+                });
             }
             "follow" => start.follow = true,
             "." => break,
@@ -73,13 +100,21 @@ pub fn decode(lines: &[String], token: &str) -> Option<StartOptions> {
 
 /// Hands `start` to the running BigText; true when it took it.
 pub fn try_send(lock: &Path, start: &StartOptions) -> bool {
-    let Ok(text) = std::fs::read_to_string(lock) else { return false };
+    let Ok(text) = std::fs::read_to_string(lock) else {
+        return false;
+    };
     let mut parts = text.split_whitespace();
-    let (Some(port), Some(token), pid) = (parts.next().and_then(|p| p.parse::<u16>().ok()), parts.next(), parts.next().and_then(|p| p.parse::<u32>().ok())) else {
+    let (Some(port), Some(token), pid) = (
+        parts.next().and_then(|p| p.parse::<u16>().ok()),
+        parts.next(),
+        parts.next().and_then(|p| p.parse::<u32>().ok()),
+    ) else {
         return false;
     };
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let Ok(mut s) = TcpStream::connect_timeout(&addr, Duration::from_millis(500)) else { return false };
+    let Ok(mut s) = TcpStream::connect_timeout(&addr, Duration::from_millis(500)) else {
+        return false;
+    };
     let _ = s.set_read_timeout(Some(Duration::from_millis(2000)));
     let _ = s.set_write_timeout(Some(Duration::from_millis(1000)));
     // Windows lets only the foreground process give the focus away.
@@ -122,7 +157,12 @@ impl Drop for Server {
 fn random_token() -> String {
     use std::hash::{BuildHasher, Hasher};
     let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-    h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
+    h.write_u128(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+    );
     h.write_u32(std::process::id());
     let a = h.finish();
     let mut h2 = std::collections::hash_map::RandomState::new().build_hasher();
@@ -130,7 +170,10 @@ fn random_token() -> String {
     format!("{a:016x}{:016x}", h2.finish())
 }
 
-pub fn serve(lock: PathBuf, deliver: impl Fn(StartOptions) + Send + 'static) -> std::io::Result<Server> {
+pub fn serve(
+    lock: PathBuf,
+    deliver: impl Fn(StartOptions) + Send + 'static,
+) -> std::io::Result<Server> {
     let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))?;
     let port = listener.local_addr()?.port();
     let token = random_token();
@@ -171,7 +214,11 @@ pub fn serve(lock: PathBuf, deliver: impl Fn(StartOptions) + Send + 'static) -> 
 }
 
 /// The channel side of [`serve`] for the app: requests become messages.
-pub fn serve_app(lock: PathBuf, tx: Sender<crate::app::Msg>, waker: bigtext::jobs::Waker) -> Option<Server> {
+pub fn serve_app(
+    lock: PathBuf,
+    tx: Sender<crate::app::Msg>,
+    waker: bigtext::jobs::Waker,
+) -> Option<Server> {
     serve(lock, move |start| {
         let _ = tx.send(crate::app::Msg::OpenRequest(Box::new(start)));
         waker();
@@ -193,8 +240,16 @@ mod tests {
         })
         .unwrap();
         let start = StartOptions {
-            files: vec![(PathBuf::from("/logs/a b.log"), Some(120)), (PathBuf::from("/logs/c.log"), None)],
-            find: Some(Query { pattern: "time\tout".into(), regex: true, case_sensitive: true, ..Default::default() }),
+            files: vec![
+                (PathBuf::from("/logs/a b.log"), Some(120)),
+                (PathBuf::from("/logs/c.log"), None),
+            ],
+            find: Some(Query {
+                pattern: "time\tout".into(),
+                regex: true,
+                case_sensitive: true,
+                ..Default::default()
+            }),
             follow: true,
             stdin: None,
         };
@@ -203,7 +258,12 @@ mod tests {
         assert_eq!(got.files.len(), 2);
         assert_eq!(got.files[0].1, Some(120));
         assert!(got.files[0].0.ends_with("a b.log"));
-        assert_eq!(got.find.as_ref().map(|q| (q.pattern.as_str(), q.regex, q.case_sensitive)), Some(("time\tout", true, true)));
+        assert_eq!(
+            got.find
+                .as_ref()
+                .map(|q| (q.pattern.as_str(), q.regex, q.case_sensitive)),
+            Some(("time\tout", true, true))
+        );
         assert!(got.follow);
         // A wrong token is refused.
         let text = std::fs::read_to_string(&lock).unwrap();

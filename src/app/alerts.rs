@@ -45,7 +45,15 @@ pub struct Alerts {
 
 impl Alerts {
     fn new(scanned: u64) -> Alerts {
-        Alerts { patterns: Vec::new(), matchers: Arc::new(Vec::new()), scanned, job: None, hits: VecDeque::new(), total: 0, unseen: 0 }
+        Alerts {
+            patterns: Vec::new(),
+            matchers: Arc::new(Vec::new()),
+            scanned,
+            job: None,
+            hits: VecDeque::new(),
+            total: 0,
+            unseen: 0,
+        }
     }
 }
 
@@ -87,7 +95,10 @@ impl Default for AlertsUi {
     fn default() -> Self {
         AlertsUi {
             open: false,
-            draft: Query { case_sensitive: true, ..Default::default() },
+            draft: Query {
+                case_sensitive: true,
+                ..Default::default()
+            },
             notify: true,
             sound: true,
             background_only: false,
@@ -103,26 +114,42 @@ impl Default for AlertsUi {
 
 /// A pattern as one line: flags (`r` regex, `c` case-sensitive, `w` whole words), `|`, text.
 pub fn query_line(q: &Query) -> String {
-    let flags: String = [(q.regex, 'r'), (q.case_sensitive, 'c'), (q.whole_word, 'w')].iter().filter(|x| x.0).map(|x| x.1).collect();
+    let flags: String = [(q.regex, 'r'), (q.case_sensitive, 'c'), (q.whole_word, 'w')]
+        .iter()
+        .filter(|x| x.0)
+        .map(|x| x.1)
+        .collect();
     format!("{flags}|{}", q.pattern)
 }
 
 pub fn parse_query_line(s: &str) -> Option<Query> {
     let (flags, pattern) = s.split_once('|')?;
-    (!pattern.is_empty() && !pattern.contains(['\n', '\r'])).then(|| Query { pattern: pattern.to_string(), regex: flags.contains('r'), case_sensitive: flags.contains('c'), whole_word: flags.contains('w'), dot_all: false })
+    (!pattern.is_empty() && !pattern.contains(['\n', '\r'])).then(|| Query {
+        pattern: pattern.to_string(),
+        regex: flags.contains('r'),
+        case_sensitive: flags.contains('c'),
+        whole_word: flags.contains('w'),
+        dot_all: false,
+    })
 }
 
 impl AlertsUi {
     /// The options as one line: notify, sound, background only.
     pub fn options_line(&self) -> String {
         let b = |x: bool| if x { '1' } else { '0' };
-        format!("{}{}{}", b(self.notify), b(self.sound), b(self.background_only))
+        format!(
+            "{}{}{}",
+            b(self.notify),
+            b(self.sound),
+            b(self.background_only)
+        )
     }
 
     pub fn set_options_line(&mut self, s: &str) {
         let f: Vec<char> = s.chars().collect();
         if f.len() == 3 {
-            (self.notify, self.sound, self.background_only) = (f[0] == '1', f[1] == '1', f[2] == '1');
+            (self.notify, self.sound, self.background_only) =
+                (f[0] == '1', f[1] == '1', f[2] == '1');
         }
     }
 
@@ -135,7 +162,11 @@ impl AlertsUi {
 
 /// A pattern as the list shows it: `/regex/`, `"text"`, with `Aa` when case matters.
 fn shown(q: &Query) -> String {
-    let mut s = if q.regex { format!("/{}/", q.pattern) } else { format!("“{}”", q.pattern) };
+    let mut s = if q.regex {
+        format!("/{}/", q.pattern)
+    } else {
+        format!("“{}”", q.pattern)
+    };
     if q.case_sensitive {
         s.push_str("  Aa");
     }
@@ -150,24 +181,38 @@ impl BigTextApp {
     pub(crate) fn open_alerts(&mut self) {
         self.alerts.open = true;
         self.alerts.error = None;
-        if let Some(a) = self.docs.get_mut(self.active).and_then(|d| d.alerts.as_mut()) {
+        if let Some(a) = self
+            .docs
+            .get_mut(self.active)
+            .and_then(|d| d.alerts.as_mut())
+        {
             a.unseen = 0;
         }
     }
 
     /// Alerts on `q` in the active tab, from the lines added from now on.
     pub(crate) fn add_alert(&mut self, q: Query) -> Result<(), String> {
-        let q = Query { pattern: q.pattern.trim_end_matches(['\n', '\r']).to_string(), ..q };
+        let q = Query {
+            pattern: q.pattern.trim_end_matches(['\n', '\r']).to_string(),
+            ..q
+        };
         if q.pattern.is_empty() {
             return Err(tr("Type a pattern first.").into());
         }
-        let Some(d) = self.docs.get_mut(self.active).filter(|d| d.is_ready()) else { return Err(tr("Open a log first.").into()) };
+        let Some(d) = self.docs.get_mut(self.active).filter(|d| d.is_ready()) else {
+            return Err(tr("Open a log first.").into());
+        };
         Matcher::new(&q, d.buf.codec)?;
         let codec = d.buf.codec;
         let a = d.alerts.get_or_insert_with(|| Alerts::new(d.buf.len()));
         if !a.patterns.contains(&q) {
             a.patterns.push(q.clone());
-            a.matchers = Arc::new(a.patterns.iter().filter_map(|q| Matcher::new(q, codec).ok()).collect());
+            a.matchers = Arc::new(
+                a.patterns
+                    .iter()
+                    .filter_map(|q| Matcher::new(q, codec).ok())
+                    .collect(),
+            );
         }
         self.alerts.remember(&q);
         if !self.alerts.click_set {
@@ -184,12 +229,19 @@ impl BigTextApp {
 
     /// Takes the active tab's pattern `i` away (and the alerts, after the last).
     pub(crate) fn remove_alert(&mut self, i: usize) {
-        let Some(d) = self.docs.get_mut(self.active) else { return };
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
         let Some(a) = d.alerts.as_mut() else { return };
         if i < a.patterns.len() {
             a.patterns.remove(i);
             let codec = d.buf.codec;
-            a.matchers = Arc::new(a.patterns.iter().filter_map(|q| Matcher::new(q, codec).ok()).collect());
+            a.matchers = Arc::new(
+                a.patterns
+                    .iter()
+                    .filter_map(|q| Matcher::new(q, codec).ok())
+                    .collect(),
+            );
         }
         if a.patterns.is_empty() {
             d.alerts = None;
@@ -225,7 +277,13 @@ impl BigTextApp {
                                 a.hits.pop_front();
                             }
                             if let Some(h) = first {
-                                found.push(Pending { doc: d.id, title: d.title.clone(), lines: scan.count, first: h.text, offset: h.offset });
+                                found.push(Pending {
+                                    doc: d.id,
+                                    title: d.title.clone(),
+                                    lines: scan.count,
+                                    first: h.text,
+                                    offset: h.offset,
+                                });
                             }
                         }
                     }
@@ -262,7 +320,9 @@ impl BigTextApp {
             notify::hide();
         }
         if !found.is_empty() && !focused {
-            ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
+            ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(
+                egui::UserAttentionType::Informational,
+            ));
         }
         let ui = &mut self.alerts;
         for f in found {
@@ -274,7 +334,9 @@ impl BigTextApp {
         if ui.pending.is_empty() {
             return;
         }
-        let wait = ui.last_notice.map_or(Duration::ZERO, |t| NOTICE_GAP.saturating_sub(t.elapsed()));
+        let wait = ui
+            .last_notice
+            .map_or(Duration::ZERO, |t| NOTICE_GAP.saturating_sub(t.elapsed()));
         if !wait.is_zero() {
             ctx.request_repaint_after(wait);
             return;
@@ -290,7 +352,11 @@ impl BigTextApp {
             body.push('\n');
             body.push_str(&trf("(+{n} more lines)", &[("n", &fmt_count(more))]));
         }
-        let title = if pending.len() == 1 { format!("BigText: {}", p.title) } else { trf("BigText: {n} tabs", &[("n", &pending.len().to_string())]) };
+        let title = if pending.len() == 1 {
+            format!("BigText: {}", p.title)
+        } else {
+            trf("BigText: {n} tabs", &[("n", &pending.len().to_string())])
+        };
         *ui.target.lock().unwrap() = Some((p.doc, p.offset));
         if ui.notify {
             let shown = notify::show(&title, &body, ui.sound);
@@ -305,7 +371,9 @@ impl BigTextApp {
 
     /// A click on a notification: its tab and line, and BigText to the front.
     pub(super) fn on_alert_clicked(&mut self) {
-        let Some((doc, off)) = *self.alerts.target.lock().unwrap() else { return };
+        let Some((doc, off)) = *self.alerts.target.lock().unwrap() else {
+            return;
+        };
         if let Some(i) = self.docs.iter().position(|d| d.id == doc) {
             self.active = i;
             let d = &mut self.docs[i];
@@ -327,7 +395,8 @@ impl BigTextApp {
             return;
         }
         let mut open = true;
-        let (mut add, mut remove, mut goto, mut clear, mut follow) = (None, None, None, false, false);
+        let (mut add, mut remove, mut goto, mut clear, mut follow) =
+            (None, None, None, false, false);
         let ui_state = &mut self.alerts;
         let d = self.docs.get(self.active);
         egui::Window::new(tr("Alerts on new lines")).open(&mut open).default_size([640.0, 440.0]).resizable(true).collapsible(false).show(ctx, |ui| {
@@ -425,7 +494,9 @@ impl BigTextApp {
         if let Some(i) = remove {
             self.remove_alert(i);
         }
-        let Some(d) = self.docs.get_mut(self.active) else { return };
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
         if follow {
             d.follow = true;
         }
@@ -448,19 +519,37 @@ mod tests {
 
     #[test]
     fn patterns_and_options_are_kept_as_lines() {
-        let q = Query { pattern: "ERROR|FATAL".into(), regex: true, case_sensitive: true, whole_word: false, dot_all: false };
+        let q = Query {
+            pattern: "ERROR|FATAL".into(),
+            regex: true,
+            case_sensitive: true,
+            whole_word: false,
+            dot_all: false,
+        };
         assert_eq!(query_line(&q), "rc|ERROR|FATAL");
         assert_eq!(parse_query_line("rc|ERROR|FATAL"), Some(q));
-        assert_eq!(parse_query_line("w|timeout").map(|q| (q.regex, q.case_sensitive, q.whole_word)), Some((false, false, true)));
+        assert_eq!(
+            parse_query_line("w|timeout").map(|q| (q.regex, q.case_sensitive, q.whole_word)),
+            Some((false, false, true))
+        );
         assert_eq!(parse_query_line("r|"), None);
         let mut ui = AlertsUi::default();
         assert_eq!(ui.options_line(), "110");
         ui.set_options_line("011");
-        assert_eq!((ui.notify, ui.sound, ui.background_only), (false, true, true));
+        assert_eq!(
+            (ui.notify, ui.sound, ui.background_only),
+            (false, true, true)
+        );
         for i in 0..20 {
-            ui.remember(&Query { pattern: format!("p{i}"), ..Default::default() });
+            ui.remember(&Query {
+                pattern: format!("p{i}"),
+                ..Default::default()
+            });
         }
-        ui.remember(&Query { pattern: "p5".into(), ..Default::default() });
+        ui.remember(&Query {
+            pattern: "p5".into(),
+            ..Default::default()
+        });
         assert_eq!(ui.recent.len(), RECENT_MAX);
         assert_eq!(ui.recent[0].pattern, "p5");
     }

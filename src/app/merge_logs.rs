@@ -40,7 +40,13 @@ impl MergeTags {
         let matchers = labels
             .iter()
             .filter_map(|l| {
-                let q = Query { pattern: format!("^{} │ ", regex_syntax::escape(&format!("{l:<width$}"))), regex: true, case_sensitive: true, whole_word: false, dot_all: false };
+                let q = Query {
+                    pattern: format!("^{} │ ", regex_syntax::escape(&format!("{l:<width$}"))),
+                    regex: true,
+                    case_sensitive: true,
+                    whole_word: false,
+                    dot_all: false,
+                };
                 Matcher::new(&q, Codec::utf8()).ok().map(Arc::new)
             })
             .collect();
@@ -74,13 +80,21 @@ pub fn labels_for(titles: &[String]) -> Vec<String> {
     out
 }
 
-fn merge_job(inputs: Vec<Input>, target: PathBuf, progress: &Progress, cancel: &CancelToken) -> TaskOutcome {
+fn merge_job(
+    inputs: Vec<Input>,
+    target: PathBuf,
+    progress: &Progress,
+    cancel: &CancelToken,
+) -> TaskOutcome {
     let labels: Vec<String> = inputs.iter().map(|i| i.label.clone()).collect();
     let r = (|| {
         if let Some(dir) = target.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let file = std::fs::File::options().write(true).create_new(true).open(&target)?;
+        let file = std::fs::File::options()
+            .write(true)
+            .create_new(true)
+            .open(&target)?;
         let mut w = BufWriter::with_capacity(8 << 20, file);
         let r = merge::merge_to(&inputs, &mut w, cancel, Some(progress))?;
         w.flush()?;
@@ -89,12 +103,26 @@ fn merge_job(inputs: Vec<Input>, target: PathBuf, progress: &Progress, cancel: &
     drop(inputs);
     match r {
         Ok(Some(m)) => {
-            let mut message = trf("Merged {files} logs: {lines} lines ({size}).", &[("files", &labels.len().to_string()), ("lines", &fmt_count(m.lines)), ("size", &human_bytes(m.bytes))]);
+            let mut message = trf(
+                "Merged {files} logs: {lines} lines ({size}).",
+                &[
+                    ("files", &labels.len().to_string()),
+                    ("lines", &fmt_count(m.lines)),
+                    ("size", &human_bytes(m.bytes)),
+                ],
+            );
             if m.without_times > 0 {
                 message.push(' ');
-                message.push_str(&trf("{n} of them had no times; their lines come first.", &[("n", &m.without_times.to_string())]));
+                message.push_str(&trf(
+                    "{n} of them had no times; their lines come first.",
+                    &[("n", &m.without_times.to_string())],
+                ));
             }
-            TaskOutcome::Merged(Box::new(MergedLogs { path: target, labels, message }))
+            TaskOutcome::Merged(Box::new(MergedLogs {
+                path: target,
+                labels,
+                message,
+            }))
         }
         Ok(None) => {
             bigtext::decompress::remove_temp(&target);
@@ -102,7 +130,13 @@ fn merge_job(inputs: Vec<Input>, target: PathBuf, progress: &Progress, cancel: &
         }
         Err(e) => {
             bigtext::decompress::remove_temp(&target);
-            TaskOutcome::Failed(trf("Could not merge the logs into {file}: {e}", &[("file", &bigtext::file::display_path(&target)), ("e", &e.to_string())]))
+            TaskOutcome::Failed(trf(
+                "Could not merge the logs into {file}: {e}",
+                &[
+                    ("file", &bigtext::file::display_path(&target)),
+                    ("e", &e.to_string()),
+                ],
+            ))
         }
     }
 }
@@ -110,21 +144,39 @@ fn merge_job(inputs: Vec<Input>, target: PathBuf, progress: &Progress, cancel: &
 impl BigTextApp {
     pub(crate) fn open_merge(&mut self) {
         self.merge.open = true;
-        self.merge.picked = self.docs.iter().filter(|d| d.is_ready() && d.effective_lang() == Lang::Log && !d.buf.is_empty()).map(|d| d.id).collect();
+        self.merge.picked = self
+            .docs
+            .iter()
+            .filter(|d| d.is_ready() && d.effective_lang() == Lang::Log && !d.buf.is_empty())
+            .map(|d| d.id)
+            .collect();
     }
 
     /// Merges the ticked documents in the background.
     pub(crate) fn start_merge(&mut self) {
-        let docs: Vec<&super::document::Document> = self.docs.iter().filter(|d| self.merge.picked.contains(&d.id)).collect();
+        let docs: Vec<&super::document::Document> = self
+            .docs
+            .iter()
+            .filter(|d| self.merge.picked.contains(&d.id))
+            .collect();
         if docs.len() < 2 || docs.iter().any(|d| !d.is_ready()) {
             return;
         }
         let titles: Vec<String> = docs.iter().map(|d| d.title.clone()).collect();
         let labels = labels_for(&titles);
-        let inputs: Vec<Input> = docs.iter().zip(labels).map(|(d, label)| Input { buf: d.buf.snapshot(), label }).collect();
+        let inputs: Vec<Input> = docs
+            .iter()
+            .zip(labels)
+            .map(|(d, label)| Input {
+                buf: d.buf.snapshot(),
+                label,
+            })
+            .collect();
         let target = bigtext::decompress::temp_file("merged.log");
         self.merge.open = false;
-        self.spawn_task(tr("Merging logs").into(), move |progress, cancel| merge_job(inputs, target, progress, cancel));
+        self.spawn_task(tr("Merging logs").into(), move |progress, cancel| {
+            merge_job(inputs, target, progress, cancel)
+        });
     }
 
     /// Opens a finished merge as a temporary read-only document.
@@ -201,7 +253,10 @@ impl BigTextApp {
             });
         });
         if add {
-            if let Some(files) = rfd::FileDialog::new().set_title(tr("Add files…")).pick_files() {
+            if let Some(files) = rfd::FileDialog::new()
+                .set_title(tr("Add files…"))
+                .pick_files()
+            {
                 for f in files {
                     self.open_path(f);
                     if let Some(d) = self.docs.get(self.active) {
@@ -231,7 +286,12 @@ mod tests {
     #[test]
     fn labels_are_short_and_unique() {
         let long = "x".repeat(40);
-        let l = labels_for(&["app.log".into(), "app.log".into(), long.clone(), "app.log".into()]);
+        let l = labels_for(&[
+            "app.log".into(),
+            "app.log".into(),
+            long.clone(),
+            "app.log".into(),
+        ]);
         assert_eq!(l[0], "app.log");
         assert_eq!(l[1], "app.log (2)");
         assert_eq!(l[2].chars().count(), LABEL_MAX);
@@ -247,10 +307,18 @@ mod tests {
                 .iter()
                 .map(|m| {
                     let mut hit = false;
-                    m.find_in(s.as_bytes(), 0, 0, s.len(), s.len(), &mut None, &mut |_, _| {
-                        hit = true;
-                        false
-                    });
+                    m.find_in(
+                        s.as_bytes(),
+                        0,
+                        0,
+                        s.len(),
+                        s.len(),
+                        &mut None,
+                        &mut |_, _| {
+                            hit = true;
+                            false
+                        },
+                    );
                     hit
                 })
                 .collect()

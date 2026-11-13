@@ -40,7 +40,13 @@ const MAX_VERSIONS: usize = 8;
 
 impl Default for Welcome {
     fn default() -> Welcome {
-        Welcome { enabled: false, sample: None, sample_size: SAMPLE_SIZE, sample_path: None, whats_new: None }
+        Welcome {
+            enabled: false,
+            sample: None,
+            sample_size: SAMPLE_SIZE,
+            sample_path: None,
+            whats_new: None,
+        }
     }
 }
 
@@ -57,7 +63,12 @@ impl Welcome {
     /// or by one that did not note its version yet) the note says what changed in every version
     /// since. A first start shows the page instead.
     pub fn after_start(&mut self, saved_before: bool, seen: Option<&str>) {
-        let notes = changes(CHANGELOG, saved_before, seen.and_then(Version::parse), Version::current());
+        let notes = changes(
+            CHANGELOG,
+            saved_before,
+            seen.and_then(Version::parse),
+            Version::current(),
+        );
         if !notes.is_empty() {
             self.whats_new = Some(notes);
         }
@@ -66,21 +77,33 @@ impl Welcome {
 
 /// The versions in `md` (CHANGELOG.md) after `seen` up to `current`, with their notes, newest
 /// first; without `seen`, settings saved before mean an update from before [`FIRST_NOTING`].
-pub fn changes(md: &str, saved_before: bool, seen: Option<Version>, current: Version) -> Vec<(Version, Vec<Block>)> {
+pub fn changes(
+    md: &str,
+    saved_before: bool,
+    seen: Option<Version>,
+    current: Version,
+) -> Vec<(Version, Vec<Block>)> {
     let newer = |v: Version| match seen {
         Some(s) => v > s,
         None => saved_before && v >= FIRST_NOTING,
     };
     versions(md)
         .filter(|&v| v <= current && newer(v))
-        .filter_map(|v| section(md, v).map(parse_notes).filter(|b| !b.is_empty()).map(|b| (v, b)))
+        .filter_map(|v| {
+            section(md, v)
+                .map(parse_notes)
+                .filter(|b| !b.is_empty())
+                .map(|b| (v, b))
+        })
         .take(MAX_VERSIONS)
         .collect()
 }
 
 /// The versions with a "## X.Y.Z" heading in `md`, in their order (newest first).
 fn versions(md: &str) -> impl Iterator<Item = Version> + '_ {
-    md.lines().filter_map(|l| l.strip_prefix("## ")).filter_map(|t| t.split_whitespace().next().and_then(Version::parse))
+    md.lines()
+        .filter_map(|l| l.strip_prefix("## "))
+        .filter_map(|t| t.split_whitespace().next().and_then(Version::parse))
 }
 
 /// The section of `md` (CHANGELOG.md) for version `v`: from its "## X.Y.Z" heading to the next
@@ -110,11 +133,21 @@ pub fn default_sample_path() -> PathBuf {
 /// Writes a web-service log of at least `size` bytes to `path` (through a `.part` file, so a
 /// half-written sample is never opened), counting the bytes in `written`.
 pub fn write_sample(path: &Path, size: u64, written: &AtomicU64) -> std::io::Result<()> {
-    const PATHS: [&str; 6] = ["/api/orders", "/api/users", "/api/cart", "/api/search", "/health", "/static/app.js"];
-    const WORDS: [&str; 8] = ["cache", "retry", "timeout", "worker", "session", "upstream", "queue", "payload"];
+    const PATHS: [&str; 6] = [
+        "/api/orders",
+        "/api/users",
+        "/api/cart",
+        "/api/search",
+        "/health",
+        "/static/app.js",
+    ];
+    const WORDS: [&str; 8] = [
+        "cache", "retry", "timeout", "worker", "session", "upstream", "queue", "payload",
+    ];
     let part = path.with_extension("part");
     let mut out = BufWriter::with_capacity(1 << 20, std::fs::File::create(&part)?);
-    let (mut seed, mut ms, mut id, mut n) = (0x9E37_79B9_7F4A_7C15u64, 8 * 3_600_000u64, 100_000u64, 0u64);
+    let (mut seed, mut ms, mut id, mut n) =
+        (0x9E37_79B9_7F4A_7C15u64, 8 * 3_600_000u64, 100_000u64, 0u64);
     let mut rand = |m: u64| {
         seed ^= seed << 13;
         seed ^= seed >> 7;
@@ -129,12 +162,45 @@ pub fn write_sample(path: &Path, size: u64, written: &AtomicU64) -> std::io::Res
         let t = ms % 86_400_000;
         line.clear();
         use std::fmt::Write as _;
-        let _ = write!(line, "2026-11-{day:02} {:02}:{:02}:{:02}.{:03} ", t / 3_600_000, t / 60_000 % 60, t / 1000 % 60, t % 1000);
+        let _ = write!(
+            line,
+            "2026-11-{day:02} {:02}:{:02}:{:02}.{:03} ",
+            t / 3_600_000,
+            t / 60_000 % 60,
+            t / 1000 % 60,
+            t % 1000
+        );
         let _ = match rand(100) {
-            0..=1 => writeln!(line, "ERROR [worker-{}] {} {} failed for order={id}: upstream returned 503", rand(16), WORDS[rand(8) as usize], WORDS[rand(8) as usize]),
-            2..=7 => writeln!(line, "WARN  [worker-{}] slow request {}ms {} id={id}", rand(16), 400 + rand(2_000), PATHS[rand(6) as usize]),
-            8..=22 => writeln!(line, "DEBUG [worker-{}] {} hit key=user:{} ttl={}s", rand(16), WORDS[rand(8) as usize], rand(1_000_000), rand(3_600)),
-            _ => writeln!(line, "INFO  [worker-{}] GET {}/{id} 200 {}ms user={}", rand(16), PATHS[rand(6) as usize], 1 + rand(80), rand(50_000)),
+            0..=1 => writeln!(
+                line,
+                "ERROR [worker-{}] {} {} failed for order={id}: upstream returned 503",
+                rand(16),
+                WORDS[rand(8) as usize],
+                WORDS[rand(8) as usize]
+            ),
+            2..=7 => writeln!(
+                line,
+                "WARN  [worker-{}] slow request {}ms {} id={id}",
+                rand(16),
+                400 + rand(2_000),
+                PATHS[rand(6) as usize]
+            ),
+            8..=22 => writeln!(
+                line,
+                "DEBUG [worker-{}] {} hit key=user:{} ttl={}s",
+                rand(16),
+                WORDS[rand(8) as usize],
+                rand(1_000_000),
+                rand(3_600)
+            ),
+            _ => writeln!(
+                line,
+                "INFO  [worker-{}] GET {}/{id} 200 {}ms user={}",
+                rand(16),
+                PATHS[rand(6) as usize],
+                1 + rand(80),
+                rand(50_000)
+            ),
         };
         out.write_all(line.as_bytes())?;
         n += line.len() as u64;
@@ -153,7 +219,14 @@ impl BigTextApp {
     /// is opened.
     pub(crate) fn welcome_visible(&self) -> bool {
         match self.docs.as_slice() {
-            [d] => self.welcome.enabled && d.path.is_none() && d.buf.is_empty() && !d.is_modified() && !d.hex && !d.table,
+            [d] => {
+                self.welcome.enabled
+                    && d.path.is_none()
+                    && d.buf.is_empty()
+                    && !d.is_modified()
+                    && !d.hex
+                    && !d.table
+            }
             _ => false,
         }
     }
@@ -163,7 +236,11 @@ impl BigTextApp {
         if self.welcome.sample.is_some() {
             return;
         }
-        let path = self.welcome.sample_path.clone().unwrap_or_else(default_sample_path);
+        let path = self
+            .welcome
+            .sample_path
+            .clone()
+            .unwrap_or_else(default_sample_path);
         let size = self.welcome.sample_size;
         if std::fs::metadata(&path).is_ok_and(|m| m.len() >= size) {
             self.open_path(path);
@@ -176,7 +253,12 @@ impl BigTextApp {
             done: Arc::new(AtomicBool::new(false)),
             error: Arc::new(Mutex::new(None)),
         };
-        let (written, done, error, waker) = (job.written.clone(), job.done.clone(), job.error.clone(), self.waker.clone());
+        let (written, done, error, waker) = (
+            job.written.clone(),
+            job.done.clone(),
+            job.error.clone(),
+            self.waker.clone(),
+        );
         bigtext::jobs::spawn("sample-log", move || {
             if let Err(e) = write_sample(&path, size, &written) {
                 *error.lock().unwrap() = Some(e.to_string());
@@ -189,7 +271,9 @@ impl BigTextApp {
 
     /// Opens the sample once it is written.
     pub(super) fn welcome_tick(&mut self) {
-        let Some(job) = &self.welcome.sample else { return };
+        let Some(job) = &self.welcome.sample else {
+            return;
+        };
         if !job.done.load(Ordering::Acquire) {
             return;
         }
@@ -291,7 +375,9 @@ impl BigTextApp {
 
     /// The note after an update: what changed in each version since the one used before.
     pub(super) fn whats_new_ui(&mut self, ctx: &egui::Context) {
-        let Some(notes) = &self.welcome.whats_new else { return };
+        let Some(notes) = &self.welcome.whats_new else {
+            return;
+        };
         let mut close = false;
         let modal = egui::Modal::new(egui::Id::new("whats-new")).show(ctx, |ui| {
             ui.set_width(560.0);
@@ -321,14 +407,24 @@ mod tests {
 
     #[test]
     fn the_current_version_has_notes() {
-        let notes = section(CHANGELOG, Version::current()).map(parse_notes).expect("CHANGELOG.md has a section for this version");
-        assert!(notes.iter().any(|b| matches!(b, Block::Item(..))), "{notes:?}");
+        let notes = section(CHANGELOG, Version::current())
+            .map(parse_notes)
+            .expect("CHANGELOG.md has a section for this version");
+        assert!(
+            notes.iter().any(|b| matches!(b, Block::Item(..))),
+            "{notes:?}"
+        );
     }
 
     #[test]
     fn every_version_since_the_one_used_before() {
         let md = "# Changelog\n\n## 0.9.0 — next\n\n- not out\n\n## 0.8.2\n\n- c\n\n## 0.8.1\n\n- b\n\n## 0.8.0\n\n- a\n\n## 0.7.3\n\n- old\n";
-        let got = |saved: bool, seen: Option<Version>| changes(md, saved, seen, Version(0, 8, 2)).into_iter().map(|(v, _)| v.to_string()).collect::<Vec<_>>();
+        let got = |saved: bool, seen: Option<Version>| {
+            changes(md, saved, seen, Version(0, 8, 2))
+                .into_iter()
+                .map(|(v, _)| v.to_string())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(got(true, Some(Version(0, 8, 0))), ["0.8.2", "0.8.1"]);
         assert_eq!(got(true, Some(Version(0, 8, 1))), ["0.8.2"]);
         assert!(got(true, Some(Version(0, 8, 2))).is_empty());
@@ -336,14 +432,23 @@ mod tests {
         assert_eq!(got(true, None), ["0.8.2", "0.8.1", "0.8.0"]);
         assert!(got(false, None).is_empty());
         // Many versions skipped: the newest few.
-        let long: String = (0..20).rev().map(|p| format!("## 1.0.{p}\n\n- n\n\n")).collect();
-        assert_eq!(changes(&long, true, Some(Version(0, 9, 0)), Version(1, 0, 19)).len(), MAX_VERSIONS);
+        let long: String = (0..20)
+            .rev()
+            .map(|p| format!("## 1.0.{p}\n\n- n\n\n"))
+            .collect();
+        assert_eq!(
+            changes(&long, true, Some(Version(0, 9, 0)), Version(1, 0, 19)).len(),
+            MAX_VERSIONS
+        );
     }
 
     #[test]
     fn finds_a_version_section() {
         let md = "# Changelog\n\nIntro.\n\n## 1.2.0 — 2026-01-02\n\n### Fixes\n\n- **A**: one\n\n## 1.1.0 — 2026-01-01\n\n- old\n";
-        assert_eq!(section(md, Version(1, 2, 0)), Some("### Fixes\n\n- **A**: one"));
+        assert_eq!(
+            section(md, Version(1, 2, 0)),
+            Some("### Fixes\n\n- **A**: one")
+        );
         assert_eq!(section(md, Version(1, 1, 0)), Some("- old"));
         assert_eq!(section(md, Version(1, 0, 0)), None);
     }
@@ -354,7 +459,10 @@ mod tests {
         let older = Version(0, 0, 1).to_string();
         let mut w = Welcome::default();
         w.after_start(true, Some(&older));
-        assert_eq!(w.whats_new.as_ref().and_then(|n| n.first()).map(|n| n.0), Some(current));
+        assert_eq!(
+            w.whats_new.as_ref().and_then(|n| n.first()).map(|n| n.0),
+            Some(current)
+        );
         // Settings without a version were saved by a version before this note.
         let mut w = Welcome::default();
         w.after_start(true, None);
@@ -376,13 +484,20 @@ mod tests {
         let written = AtomicU64::new(0);
         write_sample(&path, 300_000, &written).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.len() >= 300_000 && text.len() < 301_000, "{}", text.len());
+        assert!(
+            text.len() >= 300_000 && text.len() < 301_000,
+            "{}",
+            text.len()
+        );
         assert_eq!(written.load(Ordering::Relaxed), text.len() as u64);
         assert!(!path.with_extension("part").exists());
         for line in text.lines() {
             assert!(line.starts_with("2026-11-"), "{line}");
             let level = line.split_whitespace().nth(2).unwrap();
-            assert!(["INFO", "WARN", "DEBUG", "ERROR"].contains(&level), "{line}");
+            assert!(
+                ["INFO", "WARN", "DEBUG", "ERROR"].contains(&level),
+                "{line}"
+            );
         }
         assert!(text.contains(" ERROR ") && text.contains(" WARN "));
         let _ = std::fs::remove_dir_all(&dir);

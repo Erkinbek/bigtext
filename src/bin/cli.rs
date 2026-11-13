@@ -6,9 +6,17 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = if args.is_empty() || matches!(args[0].as_str(), "-h" | "--help") {
         print!("{}", bigtext::headless::USAGE);
-        if args.is_empty() { 2 } else { 0 }
+        if args.is_empty() {
+            2
+        } else {
+            0
+        }
     } else {
-        bigtext::headless::run(&args, &mut std::io::stdout().lock(), &mut std::io::stderr().lock())
+        bigtext::headless::run(
+            &args,
+            &mut std::io::stdout().lock(),
+            &mut std::io::stderr().lock(),
+        )
     };
     std::process::exit(code);
 }

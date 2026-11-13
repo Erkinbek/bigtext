@@ -36,7 +36,14 @@ impl NavHistory {
 impl BigTextApp {
     fn here(&self) -> Option<(NavEntry, u64)> {
         let d = self.docs.get(self.active)?;
-        Some((NavEntry { doc: d.id, caret: d.view.caret, top: d.view.top }, d.view.jumps))
+        Some((
+            NavEntry {
+                doc: d.id,
+                caret: d.view.caret,
+                top: d.view.top,
+            },
+            d.view.jumps,
+        ))
     }
 
     /// Notes, once a frame, whether the caret jumped or another tab came up since the last frame;
@@ -44,7 +51,11 @@ impl BigTextApp {
     pub(super) fn track_jumps(&mut self) {
         let Some(now) = self.here() else { return };
         if let Some((before, jumps)) = self.nav.last {
-            let moved = if before.doc == now.0.doc { now.1 != jumps && before.caret != now.0.caret } else { true };
+            let moved = if before.doc == now.0.doc {
+                now.1 != jumps && before.caret != now.0.caret
+            } else {
+                true
+            };
             if moved && self.docs.iter().any(|d| d.id == before.doc) {
                 self.nav.push_back(before);
                 self.nav.forward.clear();
@@ -66,9 +77,15 @@ impl BigTextApp {
     fn nav_step(&mut self, back: bool) {
         let Some((now, _)) = self.here() else { return };
         loop {
-            let next = if back { self.nav.back.pop() } else { self.nav.forward.pop() };
+            let next = if back {
+                self.nav.back.pop()
+            } else {
+                self.nav.forward.pop()
+            };
             let Some(e) = next else { return };
-            let Some(i) = self.docs.iter().position(|d| d.id == e.doc) else { continue };
+            let Some(i) = self.docs.iter().position(|d| d.id == e.doc) else {
+                continue;
+            };
             if e == now {
                 continue;
             }

@@ -1,30 +1,28 @@
 //! Application shell: tabs, menus, dialogs, status bar and background-job plumbing.
 
-pub mod column_chart;
+pub mod alerts;
 pub mod archive;
 pub mod clipboard;
+pub mod column_chart;
 pub mod column_editor;
 pub mod columns;
-pub mod copy_as;
 pub mod commands;
 pub mod convert;
+pub mod copy_as;
 pub mod csv_tools;
 pub mod derive_column;
 pub mod document;
 pub mod export;
 pub mod extras;
 pub mod fields_panel;
+pub mod file_ops;
 pub mod filter_panel;
 pub mod find_in_files;
-pub mod file_ops;
-pub mod folder_tree;
-pub mod quick_open;
-pub mod remote;
-pub mod symbols;
 pub mod fold;
+pub mod folder_tree;
 pub mod follow_id;
-pub mod gaps_panel;
 pub mod fonts;
+pub mod gaps_panel;
 pub mod goto;
 pub mod i18n;
 mod i18n_de;
@@ -42,37 +40,39 @@ pub mod json_validate;
 pub mod keynav;
 pub mod levels;
 pub mod lines_edit;
+pub mod log_report;
+pub mod log_sources;
 pub mod marks;
 pub mod match_bracket;
 pub mod match_values;
 pub mod merge_logs;
 pub mod multi_cursor;
 pub mod nav;
+pub mod notify;
 pub mod only_in;
 pub mod ops;
 pub mod patterns_window;
-pub mod log_report;
-pub mod log_sources;
-pub mod alerts;
-pub mod sql_dump;
-pub mod notify;
 pub mod pivot;
 pub mod portable;
-pub mod properties;
-pub mod recovery;
 pub mod problems_panel;
+pub mod properties;
+pub mod quick_open;
+pub mod recovery;
+pub mod remote;
 pub mod run_command;
 pub mod saved_searches;
 pub mod search_panel;
-pub mod table_compare;
 pub mod sessions;
 pub mod shell;
+pub mod sql_dump;
 pub mod status_bar;
+pub mod symbols;
+pub mod table_compare;
 pub mod tabs;
 pub mod tasks;
+pub mod text_tools;
 pub mod theme;
 pub mod time_link;
-pub mod text_tools;
 pub mod time_range;
 pub mod timeline;
 pub mod update;
@@ -129,31 +129,80 @@ pub struct Opened {
 type ReplacePreview = (u64, Vec<(u64, String, String)>, Vec<u64>);
 
 pub enum Msg {
-    Opened { doc: u64, result: Result<Opened, String> },
-    Copied { doc: u64, result: Result<String, String>, cut: bool },
-    Found { doc: u64, version: u64, found: Option<(u64, u64)>, wrapped: bool },
+    Opened {
+        doc: u64,
+        result: Result<Opened, String>,
+    },
+    Copied {
+        doc: u64,
+        result: Result<String, String>,
+        cut: bool,
+    },
+    Found {
+        doc: u64,
+        version: u64,
+        found: Option<(u64, u64)>,
+        wrapped: bool,
+    },
     TempWritten(Box<ops::TempWritten>),
     Finalized(Box<ops::Finalized>),
-    JobFailed { doc: u64, msg: Option<String> },
-    ReplaceBatch { doc: u64, version: u64, add_len: u64, pieces: Vec<Piece>, add: Vec<u8>, count: usize },
-    ReplaceTooMany { doc: u64, version: u64, matcher: Arc<Matcher>, template: Template, range: std::ops::Range<u64> },
-    Preview { doc: u64, items: Vec<(u64, String, String)>, lines: Vec<u64> },
+    JobFailed {
+        doc: u64,
+        msg: Option<String>,
+    },
+    ReplaceBatch {
+        doc: u64,
+        version: u64,
+        add_len: u64,
+        pieces: Vec<Piece>,
+        add: Vec<u8>,
+        count: usize,
+    },
+    ReplaceTooMany {
+        doc: u64,
+        version: u64,
+        matcher: Arc<Matcher>,
+        template: Template,
+        range: std::ops::Range<u64>,
+    },
+    Preview {
+        doc: u64,
+        items: Vec<(u64, String, String)>,
+        lines: Vec<u64>,
+    },
     FileChanged(Box<FileChange>),
     LowSpace(Box<LowSpace>),
     /// A document's recovery journal was written (or failed to be).
-    Journaled { doc: u64, version: u64, add_len: u64, ok: bool },
+    Journaled {
+        doc: u64,
+        version: u64,
+        add_len: u64,
+        ok: bool,
+    },
     LinesRemoved(Box<lines_edit::LinesRemoved>),
     /// Files another launch handed over.
     OpenRequest(Box<StartOptions>),
-    LinesTooMany { doc: u64, version: u64, sel: Arc<lines_edit::LineSel>, keep: bool },
+    LinesTooMany {
+        doc: u64,
+        version: u64,
+        sel: Arc<lines_edit::LineSel>,
+        keep: bool,
+    },
     /// An archive's files, for the picker: (tab, archive, files).
     ArchiveListed(Box<(u64, PathBuf, Vec<bigtext::decompress::Member>)>),
     Update(update::Event),
     ColumnsDeleted(Box<columns::ColumnsDeleted>),
-    TaskDone { id: u64, outcome: tasks::TaskOutcome },
+    TaskDone {
+        id: u64,
+        outcome: tasks::TaskOutcome,
+    },
     TextOp(Box<text_tools::TextOpDone>),
     CsvRewritten(Box<csv_tools::CsvRewritten>),
-    TimeFound { doc: u64, version: u64, result: Result<u64, bigtext::timestamp::TimeError> },
+    TimeFound {
+        doc: u64,
+        version: u64,
+        result: Result<u64, bigtext::timestamp::TimeError>,
+    },
     Aligned(Box<time_link::Aligned>),
     JsonCrumb(Box<json_crumb::CrumbMsg>),
     Folds(Box<fold::FoldMsg>),
@@ -164,7 +213,11 @@ pub enum Msg {
     Json(Box<json_panel::JsonDone>),
     TimeRange(Box<time_range::RangeDone>),
     /// A remote file opened to be read in place (or why it could not be).
-    RemoteOpened { doc: u64, src: remote::Source, result: Result<Box<remote::RemoteOpened>, remote::RemoteFail> },
+    RemoteOpened {
+        doc: u64,
+        src: remote::Source,
+        result: Result<Box<remote::RemoteOpened>, remote::RemoteFail>,
+    },
     /// Something a worker could not do, for the error dialog.
     Error(String),
     /// A click on an alert's system notification.
@@ -238,7 +291,13 @@ struct GotoDialog {
 
 impl GotoDialog {
     fn new(mode: GotoMode) -> Option<GotoDialog> {
-        Some(GotoDialog { text: String::new(), mode, error: None, focus: true, busy: None })
+        Some(GotoDialog {
+            text: String::new(),
+            mode,
+            error: None,
+            focus: true,
+            busy: None,
+        })
     }
 }
 
@@ -253,15 +312,47 @@ struct Confirm {
 enum ConfirmAction {
     CloseTab(u64),
     Exit,
-    CopyLarge { doc: u64, cut: bool },
-    ReplaceOnDisk { doc: u64 },
-    DeleteColumns { doc: u64, dialect: bigtext::csv::Dialect, cols: Vec<usize>, on_disk: bool },
-    CsvRewrite { doc: u64, dialect: bigtext::csv::Dialect, rewrite: bigtext::csv::Rewrite, on_disk: bool },
+    CopyLarge {
+        doc: u64,
+        cut: bool,
+    },
+    ReplaceOnDisk {
+        doc: u64,
+    },
+    DeleteColumns {
+        doc: u64,
+        dialect: bigtext::csv::Dialect,
+        cols: Vec<usize>,
+        on_disk: bool,
+    },
+    CsvRewrite {
+        doc: u64,
+        dialect: bigtext::csv::Dialect,
+        rewrite: bigtext::csv::Rewrite,
+        on_disk: bool,
+    },
     LowSpace(Box<LowSpace>),
-    LinesOnDisk { doc: u64, sel: Arc<lines_edit::LineSel>, keep: bool },
-    TextOpOnDisk { doc: u64, op: bigtext::textops::Op, range: std::ops::Range<u64> },
-    ColumnEditOnDisk { doc: u64, from: u64, cells: (u32, u32), gen: bigtext::column_edit::ColumnGen },
-    SortOnDisk { doc: u64, spec: bigtext::extsort::SortSpec, eol: Vec<u8> },
+    LinesOnDisk {
+        doc: u64,
+        sel: Arc<lines_edit::LineSel>,
+        keep: bool,
+    },
+    TextOpOnDisk {
+        doc: u64,
+        op: bigtext::textops::Op,
+        range: std::ops::Range<u64>,
+    },
+    ColumnEditOnDisk {
+        doc: u64,
+        from: u64,
+        cells: (u32, u32),
+        gen: bigtext::column_edit::ColumnGen,
+    },
+    SortOnDisk {
+        doc: u64,
+        spec: bigtext::extsort::SortSpec,
+        eol: Vec<u8>,
+    },
     /// A file or folder of the side bar to the Recycle Bin.
     Trash(PathBuf),
 }
@@ -422,8 +513,13 @@ pub const WRAP_MIN: u16 = 4;
 pub fn friendly_io(e: &std::io::Error, path: &Path) -> String {
     let p = file::display_path(path);
     match (e.kind(), e.raw_os_error()) {
-        (_, Some(32)) | (_, Some(33)) => i18n::trf("“{p}” is in use by another process.", &[("p", &p)]),
-        (std::io::ErrorKind::PermissionDenied, _) => i18n::trf("Access denied: “{p}”. Check permissions or the read-only attribute.", &[("p", &p)]),
+        (_, Some(32)) | (_, Some(33)) => {
+            i18n::trf("“{p}” is in use by another process.", &[("p", &p)])
+        }
+        (std::io::ErrorKind::PermissionDenied, _) => i18n::trf(
+            "Access denied: “{p}”. Check permissions or the read-only attribute.",
+            &[("p", &p)],
+        ),
         (std::io::ErrorKind::NotFound, _) => i18n::trf("File not found: “{p}”.", &[("p", &p)]),
         _ => format!("{p}: {e}"),
     }
@@ -442,8 +538,19 @@ pub struct LowSpace {
 /// What to do again after a low-space warning.
 #[derive(Clone)]
 pub enum Resume {
-    Open { doc: u64, path: PathBuf, member: Option<String>, forced: Option<Encoding>, size: Option<u64> },
-    Write { doc: u64, target: PathBuf, spec: ops::WriteSpec, backup: bool },
+    Open {
+        doc: u64,
+        path: PathBuf,
+        member: Option<String>,
+        forced: Option<Encoding>,
+        size: Option<u64>,
+    },
+    Write {
+        doc: u64,
+        target: PathBuf,
+        spec: ops::WriteSpec,
+        backup: bool,
+    },
 }
 
 /// What the watcher saw happen to a document's file.
@@ -469,40 +576,77 @@ fn open_worker(path: &Path, forced: Option<Encoding>, mode: OpenMode) -> Result<
         return Err(FOLDER.into());
     }
     let src = Source::open(path, mode).map_err(|e| friendly_io(&e, path))?;
-    let read_only = std::fs::metadata(path).map(|m| m.permissions().readonly()).unwrap_or(false);
+    let read_only = std::fs::metadata(path)
+        .map(|m| m.permissions().readonly())
+        .unwrap_or(false);
     let n = src.len().min(1 << 20);
     let whole = n == src.len();
     let (det, bom) = {
         let sample = src.read(0..n).map_err(|e| friendly_io(&e, path))?;
-        let bom = Encoding::ALL.into_iter().find(|e| !e.bom().is_empty() && sample.starts_with(e.bom()));
+        let bom = Encoding::ALL
+            .into_iter()
+            .find(|e| !e.bom().is_empty() && sample.starts_with(e.bom()));
         let det = match forced {
             Some(enc) => encoding::detect_with(&sample, whole, enc, 0),
             None => encoding::detect(&sample, whole),
         };
         (det, bom)
     };
-    Ok(Opened { source: Arc::new(src), detected: det, elapsed: t.elapsed(), path: canonical.clone(), read_only, unpacked: None, member: None, bom, growing: false })
+    Ok(Opened {
+        source: Arc::new(src),
+        detected: det,
+        elapsed: t.elapsed(),
+        path: canonical.clone(),
+        read_only,
+        unpacked: None,
+        member: None,
+        bom,
+        growing: false,
+    })
 }
 
 /// Opens `path`, unpacking it into a temporary file first when it is compressed.
 /// What went wrong unpacking `path`.
 fn unpack_error(path: &Path, e: std::io::Error) -> String {
     match e.kind() {
-        std::io::ErrorKind::InvalidData | std::io::ErrorKind::NotFound => format!("{}: {e}", file::display_path(path)),
-        _ => i18n::trf("Could not unpack into {dir}: {e}", &[("dir", &file::display_path(&bigtext::decompress::temp_dir())), ("e", &e.to_string())]),
+        std::io::ErrorKind::InvalidData | std::io::ErrorKind::NotFound => {
+            format!("{}: {e}", file::display_path(path))
+        }
+        _ => i18n::trf(
+            "Could not unpack into {dir}: {e}",
+            &[
+                ("dir", &file::display_path(&bigtext::decompress::temp_dir())),
+                ("e", &e.to_string()),
+            ],
+        ),
     }
 }
 
 /// Unpacks the archive's file `member` (and a compressed file inside it) and opens the copy.
-fn open_member(path: &Path, member: &str, forced: Option<Encoding>, cancel: &CancelToken, progress: &jobs::Progress) -> Result<Opened, String> {
+fn open_member(
+    path: &Path,
+    member: &str,
+    forced: Option<Encoding>,
+    cancel: &CancelToken,
+    progress: &jobs::Progress,
+) -> Result<Opened, String> {
     use bigtext::decompress as dc;
-    let archive = dc::detect_archive(path).ok_or_else(|| i18n::trf("{file} is not an archive any more.", &[("file", &file::display_path(path))]))?;
+    let archive = dc::detect_archive(path).ok_or_else(|| {
+        i18n::trf(
+            "{file} is not an archive any more.",
+            &[("file", &file::display_path(path))],
+        )
+    })?;
     let cancelled = || i18n::tr("Unpacking was cancelled.").to_string();
-    let mut temp = dc::unpack_member(path, archive, member, cancel, progress).map_err(|e| unpack_error(path, e))?.ok_or_else(cancelled)?;
+    let mut temp = dc::unpack_member(path, archive, member, cancel, progress)
+        .map_err(|e| unpack_error(path, e))?
+        .ok_or_else(cancelled)?;
     if let Some(kind) = dc::detect(&temp) {
         let inner = dc::unpack(&temp, kind, cancel, progress);
         dc::remove_temp(&temp);
-        temp = inner.map_err(|e| unpack_error(path, e))?.ok_or_else(cancelled)?;
+        temp = inner
+            .map_err(|e| unpack_error(path, e))?
+            .ok_or_else(cancelled)?;
     }
     match open_worker(&temp, forced, OpenMode::Auto) {
         Ok(mut o) => {
@@ -529,7 +673,16 @@ pub struct Unpacked {
 /// megabyte is there; the rest arrives as a followed log's does, and `Msg::Unpacked` tells how it
 /// ended. A file done before that opens as usual.
 #[allow(clippy::too_many_arguments)]
-fn open_unpacking(doc: u64, path: &Path, kind: bigtext::decompress::Kind, forced: Option<Encoding>, cancel: &CancelToken, progress: &jobs::Progress, tx: &Sender<Msg>, waker: &Waker) {
+fn open_unpacking(
+    doc: u64,
+    path: &Path,
+    kind: bigtext::decompress::Kind,
+    forced: Option<Encoding>,
+    cancel: &CancelToken,
+    progress: &jobs::Progress,
+    tx: &Sender<Msg>,
+    waker: &Waker,
+) {
     use bigtext::decompress as dc;
     let temp = dc::temp_path_for(path);
     let mut opened = false;
@@ -547,7 +700,13 @@ fn open_unpacking(doc: u64, path: &Path, kind: bigtext::decompress::Kind, forced
     });
     let failed = |e: std::io::Error| match e.kind() {
         std::io::ErrorKind::InvalidData => format!("{}: {e}", file::display_path(path)),
-        _ => i18n::trf("Could not unpack into {dir}: {e}", &[("dir", &file::display_path(&dc::temp_dir())), ("e", &e.to_string())]),
+        _ => i18n::trf(
+            "Could not unpack into {dir}: {e}",
+            &[
+                ("dir", &file::display_path(&dc::temp_dir())),
+                ("e", &e.to_string()),
+            ],
+        ),
     };
     if opened {
         let result = result.map_err(failed);
@@ -569,8 +728,15 @@ fn open_unpacking(doc: u64, path: &Path, kind: bigtext::decompress::Kind, forced
     waker();
 }
 
-fn open_or_unpack(path: &Path, forced: Option<Encoding>, cancel: &CancelToken, progress: &jobs::Progress) -> Result<Opened, String> {
-    let Some(kind) = bigtext::decompress::detect(path) else { return open_worker(path, forced, OpenMode::Auto) };
+fn open_or_unpack(
+    path: &Path,
+    forced: Option<Encoding>,
+    cancel: &CancelToken,
+    progress: &jobs::Progress,
+) -> Result<Opened, String> {
+    let Some(kind) = bigtext::decompress::detect(path) else {
+        return open_worker(path, forced, OpenMode::Auto);
+    };
     match bigtext::decompress::unpack(path, kind, cancel, progress) {
         Ok(Some(temp)) => match open_worker(&temp, forced, OpenMode::Auto) {
             Ok(mut o) => {
@@ -583,8 +749,16 @@ fn open_or_unpack(path: &Path, forced: Option<Encoding>, cancel: &CancelToken, p
             }
         },
         Ok(None) => Err(i18n::tr("Unpacking was cancelled.").into()),
-        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => Err(format!("{}: {e}", file::display_path(path))),
-        Err(e) => Err(i18n::trf("Could not unpack into {dir}: {e}", &[("dir", &file::display_path(&bigtext::decompress::temp_dir())), ("e", &e.to_string())])),
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+            Err(format!("{}: {e}", file::display_path(path)))
+        }
+        Err(e) => Err(i18n::trf(
+            "Could not unpack into {dir}: {e}",
+            &[
+                ("dir", &file::display_path(&bigtext::decompress::temp_dir())),
+                ("e", &e.to_string()),
+            ],
+        )),
     }
 }
 
@@ -593,7 +767,9 @@ fn open_or_unpack(path: &Path, forced: Option<Encoding>, cancel: &CancelToken, p
 pub fn same_path(a: &Path, b: &Path) -> bool {
     fn norm(p: &Path) -> String {
         let s = file::display_path(p);
-        let s = std::path::absolute(&s).map(|p| p.to_string_lossy().into_owned()).unwrap_or(s);
+        let s = std::path::absolute(&s)
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or(s);
         if cfg!(windows) {
             s.replace('/', "\\").to_lowercase()
         } else {
@@ -604,7 +780,12 @@ pub fn same_path(a: &Path, b: &Path) -> bool {
 }
 
 impl BigTextApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, start: StartOptions, process_start: Instant, persist: bool) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        start: StartOptions,
+        process_start: Instant,
+        persist: bool,
+    ) -> Self {
         let (tx, rx) = mpsc::channel();
         let ctx = cc.egui_ctx.clone();
         let waker: Waker = Arc::new(move || ctx.request_repaint());
@@ -620,7 +801,34 @@ impl BigTextApp {
             tx,
             rx,
             waker,
-            settings: Settings { font_size: 14.0, theme: theme::Theme::Dark, theme_system: false, cvd: false, scale: 100, show_perf: false, backup_on_save: false, syntax: true, marks: Vec::new(), font_path: None, unpack_dir: None, level_bar: true, saved: Vec::new(), show_ws: false, show_ws_code: false, code_theme: Default::default(), filter_context: 0, filter_entries: false, id_keys: None, status: Default::default(), zen: false, show_gutter: true, wrap_column: None, ruler: None, json_crumb: true, tools: Vec::new() },
+            settings: Settings {
+                font_size: 14.0,
+                theme: theme::Theme::Dark,
+                theme_system: false,
+                cvd: false,
+                scale: 100,
+                show_perf: false,
+                backup_on_save: false,
+                syntax: true,
+                marks: Vec::new(),
+                font_path: None,
+                unpack_dir: None,
+                level_bar: true,
+                saved: Vec::new(),
+                show_ws: false,
+                show_ws_code: false,
+                code_theme: Default::default(),
+                filter_context: 0,
+                filter_entries: false,
+                id_keys: None,
+                status: Default::default(),
+                zen: false,
+                show_gutter: true,
+                wrap_column: None,
+                ruler: None,
+                json_crumb: true,
+                tools: Vec::new(),
+            },
             goto: None,
             confirm: None,
             error: None,
@@ -718,7 +926,8 @@ impl BigTextApp {
             app.settings.theme_system = true;
             app.update.restore(&state);
             app.welcome.enabled = true;
-            app.welcome.after_start(state.loaded, state.seen_version.as_deref());
+            app.welcome
+                .after_start(state.loaded, state.seen_version.as_deref());
             update::cleanup_in_background();
             jobs::spawn("cleanup-unpacked", bigtext::decompress::cleanup_old);
             app.settings.marks = std::mem::take(&mut state.marks);
@@ -737,14 +946,26 @@ impl BigTextApp {
             if let Some(o) = &state.alert_options {
                 app.alerts.set_options_line(o);
             }
-            app.alerts.recent = state.alert_recent.iter().filter_map(|l| alerts::parse_query_line(l)).collect();
+            app.alerts.recent = state
+                .alert_recent
+                .iter()
+                .filter_map(|l| alerts::parse_query_line(l))
+                .collect();
             app.settings.tools = std::mem::take(&mut state.tools);
             app.run_cmd.history = std::mem::take(&mut state.commands);
-            app.run_cmd.shell = state.shell.as_deref().map(run_command::ShellChoice::from_id).unwrap_or_default();
+            app.run_cmd.shell = state
+                .shell
+                .as_deref()
+                .map(run_command::ShellChoice::from_id)
+                .unwrap_or_default();
             app.settings.show_ws = state.show_ws.unwrap_or(false);
             app.settings.show_ws_code = state.show_ws_code.unwrap_or(false);
             if let Some(root) = state.folder.take() {
-                app.restore_folder(root, state.folder_open.unwrap_or(true), std::mem::take(&mut state.folder_expanded));
+                app.restore_folder(
+                    root,
+                    state.folder_open.unwrap_or(true),
+                    std::mem::take(&mut state.folder_expanded),
+                );
             }
             app.recovery.enabled = state.recovery.unwrap_or(true);
             app.settings.id_keys = state.id_keys.take();
@@ -759,14 +980,21 @@ impl BigTextApp {
                 }
             }
             // A first start speaks the system's language when BigText knows it.
-            if let Some(l) = state.lang.as_deref().and_then(i18n::Lang::from_code).or_else(|| state.lang.is_none().then(i18n::system_lang).flatten()) {
+            if let Some(l) = state
+                .lang
+                .as_deref()
+                .and_then(i18n::Lang::from_code)
+                .or_else(|| state.lang.is_none().then(i18n::system_lang).flatten())
+            {
                 i18n::set_lang(l);
                 if l == i18n::Lang::Zh {
                     let _ = fonts::apply_font(&cc.egui_ctx, app.settings.font_path.as_deref());
                 }
             }
             for (id, k) in std::mem::take(&mut state.keys) {
-                if let (Some(c), Some(k)) = (commands::Cmd::from_id(&id), commands::key_from_string(&k)) {
+                if let (Some(c), Some(k)) =
+                    (commands::Cmd::from_id(&id), commands::key_from_string(&k))
+                {
                     app.keymap.changed.insert(c, k);
                 }
             }
@@ -793,11 +1021,18 @@ impl BigTextApp {
         let follow = start.follow;
         let opened = |app: &mut BigTextApp, path: PathBuf, line: Option<u64>, end: bool| {
             app.open_path_at(path, line);
-            let Some(d) = app.docs.get_mut(app.active) else { return };
+            let Some(d) = app.docs.get_mut(app.active) else {
+                return;
+            };
             d.follow |= follow;
             match (line, d.is_ready()) {
                 (None, true) if end => d.set_caret(d.buf.len(), false),
-                (None, false) if end => d.restore = Some(Restore { end: true, ..Default::default() }),
+                (None, false) if end => {
+                    d.restore = Some(Restore {
+                        end: true,
+                        ..Default::default()
+                    })
+                }
                 _ => {}
             }
         };
@@ -805,7 +1040,11 @@ impl BigTextApp {
             // user@host:/path, ssh://…, https://… (with --follow: the end of a remote log, followed).
             let addr = path.to_string_lossy().into_owned();
             if !path.exists() && remote::parse(&addr).is_some() {
-                let how = if follow { remote::How::Tail(1) } else { remote::How::InPlace };
+                let how = if follow {
+                    remote::How::Tail(1)
+                } else {
+                    remote::How::InPlace
+                };
                 if let Err(e) = self.open_remote(&addr, how) {
                     self.error = Some(e);
                 }
@@ -839,7 +1078,9 @@ impl BigTextApp {
                 self.active = i;
                 self.find_next(true);
             }
-            Some(i) if matches!(self.docs[i].state, DocState::Failed(_)) => self.pending_find = None,
+            Some(i) if matches!(self.docs[i].state, DocState::Failed(_)) => {
+                self.pending_find = None
+            }
             Some(_) => {}
             None => self.pending_find = None,
         }
@@ -860,11 +1101,16 @@ impl BigTextApp {
     /// Opens `path` (or goes to its tab) at line `line` (1-based) when given.
     pub(crate) fn open_path_at(&mut self, path: PathBuf, line: Option<u64>) {
         self.open_path(path);
-        let (Some(n), Some(d)) = (line, self.docs.get_mut(self.active)) else { return };
+        let (Some(n), Some(d)) = (line, self.docs.get_mut(self.active)) else {
+            return;
+        };
         if d.is_ready() {
             d.goto_line(n);
         } else {
-            d.restore = Some(Restore { line: Some(n), ..Default::default() });
+            d.restore = Some(Restore {
+                line: Some(n),
+                ..Default::default()
+            });
         }
     }
 
@@ -872,12 +1118,22 @@ impl BigTextApp {
         let canon = std::path::absolute(&path).unwrap_or(path);
         // An archive opens again for another of its files.
         let archive = bigtext::decompress::detect_archive(&canon).is_some();
-        if let Some(i) = self.docs.iter().position(|d| !archive && d.path.as_deref().or(d.unpacked_from.as_deref()).is_some_and(|p| same_path(p, &canon))) {
+        if let Some(i) = self.docs.iter().position(|d| {
+            !archive
+                && d.path
+                    .as_deref()
+                    .or(d.unpacked_from.as_deref())
+                    .is_some_and(|p| same_path(p, &canon))
+        }) {
             self.active = i;
             return;
         }
         // Replace a pristine untitled tab.
-        if self.docs.len() == 1 && self.docs[0].path.is_none() && !self.docs[0].is_modified() && self.docs[0].buf.is_empty() {
+        if self.docs.len() == 1
+            && self.docs[0].path.is_none()
+            && !self.docs[0].is_modified()
+            && self.docs[0].buf.is_empty()
+        {
             self.docs.clear();
         }
         let id = self.alloc_id();
@@ -902,24 +1158,39 @@ impl BigTextApp {
         p.enc = None;
         if o.unpacked.is_some() {
             let temp = o.path.clone();
-            jobs::spawn("remove-unpacked", move || bigtext::decompress::remove_temp(&temp));
+            jobs::spawn("remove-unpacked", move || {
+                bigtext::decompress::remove_temp(&temp)
+            });
         }
         Some(o.unpacked.clone().unwrap_or_else(|| o.path.clone()))
     }
 
     /// Opens `path`, or the archive `path`'s file `member` without asking which.
     pub(crate) fn open_path_member(&mut self, path: PathBuf, member: Option<String>) {
-        let Some(member) = member else { return self.open_path(path) };
+        let Some(member) = member else {
+            return self.open_path(path);
+        };
         let canon = std::path::absolute(&path).unwrap_or(path);
-        let same = |d: &Document| d.member.as_deref() == Some(member.as_str()) && d.unpacked_from.as_deref().is_some_and(|p| same_path(p, &canon));
+        let same = |d: &Document| {
+            d.member.as_deref() == Some(member.as_str())
+                && d.unpacked_from
+                    .as_deref()
+                    .is_some_and(|p| same_path(p, &canon))
+        };
         if let Some(i) = self.docs.iter().position(same) {
             self.active = i;
             return;
         }
         let id = self.alloc_id();
         let mut d = Document::loading(id, canon.clone());
-        let archive = canon.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        d.title = format!("{archive} › {}", bigtext::decompress::member_file_name(&member));
+        let archive = canon
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        d.title = format!(
+            "{archive} › {}",
+            bigtext::decompress::member_file_name(&member)
+        );
         d.member = Some(member.clone());
         self.docs.push(d);
         self.active = self.docs.len() - 1;
@@ -932,7 +1203,15 @@ impl BigTextApp {
 
     /// Opens `path` (an archive's file `member` of about `size` bytes) into the loading tab `id`;
     /// with `check`, an unpack that would not fit asks first.
-    pub(crate) fn spawn_open_job(&mut self, id: u64, path: PathBuf, member: Option<String>, forced: Option<Encoding>, size: Option<u64>, check: bool) {
+    pub(crate) fn spawn_open_job(
+        &mut self,
+        id: u64,
+        path: PathBuf,
+        member: Option<String>,
+        forced: Option<Encoding>,
+        size: Option<u64>,
+        check: bool,
+    ) {
         let tx = self.tx.clone();
         let waker = self.waker.clone();
         let (progress, cancel) = (jobs::Progress::default(), CancelToken::new());
@@ -969,13 +1248,27 @@ impl BigTextApp {
                 // The size of the copy, against the free space where it goes.
                 let need = match &member {
                     Some(_) => size,
-                    None => bigtext::decompress::detect(&path).map(|k| bigtext::decompress::estimate_unpacked(&path, k)),
+                    None => bigtext::decompress::detect(&path)
+                        .map(|k| bigtext::decompress::estimate_unpacked(&path, k)),
                 };
                 let dir = bigtext::decompress::temp_dir();
-                if let (Some(need), Some(free)) = (need, need.and_then(|_| bigtext::sysinfo::free_space(&dir))) {
+                if let (Some(need), Some(free)) =
+                    (need, need.and_then(|_| bigtext::sysinfo::free_space(&dir)))
+                {
                     if need > free {
-                        let resume = Resume::Open { doc: id, path, member, forced, size };
-                        let _ = tx.send(Msg::LowSpace(Box::new(LowSpace { need, free, dir, resume })));
+                        let resume = Resume::Open {
+                            doc: id,
+                            path,
+                            member,
+                            forced,
+                            size,
+                        };
+                        let _ = tx.send(Msg::LowSpace(Box::new(LowSpace {
+                            need,
+                            free,
+                            dir,
+                            resume,
+                        })));
                         waker();
                         return;
                     }
@@ -984,7 +1277,11 @@ impl BigTextApp {
             let result = match &member {
                 Some(m) => open_member(&path, m, forced, &cancel, &progress),
                 None => match bigtext::decompress::detect(&path) {
-                    Some(kind) => return open_unpacking(id, &path, kind, forced, &cancel, &progress, &tx, &waker),
+                    Some(kind) => {
+                        return open_unpacking(
+                            id, &path, kind, forced, &cancel, &progress, &tx, &waker,
+                        )
+                    }
                     None => open_or_unpack(&path, forced, &cancel, &progress),
                 },
             };
@@ -1007,20 +1304,44 @@ impl BigTextApp {
             d.unpacking = None;
             d.save_job = None;
         }
-        let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let sizes = [("file", name.as_str()), ("need", &human_bytes(l.need)), ("free", &human_bytes(l.free)), ("dir", &file::display_path(&l.dir))];
+        let name = file
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let sizes = [
+            ("file", name.as_str()),
+            ("need", &human_bytes(l.need)),
+            ("free", &human_bytes(l.free)),
+            ("dir", &file::display_path(&l.dir)),
+        ];
         let message = match l.resume {
             Resume::Open { .. } => i18n::trf("Unpacking {file} needs about {need} (estimated), and {dir} has {free} free. Continue anyway, or put unpacked copies in another folder?", &sizes),
             Resume::Write { .. } => i18n::trf("Writing {file} needs about {need}, and its drive has {free} free. Continue anyway?", &sizes),
         };
-        self.confirm = Some(Confirm { title: i18n::tr("Not enough free space").into(), message, action: ConfirmAction::LowSpace(Box::new(l)), checkbox: None });
+        self.confirm = Some(Confirm {
+            title: i18n::tr("Not enough free space").into(),
+            message,
+            action: ConfirmAction::LowSpace(Box::new(l)),
+            checkbox: None,
+        });
     }
 
     /// Carries on after a low-space warning (checking again with `check`).
     fn resume(&mut self, r: Resume, check: bool) {
         match r {
-            Resume::Open { doc, path, member, forced, size } => self.spawn_open_job(doc, path, member, forced, size, check),
-            Resume::Write { doc, target, spec, backup } => self.start_write_checked(doc, target, spec, backup, check),
+            Resume::Open {
+                doc,
+                path,
+                member,
+                forced,
+                size,
+            } => self.spawn_open_job(doc, path, member, forced, size, check),
+            Resume::Write {
+                doc,
+                target,
+                spec,
+                backup,
+            } => self.start_write_checked(doc, target, spec, backup, check),
         }
     }
 
@@ -1040,7 +1361,11 @@ impl BigTextApp {
             return Some(&mut self.docs[i]);
         }
         // The other file of a side-by-side comparison.
-        self.diff.as_mut().and_then(|r| r.side.as_mut()).map(|s| &mut *s.doc).filter(|d| d.id == id)
+        self.diff
+            .as_mut()
+            .and_then(|r| r.side.as_mut())
+            .map(|s| &mut *s.doc)
+            .filter(|d| d.id == id)
     }
 
     fn poll_messages(&mut self) {
@@ -1064,8 +1389,16 @@ impl BigTextApp {
                                 d.read_only = d.read_only || o.read_only;
                                 d.path = Some(o.path.clone());
                                 if let Some(m) = &o.member {
-                                    let archive = o.unpacked.as_deref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                                    d.title = format!("{archive} › {}", bigtext::decompress::member_file_name(m));
+                                    let archive = o
+                                        .unpacked
+                                        .as_deref()
+                                        .and_then(|p| p.file_name())
+                                        .map(|n| n.to_string_lossy().into_owned())
+                                        .unwrap_or_default();
+                                    d.title = format!(
+                                        "{archive} › {}",
+                                        bigtext::decompress::member_file_name(m)
+                                    );
                                     d.member = Some(m.clone());
                                 }
                                 if let Some(orig) = o.unpacked {
@@ -1083,7 +1416,8 @@ impl BigTextApp {
                                     d.temporary = true;
                                 }
                                 let prefix = d.reload_prefix.take();
-                                let follow_end = d.follow && (prefix.is_some() || std::mem::take(&mut d.reload_to_end));
+                                let follow_end = d.follow
+                                    && (prefix.is_some() || std::mem::take(&mut d.reload_to_end));
                                 if let Some(b) = d.banner_after_reload.take() {
                                     d.banner = Some(b);
                                 }
@@ -1100,7 +1434,8 @@ impl BigTextApp {
                                     d.pending_filter = r.filter.take();
                                     let len = d.buf.len();
                                     d.view.wrap = r.wrap;
-                                    d.bookmarks = r.bookmarks.into_iter().filter(|&b| b <= len).collect();
+                                    d.bookmarks =
+                                        r.bookmarks.into_iter().filter(|&b| b <= len).collect();
                                     match r.line {
                                         _ if r.select.is_some() => {
                                             let (s, e) = r.select.unwrap_or_default();
@@ -1130,11 +1465,16 @@ impl BigTextApp {
                             Err(e) if e == FOLDER => folder = d.path.clone(),
                             Err(e) => d.state = DocState::Failed(e),
                         }
-                    } else if let Ok(o) = result.as_ref().map(|o| (o.unpacked.is_some(), o.path.clone())) {
+                    } else if let Ok(o) = result
+                        .as_ref()
+                        .map(|o| (o.unpacked.is_some(), o.path.clone()))
+                    {
                         // The tab was closed while its file was being unpacked.
                         drop(result);
                         if o.0 {
-                            jobs::spawn("remove-unpacked", move || bigtext::decompress::remove_temp(&o.1));
+                            jobs::spawn("remove-unpacked", move || {
+                                bigtext::decompress::remove_temp(&o.1)
+                            });
                         }
                     }
                     // A folder: its tab goes, the side bar shows it.
@@ -1143,15 +1483,38 @@ impl BigTextApp {
                         self.open_folder(dir);
                     }
                 }
-                Msg::Found { doc, version, found, wrapped } => self.on_found(doc, version, found, wrapped),
+                Msg::Found {
+                    doc,
+                    version,
+                    found,
+                    wrapped,
+                } => self.on_found(doc, version, found, wrapped),
                 Msg::TempWritten(tw) => self.on_temp_written(*tw),
                 Msg::Finalized(f) => self.on_finalized(*f),
                 Msg::JobFailed { doc, msg } => self.on_job_failed(doc, msg),
-                Msg::ReplaceBatch { doc, version, add_len, pieces, add, count } => self.on_replace_batch(doc, version, add_len, pieces, add, count),
-                Msg::ReplaceTooMany { doc, version, matcher, template, range } => self.on_replace_too_many(doc, version, matcher, template, range),
+                Msg::ReplaceBatch {
+                    doc,
+                    version,
+                    add_len,
+                    pieces,
+                    add,
+                    count,
+                } => self.on_replace_batch(doc, version, add_len, pieces, add, count),
+                Msg::ReplaceTooMany {
+                    doc,
+                    version,
+                    matcher,
+                    template,
+                    range,
+                } => self.on_replace_too_many(doc, version, matcher, template, range),
                 Msg::Preview { doc, items, lines } => self.preview = Some((doc, items, lines)),
                 Msg::LowSpace(l) => self.on_low_space(*l),
-                Msg::Journaled { doc, version, add_len, ok } => self.on_journaled(doc, version, add_len, ok),
+                Msg::Journaled {
+                    doc,
+                    version,
+                    add_len,
+                    ok,
+                } => self.on_journaled(doc, version, add_len, ok),
                 Msg::LinesRemoved(l) => self.on_lines_removed(*l),
                 Msg::OpenRequest(s) => {
                     self.apply_start(*s);
@@ -1159,10 +1522,17 @@ impl BigTextApp {
                     if let Some(ctx) = self.ctx_clone() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-                        ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(
+                            egui::UserAttentionType::Informational,
+                        ));
                     }
                 }
-                Msg::LinesTooMany { doc, version, sel, keep } => self.on_lines_too_many(doc, version, sel, keep),
+                Msg::LinesTooMany {
+                    doc,
+                    version,
+                    sel,
+                    keep,
+                } => self.on_lines_too_many(doc, version, sel, keep),
                 Msg::ArchiveListed(a) => {
                     let (doc, archive, members) = *a;
                     self.on_archive_listed(doc, archive, members);
@@ -1177,10 +1547,18 @@ impl BigTextApp {
                             d.reload_to_end = true;
                             d.banner_after_reload = Some(Banner::Rotated(c.rotated_to.clone()));
                             reload(d, &tx, &waker, false);
-                        } else if (d.follow || d.growing.is_some()) && c.grown && !c.deleted && !d.is_modified() && d.save_job.is_none() {
+                        } else if (d.follow || d.growing.is_some())
+                            && c.grown
+                            && !c.deleted
+                            && !d.is_modified()
+                            && d.save_job.is_none()
+                        {
                             reload(d, &tx, &waker, true);
                         } else if d.is_ready() {
-                            d.banner = Some(Banner::ChangedOnDisk { deleted: c.deleted, grown: c.grown });
+                            d.banner = Some(Banner::ChangedOnDisk {
+                                deleted: c.deleted,
+                                grown: c.grown,
+                            });
                         }
                     }
                 }
@@ -1206,7 +1584,11 @@ impl BigTextApp {
                 Msg::TaskDone { id, outcome } => self.on_task_done(id, outcome),
                 Msg::TextOp(r) => self.on_text_op(*r),
                 Msg::CsvRewritten(c) => self.on_csv_rewritten(*c),
-                Msg::TimeFound { doc, version, result } => self.on_time_found(doc, version, result),
+                Msg::TimeFound {
+                    doc,
+                    version,
+                    result,
+                } => self.on_time_found(doc, version, result),
                 Msg::Aligned(a) => self.on_aligned(*a),
                 Msg::JsonCrumb(m) => self.on_json_crumb(*m),
                 Msg::Folds(m) => self.on_folds(*m),
@@ -1220,7 +1602,12 @@ impl BigTextApp {
         }
     }
 
-    fn on_time_found(&mut self, doc: u64, version: u64, result: Result<u64, bigtext::timestamp::TimeError>) {
+    fn on_time_found(
+        &mut self,
+        doc: u64,
+        version: u64,
+        result: Result<u64, bigtext::timestamp::TimeError>,
+    ) {
         let Some(g) = &mut self.goto else { return };
         if g.busy.take().is_none() {
             return;
@@ -1232,7 +1619,10 @@ impl BigTextApp {
                     d.goto_offset(off);
                 }
             }
-            Err(bigtext::timestamp::TimeError::NoTimestamps) => g.error = Some(i18n::tr("No timestamps found at the start of the file's lines.").into()),
+            Err(bigtext::timestamp::TimeError::NoTimestamps) => {
+                g.error =
+                    Some(i18n::tr("No timestamps found at the start of the file's lines.").into())
+            }
             Err(bigtext::timestamp::TimeError::Cancelled) => {}
         }
     }
@@ -1242,11 +1632,18 @@ impl BigTextApp {
         let (tx, waker) = (self.tx.clone(), self.waker.clone());
         let Some(d) = self.doc_mut(u.doc).filter(|d| d.growing.is_some()) else {
             // The tab was closed meanwhile.
-            jobs::spawn("remove-unpacked", move || bigtext::decompress::remove_temp(&u.temp));
+            jobs::spawn("remove-unpacked", move || {
+                bigtext::decompress::remove_temp(&u.temp)
+            });
             return;
         };
         d.growing = None;
-        let name = d.unpacked_from.as_deref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = d
+            .unpacked_from
+            .as_deref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let banner = match u.result {
             Ok(Some(n)) => {
                 if d.buf.len() != n && !d.reloading {
@@ -1254,7 +1651,10 @@ impl BigTextApp {
                 }
                 i18n::trf("Unpacked copy of {name} ({size}), read-only. To keep changes, turn off Edit → Read-only and use Save As.", &[("name", &name), ("size", &human_bytes(n))])
             }
-            Ok(None) => i18n::trf("Unpacking was cancelled; the first {size} of {name} are shown.", &[("size", &human_bytes(d.buf.len())), ("name", &name)]),
+            Ok(None) => i18n::trf(
+                "Unpacking was cancelled; the first {size} of {name} are shown.",
+                &[("size", &human_bytes(d.buf.len())), ("name", &name)],
+            ),
             Err(e) => e,
         };
         if d.reloading {
@@ -1269,11 +1669,16 @@ impl BigTextApp {
     }
 
     pub(crate) fn close_tab(&mut self, id: u64, force: bool) {
-        let Some(i) = self.docs.iter().position(|d| d.id == id) else { return };
+        let Some(i) = self.docs.iter().position(|d| d.id == id) else {
+            return;
+        };
         if !force && self.docs[i].is_modified() {
             self.confirm = Some(Confirm {
                 title: i18n::tr("Unsaved changes").into(),
-                message: i18n::trf("“{name}” has unsaved changes. Close it anyway?", &[("name", &self.docs[i].title)]),
+                message: i18n::trf(
+                    "“{name}” has unsaved changes. Close it anyway?",
+                    &[("name", &self.docs[i].title)],
+                ),
                 action: ConfirmAction::CloseTab(id),
                 checkbox: None,
             });
@@ -1293,7 +1698,9 @@ impl BigTextApp {
         }
         if let (Some(temp), true) = (d.path.clone(), d.temporary) {
             drop(d);
-            jobs::spawn("remove-unpacked", move || bigtext::decompress::remove_temp(&temp));
+            jobs::spawn("remove-unpacked", move || {
+                bigtext::decompress::remove_temp(&temp)
+            });
         }
         if self.docs.is_empty() {
             self.new_doc();
@@ -1303,20 +1710,32 @@ impl BigTextApp {
     }
 
     fn start_copy_job(&mut self, id: u64, cut: bool) {
-        let Some(d) = self.docs.iter().find(|d| d.id == id) else { return };
+        let Some(d) = self.docs.iter().find(|d| d.id == id) else {
+            return;
+        };
         let (s, e) = d.selection();
         let snap = d.buf.snapshot();
         let tx = self.tx.clone();
         let waker = self.waker.clone();
         jobs::spawn("copy", move || {
-            let result = snap.read(s..e).map(|b| snap.codec.decode_lossy(&b)).ok_or_else(|| i18n::tr("Could not read the selection").to_string());
-            let _ = tx.send(Msg::Copied { doc: id, result, cut });
+            let result = snap
+                .read(s..e)
+                .map(|b| snap.codec.decode_lossy(&b))
+                .ok_or_else(|| i18n::tr("Could not read the selection").to_string());
+            let _ = tx.send(Msg::Copied {
+                doc: id,
+                result,
+                cut,
+            });
             waker();
         });
     }
 
     fn open_dialog(&mut self) {
-        if let Some(files) = rfd::FileDialog::new().set_title(i18n::tr("Open")).pick_files() {
+        if let Some(files) = rfd::FileDialog::new()
+            .set_title(i18n::tr("Open"))
+            .pick_files()
+        {
             for f in files {
                 self.open_path(f);
             }
@@ -1328,10 +1747,15 @@ impl BigTextApp {
 
     /// Opens the file again in `enc` (remembered for it), or detecting with `None`.
     fn reopen_with(&mut self, enc: Option<Encoding>) {
-        let Some(d) = self.docs.get_mut(self.active) else { return };
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
         let Some(path) = d.path.clone() else { return };
         if d.is_modified() {
-            self.error = Some(i18n::tr("Save or discard your changes before reopening with another encoding.").into());
+            self.error = Some(
+                i18n::tr("Save or discard your changes before reopening with another encoding.")
+                    .into(),
+            );
             return;
         }
         d.state = DocState::Loading;
@@ -1342,63 +1766,89 @@ impl BigTextApp {
     }
 
     fn banner(&mut self, ui: &mut egui::Ui) {
-        let Some(d) = self.docs.get_mut(self.active) else { return };
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
         if d.hex && d.banner == Some(Banner::Binary) {
             d.banner = None;
         }
         let Some(b) = d.banner.clone() else { return };
         let mut open_rotated: Option<PathBuf> = None;
-        egui::Frame::new().fill(ui.visuals().faint_bg_color).inner_margin(6.0).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                match &b {
-                    Banner::Binary => {
-                        ui.label(i18n::tr("This file looks binary."));
-                        if ui.button(i18n::tr("Switch to hex view")).clicked() {
-                            d.hex = true;
-                            d.banner = None;
-                        }
-                    }
-                    Banner::ChangedOnDisk { deleted, grown } => {
-                        ui.label(if *deleted {
-                            i18n::tr("The file was deleted or moved on disk.")
-                        } else if *grown {
-                            i18n::tr("The file grew on disk.")
-                        } else {
-                            i18n::tr("The file changed on disk.")
-                        });
-                        if !*deleted && ui.button(i18n::tr(if d.is_modified() { "Reload (discard edits)" } else { "Reload" })).clicked() {
-                            d.banner = None;
-                            reload(d, &self.tx, &self.waker, false);
-                            return;
-                        }
-                        if *grown && !*deleted && !d.is_modified() && ui.button(i18n::tr("Follow")).clicked() {
-                            d.banner = None;
-                            d.follow = true;
-                            reload(d, &self.tx, &self.waker, true);
-                            return;
-                        }
-                    }
-                    Banner::Rotated(to) => {
-                        ui.label(i18n::tr("The log was rotated; following the new file."));
-                        if let Some(p) = to {
-                            let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                            if ui.button(i18n::trf("Open {file}", &[("file", &name)])).on_hover_text(i18n::tr("The file the earlier lines most likely went to")).clicked() {
-                                open_rotated = Some(p.clone());
+        egui::Frame::new()
+            .fill(ui.visuals().faint_bg_color)
+            .inner_margin(6.0)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    match &b {
+                        Banner::Binary => {
+                            ui.label(i18n::tr("This file looks binary."));
+                            if ui.button(i18n::tr("Switch to hex view")).clicked() {
+                                d.hex = true;
+                                d.banner = None;
                             }
                         }
+                        Banner::ChangedOnDisk { deleted, grown } => {
+                            ui.label(if *deleted {
+                                i18n::tr("The file was deleted or moved on disk.")
+                            } else if *grown {
+                                i18n::tr("The file grew on disk.")
+                            } else {
+                                i18n::tr("The file changed on disk.")
+                            });
+                            if !*deleted
+                                && ui
+                                    .button(i18n::tr(if d.is_modified() {
+                                        "Reload (discard edits)"
+                                    } else {
+                                        "Reload"
+                                    }))
+                                    .clicked()
+                            {
+                                d.banner = None;
+                                reload(d, &self.tx, &self.waker, false);
+                                return;
+                            }
+                            if *grown
+                                && !*deleted
+                                && !d.is_modified()
+                                && ui.button(i18n::tr("Follow")).clicked()
+                            {
+                                d.banner = None;
+                                d.follow = true;
+                                reload(d, &self.tx, &self.waker, true);
+                                return;
+                            }
+                        }
+                        Banner::Rotated(to) => {
+                            ui.label(i18n::tr("The log was rotated; following the new file."));
+                            if let Some(p) = to {
+                                let name = p
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().into_owned())
+                                    .unwrap_or_default();
+                                if ui
+                                    .button(i18n::trf("Open {file}", &[("file", &name)]))
+                                    .on_hover_text(i18n::tr(
+                                        "The file the earlier lines most likely went to",
+                                    ))
+                                    .clicked()
+                                {
+                                    open_rotated = Some(p.clone());
+                                }
+                            }
+                        }
+                        Banner::Info(s) => {
+                            ui.label(s);
+                        }
+                        Banner::Error(s) => {
+                            ui.colored_label(ui.visuals().error_fg_color, s);
+                        }
                     }
-                    Banner::Info(s) => {
-                        ui.label(s);
+                    if ui.button(i18n::tr("Dismiss")).clicked() {
+                        d.banner = None;
                     }
-                    Banner::Error(s) => {
-                        ui.colored_label(ui.visuals().error_fg_color, s);
-                    }
-                }
-                if ui.button(i18n::tr("Dismiss")).clicked() {
-                    d.banner = None;
-                }
+                });
             });
-        });
         if let Some(p) = open_rotated {
             self.open_path(p);
         }
@@ -1466,13 +1916,21 @@ impl BigTextApp {
                             jobs::spawn("goto-time", move || {
                                 let result = bigtext::timestamp::find_time(&snap, st, &cancel);
                                 if !cancel.is_cancelled() {
-                                    let _ = tx.send(Msg::TimeFound { doc: id, version, result });
+                                    let _ = tx.send(Msg::TimeFound {
+                                        doc: id,
+                                        version,
+                                        result,
+                                    });
                                     waker();
                                 }
                             });
                         }
                     }
-                    None => g.error = Some(i18n::tr("Enter a time like 14:32:05 or 2024-05-01 14:32:05").into()),
+                    None => {
+                        g.error = Some(
+                            i18n::tr("Enter a time like 14:32:05 or 2024-05-01 14:32:05").into(),
+                        )
+                    }
                 }
             } else if submit && g.busy.is_none() {
                 match goto::parse(&g.text, g.mode == GotoMode::Offset) {
@@ -1549,14 +2007,23 @@ impl BigTextApp {
             let mut open = true;
             let mut jump = None;
             let same_doc = self.docs.get(self.active).map(|d| d.id) == Some(*doc);
-            egui::Window::new(i18n::trf("Replace preview (first {n})", &[("n", &items.len().to_string())])).open(&mut open).default_size([640.0, 400.0]).show(ctx, |ui| {
+            egui::Window::new(i18n::trf(
+                "Replace preview (first {n})",
+                &[("n", &items.len().to_string())],
+            ))
+            .open(&mut open)
+            .default_size([640.0, 400.0])
+            .show(ctx, |ui| {
                 if items.is_empty() {
                     ui.label(i18n::tr("No matches."));
                 }
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     egui::Grid::new("preview").striped(true).show(ui, |ui| {
                         for (i, (off, before, after)) in items.iter().enumerate() {
-                            if ui.link(format!("{}", lines.get(i).copied().unwrap_or(0))).clicked() {
+                            if ui
+                                .link(format!("{}", lines.get(i).copied().unwrap_or(0)))
+                                .clicked()
+                            {
                                 jump = Some(*off);
                             }
                             // ↵ and → exist in the monospace font only.
@@ -1589,9 +2056,13 @@ impl BigTextApp {
         }
 
         if self.show_about {
-            egui::Window::new(i18n::tr("About BigText")).open(&mut self.show_about).collapsible(false).resizable(false).show(ctx, |ui| {
-                about_contents(ui);
-            });
+            egui::Window::new(i18n::tr("About BigText"))
+                .open(&mut self.show_about)
+                .collapsible(false)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    about_contents(ui);
+                });
         }
     }
 
@@ -1616,22 +2087,61 @@ impl BigTextApp {
             (1, ConfirmAction::CopyLarge { doc, cut }) => self.start_copy_job(doc, cut),
             (1, ConfirmAction::Trash(path)) => self.trash_now(path),
             (1, ConfirmAction::ReplaceOnDisk { doc }) => self.replace_on_disk(doc, checked),
-            (1, ConfirmAction::DeleteColumns { doc, dialect, cols, on_disk }) => self.delete_columns(doc, dialect, cols, on_disk, checked),
-            (1, ConfirmAction::CsvRewrite { doc, dialect, rewrite, on_disk }) => self.rewrite_csv(doc, dialect, rewrite, on_disk, checked),
+            (
+                1,
+                ConfirmAction::DeleteColumns {
+                    doc,
+                    dialect,
+                    cols,
+                    on_disk,
+                },
+            ) => self.delete_columns(doc, dialect, cols, on_disk, checked),
+            (
+                1,
+                ConfirmAction::CsvRewrite {
+                    doc,
+                    dialect,
+                    rewrite,
+                    on_disk,
+                },
+            ) => self.rewrite_csv(doc, dialect, rewrite, on_disk, checked),
             (1, ConfirmAction::LowSpace(l)) => self.resume(l.resume, false),
-            (1, ConfirmAction::LinesOnDisk { doc, sel, keep }) => self.lines_on_disk(doc, sel, keep, checked),
-            (1, ConfirmAction::ColumnEditOnDisk { doc, from, cells, gen }) => self.column_edit_on_disk(doc, from, cells, gen, checked),
+            (1, ConfirmAction::LinesOnDisk { doc, sel, keep }) => {
+                self.lines_on_disk(doc, sel, keep, checked)
+            }
+            (
+                1,
+                ConfirmAction::ColumnEditOnDisk {
+                    doc,
+                    from,
+                    cells,
+                    gen,
+                },
+            ) => self.column_edit_on_disk(doc, from, cells, gen, checked),
             (1, ConfirmAction::SortOnDisk { doc, spec, eol }) => {
-                if let Some(path) = self.docs.iter().find(|d| d.id == doc).and_then(|d| d.path.clone()) {
+                if let Some(path) = self
+                    .docs
+                    .iter()
+                    .find(|d| d.id == doc)
+                    .and_then(|d| d.path.clone())
+                {
                     self.start_write(doc, path, ops::WriteSpec::Sort { spec, eol }, checked);
                 }
             }
             (1, ConfirmAction::TextOpOnDisk { doc, op, range }) => {
-                if let Some(path) = self.docs.iter().find(|d| d.id == doc).and_then(|d| d.path.clone()) {
+                if let Some(path) = self
+                    .docs
+                    .iter()
+                    .find(|d| d.id == doc)
+                    .and_then(|d| d.path.clone())
+                {
                     self.start_write(doc, path, ops::WriteSpec::TextOp { op, range }, checked);
                 }
             }
-            (3, ConfirmAction::LowSpace(l)) => match rfd::FileDialog::new().set_title(i18n::tr("Folder for unpacked copies")).pick_folder() {
+            (3, ConfirmAction::LowSpace(l)) => match rfd::FileDialog::new()
+                .set_title(i18n::tr("Folder for unpacked copies"))
+                .pick_folder()
+            {
                 Some(dir) => {
                     self.set_unpack_folder(Some(dir));
                     self.resume(l.resume, true);
@@ -1656,37 +2166,48 @@ impl BigTextApp {
             return;
         }
         let d = self.docs.get(self.active);
-        egui::Area::new(egui::Id::new("perf")).anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-20.0, -40.0)).show(ctx, |ui| {
-            egui::Frame::popup(ui.style()).show(ui, |ui| {
-                ui.monospace(format!(
-                    "frame {:.2} ms  avg {:.2}  max {:.2}",
-                    self.frame.last_ms,
-                    self.frame.avg(),
-                    self.frame.max()
-                ));
-                if let Some(p) = bigtext::sysinfo::private_bytes() {
-                    ui.monospace(format!("private memory {}", human_bytes(p)));
-                }
-                if let Some(d) = d {
+        egui::Area::new(egui::Id::new("perf"))
+            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-20.0, -40.0))
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.monospace(format!(
-                        "index {} ({:.4}% of file)  pieces {}",
-                        human_bytes(d.buf.index.memory_bytes() as u64),
-                        d.buf.index.memory_bytes() as f64 * 100.0 / d.buf.len().max(1) as f64,
-                        d.buf.pieces().len()
+                        "frame {:.2} ms  avg {:.2}  max {:.2}",
+                        self.frame.last_ms,
+                        self.frame.avg(),
+                        self.frame.max()
                     ));
-                    if let (Some(o), Some(fp)) = (d.open_elapsed, d.view.first_paint) {
-                        ui.monospace(format!("open {:.1} ms, first paint {:.1} ms", o.as_secs_f64() * 1e3, fp.duration_since(d.opened_at).as_secs_f64() * 1e3));
+                    if let Some(p) = bigtext::sysinfo::private_bytes() {
+                        ui.monospace(format!("private memory {}", human_bytes(p)));
                     }
-                }
-                if let Some(f) = self.first_frame {
-                    ui.monospace(format!("startup → first frame {:.1} ms", f.as_secs_f64() * 1e3));
-                }
+                    if let Some(d) = d {
+                        ui.monospace(format!(
+                            "index {} ({:.4}% of file)  pieces {}",
+                            human_bytes(d.buf.index.memory_bytes() as u64),
+                            d.buf.index.memory_bytes() as f64 * 100.0 / d.buf.len().max(1) as f64,
+                            d.buf.pieces().len()
+                        ));
+                        if let (Some(o), Some(fp)) = (d.open_elapsed, d.view.first_paint) {
+                            ui.monospace(format!(
+                                "open {:.1} ms, first paint {:.1} ms",
+                                o.as_secs_f64() * 1e3,
+                                fp.duration_since(d.opened_at).as_secs_f64() * 1e3
+                            ));
+                        }
+                    }
+                    if let Some(f) = self.first_frame {
+                        ui.monospace(format!(
+                            "startup → first frame {:.1} ms",
+                            f.as_secs_f64() * 1e3
+                        ));
+                    }
+                });
             });
-        });
     }
 
     fn writes_in_progress(&self) -> bool {
-        self.docs.iter().any(|d| d.save_job.is_some() || matches!(d.state, DocState::Finalizing(_)))
+        self.docs
+            .iter()
+            .any(|d| d.save_job.is_some() || matches!(d.state, DocState::Finalizing(_)))
     }
 
     fn handle_close_request(&mut self, ctx: &egui::Context) {
@@ -1701,7 +2222,8 @@ impl BigTextApp {
             // atomic swap before the process exits.
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             for d in &self.docs {
-                if let (Some(j), false) = (&d.save_job, matches!(d.state, DocState::Finalizing(_))) {
+                if let (Some(j), false) = (&d.save_job, matches!(d.state, DocState::Finalizing(_)))
+                {
                     j.cancel.cancel();
                 }
             }
@@ -1714,7 +2236,10 @@ impl BigTextApp {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 self.confirm = Some(Confirm {
                     title: i18n::tr("Unsaved changes").into(),
-                    message: i18n::trf("{n} document(s) have unsaved changes. Exit and discard them?", &[("n", &n.to_string())]),
+                    message: i18n::trf(
+                        "{n} document(s) have unsaved changes. Exit and discard them?",
+                        &[("n", &n.to_string())],
+                    ),
                     action: ConfirmAction::Exit,
                     checkbox: None,
                 });
@@ -1737,7 +2262,11 @@ impl BigTextApp {
 /// Turns the split view on (second pane starts at the same position) or off.
 pub(super) fn toggle_split(d: &mut Document) {
     if d.split.take().is_none() {
-        d.split = Some(document::PaneView { top: d.view.top, scroll_x: d.view.scroll_x, ..Default::default() });
+        d.split = Some(document::PaneView {
+            top: d.view.top,
+            scroll_x: d.view.scroll_x,
+            ..Default::default()
+        });
     }
     d.active_pane = 0;
 }
@@ -1777,15 +2306,30 @@ pub(super) fn watch(d: &mut Document, tx: Sender<Msg>, waker: Waker) {
                 }
             };
             let deleted = missing >= 2;
-            let file = if deleted { None } else { bigtext::file::file_id(&path) };
+            let file = if deleted {
+                None
+            } else {
+                bigtext::file::file_id(&path)
+            };
             let rotated = matches!((id0, file), (Some(a), Some(b)) if a != b);
             let shrunk = !deleted && len < len0;
             let changed = deleted || rotated || len != len0 || mtime != mtime0;
             let state = (deleted, rotated, len, mtime);
             if changed && last != Some(state) {
                 last = Some(state);
-                let rotated_to = if rotated || shrunk { bigtext::file::rotated_sibling(&path, std::time::SystemTime::now()) } else { None };
-                let c = FileChange { doc: id, deleted, grown: !deleted && !rotated && len > len0, shrunk, rotated, rotated_to };
+                let rotated_to = if rotated || shrunk {
+                    bigtext::file::rotated_sibling(&path, std::time::SystemTime::now())
+                } else {
+                    None
+                };
+                let c = FileChange {
+                    doc: id,
+                    deleted,
+                    grown: !deleted && !rotated && len > len0,
+                    shrunk,
+                    rotated,
+                    rotated_to,
+                };
                 let _ = tx.send(Msg::FileChanged(Box::new(c)));
                 waker();
             }
@@ -1796,7 +2340,14 @@ pub(super) fn watch(d: &mut Document, tx: Sender<Msg>, waker: Waker) {
 /// Following reads a file in chunks rather than mapped: the writer can then truncate it
 /// (copytruncate rotation) on Windows, and a shrinking file cannot fault the process on Unix.
 pub(super) fn follow_chunked(d: &mut Document, tx: &Sender<Msg>, waker: &Waker) {
-    if d.follow && d.is_ready() && d.buf.source.is_mmap() && !d.reloading && !d.temporary && !d.is_modified() && d.save_job.is_none() {
+    if d.follow
+        && d.is_ready()
+        && d.buf.source.is_mmap()
+        && !d.reloading
+        && !d.temporary
+        && !d.is_modified()
+        && d.save_job.is_none()
+    {
         reload(d, tx, waker, true);
     }
 }
@@ -1805,12 +2356,20 @@ pub(super) fn follow_chunked(d: &mut Document, tx: &Sender<Msg>, waker: &Waker) 
 /// the existing line index is carried over and indexing resumes where it stopped.
 pub(super) fn reload(d: &mut Document, tx: &Sender<Msg>, waker: &Waker, append: bool) {
     let Some(path) = d.path.clone() else { return };
-    d.reload_prefix = if append { Some(d.buf.index.prefix_checkpoints(d.buf.source.len())) } else { None };
+    d.reload_prefix = if append {
+        Some(d.buf.index.prefix_checkpoints(d.buf.source.len()))
+    } else {
+        None
+    };
     let enc = d.buf.codec.enc;
     let id = d.id;
     let tx = tx.clone();
     let waker = waker.clone();
-    let mode = if d.follow || d.growing.is_some() { OpenMode::Chunked } else { OpenMode::Auto };
+    let mode = if d.follow || d.growing.is_some() {
+        OpenMode::Chunked
+    } else {
+        OpenMode::Auto
+    };
     d.reloading = true;
     jobs::spawn("reload", move || {
         let result = open_worker(&path, Some(enc), mode);
@@ -1823,37 +2382,55 @@ thread_local! {
     static CTX: std::cell::RefCell<Option<egui::Context>> = const { std::cell::RefCell::new(None) };
 }
 
-
 /// Author and project links shown in Help > About.
 pub const AUTHOR: &str = "Erkin Pardayev";
 pub const AUTHOR_LINKS: &[(&str, &str, &str)] = &[
-    ("GitHub", "github.com/Erkinbek", "https://github.com/Erkinbek"),
-    ("Repository", "github.com/Erkinbek/bigtext", "https://github.com/Erkinbek/bigtext"),
+    (
+        "GitHub",
+        "github.com/Erkinbek",
+        "https://github.com/Erkinbek",
+    ),
+    (
+        "Repository",
+        "github.com/Erkinbek/bigtext",
+        "https://github.com/Erkinbek/bigtext",
+    ),
     ("Telegram", "@ErkinPardayev", "https://t.me/ErkinPardayev"),
-    ("E-mail", "erkin.pardayev@gmail.com", "mailto:erkin.pardayev@gmail.com"),
+    (
+        "E-mail",
+        "erkin.pardayev@gmail.com",
+        "mailto:erkin.pardayev@gmail.com",
+    ),
 ];
 
 fn about_contents(ui: &mut egui::Ui) {
     ui.vertical_centered(|ui| {
         ui.heading("BigText");
-        ui.label(i18n::trf("Version {v}", &[("v", env!("CARGO_PKG_VERSION"))]));
+        ui.label(i18n::trf(
+            "Version {v}",
+            &[("v", env!("CARGO_PKG_VERSION"))],
+        ));
         ui.label(i18n::tr("A fast, non-freezing large-file text editor."));
     });
     ui.separator();
-    egui::Grid::new("author").num_columns(2).spacing([16.0, 6.0]).show(ui, |ui| {
-        ui.strong(i18n::tr("Author"));
-        ui.label(AUTHOR);
-        ui.end_row();
-        for (label, text, url) in AUTHOR_LINKS {
-            ui.strong(i18n::tr(label));
-            ui.hyperlink_to(*text, *url);
+    egui::Grid::new("author")
+        .num_columns(2)
+        .spacing([16.0, 6.0])
+        .show(ui, |ui| {
+            ui.strong(i18n::tr("Author"));
+            ui.label(AUTHOR);
             ui.end_row();
-        }
-    });
+            for (label, text, url) in AUTHOR_LINKS {
+                ui.strong(i18n::tr(label));
+                ui.hyperlink_to(*text, *url);
+                ui.end_row();
+            }
+        });
     ui.separator();
-    ui.small(i18n::tr("Licensed under the MIT license. Built with Rust and egui."));
+    ui.small(i18n::tr(
+        "Licensed under the MIT license. Built with Rust and egui.",
+    ));
 }
-
 
 impl BigTextApp {
     pub(crate) fn test_has_confirm(&self) -> bool {
@@ -1926,7 +2503,13 @@ impl eframe::App for BigTextApp {
         fonts::refresh(&ctx, self.settings.font_path.as_deref());
 
         // Dropped files.
-        let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
+        let dropped: Vec<PathBuf> = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .map(|f| f.path().to_path_buf())
+                .collect()
+        });
         for p in dropped {
             self.open_path(p);
         }
@@ -1943,11 +2526,32 @@ impl eframe::App for BigTextApp {
         self.update_tick();
         self.welcome_tick();
         self.theme_tick(&ctx);
-        let modal_open = self.run_cmd.open || self.goto.is_some() || self.clips.open.is_some() || self.switcher.is_some() || self.files.open || self.export.is_open() || self.csv.rename.is_some() || self.palette.is_some() || self.quick_open.is_some() || self.file_ops.dialog.is_some() || self.remote.open || self.symbols_open() || self.shortcuts_ui.capturing.is_some() || self.confirm.is_some() || self.error.is_some() || self.update.dialog_open() || self.welcome.whats_new.is_some();
+        let modal_open = self.run_cmd.open
+            || self.goto.is_some()
+            || self.clips.open.is_some()
+            || self.switcher.is_some()
+            || self.files.open
+            || self.export.is_open()
+            || self.csv.rename.is_some()
+            || self.palette.is_some()
+            || self.quick_open.is_some()
+            || self.file_ops.dialog.is_some()
+            || self.remote.open
+            || self.symbols_open()
+            || self.shortcuts_ui.capturing.is_some()
+            || self.confirm.is_some()
+            || self.error.is_some()
+            || self.update.dialog_open()
+            || self.welcome.whats_new.is_some();
         if !modal_open {
             self.shortcuts(&ctx);
             // The mouse's back and forward buttons.
-            let (back, forward) = ctx.input(|i| (i.pointer.button_pressed(egui::PointerButton::Extra1), i.pointer.button_pressed(egui::PointerButton::Extra2)));
+            let (back, forward) = ctx.input(|i| {
+                (
+                    i.pointer.button_pressed(egui::PointerButton::Extra1),
+                    i.pointer.button_pressed(egui::PointerButton::Extra2),
+                )
+            });
             if back {
                 self.nav_back();
             }
@@ -1987,7 +2591,11 @@ impl eframe::App for BigTextApp {
             // The status bar under everything, the side bar beside the tabs and the text.
             egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
             if self.folder.visible && self.folder.root.is_some() {
-                egui::Panel::left("folder").resizable(true).default_size(240.0).min_size(120.0).show(ui, |ui| self.folder_panel(ui));
+                egui::Panel::left("folder")
+                    .resizable(true)
+                    .default_size(240.0)
+                    .min_size(120.0)
+                    .show(ui, |ui| self.folder_panel(ui));
             }
             egui::Panel::top("tabs").show(ui, |ui| self.tab_bar(ui));
         }
@@ -1997,48 +2605,138 @@ impl eframe::App for BigTextApp {
         if self.level_bar_visible() && !zen {
             egui::Panel::top("levels").show(ui, |ui| self.level_bar(ui));
         }
-        if self.search.show_results && self.docs.get(self.active).is_some_and(|d| d.results.is_some()) {
-            egui::Panel::bottom("results").resizable(true).default_size(220.0).show(ui, |ui| self.results_panel(ui));
+        if self.search.show_results
+            && self
+                .docs
+                .get(self.active)
+                .is_some_and(|d| d.results.is_some())
+        {
+            egui::Panel::bottom("results")
+                .resizable(true)
+                .default_size(220.0)
+                .show(ui, |ui| self.results_panel(ui));
         }
-        if self.search.show_filter && self.docs.get(self.active).is_some_and(|d| d.filter.is_some()) {
-            egui::Panel::bottom("filter").resizable(true).default_size(260.0).show(ui, |ui| self.filter_panel(ui));
+        if self.search.show_filter
+            && self
+                .docs
+                .get(self.active)
+                .is_some_and(|d| d.filter.is_some())
+        {
+            egui::Panel::bottom("filter")
+                .resizable(true)
+                .default_size(260.0)
+                .show(ui, |ui| self.filter_panel(ui));
         }
         if self.files.results.is_some() {
-            egui::Panel::bottom("files").resizable(true).default_size(240.0).show(ui, |ui| self.files_panel(ui));
+            egui::Panel::bottom("files")
+                .resizable(true)
+                .default_size(240.0)
+                .show(ui, |ui| self.files_panel(ui));
         }
-        if self.timeline.open && self.docs.get(self.active).is_some_and(|d| d.timeline.is_some()) {
-            egui::Panel::bottom("timeline").resizable(true).default_size(170.0).show(ui, |ui| self.timeline_panel(ui));
+        if self.timeline.open
+            && self
+                .docs
+                .get(self.active)
+                .is_some_and(|d| d.timeline.is_some())
+        {
+            egui::Panel::bottom("timeline")
+                .resizable(true)
+                .default_size(170.0)
+                .show(ui, |ui| self.timeline_panel(ui));
         }
-        if self.json_diff.open && self.docs.get(self.active).is_some_and(|d| d.json_diff.is_some()) {
-            egui::Panel::bottom("json-diff").resizable(true).default_size(180.0).show(ui, |ui| self.json_diff_panel(ui));
+        if self.json_diff.open
+            && self
+                .docs
+                .get(self.active)
+                .is_some_and(|d| d.json_diff.is_some())
+        {
+            egui::Panel::bottom("json-diff")
+                .resizable(true)
+                .default_size(180.0)
+                .show(ui, |ui| self.json_diff_panel(ui));
         }
-        if self.json_check.open && self.docs.get(self.active).is_some_and(|d| d.json_check.is_some()) {
-            egui::Panel::bottom("json-check").resizable(true).default_size(160.0).show(ui, |ui| self.json_check_panel(ui));
+        if self.json_check.open
+            && self
+                .docs
+                .get(self.active)
+                .is_some_and(|d| d.json_check.is_some())
+        {
+            egui::Panel::bottom("json-check")
+                .resizable(true)
+                .default_size(160.0)
+                .show(ui, |ui| self.json_check_panel(ui));
         }
-        if self.chart.open && self.docs.get(self.active).is_some_and(|d| d.chart.is_some()) {
-            egui::Panel::bottom("chart").resizable(true).default_size(200.0).show(ui, |ui| self.chart_panel(ui));
+        if self.chart.open
+            && self
+                .docs
+                .get(self.active)
+                .is_some_and(|d| d.chart.is_some())
+        {
+            egui::Panel::bottom("chart")
+                .resizable(true)
+                .default_size(200.0)
+                .show(ui, |ui| self.chart_panel(ui));
         }
-        if self.problems.open && self.docs.get(self.active).is_some_and(|d| d.problems.is_some()) {
-            egui::Panel::bottom("problems").resizable(true).default_size(180.0).show(ui, |ui| self.problems_panel(ui));
+        if self.problems.open
+            && self
+                .docs
+                .get(self.active)
+                .is_some_and(|d| d.problems.is_some())
+        {
+            egui::Panel::bottom("problems")
+                .resizable(true)
+                .default_size(180.0)
+                .show(ui, |ui| self.problems_panel(ui));
         }
         if self.gaps.open && self.docs.get(self.active).is_some_and(|d| d.gaps.is_some()) {
-            egui::Panel::bottom("gaps").resizable(true).default_size(160.0).show(ui, |ui| self.gaps_panel(ui));
+            egui::Panel::bottom("gaps")
+                .resizable(true)
+                .default_size(160.0)
+                .show(ui, |ui| self.gaps_panel(ui));
         }
         if self.diff.is_some() {
-            egui::Panel::bottom("diff").resizable(true).default_size(200.0).show(ui, |ui| self.diff_panel(ui));
+            egui::Panel::bottom("diff")
+                .resizable(true)
+                .default_size(200.0)
+                .show(ui, |ui| self.diff_panel(ui));
         }
         if self.only_in.is_some() {
-            egui::Panel::bottom("only-in").resizable(true).default_size(220.0).show(ui, |ui| self.only_in_panel(ui));
+            egui::Panel::bottom("only-in")
+                .resizable(true)
+                .default_size(220.0)
+                .show(ui, |ui| self.only_in_panel(ui));
         }
-        if self.docs.get(self.active).is_some_and(|d| d.banner.is_some()) {
-            egui::Panel::top("banner").show_separator_line(false).show(ui, |ui| self.banner(ui));
+        if self
+            .docs
+            .get(self.active)
+            .is_some_and(|d| d.banner.is_some())
+        {
+            egui::Panel::top("banner")
+                .show_separator_line(false)
+                .show(ui, |ui| self.banner(ui));
         }
 
-        if self.json_open && self.docs.get(self.active).is_some_and(|d| d.is_ready() && !d.hex) {
-            egui::Panel::left("json").resizable(true).default_size(320.0).show(ui, |ui| self.json_panel(ui));
+        if self.json_open
+            && self
+                .docs
+                .get(self.active)
+                .is_some_and(|d| d.is_ready() && !d.hex)
+        {
+            egui::Panel::left("json")
+                .resizable(true)
+                .default_size(320.0)
+                .show(ui, |ui| self.json_panel(ui));
         }
-        if self.fields.open && self.docs.get(self.active).is_some_and(|d| d.is_ready() && !d.hex) {
-            egui::Panel::left("fields").resizable(true).default_size(300.0).show(ui, |ui| self.fields_panel(ui));
+        if self.fields.open
+            && self
+                .docs
+                .get(self.active)
+                .is_some_and(|d| d.is_ready() && !d.hex)
+        {
+            egui::Panel::left("fields")
+                .resizable(true)
+                .default_size(300.0)
+                .show(ui, |ui| self.fields_panel(ui));
         }
 
         // Over the empty document of a fresh start; typing goes on to the document below.
@@ -2052,9 +2750,15 @@ impl eframe::App for BigTextApp {
         let link_partner = self.linked_partner();
         let font_size = &mut self.settings.font_size;
         let syntax = self.settings.syntax;
-        let show_ws = text_view::ShowWs { text: self.settings.show_ws, code: self.settings.show_ws_code };
+        let show_ws = text_view::ShowWs {
+            text: self.settings.show_ws,
+            code: self.settings.show_ws_code,
+        };
         let show_gutter = self.settings.show_gutter;
-        let (wrap_column, ruler) = (self.settings.wrap_column.map(usize::from), self.settings.ruler.map(usize::from));
+        let (wrap_column, ruler) = (
+            self.settings.wrap_column.map(usize::from),
+            self.settings.ruler.map(usize::from),
+        );
         egui::CentralPanel::no_frame().show(ui, |ui| {
             // Two linked logs side by side; the right one follows and takes no keys.
             if let Some(pi) = link_partner {
@@ -2063,11 +2767,33 @@ impl eframe::App for BigTextApp {
                 let mid = full.center().x.round();
                 let left = egui::Rect::from_min_max(full.min, egui::pos2(mid - 2.0, full.bottom()));
                 let right = egui::Rect::from_min_max(egui::pos2(mid + 2.0, full.top()), full.max);
-                ui.painter().vline(mid, full.y_range(), ui.visuals().widgets.noninteractive.bg_stroke);
+                ui.painter().vline(
+                    mid,
+                    full.y_range(),
+                    ui.visuals().widgets.noninteractive.bg_stroke,
+                );
                 for (d, rect, focus) in [(a, left, !modal_open), (b, right, false)] {
-                    let lang = if syntax { d.effective_lang() } else { crate::view::highlight::Lang::Plain };
-                    let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus, lang, pane: 0, show_ws, show_gutter, wrap_column, ruler, diff: None };
-                    ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| text_view::show(ui, d, &mut env));
+                    let lang = if syntax {
+                        d.effective_lang()
+                    } else {
+                        crate::view::highlight::Lang::Plain
+                    };
+                    let mut env = text_view::ViewEnv {
+                        font_size: &mut *font_size,
+                        highlight: &hl,
+                        actions: &mut actions,
+                        focus,
+                        lang,
+                        pane: 0,
+                        show_ws,
+                        show_gutter,
+                        wrap_column,
+                        ruler,
+                        diff: None,
+                    };
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                        text_view::show(ui, d, &mut env)
+                    });
                 }
                 return;
             }
@@ -2075,38 +2801,107 @@ impl eframe::App for BigTextApp {
                 if d.hex && d.is_ready() {
                     hex_view::show(ui, d, *font_size, !modal_open);
                 } else if d.table && d.is_ready() {
-                    let mut env = table_view::TableEnv { font_size, focus: !modal_open, show_gutter, actions: &mut table_actions };
+                    let mut env = table_view::TableEnv {
+                        font_size,
+                        focus: !modal_open,
+                        show_gutter,
+                        actions: &mut table_actions,
+                    };
                     table_view::show(ui, d, &mut env);
                 } else {
-                    let lang = if syntax { d.effective_lang() } else { crate::view::highlight::Lang::Plain };
+                    let lang = if syntax {
+                        d.effective_lang()
+                    } else {
+                        crate::view::highlight::Lang::Plain
+                    };
                     let side = match &mut self.diff {
-                        Some(r) if self.side_by_side && r.doc == d.id && r.side.is_some() => Some(r),
+                        Some(r) if self.side_by_side && r.doc == d.id && r.side.is_some() => {
+                            Some(r)
+                        }
                         _ => None,
                     };
                     match (side, d.split.take()) {
                         (Some(r), split) => {
                             d.split = split;
-                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, show_gutter, wrap_column, ruler, diff: None };
+                            let mut env = text_view::ViewEnv {
+                                font_size,
+                                highlight: &hl,
+                                actions: &mut actions,
+                                focus: !modal_open,
+                                lang,
+                                pane: 0,
+                                show_ws,
+                                show_gutter,
+                                wrap_column,
+                                ruler,
+                                diff: None,
+                            };
                             extras::show_side_by_side(ui, d, r, &mut env);
                         }
                         (None, None) => {
-                            let mut env = text_view::ViewEnv { font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, show_gutter, wrap_column, ruler, diff: None };
+                            let mut env = text_view::ViewEnv {
+                                font_size,
+                                highlight: &hl,
+                                actions: &mut actions,
+                                focus: !modal_open,
+                                lang,
+                                pane: 0,
+                                show_ws,
+                                show_gutter,
+                                wrap_column,
+                                ruler,
+                                diff: None,
+                            };
                             text_view::show(ui, d, &mut env);
                         }
                         (None, Some(mut pane)) => {
                             // Two panes over the same document: independent scrolling, shared caret.
                             let full = ui.available_rect_before_wrap();
                             let mid = full.center().y;
-                            let top = egui::Rect::from_min_max(full.min, egui::pos2(full.right(), mid - 2.0));
-                            let bottom = egui::Rect::from_min_max(egui::pos2(full.left(), mid + 2.0), full.max);
-                            ui.painter().hline(full.x_range(), mid, ui.visuals().widgets.noninteractive.bg_stroke);
+                            let top = egui::Rect::from_min_max(
+                                full.min,
+                                egui::pos2(full.right(), mid - 2.0),
+                            );
+                            let bottom = egui::Rect::from_min_max(
+                                egui::pos2(full.left(), mid + 2.0),
+                                full.max,
+                            );
+                            ui.painter().hline(
+                                full.x_range(),
+                                mid,
+                                ui.visuals().widgets.noninteractive.bg_stroke,
+                            );
                             ui.scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
-                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 0, show_ws, show_gutter, wrap_column, ruler, diff: None };
+                                let mut env = text_view::ViewEnv {
+                                    font_size: &mut *font_size,
+                                    highlight: &hl,
+                                    actions: &mut actions,
+                                    focus: !modal_open,
+                                    lang,
+                                    pane: 0,
+                                    show_ws,
+                                    show_gutter,
+                                    wrap_column,
+                                    ruler,
+                                    diff: None,
+                                };
                                 text_view::show(ui, d, &mut env);
                             });
                             pane.swap_with(&mut d.view);
                             ui.scope_builder(egui::UiBuilder::new().max_rect(bottom), |ui| {
-                                let mut env = text_view::ViewEnv { font_size: &mut *font_size, highlight: &hl, actions: &mut actions, focus: !modal_open, lang, pane: 1, show_ws, show_gutter, wrap_column, ruler, diff: None };
+                                let mut env = text_view::ViewEnv {
+                                    font_size: &mut *font_size,
+                                    highlight: &hl,
+                                    actions: &mut actions,
+                                    focus: !modal_open,
+                                    lang,
+                                    pane: 1,
+                                    show_ws,
+                                    show_gutter,
+                                    wrap_column,
+                                    ruler,
+                                    diff: None,
+                                };
                                 text_view::show(ui, d, &mut env);
                             });
                             pane.swap_with(&mut d.view);
@@ -2120,7 +2915,11 @@ impl eframe::App for BigTextApp {
             self.on_table_action(a);
         }
         self.sync_link(&ctx);
-        if self.docs.get_mut(self.active).is_some_and(|d| std::mem::take(&mut d.table_state.layout_changed)) {
+        if self
+            .docs
+            .get_mut(self.active)
+            .is_some_and(|d| std::mem::take(&mut d.table_state.layout_changed))
+        {
             self.persist_state();
         }
         for a in actions {
@@ -2135,7 +2934,10 @@ impl eframe::App for BigTextApp {
                         if len > 100 * 1024 * 1024 {
                             self.confirm = Some(Confirm {
                                 title: i18n::tr("Large copy").into(),
-                                message: i18n::trf("Copy {size} to the clipboard? This needs that much memory.", &[("size", &human_bytes(len))]),
+                                message: i18n::trf(
+                                    "Copy {size} to the clipboard? This needs that much memory.",
+                                    &[("size", &human_bytes(len))],
+                                ),
                                 action: ConfirmAction::CopyLarge { doc: id, cut },
                                 checkbox: None,
                             });
@@ -2190,7 +2992,11 @@ impl eframe::App for BigTextApp {
         self.record_copies(&ctx);
 
         let title = match self.docs.get(self.active) {
-            Some(d) => format!("{}{} — BigText", d.title, if d.is_modified() { " ●" } else { "" }),
+            Some(d) => format!(
+                "{}{} — BigText",
+                d.title,
+                if d.is_modified() { " ●" } else { "" }
+            ),
             None => "BigText".into(),
         };
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
@@ -2236,7 +3042,12 @@ impl eframe::App for BigTextApp {
         notify::hide();
         self.apply_update_on_exit();
         // Unpacked copies are deleted once nothing maps them any more.
-        let temps: Vec<PathBuf> = self.docs.iter().filter(|d| d.temporary).filter_map(|d| d.path.clone()).collect();
+        let temps: Vec<PathBuf> = self
+            .docs
+            .iter()
+            .filter(|d| d.temporary)
+            .filter_map(|d| d.path.clone())
+            .collect();
         if !temps.is_empty() {
             for d in &mut self.docs {
                 d.cancel_jobs();

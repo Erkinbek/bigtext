@@ -61,13 +61,23 @@ pub struct FilesUi {
 
 impl Default for FilesUi {
     fn default() -> Self {
-        FilesUi { open: false, dir: String::new(), names: "*.log *.txt".into(), recursive: true, results: None, current: None, focus: false }
+        FilesUi {
+            open: false,
+            dir: String::new(),
+            names: "*.log *.txt".into(),
+            recursive: true,
+            results: None,
+            current: None,
+            focus: false,
+        }
     }
 }
 
 impl FilesUi {
     pub fn is_running(&self) -> bool {
-        self.results.as_ref().is_some_and(|r| !r.data.lock().unwrap().done)
+        self.results
+            .as_ref()
+            .is_some_and(|r| !r.data.lock().unwrap().done)
     }
 }
 
@@ -103,7 +113,17 @@ struct Job {
 }
 
 fn search_job(job: Job) {
-    let Job { dir, names, recursive, mut matchers, open, data, cancel, progress, waker } = job;
+    let Job {
+        dir,
+        names,
+        recursive,
+        mut matchers,
+        open,
+        data,
+        cancel,
+        progress,
+        waker,
+    } = job;
     let started = Instant::now();
     let files = match find_files::list_files(&dir, &names, recursive, &cancel) {
         Ok(f) => f,
@@ -199,7 +219,12 @@ impl BigTextApp {
             self.files.dir = bigtext::file::display_path(root);
         }
         if self.files.dir.is_empty() {
-            if let Some(dir) = self.docs.get(self.active).and_then(|d| d.unpacked_from.as_deref().or(d.path.as_deref())).and_then(Path::parent) {
+            if let Some(dir) = self
+                .docs
+                .get(self.active)
+                .and_then(|d| d.unpacked_from.as_deref().or(d.path.as_deref()))
+                .and_then(Path::parent)
+            {
                 self.files.dir = bigtext::file::display_path(dir);
             }
         }
@@ -224,15 +249,39 @@ impl BigTextApp {
             r.cancel.cancel();
         }
         self.search.remember();
-        let open: Vec<(PathBuf, TextBuf)> = self.docs.iter().filter(|d| d.is_ready() && !d.temporary).filter_map(|d| Some((d.path.clone()?, d.buf.snapshot()))).collect();
+        let open: Vec<(PathBuf, TextBuf)> = self
+            .docs
+            .iter()
+            .filter(|d| d.is_ready() && !d.temporary)
+            .filter_map(|d| Some((d.path.clone()?, d.buf.snapshot())))
+            .collect();
         let data = Arc::new(Mutex::new(FilesData::default()));
         let (cancel, progress) = (CancelToken::new(), Progress::default());
-        self.files.results = Some(FilesResults { query: query.clone(), dir: dir.clone(), data: data.clone(), cancel: cancel.clone(), progress: progress.clone() });
+        self.files.results = Some(FilesResults {
+            query: query.clone(),
+            dir: dir.clone(),
+            data: data.clone(),
+            cancel: cancel.clone(),
+            progress: progress.clone(),
+        });
         self.files.open = false;
         let names = find_files::patterns(&self.files.names);
         let recursive = self.files.recursive;
         let waker = self.waker.clone();
-        let job = Job { dir, names, recursive, matchers: Matchers { query, built: Vec::new() }, open, data, cancel, progress, waker };
+        let job = Job {
+            dir,
+            names,
+            recursive,
+            matchers: Matchers {
+                query,
+                built: Vec::new(),
+            },
+            open,
+            data,
+            cancel,
+            progress,
+            waker,
+        };
         jobs::spawn("find-in-files", move || search_job(job));
     }
 
@@ -245,7 +294,11 @@ impl BigTextApp {
             let Some((f, h)) = g.hits.get(i) else { return };
             (g.files[*f].clone(), h.start, h.end)
         };
-        match self.docs.iter().position(|d| d.path.as_deref().is_some_and(|p| same_path(p, &path))) {
+        match self
+            .docs
+            .iter()
+            .position(|d| d.path.as_deref().is_some_and(|p| same_path(p, &path)))
+        {
             Some(k) if self.docs[k].is_ready() => {
                 self.active = k;
                 let d = &mut self.docs[k];
@@ -260,7 +313,10 @@ impl BigTextApp {
                         d.select(start, end);
                         d.view.center();
                     } else {
-                        d.restore = Some(Restore { select: Some((start, end)), ..Default::default() });
+                        d.restore = Some(Restore {
+                            select: Some((start, end)),
+                            ..Default::default()
+                        });
                     }
                 }
             }
@@ -274,56 +330,76 @@ impl BigTextApp {
         let mut open = true;
         let mut go = false;
         let mut close = false;
-        egui::Window::new(tr("Find in files")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
-            egui::Grid::new("find-in-files").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
-                ui.label(tr("Find"));
+        egui::Window::new(tr("Find in files"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                egui::Grid::new("find-in-files")
+                    .num_columns(2)
+                    .spacing([8.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label(tr("Find"));
+                        ui.horizontal(|ui| {
+                            let r = ui.add(
+                                TextEdit::singleline(&mut self.search.query.pattern)
+                                    .desired_width(300.0)
+                                    .hint_text(tr("text or regex"))
+                                    .font(egui::TextStyle::Monospace),
+                            );
+                            if self.files.focus {
+                                r.request_focus();
+                                self.files.focus = false;
+                            }
+                            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                go = true;
+                            }
+                            let q = &mut self.search.query;
+                            ui.toggle_value(&mut q.case_sensitive, RichText::new("Aa").monospace())
+                                .on_hover_text(tr("Case sensitive"));
+                            ui.toggle_value(&mut q.whole_word, RichText::new("W").monospace())
+                                .on_hover_text(tr("Whole word"));
+                            ui.toggle_value(&mut q.regex, RichText::new(".*").monospace())
+                                .on_hover_text(tr("Regular expression (linear time)"));
+                        });
+                        ui.end_row();
+                        ui.label(tr("Folder"));
+                        ui.horizontal(|ui| {
+                            ui.add(TextEdit::singleline(&mut self.files.dir).desired_width(300.0));
+                            if ui.button(tr("Browse…")).clicked() {
+                                let mut dlg = rfd::FileDialog::new().set_title(tr("Folder"));
+                                if !self.files.dir.is_empty() {
+                                    dlg = dlg.set_directory(&self.files.dir);
+                                }
+                                if let Some(d) = dlg.pick_folder() {
+                                    self.files.dir = bigtext::file::display_path(&d);
+                                }
+                            }
+                        });
+                        ui.end_row();
+                        ui.label(tr("File names"));
+                        ui.add(
+                            TextEdit::singleline(&mut self.files.names)
+                                .desired_width(300.0)
+                                .hint_text(tr("*.log *.txt (empty: all files)")),
+                        );
+                        ui.end_row();
+                        ui.label("");
+                        ui.checkbox(&mut self.files.recursive, tr("Include sub-folders"));
+                        ui.end_row();
+                    });
+                ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    let r = ui.add(TextEdit::singleline(&mut self.search.query.pattern).desired_width(300.0).hint_text(tr("text or regex")).font(egui::TextStyle::Monospace));
-                    if self.files.focus {
-                        r.request_focus();
-                        self.files.focus = false;
-                    }
-                    if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    let ok =
+                        !self.search.query.pattern.is_empty() && !self.files.dir.trim().is_empty();
+                    if ui.add_enabled(ok, egui::Button::new(tr("Find"))).clicked() {
                         go = true;
                     }
-                    let q = &mut self.search.query;
-                    ui.toggle_value(&mut q.case_sensitive, RichText::new("Aa").monospace()).on_hover_text(tr("Case sensitive"));
-                    ui.toggle_value(&mut q.whole_word, RichText::new("W").monospace()).on_hover_text(tr("Whole word"));
-                    ui.toggle_value(&mut q.regex, RichText::new(".*").monospace()).on_hover_text(tr("Regular expression (linear time)"));
-                });
-                ui.end_row();
-                ui.label(tr("Folder"));
-                ui.horizontal(|ui| {
-                    ui.add(TextEdit::singleline(&mut self.files.dir).desired_width(300.0));
-                    if ui.button(tr("Browse…")).clicked() {
-                        let mut dlg = rfd::FileDialog::new().set_title(tr("Folder"));
-                        if !self.files.dir.is_empty() {
-                            dlg = dlg.set_directory(&self.files.dir);
-                        }
-                        if let Some(d) = dlg.pick_folder() {
-                            self.files.dir = bigtext::file::display_path(&d);
-                        }
+                    if ui.button(tr("Cancel")).clicked() {
+                        close = true;
                     }
                 });
-                ui.end_row();
-                ui.label(tr("File names"));
-                ui.add(TextEdit::singleline(&mut self.files.names).desired_width(300.0).hint_text(tr("*.log *.txt (empty: all files)")));
-                ui.end_row();
-                ui.label("");
-                ui.checkbox(&mut self.files.recursive, tr("Include sub-folders"));
-                ui.end_row();
             });
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                let ok = !self.search.query.pattern.is_empty() && !self.files.dir.trim().is_empty();
-                if ui.add_enabled(ok, egui::Button::new(tr("Find"))).clicked() {
-                    go = true;
-                }
-                if ui.button(tr("Cancel")).clicked() {
-                    close = true;
-                }
-            });
-        });
         if go {
             self.start_find_in_files();
         }
@@ -341,17 +417,41 @@ impl BigTextApp {
             let Some(r) = &self.files.results else { return };
             let g = r.data.lock().unwrap();
             ui.horizontal(|ui| {
-                ui.strong(trf("{n} matches of “{p}” in {files} files", &[("n", &fmt_count(g.hits.len() as u64)), ("p", &r.query.pattern), ("files", &fmt_count(g.files.len() as u64))]));
-                ui.weak(trf("searched {done} of {total} files in {dir}", &[("done", &fmt_count(g.searched as u64)), ("total", &fmt_count(g.total as u64)), ("dir", &bigtext::file::display_path(&r.dir))]));
+                ui.strong(trf(
+                    "{n} matches of “{p}” in {files} files",
+                    &[
+                        ("n", &fmt_count(g.hits.len() as u64)),
+                        ("p", &r.query.pattern),
+                        ("files", &fmt_count(g.files.len() as u64)),
+                    ],
+                ));
+                ui.weak(trf(
+                    "searched {done} of {total} files in {dir}",
+                    &[
+                        ("done", &fmt_count(g.searched as u64)),
+                        ("total", &fmt_count(g.total as u64)),
+                        ("dir", &bigtext::file::display_path(&r.dir)),
+                    ],
+                ));
                 if g.capped {
-                    ui.label(trf("(stopped at {n})", &[("n", &fmt_count(HITS_CAP as u64))]));
+                    ui.label(trf(
+                        "(stopped at {n})",
+                        &[("n", &fmt_count(HITS_CAP as u64))],
+                    ));
                 }
                 if g.binary > 0 {
-                    ui.weak(trf("{n} binary files skipped", &[("n", &g.binary.to_string())]));
+                    ui.weak(trf(
+                        "{n} binary files skipped",
+                        &[("n", &g.binary.to_string())],
+                    ));
                 }
                 if !g.done {
                     let f = r.progress.fraction();
-                    ui.add(egui::ProgressBar::new(f).desired_width(140.0).text(format!("{:.0}%", f * 100.0)));
+                    ui.add(
+                        egui::ProgressBar::new(f)
+                            .desired_width(140.0)
+                            .text(format!("{:.0}%", f * 100.0)),
+                    );
                     ui.ctx().request_repaint_after(Duration::from_millis(100));
                     if ui.small_button(tr("Cancel")).clicked() {
                         r.cancel.cancel();
@@ -376,18 +476,24 @@ impl BigTextApp {
             drop(g);
             let data = r.data.clone();
             let dir = r.dir.clone();
-            egui::ScrollArea::both().auto_shrink([false, false]).show_rows(ui, row_h, n, |ui, range| {
-                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                let g = data.lock().unwrap();
-                for i in range.start..range.end.min(g.hits.len()) {
-                    let (f, h) = &g.hits[i];
-                    let name = g.files[*f].strip_prefix(&dir).map(Path::to_path_buf).unwrap_or_else(|_| g.files[*f].clone());
-                    let job = hit_job(&bigtext::file::display_path(&name), h, &font, ui.visuals());
-                    if ui.selectable_label(false, job).clicked() {
-                        jump = Some(i);
+            egui::ScrollArea::both()
+                .auto_shrink([false, false])
+                .show_rows(ui, row_h, n, |ui, range| {
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                    let g = data.lock().unwrap();
+                    for i in range.start..range.end.min(g.hits.len()) {
+                        let (f, h) = &g.hits[i];
+                        let name = g.files[*f]
+                            .strip_prefix(&dir)
+                            .map(Path::to_path_buf)
+                            .unwrap_or_else(|_| g.files[*f].clone());
+                        let job =
+                            hit_job(&bigtext::file::display_path(&name), h, &font, ui.visuals());
+                        if ui.selectable_label(false, job).clicked() {
+                            jump = Some(i);
+                        }
                     }
-                }
-            });
+                });
         }
         if let Some(i) = jump {
             self.open_files_hit(i);
@@ -405,10 +511,31 @@ impl BigTextApp {
 
 fn hit_job(name: &str, h: &Hit, font: &FontId, v: &egui::Visuals) -> LayoutJob {
     let mut job = LayoutJob::default();
-    let file = TextFormat { font_id: font.clone(), color: super::theme::role(Color32::from_rgb(90, 160, 220), super::theme::Tone::Info, v.dark_mode), ..Default::default() };
-    let weak = TextFormat { font_id: font.clone(), color: v.weak_text_color(), ..Default::default() };
-    let normal = TextFormat { font_id: font.clone(), color: v.text_color(), ..Default::default() };
-    let hl = TextFormat { font_id: font.clone(), color: v.strong_text_color(), background: v.selection.bg_fill, ..Default::default() };
+    let file = TextFormat {
+        font_id: font.clone(),
+        color: super::theme::role(
+            Color32::from_rgb(90, 160, 220),
+            super::theme::Tone::Info,
+            v.dark_mode,
+        ),
+        ..Default::default()
+    };
+    let weak = TextFormat {
+        font_id: font.clone(),
+        color: v.weak_text_color(),
+        ..Default::default()
+    };
+    let normal = TextFormat {
+        font_id: font.clone(),
+        color: v.text_color(),
+        ..Default::default()
+    };
+    let hl = TextFormat {
+        font_id: font.clone(),
+        color: v.strong_text_color(),
+        background: v.selection.bg_fill,
+        ..Default::default()
+    };
     job.append(name, 0.0, file);
     job.append(&format!(":{}  ", h.line), 0.0, weak);
     let (a, b) = h.mark;

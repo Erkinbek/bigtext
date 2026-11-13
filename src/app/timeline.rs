@@ -67,7 +67,11 @@ pub struct TimelineUi {
 
 impl Default for TimelineUi {
     fn default() -> Self {
-        TimelineUi { open: false, count: Count::Errors, bars: Vec::new() }
+        TimelineUi {
+            open: false,
+            count: Count::Errors,
+            bars: Vec::new(),
+        }
     }
 }
 
@@ -78,7 +82,11 @@ impl BigTextApp {
     /// Shows the histogram panel, building the histogram of the active document if needed.
     pub(crate) fn open_timeline(&mut self) {
         self.timeline.open = true;
-        let fresh = self.docs.get(self.active).and_then(|d| d.timeline.as_ref().map(|t| t.version == d.version && t.count == self.timeline.count));
+        let fresh = self.docs.get(self.active).and_then(|d| {
+            d.timeline
+                .as_ref()
+                .map(|t| t.version == d.version && t.count == self.timeline.count)
+        });
         if fresh != Some(true) {
             self.start_timeline();
         }
@@ -86,20 +94,26 @@ impl BigTextApp {
 
     pub(crate) fn start_timeline(&mut self) {
         let count = self.timeline.count;
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         if !d.is_ready() {
             return;
         }
         let codec = d.buf.codec;
         let m: Option<Arc<Matcher>> = match count {
-            Count::Errors => loglevel::query(Levels::only(Level::Error)).and_then(|q| Matcher::new(&q, codec).ok()).map(Arc::new),
-            Count::Search if !self.search.query.pattern.is_empty() => match self.search.matcher(codec) {
-                Ok(m) => Some(m),
-                Err(e) => {
-                    self.error = Some(e);
-                    return;
+            Count::Errors => loglevel::query(Levels::only(Level::Error))
+                .and_then(|q| Matcher::new(&q, codec).ok())
+                .map(Arc::new),
+            Count::Search if !self.search.query.pattern.is_empty() => {
+                match self.search.matcher(codec) {
+                    Ok(m) => Some(m),
+                    Err(e) => {
+                        self.error = Some(e);
+                        return;
+                    }
                 }
-            },
+            }
             _ => None,
         };
         let d = &mut self.docs[self.active];
@@ -108,7 +122,13 @@ impl BigTextApp {
         }
         let data = Arc::new(Mutex::new(TimelineData::default()));
         let (cancel, progress) = (CancelToken::new(), Progress::new(d.buf.len()));
-        d.timeline = Some(TimelineResults { count, version: d.version, data: data.clone(), cancel: cancel.clone(), progress: progress.clone() });
+        d.timeline = Some(TimelineResults {
+            count,
+            version: d.version,
+            data: data.clone(),
+            cancel: cancel.clone(),
+            progress: progress.clone(),
+        });
         let snap = d.buf.snapshot();
         let waker = self.waker.clone();
         jobs::spawn("timeline", move || {
@@ -136,25 +156,37 @@ impl BigTextApp {
         let dark = ui.visuals().dark_mode;
         let count = self.timeline.count;
         {
-            let Some(d) = self.docs.get(self.active) else { return };
+            let Some(d) = self.docs.get(self.active) else {
+                return;
+            };
             let Some(t) = &d.timeline else { return };
             let g = t.data.lock().unwrap();
             let stale = t.version != d.version;
             let hits_color = match t.count {
-                Count::Search => super::theme::role(Color32::from_rgb(220, 170, 0), super::theme::Tone::Found, dark),
+                Count::Search => super::theme::role(
+                    Color32::from_rgb(220, 170, 0),
+                    super::theme::Tone::Found,
+                    dark,
+                ),
                 _ => highlight::color(Kind::Error, dark),
             };
             let mut picked = count;
             ui.horizontal(|ui| {
                 ui.strong(tr("Time histogram"));
-                egui::ComboBox::from_id_salt("timeline-count").selected_text(tr(picked.label())).show_ui(ui, |ui| {
-                    for c in [Count::Errors, Count::Search, Count::Nothing] {
-                        ui.selectable_value(&mut picked, c, tr(c.label()));
-                    }
-                });
+                egui::ComboBox::from_id_salt("timeline-count")
+                    .selected_text(tr(picked.label()))
+                    .show_ui(ui, |ui| {
+                        for c in [Count::Errors, Count::Search, Count::Nothing] {
+                            ui.selectable_value(&mut picked, c, tr(c.label()));
+                        }
+                    });
                 if !g.done {
                     let f = t.progress.fraction();
-                    ui.add(egui::ProgressBar::new(f).desired_width(140.0).text(format!("{:.0}%", f * 100.0)));
+                    ui.add(
+                        egui::ProgressBar::new(f)
+                            .desired_width(140.0)
+                            .text(format!("{:.0}%", f * 100.0)),
+                    );
                     ui.ctx().request_repaint_after(Duration::from_millis(100));
                     if ui.small_button(tr("Cancel")).clicked() {
                         t.cancel.cancel();
@@ -169,12 +201,19 @@ impl BigTextApp {
                 if let Some(h) = &g.hist {
                     let mut info = trf("{n} lines", &[("n", &fmt_count(h.lines))]);
                     if t.count != Count::Nothing {
-                        let what = if t.count == Count::Errors { tr("errors") } else { tr("matches") };
+                        let what = if t.count == Count::Errors {
+                            tr("errors")
+                        } else {
+                            tr("matches")
+                        };
                         info.push_str(&format!(" · {} {what}", fmt_count(h.hits)));
                     }
                     if h.untimed > 0 {
                         info.push_str(" · ");
-                        info.push_str(&trf("{n} before the first time", &[("n", &fmt_count(h.untimed))]));
+                        info.push_str(&trf(
+                            "{n} before the first time",
+                            &[("n", &fmt_count(h.untimed))],
+                        ));
                     }
                     ui.label(info);
                 }
@@ -194,7 +233,11 @@ impl BigTextApp {
             self.timeline.bars.clear();
             match &g.hist {
                 Some(h) if !h.buckets.is_empty() => {
-                    let caret_key = d.line_bounds(d.view.caret, 64 * 1024).and_then(|b| timestamp::stamp_at(&d.buf, b.0)).filter(|s| h.dated && s.has_date).map(|s| s.ms);
+                    let caret_key = d
+                        .line_bounds(d.view.caret, 64 * 1024)
+                        .and_then(|b| timestamp::stamp_at(&d.buf, b.0))
+                        .filter(|s| h.dated && s.has_date)
+                        .map(|s| s.ms);
                     jump = chart(ui, h, hits_color, caret_key, stale, &mut self.timeline.bars);
                 }
                 _ if g.done => {
@@ -220,7 +263,14 @@ impl BigTextApp {
 }
 
 /// Draws the bars; returns the first line of a clicked bar.
-fn chart(ui: &mut egui::Ui, h: &Histogram, hits_color: Color32, caret_key: Option<i64>, stale: bool, out: &mut Vec<(Rect, u64)>) -> Option<u64> {
+fn chart(
+    ui: &mut egui::Ui,
+    h: &Histogram,
+    hits_color: Color32,
+    caret_key: Option<i64>,
+    stale: bool,
+    out: &mut Vec<(Rect, u64)>,
+) -> Option<u64> {
     // All the height: a panel shrinks to what its content takes.
     let size = egui::vec2(ui.available_width(), ui.available_height().max(60.0));
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
@@ -236,22 +286,43 @@ fn chart(ui: &mut egui::Ui, h: &Histogram, hits_color: Color32, caret_key: Optio
     let top = bars.iter().map(|(_, x)| x.lines).max().unwrap_or(1).max(1) as f32;
     let painter = ui.painter_at(rect);
     let v = ui.visuals();
-    let base = if stale { v.weak_text_color().gamma_multiply(0.4) } else { v.weak_text_color().gamma_multiply(0.7) };
-    let hits_color = if stale { hits_color.gamma_multiply(0.5) } else { hits_color };
+    let base = if stale {
+        v.weak_text_color().gamma_multiply(0.4)
+    } else {
+        v.weak_text_color().gamma_multiply(0.7)
+    };
+    let hits_color = if stale {
+        hits_color.gamma_multiply(0.5)
+    } else {
+        hits_color
+    };
     let hover = resp.hover_pos();
     let mut hovered = None;
     for (start, x) in &bars {
         let i = ((start - first) / step) as f32;
         let x0 = plot.left() + i * bar_w;
-        let col = Rect::from_min_max(egui::pos2(x0, plot.top()), egui::pos2(x0 + bar_w, plot.bottom()));
+        let col = Rect::from_min_max(
+            egui::pos2(x0, plot.top()),
+            egui::pos2(x0 + bar_w, plot.bottom()),
+        );
         let hgt = (x.lines as f32 / top * plot.height()).max(1.0);
         let gap = if bar_w > 3.0 { 1.0 } else { 0.0 };
-        let r = Rect::from_min_max(egui::pos2(x0, plot.bottom() - hgt), egui::pos2(x0 + bar_w - gap, plot.bottom()));
+        let r = Rect::from_min_max(
+            egui::pos2(x0, plot.bottom() - hgt),
+            egui::pos2(x0 + bar_w - gap, plot.bottom()),
+        );
         let over = hover.is_some_and(|p| p.x >= col.left() && p.x < col.right());
         painter.rect_filled(r, 0.0, if over { v.strong_text_color() } else { base });
         if x.hits > 0 {
             let hh = (x.hits as f32 / top * plot.height()).max(1.5);
-            painter.rect_filled(Rect::from_min_max(egui::pos2(x0, plot.bottom() - hh), egui::pos2(x0 + bar_w - gap, plot.bottom())), 0.0, hits_color);
+            painter.rect_filled(
+                Rect::from_min_max(
+                    egui::pos2(x0, plot.bottom() - hh),
+                    egui::pos2(x0 + bar_w - gap, plot.bottom()),
+                ),
+                0.0,
+                hits_color,
+            );
         }
         out.push((col, x.first));
         if over {
@@ -260,17 +331,47 @@ fn chart(ui: &mut egui::Ui, h: &Histogram, hits_color: Color32, caret_key: Optio
     }
     if let Some(k) = caret_key.filter(|k| (first..first + n as i64 * step).contains(k)) {
         let x = plot.left() + (k - first) as f32 / step as f32 * bar_w;
-        painter.vline(x, plot.y_range(), Stroke::new(1.5, v.selection.stroke.color));
+        painter.vline(
+            x,
+            plot.y_range(),
+            Stroke::new(1.5, v.selection.stroke.color),
+        );
     }
     let small = egui::TextStyle::Small.resolve(ui.style());
     let label = |k: i64| timestamp::format_key(k, h.dated, step < 60_000);
-    painter.text(egui::pos2(plot.left() + 2.0, rect.bottom()), egui::Align2::LEFT_BOTTOM, label(first), small.clone(), v.text_color());
-    painter.text(egui::pos2(plot.right() - 2.0, rect.bottom()), egui::Align2::RIGHT_BOTTOM, label(first + n as i64 * step), small.clone(), v.text_color());
-    painter.text(egui::pos2(plot.center().x, rect.bottom()), egui::Align2::CENTER_BOTTOM, trf("1 bar = {step}", &[("step", &step_text(step))]), small, v.weak_text_color());
+    painter.text(
+        egui::pos2(plot.left() + 2.0, rect.bottom()),
+        egui::Align2::LEFT_BOTTOM,
+        label(first),
+        small.clone(),
+        v.text_color(),
+    );
+    painter.text(
+        egui::pos2(plot.right() - 2.0, rect.bottom()),
+        egui::Align2::RIGHT_BOTTOM,
+        label(first + n as i64 * step),
+        small.clone(),
+        v.text_color(),
+    );
+    painter.text(
+        egui::pos2(plot.center().x, rect.bottom()),
+        egui::Align2::CENTER_BOTTOM,
+        trf("1 bar = {step}", &[("step", &step_text(step))]),
+        small,
+        v.weak_text_color(),
+    );
     if let Some((start, x)) = hovered {
-        let mut tip = format!("{} – {}\n{}", label(start), label(start + step), trf("{n} lines", &[("n", &fmt_count(x.lines))]));
+        let mut tip = format!(
+            "{} – {}\n{}",
+            label(start),
+            label(start + step),
+            trf("{n} lines", &[("n", &fmt_count(x.lines))])
+        );
         if x.hits > 0 {
-            tip.push_str(&format!(", {}", trf("{n} highlighted", &[("n", &fmt_count(x.hits))])));
+            tip.push_str(&format!(
+                ", {}",
+                trf("{n} highlighted", &[("n", &fmt_count(x.hits))])
+            ));
         }
         tip.push('\n');
         tip.push_str(tr("Click to go to the first line"));
@@ -278,7 +379,10 @@ fn chart(ui: &mut egui::Ui, h: &Histogram, hits_color: Color32, caret_key: Optio
     }
     if resp.clicked() {
         if let Some(p) = resp.interact_pointer_pos() {
-            return out.iter().find(|(r, _)| p.x >= r.left() && p.x < r.right()).map(|x| x.1);
+            return out
+                .iter()
+                .find(|(r, _)| p.x >= r.left() && p.x < r.right())
+                .map(|x| x.1);
         }
     }
     None

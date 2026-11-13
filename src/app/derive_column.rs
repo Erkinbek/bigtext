@@ -23,29 +23,52 @@ pub struct DeriveDialog {
 impl BigTextApp {
     pub(crate) fn open_derive(&mut self) {
         let names = self.column_names_of(self.active);
-        let expr = names.first().map(|n| format!("{{{n}}}")).unwrap_or_default();
-        self.derive = Some(DeriveDialog { name: tr("new column").into(), expr, names, compiled: None, focus: true });
+        let expr = names
+            .first()
+            .map(|n| format!("{{{n}}}"))
+            .unwrap_or_default();
+        self.derive = Some(DeriveDialog {
+            name: tr("new column").into(),
+            expr,
+            names,
+            compiled: None,
+            focus: true,
+        });
     }
 
     /// The fields of up to [`PREVIEW_ROWS`] data rows from the top of the view.
     fn preview_rows(&self) -> Vec<Vec<String>> {
-        let Some(d) = self.docs.get(self.active) else { return Vec::new() };
-        let Some(dialect) = d.table_state.dialect else { return Vec::new() };
+        let Some(d) = self.docs.get(self.active) else {
+            return Vec::new();
+        };
+        let Some(dialect) = d.table_state.dialect else {
+            return Vec::new();
+        };
         let codec = d.buf.codec;
         let mut from = d.view.top.max(dialect.first(&d.buf)).max(d.min_caret());
         if d.table_state.header && from == dialect.first(&d.buf).max(d.min_caret()) {
             from = bigtext::filter::line_end_at(&d.buf, from).unwrap_or(from);
         }
-        let Some(b) = d.buf.read(from..(from + 64 * 1024).min(d.buf.len())) else { return Vec::new() };
+        let Some(b) = d.buf.read(from..(from + 64 * 1024).min(d.buf.len())) else {
+            return Vec::new();
+        };
         let mut rows = Vec::new();
         let mut at = 0;
         let mut fields = Vec::new();
         while rows.len() < PREVIEW_ROWS && at < b.len() {
-            let end = codec.find_nl(&b[at..], from + at as u64).map(|i| at + i).unwrap_or(b.len());
+            let end = codec
+                .find_nl(&b[at..], from + at as u64)
+                .map(|i| at + i)
+                .unwrap_or(b.len());
             let line = &b[at..end];
             let line = line.strip_suffix(codec.cr_unit()).unwrap_or(line);
             csv::split_fields(&codec, dialect, line, &mut fields);
-            rows.push(fields.iter().map(|f| csv::field_value(&codec, dialect, &line[f.clone()])).collect());
+            rows.push(
+                fields
+                    .iter()
+                    .map(|f| csv::field_value(&codec, dialect, &line[f.clone()]))
+                    .collect(),
+            );
             at = end + codec.unit();
         }
         rows
@@ -56,7 +79,9 @@ impl BigTextApp {
             return;
         }
         let rows = self.preview_rows();
-        let Some(dlg) = self.derive.as_mut() else { return };
+        let Some(dlg) = self.derive.as_mut() else {
+            return;
+        };
         if dlg.compiled.as_ref().map(|c| &c.0) != Some(&dlg.expr) {
             dlg.compiled = Some((dlg.expr.clone(), Expr::compile(&dlg.expr, &dlg.names)));
         }
@@ -99,11 +124,18 @@ impl BigTextApp {
         });
         if go {
             let dlg = self.derive.take().expect("dialog");
-            let header = self.docs.get(self.active).is_some_and(|d| d.table_state.header);
-            self.ask_rewrite(Rewrite::Derive { name: dlg.name.trim().to_string(), expr: dlg.expr, names: dlg.names, header });
+            let header = self
+                .docs
+                .get(self.active)
+                .is_some_and(|d| d.table_state.header);
+            self.ask_rewrite(Rewrite::Derive {
+                name: dlg.name.trim().to_string(),
+                expr: dlg.expr,
+                names: dlg.names,
+                header,
+            });
         } else if !open {
             self.derive = None;
         }
     }
 }
-

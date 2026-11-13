@@ -43,7 +43,10 @@ pub struct Query {
 // would add an indirection to the hot path.
 #[allow(clippy::large_enum_variant)]
 enum Engine {
-    Literal { finder: memchr::memmem::Finder<'static>, len: usize },
+    Literal {
+        finder: memchr::memmem::Finder<'static>,
+        len: usize,
+    },
     Regex(Regex),
 }
 
@@ -65,7 +68,11 @@ pub enum SearchEnd {
 
 /// Builds the regex pattern string for a query (shared with replace).
 pub fn regex_pattern(q: &Query) -> String {
-    let pat = if q.regex { q.pattern.clone() } else { regex_syntax::escape(&q.pattern) };
+    let pat = if q.regex {
+        q.pattern.clone()
+    } else {
+        regex_syntax::escape(&q.pattern)
+    };
     if q.whole_word {
         if q.pattern.is_ascii() {
             format!(r"(?-u:\b)(?:{pat})(?-u:\b)")
@@ -92,7 +99,11 @@ pub fn build_regex(q: &Query, codec: &Codec) -> Result<Regex, String> {
         .configure(Regex::config().utf8_empty(true))
         .build(&regex_pattern(q))
         // The syntax error carries the pattern with a caret under the problem.
-        .map_err(|e| e.syntax_error().map(|s| s.to_string()).unwrap_or_else(|| e.to_string()))
+        .map_err(|e| {
+            e.syntax_error()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| e.to_string())
+        })
 }
 
 impl Matcher {
@@ -100,15 +111,26 @@ impl Matcher {
         if q.pattern.is_empty() {
             return Err("Empty pattern".into());
         }
-        let literal_ok = !q.regex && q.case_sensitive && !q.whole_word && codec.can_encode(&q.pattern);
+        let literal_ok =
+            !q.regex && q.case_sensitive && !q.whole_word && codec.can_encode(&q.pattern);
         if literal_ok {
             let needle = codec.encode(&q.pattern);
             let len = needle.len();
             let finder = memchr::memmem::Finder::new(&needle).into_owned();
-            return Ok(Matcher { engine: Engine::Literal { finder, len }, codec, decoded: false, query: q.clone() });
+            return Ok(Matcher {
+                engine: Engine::Literal { finder, len },
+                codec,
+                decoded: false,
+                query: q.clone(),
+            });
         }
         let re = build_regex(q, &codec)?;
-        Ok(Matcher { engine: Engine::Regex(re), codec, decoded: codec.enc != Encoding::Utf8, query: q.clone() })
+        Ok(Matcher {
+            engine: Engine::Regex(re),
+            codec,
+            decoded: codec.enc != Encoding::Utf8,
+            query: q.clone(),
+        })
     }
 
     pub fn is_literal(&self) -> bool {
@@ -155,7 +177,9 @@ impl Matcher {
                 let utf16 = self.codec.enc.is_utf16();
                 let mut pos = from;
                 while pos < accept_end && pos < span_end {
-                    let Some(i) = finder.find(&hay[pos..span_end]) else { break };
+                    let Some(i) = finder.find(&hay[pos..span_end]) else {
+                        break;
+                    };
                     let s = pos + i;
                     if s >= accept_end {
                         break;
@@ -224,7 +248,11 @@ impl Matcher {
         codec.decode_into(&hay[..from], &mut text);
         let u_from = text.len();
         codec.decode_into(&hay[from..acc], &mut text);
-        let u_acc = if accept_end > span_end { usize::MAX } else { text.len() };
+        let u_acc = if accept_end > span_end {
+            usize::MAX
+        } else {
+            text.len()
+        };
         codec.decode_into(&hay[acc..span_end], &mut text);
         let u_end = text.len();
         // Walking cursor for UTF-8 offset -> source offset.
@@ -319,27 +347,41 @@ pub fn search_forward_ctx(
         let span_end = (win_end + m.overlap()).min(end);
         let read_start = align_down(pos.saturating_sub(CTX), unit);
         let read_end = (span_end + CTX).min(len);
-        let Some(n) = buf.read_to(read_start..read_end, &mut window) else { return SearchEnd::Unavailable };
+        let Some(n) = buf.read_to(read_start..read_end, &mut window) else {
+            return SearchEnd::Unavailable;
+        };
         let hay = &window[..n];
         let final_window = win_end >= end;
         let rel = |x: u64| (x - read_start) as usize;
-        let accept = if final_window { rel(win_end) + 1 } else { rel(win_end) };
+        let accept = if final_window {
+            rel(win_end) + 1
+        } else {
+            rel(win_end)
+        };
         let mut truncated: Option<u64> = None;
         let mut stopped = false;
         let mut max_end = win_end;
         let literal = m.is_literal();
-        m.find_in(hay, read_start, rel(pos), accept, rel(span_end), &mut last_end, &mut |s, e| {
-            if !literal && e == span_end && span_end < end {
-                truncated = Some(s);
-                return false;
-            }
-            if !on_match(s, e, hay, read_start) {
-                stopped = true;
-                return false;
-            }
-            max_end = max_end.max(e);
-            true
-        });
+        m.find_in(
+            hay,
+            read_start,
+            rel(pos),
+            accept,
+            rel(span_end),
+            &mut last_end,
+            &mut |s, e| {
+                if !literal && e == span_end && span_end < end {
+                    truncated = Some(s);
+                    return false;
+                }
+                if !on_match(s, e, hay, read_start) {
+                    stopped = true;
+                    return false;
+                }
+                max_end = max_end.max(e);
+                true
+            },
+        );
         if stopped {
             return SearchEnd::Stopped;
         }
@@ -374,7 +416,13 @@ pub fn search_forward_ctx(
     SearchEnd::Completed
 }
 
-fn extend_match(buf: &TextBuf, m: &Matcher, s: u64, end: u64, cancel: &CancelToken) -> Option<(u64, u64)> {
+fn extend_match(
+    buf: &TextBuf,
+    m: &Matcher,
+    s: u64,
+    end: u64,
+    cancel: &CancelToken,
+) -> Option<(u64, u64)> {
     let len = buf.len();
     let unit = buf.codec.unit() as u64;
     let mut lim = (s + 4 * REGEX_OVERLAP).min(end);
@@ -386,10 +434,18 @@ fn extend_match(buf: &TextBuf, m: &Matcher, s: u64, end: u64, cancel: &CancelTok
         let hay = buf.read(rs..(lim + CTX).min(len))?;
         let mut found = None;
         let mut le = None;
-        m.find_in(&hay, rs, (s - rs) as usize, (s - rs) as usize + 1, (lim - rs) as usize, &mut le, &mut |a, b| {
-            found = Some((a, b));
-            false
-        });
+        m.find_in(
+            &hay,
+            rs,
+            (s - rs) as usize,
+            (s - rs) as usize + 1,
+            (lim - rs) as usize,
+            &mut le,
+            &mut |a, b| {
+                found = Some((a, b));
+                false
+            },
+        );
         match found {
             Some((a, b)) if b < lim || lim >= end || lim - s >= MAX_MATCH => return Some((a, b)),
             Some(_) => lim = (s + (lim - s) * 4).min(end).min(s + MAX_MATCH),
@@ -399,7 +455,13 @@ fn extend_match(buf: &TextBuf, m: &Matcher, s: u64, end: u64, cancel: &CancelTok
 }
 
 /// Last match starting before `before` (and at or after `floor`), searching backwards in windows.
-pub fn search_backward(buf: &TextBuf, m: &Matcher, floor: u64, before: u64, cancel: &CancelToken) -> Option<(u64, u64)> {
+pub fn search_backward(
+    buf: &TextBuf,
+    m: &Matcher,
+    floor: u64,
+    before: u64,
+    cancel: &CancelToken,
+) -> Option<(u64, u64)> {
     let unit = buf.codec.unit() as u64;
     let mut hi = before.min(buf.len());
     while hi > floor {
@@ -436,22 +498,41 @@ pub fn search_backward(buf: &TextBuf, m: &Matcher, floor: u64, before: u64, canc
 
 /// Matches overlapping a small range (viewport highlighting); bounded work, may miss matches
 /// longer than a few KB.
-pub fn matches_in_view(buf: &TextBuf, m: &Matcher, range: Range<u64>, cap: usize) -> Vec<(u64, u64)> {
+pub fn matches_in_view(
+    buf: &TextBuf,
+    m: &Matcher,
+    range: Range<u64>,
+    cap: usize,
+) -> Vec<(u64, u64)> {
     let len = buf.len();
     let unit = buf.codec.unit() as u64;
     let start = align_down(range.start.saturating_sub(4096), unit);
     let end = (range.end + 4096).min(len);
     let rs = align_down(start.saturating_sub(CTX), unit);
-    let Some(hay) = buf.read(rs..(end + CTX).min(len)) else { return Vec::new() };
+    let Some(hay) = buf.read(rs..(end + CTX).min(len)) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     let mut le = None;
-    let accept = if end == len { (end - rs) as usize + 1 } else { (end - rs) as usize };
-    m.find_in(&hay, rs, (start - rs) as usize, accept, (end - rs) as usize, &mut le, &mut |s, e| {
-        if e >= range.start && s <= range.end {
-            out.push((s, e));
-        }
-        out.len() < cap
-    });
+    let accept = if end == len {
+        (end - rs) as usize + 1
+    } else {
+        (end - rs) as usize
+    };
+    m.find_in(
+        &hay,
+        rs,
+        (start - rs) as usize,
+        accept,
+        (end - rs) as usize,
+        &mut le,
+        &mut |s, e| {
+            if e >= range.start && s <= range.end {
+                out.push((s, e));
+            }
+            out.len() < cap
+        },
+    );
     out
 }
 
@@ -462,16 +543,31 @@ pub fn group_text(buf: &TextBuf, m: &Matcher, start: u64, end: u64, g: usize) ->
     let (hay, caps, _) = captures_at(buf, m, start, end)?;
     let span = caps.get_group(g)?;
     let b = &hay[span.range()];
-    Some(if m.decoded { String::from_utf8_lossy(b).into_owned() } else { m.codec.decode_lossy(b) })
+    Some(if m.decoded {
+        String::from_utf8_lossy(b).into_owned()
+    } else {
+        m.codec.decode_lossy(b)
+    })
 }
 
 /// The names of the capture groups of a regular expression ("" for unnamed ones), from group 1.
 pub fn group_names(m: &Matcher) -> Vec<String> {
-    let Some(re) = m.regex() else { return Vec::new() };
-    re.group_info().pattern_names(regex_automata::PatternID::ZERO).skip(1).map(|n| n.unwrap_or("").to_string()).collect()
+    let Some(re) = m.regex() else {
+        return Vec::new();
+    };
+    re.group_info()
+        .pattern_names(regex_automata::PatternID::ZERO)
+        .skip(1)
+        .map(|n| n.unwrap_or("").to_string())
+        .collect()
 }
 
-pub fn captures_at(buf: &TextBuf, m: &Matcher, start: u64, end: u64) -> Option<(Vec<u8>, Captures, usize)> {
+pub fn captures_at(
+    buf: &TextBuf,
+    m: &Matcher,
+    start: u64,
+    end: u64,
+) -> Option<(Vec<u8>, Captures, usize)> {
     let re = m.regex()?;
     let len = buf.len();
     let unit = buf.codec.unit() as u64;
@@ -482,7 +578,8 @@ pub fn captures_at(buf: &TextBuf, m: &Matcher, start: u64, end: u64) -> Option<(
         let mut t = String::new();
         m.codec.decode_into(&raw[..(start - rs) as usize], &mut t);
         let s = t.len();
-        m.codec.decode_into(&raw[(start - rs) as usize..(end - rs) as usize], &mut t);
+        m.codec
+            .decode_into(&raw[(start - rs) as usize..(end - rs) as usize], &mut t);
         let e = t.len();
         m.codec.decode_into(&raw[(end - rs) as usize..], &mut t);
         (t.into_bytes(), s, e)
@@ -490,7 +587,12 @@ pub fn captures_at(buf: &TextBuf, m: &Matcher, start: u64, end: u64) -> Option<(
         (raw.into_owned(), (start - rs) as usize, (end - rs) as usize)
     };
     let mut caps = re.create_captures();
-    re.search_captures(&Input::new(&hay).range(s..e).anchored(regex_automata::Anchored::Yes), &mut caps);
+    re.search_captures(
+        &Input::new(&hay)
+            .range(s..e)
+            .anchored(regex_automata::Anchored::Yes),
+        &mut caps,
+    );
     if !caps.is_match() {
         return None;
     }
@@ -517,7 +619,11 @@ mod tests {
     }
 
     fn q(p: &str) -> Query {
-        Query { pattern: p.into(), case_sensitive: true, ..Default::default() }
+        Query {
+            pattern: p.into(),
+            case_sensitive: true,
+            ..Default::default()
+        }
     }
 
     fn all(buf: &TextBuf, m: &Matcher) -> Vec<(u64, u64)> {
@@ -552,7 +658,10 @@ mod tests {
 
     #[test]
     fn regex_and_case_folding() {
-        let (_f, t) = buf_with("Straße STRASSE straße ПРИВЕТ привет".as_bytes(), Codec::utf8());
+        let (_f, t) = buf_with(
+            "Straße STRASSE straße ПРИВЕТ привет".as_bytes(),
+            Codec::utf8(),
+        );
         let mut query = q("straße");
         query.case_sensitive = false;
         let m = Matcher::new(&query, Codec::utf8()).unwrap();
@@ -668,7 +777,10 @@ mod tests {
     fn backward_and_view() {
         let (_f, t) = buf_with(b"x1 x2 x3 x4", Codec::utf8());
         let m = Matcher::new(&q("x"), Codec::utf8()).unwrap();
-        assert_eq!(search_backward(&t, &m, 0, 7, &CancelToken::new()), Some((6, 7)));
+        assert_eq!(
+            search_backward(&t, &m, 0, 7, &CancelToken::new()),
+            Some((6, 7))
+        );
         assert_eq!(search_backward(&t, &m, 0, 0, &CancelToken::new()), None);
         assert_eq!(matches_in_view(&t, &m, 3..8, 100).len(), 2);
     }

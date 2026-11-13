@@ -27,7 +27,9 @@ fn show(x: f64) -> String {
 
 impl BigTextApp {
     pub(crate) fn start_json_fields(&mut self) {
-        let Some(d) = self.docs.get(self.active).filter(|d| d.is_ready()) else { return };
+        let Some(d) = self.docs.get(self.active).filter(|d| d.is_ready()) else {
+            return;
+        };
         let (snap, title) = (d.buf.snapshot(), d.title.clone());
         self.spawn_task(tr("Reading the JSON fields").into(), move |progress: &Progress, cancel: &CancelToken| match json_fields::field_stats(&snap, cancel, Some(progress)) {
             Ok(Some(f)) if f.records > 0 => TaskOutcome::JsonFields(Box::new((title, f))),
@@ -38,62 +40,116 @@ impl BigTextApp {
     }
 
     pub(super) fn json_fields_window(&mut self, ctx: &egui::Context) {
-        let Some((title, f)) = self.json_fields.result.as_ref() else { return };
+        let Some((title, f)) = self.json_fields.result.as_ref() else {
+            return;
+        };
         let mut open = true;
         let (mut copy, mut export) = (false, false);
         let filter = &mut self.json_fields.filter;
-        egui::Window::new(tr("JSON fields")).open(&mut open).default_size([900.0, 480.0]).resizable(true).show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.weak(title.as_str());
-                ui.strong(trf("{n} records, {paths} fields", &[("n", &fmt_count(f.records)), ("paths", &fmt_count(f.stats.len() as u64))]));
-                if f.skipped > 0 {
-                    ui.weak(trf("({n} lines that are not JSON objects left out)", &[("n", &fmt_count(f.skipped))]));
-                }
-                if f.capped {
-                    ui.colored_label(ui.visuals().warn_fg_color, trf("Only the first {n} fields are listed.", &[("n", &fmt_count(json_fields::PATHS_MAX as u64))]));
-                }
-            });
-            ui.horizontal(|ui| {
-                ui.add(egui::TextEdit::singleline(filter).hint_text(tr("Filter the fields")).desired_width(220.0));
-                copy = ui.button(tr("Copy as JSON Schema")).clicked();
-                export = ui.button(tr("Export CSV…")).clicked();
-            });
-            ui.separator();
-            let rows: Vec<&json_fields::FieldStat> = f.stats.iter().filter(|s| filter.is_empty() || s.path.to_lowercase().contains(&filter.to_lowercase())).collect();
-            let widths = [240.0, 140.0, 80.0, 60.0, 80.0, 80.0, 80.0, 60.0];
-            let heads = [tr("Field"), tr("Types"), tr("Count"), tr("Nulls"), tr("Min"), tr("Max"), tr("Mean"), tr("Distinct"), tr("Examples")];
-            let row_h = 20.0;
-            ui.horizontal(|ui| {
-                for (i, h) in heads.iter().enumerate() {
-                    if let Some(&w) = widths.get(i) {
-                        ui.add_sized([w, row_h], egui::Label::new(egui::RichText::new(*h).strong()).truncate());
-                    } else {
-                        ui.label(egui::RichText::new(*h).strong());
+        egui::Window::new(tr("JSON fields"))
+            .open(&mut open)
+            .default_size([900.0, 480.0])
+            .resizable(true)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.weak(title.as_str());
+                    ui.strong(trf(
+                        "{n} records, {paths} fields",
+                        &[
+                            ("n", &fmt_count(f.records)),
+                            ("paths", &fmt_count(f.stats.len() as u64)),
+                        ],
+                    ));
+                    if f.skipped > 0 {
+                        ui.weak(trf(
+                            "({n} lines that are not JSON objects left out)",
+                            &[("n", &fmt_count(f.skipped))],
+                        ));
                     }
-                }
-            });
-            egui::ScrollArea::both().auto_shrink([false, false]).show_rows(ui, row_h, rows.len(), |ui, range| {
-                for s in &rows[range] {
-                    ui.horizontal(|ui| {
-                        let distinct = if s.many { format!("{}+", s.distinct.len()) } else { s.distinct.len().to_string() };
-                        let cells = [
-                            s.path.clone(),
-                            s.type_names(),
-                            fmt_count(s.count),
-                            fmt_count(s.types[5]),
-                            s.min.map(show).unwrap_or_default(),
-                            s.max.map(show).unwrap_or_default(),
-                            s.mean().map(show).unwrap_or_default(),
-                            distinct,
-                        ];
-                        for (cell, w) in cells.iter().zip(widths) {
-                            ui.add_sized([w, row_h], egui::Label::new(egui::RichText::new(cell).monospace()).truncate());
+                    if f.capped {
+                        ui.colored_label(
+                            ui.visuals().warn_fg_color,
+                            trf(
+                                "Only the first {n} fields are listed.",
+                                &[("n", &fmt_count(json_fields::PATHS_MAX as u64))],
+                            ),
+                        );
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(filter)
+                            .hint_text(tr("Filter the fields"))
+                            .desired_width(220.0),
+                    );
+                    copy = ui.button(tr("Copy as JSON Schema")).clicked();
+                    export = ui.button(tr("Export CSV…")).clicked();
+                });
+                ui.separator();
+                let rows: Vec<&json_fields::FieldStat> = f
+                    .stats
+                    .iter()
+                    .filter(|s| {
+                        filter.is_empty() || s.path.to_lowercase().contains(&filter.to_lowercase())
+                    })
+                    .collect();
+                let widths = [240.0, 140.0, 80.0, 60.0, 80.0, 80.0, 80.0, 60.0];
+                let heads = [
+                    tr("Field"),
+                    tr("Types"),
+                    tr("Count"),
+                    tr("Nulls"),
+                    tr("Min"),
+                    tr("Max"),
+                    tr("Mean"),
+                    tr("Distinct"),
+                    tr("Examples"),
+                ];
+                let row_h = 20.0;
+                ui.horizontal(|ui| {
+                    for (i, h) in heads.iter().enumerate() {
+                        if let Some(&w) = widths.get(i) {
+                            ui.add_sized(
+                                [w, row_h],
+                                egui::Label::new(egui::RichText::new(*h).strong()).truncate(),
+                            );
+                        } else {
+                            ui.label(egui::RichText::new(*h).strong());
                         }
-                        ui.label(egui::RichText::new(s.examples.join(" | ")).weak());
+                    }
+                });
+                egui::ScrollArea::both()
+                    .auto_shrink([false, false])
+                    .show_rows(ui, row_h, rows.len(), |ui, range| {
+                        for s in &rows[range] {
+                            ui.horizontal(|ui| {
+                                let distinct = if s.many {
+                                    format!("{}+", s.distinct.len())
+                                } else {
+                                    s.distinct.len().to_string()
+                                };
+                                let cells = [
+                                    s.path.clone(),
+                                    s.type_names(),
+                                    fmt_count(s.count),
+                                    fmt_count(s.types[5]),
+                                    s.min.map(show).unwrap_or_default(),
+                                    s.max.map(show).unwrap_or_default(),
+                                    s.mean().map(show).unwrap_or_default(),
+                                    distinct,
+                                ];
+                                for (cell, w) in cells.iter().zip(widths) {
+                                    ui.add_sized(
+                                        [w, row_h],
+                                        egui::Label::new(egui::RichText::new(cell).monospace())
+                                            .truncate(),
+                                    );
+                                }
+                                ui.label(egui::RichText::new(s.examples.join(" | ")).weak());
+                            });
+                        }
                     });
-                }
             });
-        });
         let schema = copy.then(|| json_fields::fields_to_schema(f));
         let export = export.then(|| (format!("{title}.fields.csv"), f.clone()));
         if let Some(schema) = schema {
@@ -102,12 +158,21 @@ impl BigTextApp {
         }
         if let Some((name, fields)) = export {
             if let Some(target) = self.pick_output_file(tr("Export CSV"), &name) {
-                self.spawn_task(tr("Saving").into(), move |_: &Progress, _: &CancelToken| -> TaskOutcome {
-                    tasks::write_via_temp(&target, |w| {
-                        json_fields::fields_to_csv(&fields, w)?;
-                        Ok(Some(trf("Saved {n} fields to {file}.", &[("n", &fmt_count(fields.stats.len() as u64)), ("file", &file_name(&target))])))
-                    })
-                });
+                self.spawn_task(
+                    tr("Saving").into(),
+                    move |_: &Progress, _: &CancelToken| -> TaskOutcome {
+                        tasks::write_via_temp(&target, |w| {
+                            json_fields::fields_to_csv(&fields, w)?;
+                            Ok(Some(trf(
+                                "Saved {n} fields to {file}.",
+                                &[
+                                    ("n", &fmt_count(fields.stats.len() as u64)),
+                                    ("file", &file_name(&target)),
+                                ],
+                            )))
+                        })
+                    },
+                );
             }
         }
         if !open {

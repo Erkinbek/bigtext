@@ -15,9 +15,9 @@ use bigtext::search::{Matcher, Query, SearchEnd};
 use bigtext::text::TextBuf;
 
 use super::follow_id::FollowSummary;
-use super::time_range::{After, Window};
 use super::i18n::{tr, trf};
 use super::tasks::{self, TaskOutcome};
+use super::time_range::{After, Window};
 use super::{same_path, BigTextApp, Msg};
 
 /// Lines kept in the list; an export always writes all of them.
@@ -65,17 +65,31 @@ pub struct FilterTerm {
 }
 
 pub(super) fn term_refs(terms: &[FilterTerm]) -> Vec<filter::Term<'_>> {
-    terms.iter().map(|t| filter::Term { m: &t.matcher, negated: t.negated }).collect()
+    terms
+        .iter()
+        .map(|t| filter::Term {
+            m: &t.matcher,
+            negated: t.negated,
+        })
+        .collect()
 }
 
 /// Whether a line's bytes (UTF-8) meet every added condition.
 pub(super) fn line_meets(terms: &[filter::Term], line: &[u8]) -> bool {
     terms.iter().all(|t| {
         let mut found = false;
-        t.m.find_in(line, 0, 0, line.len(), line.len(), &mut None, &mut |_, _| {
-            found = true;
-            false
-        });
+        t.m.find_in(
+            line,
+            0,
+            0,
+            line.len(),
+            line.len(),
+            &mut None,
+            &mut |_, _| {
+                found = true;
+                false
+            },
+        );
         found != t.negated
     })
 }
@@ -119,7 +133,9 @@ pub(crate) struct FilterRequest {
 impl BigTextApp {
     /// Starts filtering the active document by the search query.
     pub(crate) fn start_filter(&mut self) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         if !d.is_ready() {
             return;
         }
@@ -128,7 +144,10 @@ impl BigTextApp {
             return;
         }
         let pattern = self.search.query.pattern.clone();
-        if self.search.fields || (d.effective_lang() == crate::view::highlight::Lang::Json && bigtext::jsonq::looks_like_query(&pattern)) {
+        if self.search.fields
+            || (d.effective_lang() == crate::view::highlight::Lang::Json
+                && bigtext::jsonq::looks_like_query(&pattern))
+        {
             self.start_field_filter(&pattern);
             return;
         }
@@ -139,20 +158,31 @@ impl BigTextApp {
                 return;
             }
         };
-        let column = self.search.filter_column.and_then(|c| Some((d.table_state.dialect?, c))).filter(|_| d.table);
+        let column = self
+            .search
+            .filter_column
+            .and_then(|c| Some((d.table_state.dialect?, c)))
+            .filter(|_| d.table);
         let range = match self.time_window(After::Filter) {
             Window::Wait => return,
             Window::Bytes(a, b) => Some((a, b)),
             Window::All => None,
         };
-        let spec = self.with_context(FilterSpec { invert: self.search.invert, column, range, ..Default::default() });
+        let spec = self.with_context(FilterSpec {
+            invert: self.search.invert,
+            column,
+            range,
+            ..Default::default()
+        });
         self.search.remember();
         self.run_filter(self.search.query.clone(), m, spec, None);
     }
 
     /// Filters JSON Lines by a field query (`.level == "error" and .duration > 500`).
     pub(crate) fn start_field_filter(&mut self, text: &str) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let q = match FieldQuery::parse(text) {
             Ok(q) => Arc::new(q),
             Err(e) => {
@@ -165,23 +195,54 @@ impl BigTextApp {
             self.search.status = tr("Field queries need a UTF-8 file").into();
             return;
         }
-        let hl = Query { pattern: q.highlight(), regex: false, case_sensitive: true, whole_word: false, dot_all: false };
-        let Ok(m) = Matcher::new(&hl, d.buf.codec) else { return };
+        let hl = Query {
+            pattern: q.highlight(),
+            regex: false,
+            case_sensitive: true,
+            whole_word: false,
+            dot_all: false,
+        };
+        let Ok(m) = Matcher::new(&hl, d.buf.codec) else {
+            return;
+        };
         let range = match self.time_window(After::Filter) {
             Window::Wait => return,
             Window::Bytes(a, b) => Some((a, b)),
             Window::All => None,
         };
-        let spec = self.with_context(FilterSpec { invert: self.search.invert, range, ..Default::default() });
+        let spec = self.with_context(FilterSpec {
+            invert: self.search.invert,
+            range,
+            ..Default::default()
+        });
         self.search.remember();
-        let query = Query { pattern: text.to_string(), ..self.search.query.clone() };
-        self.run_filter_req(FilterRequest { query, m: Arc::new(m), spec, levels: None, follow: None, terms: Vec::new(), json: Some(q) }, None);
+        let query = Query {
+            pattern: text.to_string(),
+            ..self.search.query.clone()
+        };
+        self.run_filter_req(
+            FilterRequest {
+                query,
+                m: Arc::new(m),
+                spec,
+                levels: None,
+                follow: None,
+                terms: Vec::new(),
+                json: Some(q),
+            },
+            None,
+        );
     }
 
     /// `spec` with the context lines and whole entries chosen in the filter panel.
     pub(crate) fn with_context(&self, spec: FilterSpec) -> FilterSpec {
         let n = self.settings.filter_context.min(filter::CONTEXT_MAX);
-        FilterSpec { before: n, after: n, entries: self.settings.filter_entries, ..spec }
+        FilterSpec {
+            before: n,
+            after: n,
+            entries: self.settings.filter_entries,
+            ..spec
+        }
     }
 
     /// Runs the active document's filter again (after an edit or a change of its options), with
@@ -192,7 +253,11 @@ impl BigTextApp {
 
     /// Runs the active document's filter again with `terms` (or its own) as added conditions.
     fn refilter(&mut self, terms: Option<Vec<FilterTerm>>) {
-        if self.docs.get(self.active).is_none_or(|d| d.filter.is_none()) {
+        if self
+            .docs
+            .get(self.active)
+            .is_none_or(|d| d.filter.is_none())
+        {
             return;
         }
         let range = match self.time_window(After::Refilter) {
@@ -200,16 +265,32 @@ impl BigTextApp {
             Window::Bytes(a, b) => Some((a, b)),
             Window::All => None,
         };
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let Some(r) = d.filter.as_ref() else { return };
         let codec = d.buf.codec;
         let spec = match r.follow {
-            Some(_) => FilterSpec { entries: true, ..Default::default() },
-            None => self.with_context(FilterSpec { invert: r.spec.invert, column: r.spec.column, range, ..Default::default() }),
+            Some(_) => FilterSpec {
+                entries: true,
+                ..Default::default()
+            },
+            None => self.with_context(FilterSpec {
+                invert: r.spec.invert,
+                column: r.spec.column,
+                range,
+                ..Default::default()
+            }),
         };
         // A field query's matcher only highlights.
         let q = match &r.json {
-            Some(j) => Query { pattern: j.highlight(), regex: false, case_sensitive: true, whole_word: false, dot_all: false },
+            Some(j) => Query {
+                pattern: j.highlight(),
+                regex: false,
+                case_sensitive: true,
+                whole_word: false,
+                dot_all: false,
+            },
             None => r.query.clone(),
         };
         let m = match Matcher::new(&q, codec) {
@@ -220,20 +301,42 @@ impl BigTextApp {
             }
         };
         let terms = terms.unwrap_or_else(|| r.terms.clone());
-        let terms = terms.into_iter().filter_map(|t| Matcher::new(&t.query, codec).ok().map(|m| FilterTerm { matcher: Arc::new(m), ..t })).collect();
-        let req = FilterRequest { query: r.query.clone(), m, spec, levels: r.levels, follow: r.follow.clone(), terms, json: r.json.clone() };
+        let terms = terms
+            .into_iter()
+            .filter_map(|t| {
+                Matcher::new(&t.query, codec).ok().map(|m| FilterTerm {
+                    matcher: Arc::new(m),
+                    ..t
+                })
+            })
+            .collect();
+        let req = FilterRequest {
+            query: r.query.clone(),
+            m,
+            spec,
+            levels: r.levels,
+            follow: r.follow.clone(),
+            terms,
+            json: r.json.clone(),
+        };
         self.run_filter_req(req, None);
     }
 
     /// Adds a condition to the active document's filter: lines with `pattern` (with the search
     /// bar's options), or without it. When the filter is complete, only its lines are read.
     pub(crate) fn narrow_filter(&mut self, pattern: &str, negated: bool) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let Some(r) = d.filter.as_ref() else { return };
         if pattern.is_empty() {
             return;
         }
-        let query = Query { pattern: pattern.to_string(), dot_all: false, ..self.search.query.clone() };
+        let query = Query {
+            pattern: pattern.to_string(),
+            dot_all: false,
+            ..self.search.query.clone()
+        };
         let matcher = match Matcher::new(&query, d.buf.codec) {
             Ok(m) => Arc::new(m),
             Err(e) => {
@@ -242,27 +345,50 @@ impl BigTextApp {
             }
         };
         let mut terms = r.terms.clone();
-        terms.push(FilterTerm { query, negated, matcher });
+        terms.push(FilterTerm {
+            query,
+            negated,
+            matcher,
+        });
         // The lines of a complete, current filter (its matches, not their context).
         let within = {
             let g = r.data.lock().unwrap();
             (g.done && !g.capped && g.end == Some(SearchEnd::Completed) && r.version == d.version)
-                .then(|| g.lines.iter().enumerate().filter(|&(i, _)| !g.is_context(i)).map(|(_, &s)| s).collect::<Vec<u64>>())
+                .then(|| {
+                    g.lines
+                        .iter()
+                        .enumerate()
+                        .filter(|&(i, _)| !g.is_context(i))
+                        .map(|(_, &s)| s)
+                        .collect::<Vec<u64>>()
+                })
         };
-        let req = FilterRequest { query: r.query.clone(), m: r.matcher.clone(), spec: r.spec, levels: r.levels, follow: r.follow.clone(), terms, json: r.json.clone() };
+        let req = FilterRequest {
+            query: r.query.clone(),
+            m: r.matcher.clone(),
+            spec: r.spec,
+            levels: r.levels,
+            follow: r.follow.clone(),
+            terms,
+            json: r.json.clone(),
+        };
         self.run_filter_req(req, within);
     }
 
     /// Drops the added conditions from the `from`-th on and runs the filter again.
     pub(crate) fn unnarrow_filter(&mut self, from: usize) {
-        let Some(r) = self.docs.get(self.active).and_then(|d| d.filter.as_ref()) else { return };
+        let Some(r) = self.docs.get(self.active).and_then(|d| d.filter.as_ref()) else {
+            return;
+        };
         let terms = r.terms[..from.min(r.terms.len())].to_vec();
         self.refilter(Some(terms));
     }
 
     /// Drops the `i`-th added condition and runs the filter again.
     pub(crate) fn remove_filter_term(&mut self, i: usize) {
-        let Some(r) = self.docs.get(self.active).and_then(|d| d.filter.as_ref()) else { return };
+        let Some(r) = self.docs.get(self.active).and_then(|d| d.filter.as_ref()) else {
+            return;
+        };
         let mut terms = r.terms.clone();
         if i < terms.len() {
             terms.remove(i);
@@ -273,7 +399,10 @@ impl BigTextApp {
     /// Search → Narrow the filter: adds the search box's pattern (with the ! switch) to the active
     /// filter, or starts a filter when there is none.
     pub(crate) fn filter_within(&mut self) {
-        let has = self.docs.get(self.active).is_some_and(|d| d.filter.is_some());
+        let has = self
+            .docs
+            .get(self.active)
+            .is_some_and(|d| d.filter.is_some());
         if !has || self.search.query.pattern.is_empty() {
             self.open_search(false);
             self.start_filter();
@@ -285,23 +414,53 @@ impl BigTextApp {
     }
 
     /// Filters the active document with `m` in the background, replacing its previous filter.
-    pub(crate) fn run_filter(&mut self, query: Query, m: Arc<Matcher>, spec: FilterSpec, levels: Option<Levels>) {
-        self.run_filter_req(FilterRequest { query, m, spec, levels, follow: None, terms: Vec::new(), json: None }, None);
+    pub(crate) fn run_filter(
+        &mut self,
+        query: Query,
+        m: Arc<Matcher>,
+        spec: FilterSpec,
+        levels: Option<Levels>,
+    ) {
+        self.run_filter_req(
+            FilterRequest {
+                query,
+                m,
+                spec,
+                levels,
+                follow: None,
+                terms: Vec::new(),
+                json: None,
+            },
+            None,
+        );
     }
 
     /// Filters the active document in the background, replacing its previous filter. With
     /// `follow`, the lines are an id's, and the job also notes their first and last time and how
     /// many are errors. With `within`, only those lines (an earlier result) are read.
     pub(crate) fn run_filter_req(&mut self, req: FilterRequest, within: Option<Vec<u64>>) {
-        let Some(d) = self.docs.get_mut(self.active) else { return };
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
         if let Some(r) = d.filter.take() {
             r.cancel.cancel();
         }
-        let FilterRequest { query, m, spec, levels, follow, terms, json } = req;
+        let FilterRequest {
+            query,
+            m,
+            spec,
+            levels,
+            follow,
+            terms,
+            json,
+        } = req;
         let data = Arc::new(Mutex::new(FilterData::default()));
         let cancel = CancelToken::new();
         let progress = Progress::new(d.buf.len());
-        let errors = follow.as_ref().and_then(|_| loglevel::query(Levels::only(Level::Error))).and_then(|q| Matcher::new(&q, d.buf.codec).ok());
+        let errors = follow
+            .as_ref()
+            .and_then(|_| loglevel::query(Levels::only(Level::Error)))
+            .and_then(|q| Matcher::new(&q, d.buf.codec).ok());
         d.filter = Some(FilterResults {
             query,
             levels,
@@ -339,14 +498,26 @@ impl BigTextApp {
                         summary.first.get_or_insert(st);
                         summary.last = Some(st);
                     }
-                    if !bigtext::search::matches_in_view(&snap, em, ls..le.min(ls + 64 * 1024), 1).is_empty() {
+                    if !bigtext::search::matches_in_view(&snap, em, ls..le.min(ls + 64 * 1024), 1)
+                        .is_empty()
+                    {
                         summary.errors += 1;
                     }
                 }
                 batch.push(ls);
                 if with_kinds {
-                    let gap = if prev_end.is_some_and(|p| ls > p) { KIND_GAP } else { 0 };
-                    kinds.push(gap | if kind == LineKind::Context { KIND_CONTEXT } else { 0 });
+                    let gap = if prev_end.is_some_and(|p| ls > p) {
+                        KIND_GAP
+                    } else {
+                        0
+                    };
+                    kinds.push(
+                        gap | if kind == LineKind::Context {
+                            KIND_CONTEXT
+                        } else {
+                            0
+                        },
+                    );
                     prev_end = Some(le);
                 }
                 count += 1;
@@ -363,9 +534,32 @@ impl BigTextApp {
                 true
             };
             let end = match (&within, &json) {
-                (Some(starts), _) => filter::filter_given(&snap, starts, spec, &refs, &cancel, Some(&progress), on_line),
-                (None, Some(q)) => filter::filter_predicate(&snap, spec, &|l| q.matches(l) && line_meets(&refs, l), &cancel, Some(&progress), on_line),
-                (None, None) => filter::filter_lines_with(&snap, &m, spec, &refs, &cancel, Some(&progress), on_line),
+                (Some(starts), _) => filter::filter_given(
+                    &snap,
+                    starts,
+                    spec,
+                    &refs,
+                    &cancel,
+                    Some(&progress),
+                    on_line,
+                ),
+                (None, Some(q)) => filter::filter_predicate(
+                    &snap,
+                    spec,
+                    &|l| q.matches(l) && line_meets(&refs, l),
+                    &cancel,
+                    Some(&progress),
+                    on_line,
+                ),
+                (None, None) => filter::filter_lines_with(
+                    &snap,
+                    &m,
+                    spec,
+                    &refs,
+                    &cancel,
+                    Some(&progress),
+                    on_line,
+                ),
             };
             let mut g = data.lock().unwrap();
             g.lines.append(&mut batch);
@@ -383,20 +577,50 @@ impl BigTextApp {
 
     /// Writes every kept line (not only the listed ones) to a file the user picks.
     pub(crate) fn export_filter(&mut self) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let Some(r) = &d.filter else { return };
         if r.version != d.version {
-            self.error = Some(tr("The document changed since the filter ran. Run the filter again first.").into());
+            self.error = Some(
+                tr("The document changed since the filter ran. Run the filter again first.").into(),
+            );
             return;
         }
-        let (snap, m, spec, terms, name) = (d.buf.snapshot(), r.matcher.clone(), r.spec, r.terms.clone(), d.title.clone());
+        let (snap, m, spec, terms, name) = (
+            d.buf.snapshot(),
+            r.matcher.clone(),
+            r.spec,
+            r.terms.clone(),
+            d.title.clone(),
+        );
         if let Some(q) = r.json.clone() {
-            let Some(target) = self.pick_output_file(tr("Save lines"), &format!("{name}.lines.txt")) else { return };
+            let Some(target) =
+                self.pick_output_file(tr("Save lines"), &format!("{name}.lines.txt"))
+            else {
+                return;
+            };
             self.spawn_task(tr("Saving lines").into(), move |progress, cancel| {
                 progress.set_total(snap.len());
                 tasks::write_via_temp(&target, |w| {
-                    Ok(filter::write_pred_lines_to(&snap, spec, &|l| q.matches(l) && line_meets(&term_refs(&terms), l), w, cancel, Some(progress))?
-                        .map(|n| trf("Saved {lines} lines ({size}) to {file}.", &[("lines", &fmt_count(n.lines)), ("size", &human_bytes(n.bytes)), ("file", &file_name(&target))])))
+                    Ok(filter::write_pred_lines_to(
+                        &snap,
+                        spec,
+                        &|l| q.matches(l) && line_meets(&term_refs(&terms), l),
+                        w,
+                        cancel,
+                        Some(progress),
+                    )?
+                    .map(|n| {
+                        trf(
+                            "Saved {lines} lines ({size}) to {file}.",
+                            &[
+                                ("lines", &fmt_count(n.lines)),
+                                ("size", &human_bytes(n.bytes)),
+                                ("file", &file_name(&target)),
+                            ],
+                        )
+                    }))
                 })
             });
             return;
@@ -405,20 +629,46 @@ impl BigTextApp {
     }
 
     /// Asks for a file and writes the lines that `m` and `spec` keep to it.
-    pub(crate) fn save_lines_dialog(&mut self, snap: TextBuf, m: Arc<Matcher>, spec: FilterSpec, terms: Vec<FilterTerm>, doc_title: &str) {
-        let Some(target) = self.pick_output_file(tr("Save lines"), &format!("{doc_title}.lines.txt")) else { return };
-        self.spawn_task(tr("Saving lines").into(), move |progress, cancel| export_lines(&snap, &m, spec, &terms, &target, progress, cancel));
+    pub(crate) fn save_lines_dialog(
+        &mut self,
+        snap: TextBuf,
+        m: Arc<Matcher>,
+        spec: FilterSpec,
+        terms: Vec<FilterTerm>,
+        doc_title: &str,
+    ) {
+        let Some(target) =
+            self.pick_output_file(tr("Save lines"), &format!("{doc_title}.lines.txt"))
+        else {
+            return;
+        };
+        self.spawn_task(tr("Saving lines").into(), move |progress, cancel| {
+            export_lines(&snap, &m, spec, &terms, &target, progress, cancel)
+        });
     }
 
     /// Save dialog for a new output file next to the active document; refuses files open in
     /// BigText (they are memory-mapped and cannot be replaced).
-    pub(crate) fn pick_output_file(&mut self, title: &str, name: &str) -> Option<std::path::PathBuf> {
+    pub(crate) fn pick_output_file(
+        &mut self,
+        title: &str,
+        name: &str,
+    ) -> Option<std::path::PathBuf> {
         let mut dlg = rfd::FileDialog::new().set_title(title).set_file_name(name);
-        if let Some(dir) = self.docs.get(self.active).and_then(|d| d.path.as_ref()).and_then(|p| p.parent()) {
+        if let Some(dir) = self
+            .docs
+            .get(self.active)
+            .and_then(|d| d.path.as_ref())
+            .and_then(|p| p.parent())
+        {
             dlg = dlg.set_directory(bigtext::file::display_path(dir));
         }
         let target = dlg.save_file()?;
-        if self.docs.iter().any(|d| d.path.as_deref().is_some_and(|p| same_path(p, &target))) {
+        if self
+            .docs
+            .iter()
+            .any(|d| d.path.as_deref().is_some_and(|p| same_path(p, &target)))
+        {
             self.error = Some(tr("That file is open in BigText. Choose another file.").into());
             return None;
         }
@@ -427,19 +677,38 @@ impl BigTextApp {
 
     /// Copies the kept lines to the clipboard (up to [`COPY_MAX`]).
     pub(crate) fn copy_filter(&mut self) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let Some(r) = &d.filter else { return };
-        let (snap, m, spec, terms, id) = (d.buf.snapshot(), r.matcher.clone(), r.spec, r.terms.clone(), d.id);
+        let (snap, m, spec, terms, id) = (
+            d.buf.snapshot(),
+            r.matcher.clone(),
+            r.spec,
+            r.terms.clone(),
+            d.id,
+        );
         if let Some(q) = r.json.clone() {
             let (tx, waker) = (self.tx.clone(), self.waker.clone());
             jobs::spawn("copy-lines", move || {
                 let mut out = Vec::new();
-                let r = filter::write_pred_lines_to(&snap, spec, &|l| q.matches(l) && line_meets(&term_refs(&terms), l), &mut CappedVec(&mut out, COPY_MAX), &CancelToken::new(), None);
+                let r = filter::write_pred_lines_to(
+                    &snap,
+                    spec,
+                    &|l| q.matches(l) && line_meets(&term_refs(&terms), l),
+                    &mut CappedVec(&mut out, COPY_MAX),
+                    &CancelToken::new(),
+                    None,
+                );
                 let result = match r {
                     Ok(_) => Ok(snap.codec.decode_lossy(&out)),
                     Err(e) => Err(e.to_string()),
                 };
-                let _ = tx.send(Msg::Copied { doc: id, result, cut: false });
+                let _ = tx.send(Msg::Copied {
+                    doc: id,
+                    result,
+                    cut: false,
+                });
                 waker();
             });
             return;
@@ -448,20 +717,40 @@ impl BigTextApp {
     }
 
     /// Copies the lines that `m` and `spec` keep to the clipboard (up to [`COPY_MAX`]).
-    pub(crate) fn copy_lines(&mut self, snap: TextBuf, m: Arc<Matcher>, spec: FilterSpec, terms: Vec<FilterTerm>, id: u64) {
+    pub(crate) fn copy_lines(
+        &mut self,
+        snap: TextBuf,
+        m: Arc<Matcher>,
+        spec: FilterSpec,
+        terms: Vec<FilterTerm>,
+        id: u64,
+    ) {
         let tx = self.tx.clone();
         let waker = self.waker.clone();
         jobs::spawn("copy-lines", move || {
             let mut out = Vec::new();
-            let r = filter::write_lines_to(&snap, &m, spec, &term_refs(&terms), &mut CappedVec(&mut out, COPY_MAX), &CancelToken::new(), None);
+            let r = filter::write_lines_to(
+                &snap,
+                &m,
+                spec,
+                &term_refs(&terms),
+                &mut CappedVec(&mut out, COPY_MAX),
+                &CancelToken::new(),
+                None,
+            );
             let result = match r {
                 Ok(_) => Ok(snap.codec.decode_lossy(&out)),
-                Err(e) if e.kind() == std::io::ErrorKind::OutOfMemory => {
-                    Err(trf("The lines are larger than {size}. Use “Save lines…” instead.", &[("size", &human_bytes(COPY_MAX))]))
-                }
+                Err(e) if e.kind() == std::io::ErrorKind::OutOfMemory => Err(trf(
+                    "The lines are larger than {size}. Use “Save lines…” instead.",
+                    &[("size", &human_bytes(COPY_MAX))],
+                )),
                 Err(e) => Err(e.to_string()),
             };
-            let _ = tx.send(Msg::Copied { doc: id, result, cut: false });
+            let _ = tx.send(Msg::Copied {
+                doc: id,
+                result,
+                cut: false,
+            });
             waker();
         });
     }
@@ -473,9 +762,13 @@ impl BigTextApp {
         let mut copy = false;
         let mut rerun = false;
         let mut jump = None;
-        let (mut context, mut entries) = (self.settings.filter_context, self.settings.filter_entries);
+        let (mut context, mut entries) =
+            (self.settings.filter_context, self.settings.filter_entries);
         let mut mark = None;
-        let (mut narrow_text, mut narrow_exclude) = (std::mem::take(&mut self.search.narrow), self.search.narrow_exclude);
+        let (mut narrow_text, mut narrow_exclude) = (
+            std::mem::take(&mut self.search.narrow),
+            self.search.narrow_exclude,
+        );
         let mut narrow = false;
         let range_label = self.range_label();
         let edit_block = self.lines_edit_blocked();
@@ -483,11 +776,21 @@ impl BigTextApp {
         // Some(None): drop all added conditions; Some(Some(i)): drop the i-th.
         let mut drop_terms: Option<Option<usize>> = None;
         {
-            let Some(d) = self.docs.get_mut(self.active) else { return };
+            let Some(d) = self.docs.get_mut(self.active) else {
+                return;
+            };
             let Some(r) = &d.filter else { return };
             let (n, hits, capped, done, elapsed, end, summary) = {
                 let g = r.data.lock().unwrap();
-                (g.lines.len(), g.hits, g.capped, g.done, g.elapsed, g.end, g.summary)
+                (
+                    g.lines.len(),
+                    g.hits,
+                    g.capped,
+                    g.done,
+                    g.elapsed,
+                    g.end,
+                    g.summary,
+                )
             };
             let stale = r.version != d.version;
             ui.horizontal(|ui| {
@@ -569,25 +872,54 @@ impl BigTextApp {
                     let base = match (&r.follow, r.levels) {
                         (Some(id), _) => format!("id {id}"),
                         (None, Some(lv)) => lv.names(),
-                        (None, None) => format!("{}“{}”", if r.spec.invert { "¬ " } else { "" }, r.query.pattern),
+                        (None, None) => format!(
+                            "{}“{}”",
+                            if r.spec.invert { "¬ " } else { "" },
+                            r.query.pattern
+                        ),
                     };
-                    if ui.small_button(base).on_hover_text(tr("Back to this filter alone")).clicked() {
+                    if ui
+                        .small_button(base)
+                        .on_hover_text(tr("Back to this filter alone"))
+                        .clicked()
+                    {
                         drop_terms = Some(None);
                     }
                     for (i, t) in r.terms.iter().enumerate() {
                         ui.label("›");
-                        let text = format!("{}“{}” ×", if t.negated { "¬ " } else { "" }, t.query.pattern);
-                        if ui.small_button(text).on_hover_text(tr("Remove this condition")).clicked() {
+                        let text = format!(
+                            "{}“{}” ×",
+                            if t.negated { "¬ " } else { "" },
+                            t.query.pattern
+                        );
+                        if ui
+                            .small_button(text)
+                            .on_hover_text(tr("Remove this condition"))
+                            .clicked()
+                        {
                             drop_terms = Some(Some(i));
                         }
                     }
                     ui.separator();
                 }
                 ui.label(tr("Narrow:"));
-                let resp = ui.add(egui::TextEdit::singleline(&mut narrow_text).desired_width(180.0).hint_text(tr("and also…")));
-                ui.checkbox(&mut narrow_exclude, tr("without")).on_hover_text(tr("Keep the lines that do not have it"));
+                let resp = ui.add(
+                    egui::TextEdit::singleline(&mut narrow_text)
+                        .desired_width(180.0)
+                        .hint_text(tr("and also…")),
+                );
+                ui.checkbox(&mut narrow_exclude, tr("without"))
+                    .on_hover_text(tr("Keep the lines that do not have it"));
                 let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if (ui.add_enabled(!narrow_text.is_empty(), egui::Button::new(tr("Add")).small()).clicked() || enter) && !narrow_text.is_empty() {
+                if (ui
+                    .add_enabled(
+                        !narrow_text.is_empty(),
+                        egui::Button::new(tr("Add")).small(),
+                    )
+                    .clicked()
+                    || enter)
+                    && !narrow_text.is_empty()
+                {
                     narrow = true;
                 }
             });
@@ -596,25 +928,44 @@ impl BigTextApp {
             let m = r.matcher.clone();
             let buf = &d.buf;
             let caret_line = d.line_bounds(d.view.caret, 64 * 1024).map(|b| b.0);
-            egui::ScrollArea::both().auto_shrink([false, false]).show_rows(ui, row_h, n, |ui, range| {
-                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                let (lines, kinds): (Vec<u64>, Vec<u8>) = {
-                    let g = data.lock().unwrap();
-                    let (a, b) = (range.start.min(g.lines.len()), range.end.min(g.lines.len()));
-                    (g.lines[a..b].to_vec(), (a..b).map(|i| g.kinds.get(i).copied().unwrap_or(0)).collect())
-                };
-                for (i, (ls, k)) in lines.into_iter().zip(kinds).enumerate() {
-                    let job = line_job(buf, ls, Some(&m), &font, ui.visuals(), stale, k & KIND_CONTEXT != 0);
-                    let resp = ui.selectable_label(caret_line == Some(ls) && !stale, job);
-                    if k & KIND_GAP != 0 && range.start + i > 0 {
-                        let y = resp.rect.top() - 1.0;
-                        ui.painter().hline(resp.rect.x_range(), y, egui::Stroke::new(1.0, ui.visuals().weak_text_color()));
+            egui::ScrollArea::both()
+                .auto_shrink([false, false])
+                .show_rows(ui, row_h, n, |ui, range| {
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                    let (lines, kinds): (Vec<u64>, Vec<u8>) = {
+                        let g = data.lock().unwrap();
+                        let (a, b) = (range.start.min(g.lines.len()), range.end.min(g.lines.len()));
+                        (
+                            g.lines[a..b].to_vec(),
+                            (a..b)
+                                .map(|i| g.kinds.get(i).copied().unwrap_or(0))
+                                .collect(),
+                        )
+                    };
+                    for (i, (ls, k)) in lines.into_iter().zip(kinds).enumerate() {
+                        let job = line_job(
+                            buf,
+                            ls,
+                            Some(&m),
+                            &font,
+                            ui.visuals(),
+                            stale,
+                            k & KIND_CONTEXT != 0,
+                        );
+                        let resp = ui.selectable_label(caret_line == Some(ls) && !stale, job);
+                        if k & KIND_GAP != 0 && range.start + i > 0 {
+                            let y = resp.rect.top() - 1.0;
+                            ui.painter().hline(
+                                resp.rect.x_range(),
+                                y,
+                                egui::Stroke::new(1.0, ui.visuals().weak_text_color()),
+                            );
+                        }
+                        if resp.clicked() {
+                            jump = Some(ls);
+                        }
                     }
-                    if resp.clicked() {
-                        jump = Some(ls);
-                    }
-                }
-            });
+                });
             if let (Some(ls), false) = (jump, stale) {
                 d.set_caret(ls.max(d.min_caret()), false);
                 d.view.center();
@@ -663,16 +1014,37 @@ impl BigTextApp {
     }
 }
 
-pub(super) fn export_lines(snap: &TextBuf, m: &Matcher, spec: FilterSpec, terms: &[FilterTerm], target: &std::path::Path, progress: &Progress, cancel: &CancelToken) -> TaskOutcome {
+pub(super) fn export_lines(
+    snap: &TextBuf,
+    m: &Matcher,
+    spec: FilterSpec,
+    terms: &[FilterTerm],
+    target: &std::path::Path,
+    progress: &Progress,
+    cancel: &CancelToken,
+) -> TaskOutcome {
     progress.set_total(snap.len());
     tasks::write_via_temp(target, |w| {
-        Ok(filter::write_lines_to(snap, m, spec, &term_refs(terms), w, cancel, Some(progress))?
-            .map(|n| trf("Saved {lines} lines ({size}) to {file}.", &[("lines", &fmt_count(n.lines)), ("size", &human_bytes(n.bytes)), ("file", &file_name(target))])))
+        Ok(
+            filter::write_lines_to(snap, m, spec, &term_refs(terms), w, cancel, Some(progress))?
+                .map(|n| {
+                    trf(
+                        "Saved {lines} lines ({size}) to {file}.",
+                        &[
+                            ("lines", &fmt_count(n.lines)),
+                            ("size", &human_bytes(n.bytes)),
+                            ("file", &file_name(target)),
+                        ],
+                    )
+                }),
+        )
     })
 }
 
 pub(super) fn file_name(p: &std::path::Path) -> String {
-    p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| bigtext::file::display_path(p))
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| bigtext::file::display_path(p))
 }
 
 /// 1234567 → "1,234,567".
@@ -708,13 +1080,42 @@ impl std::io::Write for CappedVec<'_> {
 /// dimmed, without highlights). When the first match is far to the right, the text starts a
 /// little before it.
 /// A listed line: its number and text, with `m`'s matches highlighted (context lines dim).
-pub(crate) fn line_job(buf: &TextBuf, ls: u64, m: Option<&Matcher>, font: &FontId, v: &egui::Visuals, stale: bool, context: bool) -> LayoutJob {
+pub(crate) fn line_job(
+    buf: &TextBuf,
+    ls: u64,
+    m: Option<&Matcher>,
+    font: &FontId,
+    v: &egui::Visuals,
+    stale: bool,
+    context: bool,
+) -> LayoutJob {
     let mut job = LayoutJob::default();
-    let weak = TextFormat { font_id: font.clone(), color: v.weak_text_color(), ..Default::default() };
-    let normal = TextFormat { font_id: font.clone(), color: if stale || context { v.weak_text_color() } else { v.text_color() }, ..Default::default() };
-    let hl = TextFormat { font_id: font.clone(), color: v.strong_text_color(), background: v.selection.bg_fill, ..Default::default() };
+    let weak = TextFormat {
+        font_id: font.clone(),
+        color: v.weak_text_color(),
+        ..Default::default()
+    };
+    let normal = TextFormat {
+        font_id: font.clone(),
+        color: if stale || context {
+            v.weak_text_color()
+        } else {
+            v.text_color()
+        },
+        ..Default::default()
+    };
+    let hl = TextFormat {
+        font_id: font.clone(),
+        color: v.strong_text_color(),
+        background: v.selection.bg_fill,
+        ..Default::default()
+    };
     let (line, exact) = buf.line_of(ls.min(buf.len()));
-    job.append(&format!("{}{:>8}  ", if exact { " " } else { "~" }, line + 1), 0.0, weak.clone());
+    job.append(
+        &format!("{}{:>8}  ", if exact { " " } else { "~" }, line + 1),
+        0.0,
+        weak.clone(),
+    );
     let codec = buf.codec;
     let start = ls.max(codec.bom_len as u64).min(buf.len());
     let Some(raw) = buf.read(start..(start + SHOW_MAX).min(buf.len())) else {
@@ -741,7 +1142,21 @@ pub(crate) fn line_job(buf: &TextBuf, ls: u64, m: Option<&Matcher>, font: &FontI
             from = skip;
         }
     }
-    let clean = |b: &[u8]| -> String { codec.decode_lossy(b).chars().map(|c| if c == '\t' { ' ' } else if c.is_control() { '·' } else { c }).collect() };
+    let clean = |b: &[u8]| -> String {
+        codec
+            .decode_lossy(b)
+            .chars()
+            .map(|c| {
+                if c == '\t' {
+                    ' '
+                } else if c.is_control() {
+                    '·'
+                } else {
+                    c
+                }
+            })
+            .collect()
+    };
     let slice = |a: u64, b: u64| &raw[(a - start) as usize..(b - start) as usize];
     for &(s, e) in &hits {
         let (s, e) = (s.clamp(from, end), e.clamp(from, end));

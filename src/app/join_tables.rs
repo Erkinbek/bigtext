@@ -21,23 +21,48 @@ pub struct JoinDialog {
 impl BigTextApp {
     /// Indices of the tabs showing a ready table.
     fn table_tabs(&self) -> Vec<usize> {
-        (0..self.docs.len()).filter(|&i| self.docs[i].is_ready() && self.docs[i].table && self.docs[i].table_state.dialect.is_some()).collect()
+        (0..self.docs.len())
+            .filter(|&i| {
+                self.docs[i].is_ready()
+                    && self.docs[i].table
+                    && self.docs[i].table_state.dialect.is_some()
+            })
+            .collect()
     }
 
     pub(crate) fn open_join(&mut self) {
         let tabs = self.table_tabs();
         if tabs.len() < 2 {
-            self.notify(tr("Open two tables (CSV / TSV in the table view) to join them.").into(), None);
+            self.notify(
+                tr("Open two tables (CSV / TSV in the table view) to join them.").into(),
+                None,
+            );
             return;
         }
-        let left = if tabs.contains(&self.active) { self.active } else { tabs[0] };
+        let left = if tabs.contains(&self.active) {
+            self.active
+        } else {
+            tabs[0]
+        };
         let right = tabs.iter().copied().find(|&i| i != left).unwrap_or(tabs[1]);
-        self.join = Some(JoinDialog { left: self.docs[left].id, right: self.docs[right].id, left_key: 0, right_key: 0, inner: false });
+        self.join = Some(JoinDialog {
+            left: self.docs[left].id,
+            right: self.docs[right].id,
+            left_key: 0,
+            right_key: 0,
+            inner: false,
+        });
     }
 
     pub(super) fn join_window(&mut self, ctx: &egui::Context) {
-        let Some((lid, rid)) = self.join.as_ref().map(|j| (j.left, j.right)) else { return };
-        let tabs: Vec<(u64, String)> = self.table_tabs().into_iter().map(|i| (self.docs[i].id, self.docs[i].title.clone())).collect();
+        let Some((lid, rid)) = self.join.as_ref().map(|j| (j.left, j.right)) else {
+            return;
+        };
+        let tabs: Vec<(u64, String)> = self
+            .table_tabs()
+            .into_iter()
+            .map(|i| (self.docs[i].id, self.docs[i].title.clone()))
+            .collect();
         let index = |id: u64| self.docs.iter().position(|d| d.id == id);
         let (li, ri) = (index(lid), index(rid));
         let left_names = li.map(|i| self.column_names_of(i)).unwrap_or_default();
@@ -86,37 +111,73 @@ impl BigTextApp {
 
     pub(crate) fn start_join(&mut self, j: JoinDialog) {
         let index = |id: u64| self.docs.iter().position(|d| d.id == id);
-        let (Some(li), Some(ri)) = (index(j.left), index(j.right)) else { return };
+        let (Some(li), Some(ri)) = (index(j.left), index(j.right)) else {
+            return;
+        };
         let (l, r) = (&self.docs[li], &self.docs[ri]);
-        let (Some(ld), Some(rd)) = (l.table_state.dialect, r.table_state.dialect) else { return };
-        let spec = JoinSpec { left_key: j.left_key, right_key: j.right_key, inner: j.inner, header: l.table_state.header && r.table_state.header };
+        let (Some(ld), Some(rd)) = (l.table_state.dialect, r.table_state.dialect) else {
+            return;
+        };
+        let spec = JoinSpec {
+            left_key: j.left_key,
+            right_key: j.right_key,
+            inner: j.inner,
+            header: l.table_state.header && r.table_state.header,
+        };
         let (lsnap, rsnap) = (l.buf.snapshot(), r.buf.snapshot());
         let title = format!("{} + {}", l.title, r.title);
         let target = bigtext::decompress::temp_file("joined.csv");
-        self.spawn_task(tr("Joining tables").into(), move |progress: &Progress, cancel: &CancelToken| {
-            let res = (|| {
-                if let Some(dir) = target.parent() {
-                    std::fs::create_dir_all(dir)?;
+        self.spawn_task(
+            tr("Joining tables").into(),
+            move |progress: &Progress, cancel: &CancelToken| {
+                let res = (|| {
+                    if let Some(dir) = target.parent() {
+                        std::fs::create_dir_all(dir)?;
+                    }
+                    let mut w = std::io::BufWriter::with_capacity(
+                        8 << 20,
+                        std::fs::File::options()
+                            .write(true)
+                            .create_new(true)
+                            .open(&target)?,
+                    );
+                    let st = csv_join::join_to(
+                        (&lsnap, ld),
+                        (&rsnap, rd),
+                        spec,
+                        &mut w,
+                        cancel,
+                        Some(progress),
+                    )?;
+                    std::io::Write::flush(&mut w)?;
+                    Ok::<_, std::io::Error>(st)
+                })();
+                match res {
+                    Ok(Some(st)) => {
+                        let message = trf(
+                            "{matched} of {rows} rows had a match; {out} rows.",
+                            &[
+                                ("matched", &fmt_count(st.matched)),
+                                ("rows", &fmt_count(st.left_rows)),
+                                ("out", &fmt_count(st.out_rows)),
+                            ],
+                        );
+                        TaskOutcome::TempTable(Box::new(tasks::TempTable {
+                            path: target,
+                            title,
+                            message,
+                        }))
+                    }
+                    Ok(None) => {
+                        bigtext::decompress::remove_temp(&target);
+                        TaskOutcome::Cancelled
+                    }
+                    Err(e) => {
+                        bigtext::decompress::remove_temp(&target);
+                        TaskOutcome::Failed(e.to_string())
+                    }
                 }
-                let mut w = std::io::BufWriter::with_capacity(8 << 20, std::fs::File::options().write(true).create_new(true).open(&target)?);
-                let st = csv_join::join_to((&lsnap, ld), (&rsnap, rd), spec, &mut w, cancel, Some(progress))?;
-                std::io::Write::flush(&mut w)?;
-                Ok::<_, std::io::Error>(st)
-            })();
-            match res {
-                Ok(Some(st)) => {
-                    let message = trf("{matched} of {rows} rows had a match; {out} rows.", &[("matched", &fmt_count(st.matched)), ("rows", &fmt_count(st.left_rows)), ("out", &fmt_count(st.out_rows))]);
-                    TaskOutcome::TempTable(Box::new(tasks::TempTable { path: target, title, message }))
-                }
-                Ok(None) => {
-                    bigtext::decompress::remove_temp(&target);
-                    TaskOutcome::Cancelled
-                }
-                Err(e) => {
-                    bigtext::decompress::remove_temp(&target);
-                    TaskOutcome::Failed(e.to_string())
-                }
-            }
-        });
+            },
+        );
     }
 }

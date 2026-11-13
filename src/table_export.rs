@@ -21,7 +21,12 @@ pub enum Format {
 }
 
 impl Format {
-    pub const ALL: [Format; 4] = [Format::Json, Format::JsonLines, Format::Markdown, Format::Xlsx];
+    pub const ALL: [Format; 4] = [
+        Format::Json,
+        Format::JsonLines,
+        Format::Markdown,
+        Format::Xlsx,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -68,7 +73,10 @@ fn json_string(s: &str) -> String {
 }
 
 fn markdown_cell(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('|', "\\|").replace("\r\n", "<br>").replace(['\n', '\r'], "<br>")
+    s.replace('\\', "\\\\")
+        .replace('|', "\\|")
+        .replace("\r\n", "<br>")
+        .replace(['\n', '\r'], "<br>")
 }
 
 fn xml_text(s: &str) -> String {
@@ -105,7 +113,12 @@ fn column_letters(mut col: usize) -> String {
 /// A number Excel can store without changing how it reads: no leading zeros or plus signs.
 fn as_number(s: &str) -> Option<f64> {
     let t = s.trim();
-    if t != s || t.is_empty() || t.starts_with('+') || (t.len() > 1 && t.starts_with('0') && !t.starts_with("0.")) || t.starts_with("-0") && t.len() > 2 && !t.starts_with("-0.") {
+    if t != s
+        || t.is_empty()
+        || t.starts_with('+')
+        || (t.len() > 1 && t.starts_with('0') && !t.starts_with("0."))
+        || t.starts_with("-0") && t.len() > 2 && !t.starts_with("-0.")
+    {
         return None;
     }
     let n: f64 = t.parse().ok()?;
@@ -147,8 +160,19 @@ pub struct Spec<'a> {
 }
 
 /// Writes the table as `spec` says. Returns `None` if cancelled.
-pub fn export<W: Write + Seek>(buf: &TextBuf, spec: Spec, out: W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<Exported>> {
-    let Spec { dialect: d, cols, header, format } = spec;
+pub fn export<W: Write + Seek>(
+    buf: &TextBuf,
+    spec: Spec,
+    out: W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<Exported>> {
+    let Spec {
+        dialect: d,
+        cols,
+        header,
+        format,
+    } = spec;
     let codec = buf.codec;
     let read_err = || io::Error::other("could not read the document");
     let mut names: Option<Vec<String>> = None;
@@ -159,14 +183,18 @@ pub fn export<W: Write + Seek>(buf: &TextBuf, spec: Spec, out: W, cancel: &Cance
     match format {
         Format::Xlsx => {
             let mut z = zip::ZipWriter::new(out);
-            let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            let opts = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
             for (name, text) in XLSX_PARTS {
                 z.start_file(name, opts).map_err(io::Error::other)?;
                 z.write_all(text.as_bytes())?;
             }
-            z.start_file("xl/worksheets/sheet1.xml", opts).map_err(io::Error::other)?;
-            z.write_all(br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>"#)?;
+            z.start_file("xl/worksheets/sheet1.xml", opts)
+                .map_err(io::Error::other)?;
+            z.write_all(
+                br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>"#,
+            )?;
             zip = Some(z);
         }
         Format::Json => {
@@ -180,13 +208,18 @@ pub fn export<W: Write + Seek>(buf: &TextBuf, spec: Spec, out: W, cancel: &Cance
     let mut values: Vec<String> = Vec::new();
     let end = for_each_record(buf, d, cancel, progress, |r| {
         // A blank line at the very end is not a row.
-        if r.content.is_empty() && r.next == r.content.end && r.fields.len() == 1 && names.is_some() {
+        if r.content.is_empty() && r.next == r.content.end && r.fields.len() == 1 && names.is_some()
+        {
             return true;
         }
         values.clear();
         let pick: Vec<usize> = match cols {
             Some(c) => c.to_vec(),
-            None => (0..r.fields.len().max(names.as_ref().map(Vec::len).unwrap_or(0))).collect(),
+            None => (0..r
+                .fields
+                .len()
+                .max(names.as_ref().map(Vec::len).unwrap_or(0)))
+                .collect(),
         };
         for &c in &pick {
             let v = match r.fields.get(c) {
@@ -203,10 +236,29 @@ pub fn export<W: Write + Seek>(buf: &TextBuf, spec: Spec, out: W, cancel: &Cance
         }
         let first = names.is_none();
         if first {
-            names = Some(if header { values.iter().enumerate().map(|(i, v)| if v.is_empty() { format!("column{}", i + 1) } else { v.clone() }).collect() } else { (1..=values.len()).map(|i| format!("column{i}")).collect() });
+            names = Some(if header {
+                values
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| {
+                        if v.is_empty() {
+                            format!("column{}", i + 1)
+                        } else {
+                            v.clone()
+                        }
+                    })
+                    .collect()
+            } else {
+                (1..=values.len()).map(|i| format!("column{i}")).collect()
+            });
         }
         let names = names.as_ref().unwrap();
-        let name = |i: usize| names.get(i).cloned().unwrap_or_else(|| format!("column{}", i + 1));
+        let name = |i: usize| {
+            names
+                .get(i)
+                .cloned()
+                .unwrap_or_else(|| format!("column{}", i + 1))
+        };
         let r: io::Result<()> = (|| {
             match format {
                 Format::Xlsx => {
@@ -243,7 +295,8 @@ pub fn export<W: Write + Seek>(buf: &TextBuf, spec: Spec, out: W, cancel: &Cance
                 Format::Markdown => {
                     let w = plain.as_mut().unwrap();
                     if first {
-                        let head: Vec<String> = (0..values.len()).map(|i| markdown_cell(&name(i))).collect();
+                        let head: Vec<String> =
+                            (0..values.len()).map(|i| markdown_cell(&name(i))).collect();
                         writeln!(w, "| {} |", head.join(" | "))?;
                         writeln!(w, "|{}", " --- |".repeat(head.len().max(1)))?;
                         if header {
@@ -259,7 +312,11 @@ pub fn export<W: Write + Seek>(buf: &TextBuf, spec: Spec, out: W, cancel: &Cance
                         return Ok(());
                     }
                     let w = plain.as_mut().unwrap();
-                    let obj: Vec<String> = values.iter().enumerate().map(|(i, v)| format!("{}: {}", json_string(&name(i)), json_string(v))).collect();
+                    let obj: Vec<String> = values
+                        .iter()
+                        .enumerate()
+                        .map(|(i, v)| format!("{}: {}", json_string(&name(i)), json_string(v)))
+                        .collect();
                     if format == Format::Json {
                         w.write_all(if stats.rows == 0 { b"\n  " } else { b",\n  " })?;
                         write!(w, "{{{}}}", obj.join(", "))?;
@@ -319,8 +376,15 @@ mod tests {
     fn run(text: &str, cols: Option<&[usize]>, header: bool, f: Format) -> (Vec<u8>, Exported) {
         let (_d, b) = buf(text);
         let mut out = io::Cursor::new(Vec::new());
-        let spec = Spec { dialect: Dialect::new(b','), cols, header, format: f };
-        let st = export(&b, spec, &mut out, &CancelToken::new(), None).unwrap().unwrap();
+        let spec = Spec {
+            dialect: Dialect::new(b','),
+            cols,
+            header,
+            format: f,
+        };
+        let st = export(&b, spec, &mut out, &CancelToken::new(), None)
+            .unwrap()
+            .unwrap();
         (out.into_inner(), st)
     }
 
@@ -332,9 +396,15 @@ mod tests {
         assert_eq!(String::from_utf8(j).unwrap(), "[\n  {\"name\": \"Ann\", \"qty\": \"007\", \"note\": \"a|b\"},\n  {\"name\": \"Bob\", \"qty\": \"12.5\", \"note\": \"x\\\"y\"}\n]\n");
         assert_eq!(st.rows, 2);
         let (l, _) = run(T, Some(&[1, 0]), true, Format::JsonLines);
-        assert_eq!(String::from_utf8(l).unwrap(), "{\"qty\": \"007\", \"name\": \"Ann\"}\n{\"qty\": \"12.5\", \"name\": \"Bob\"}\n");
+        assert_eq!(
+            String::from_utf8(l).unwrap(),
+            "{\"qty\": \"007\", \"name\": \"Ann\"}\n{\"qty\": \"12.5\", \"name\": \"Bob\"}\n"
+        );
         let (n, st) = run("1,2\n", None, false, Format::JsonLines);
-        assert_eq!((String::from_utf8(n).unwrap().as_str(), st.rows), ("{\"column1\": \"1\", \"column2\": \"2\"}\n", 1));
+        assert_eq!(
+            (String::from_utf8(n).unwrap().as_str(), st.rows),
+            ("{\"column1\": \"1\", \"column2\": \"2\"}\n", 1)
+        );
         let (e, _) = run("a,b\n", None, true, Format::Json);
         assert_eq!(String::from_utf8(e).unwrap(), "[]\n");
     }
@@ -349,16 +419,31 @@ mod tests {
     #[test]
     fn xlsx_is_a_zip_with_the_sheet() {
         let (x, st) = run(T, None, true, Format::Xlsx);
-        assert_eq!(st, Exported { rows: 2, truncated: false });
+        assert_eq!(
+            st,
+            Exported {
+                rows: 2,
+                truncated: false
+            }
+        );
         let mut z = zip::ZipArchive::new(io::Cursor::new(x)).unwrap();
         let mut sheet = String::new();
-        z.by_name("xl/worksheets/sheet1.xml").unwrap().read_to_string(&mut sheet).unwrap();
+        z.by_name("xl/worksheets/sheet1.xml")
+            .unwrap()
+            .read_to_string(&mut sheet)
+            .unwrap();
         assert!(sheet.contains(r#"<row r="1"><c r="A1" t="inlineStr"><is><t xml:space="preserve">name</t></is></c>"#), "{sheet}");
         // "007" stays text, 12.5 is a number.
-        assert!(sheet.contains(r#"<c r="B2" t="inlineStr"><is><t xml:space="preserve">007</t></is></c>"#));
+        assert!(sheet
+            .contains(r#"<c r="B2" t="inlineStr"><is><t xml:space="preserve">007</t></is></c>"#));
         assert!(sheet.contains(r#"<c r="B3"><v>12.5</v></c>"#));
         assert!(sheet.contains("x&quot;y"));
-        for name in ["[Content_Types].xml", "_rels/.rels", "xl/workbook.xml", "xl/_rels/workbook.xml.rels"] {
+        for name in [
+            "[Content_Types].xml",
+            "_rels/.rels",
+            "xl/workbook.xml",
+            "xl/_rels/workbook.xml.rels",
+        ] {
             assert!(z.by_name(name).is_ok(), "{name}");
         }
         assert_eq!(column_letters(0), "A");

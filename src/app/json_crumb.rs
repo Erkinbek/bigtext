@@ -34,7 +34,17 @@ pub struct JsonCrumb {
 
 impl JsonCrumb {
     fn new() -> JsonCrumb {
-        JsonCrumb { steps: Vec::new(), version: u64::MAX, caret: 0, error: false, want: (u64::MAX, 0), changed_at: Instant::now(), busy: None, index: None, building: None }
+        JsonCrumb {
+            steps: Vec::new(),
+            version: u64::MAX,
+            caret: 0,
+            error: false,
+            want: (u64::MAX, 0),
+            changed_at: Instant::now(),
+            busy: None,
+            index: None,
+            building: None,
+        }
     }
 
     /// The path as text, `$.items[3].city`.
@@ -55,13 +65,27 @@ impl Drop for JsonCrumb {
 }
 
 pub enum CrumbMsg {
-    Path { doc: u64, version: u64, caret: u64, result: Result<Vec<(Step, u64)>, String> },
-    Index { doc: u64, version: u64, result: Result<Vec<Checkpoint>, String> },
+    Path {
+        doc: u64,
+        version: u64,
+        caret: u64,
+        result: Result<Vec<(Step, u64)>, String>,
+    },
+    Index {
+        doc: u64,
+        version: u64,
+        result: Result<Vec<Checkpoint>, String>,
+    },
 }
 
 /// One JSON value per line.
 fn json_lines(d: &super::document::Document) -> bool {
-    let ext = d.path.as_deref().and_then(|p| p.extension()).map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    let ext = d
+        .path
+        .as_deref()
+        .and_then(|p| p.extension())
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
     matches!(ext.as_str(), "jsonl" | "ndjson")
 }
 
@@ -72,8 +96,15 @@ impl BigTextApp {
             return;
         }
         let (tx, waker) = (self.tx.clone(), self.waker.clone());
-        let Some(d) = self.docs.get_mut(self.active) else { return };
-        if !d.is_ready() || d.hex || d.table || d.buf.codec.unit() != 1 || d.effective_lang() != crate::view::highlight::Lang::Json {
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
+        if !d.is_ready()
+            || d.hex
+            || d.table
+            || d.buf.codec.unit() != 1
+            || d.effective_lang() != crate::view::highlight::Lang::Json
+        {
             return;
         }
         let jsonl = json_lines(d);
@@ -93,16 +124,33 @@ impl BigTextApp {
         }
         // Where to start reading: the caret's line (JSON Lines), the start, or a checkpoint.
         let big = !jsonl && d.buf.len() > EVERY;
-        let line = if jsonl { d.line_bounds(want.1, 64 << 20).map(|b| b.0) } else { None };
+        let line = if jsonl {
+            d.line_bounds(want.1, 64 << 20).map(|b| b.0)
+        } else {
+            None
+        };
         let (buf, id, bom) = (d.buf.snapshot(), d.id, d.buf.codec.bom_len as u64);
-        let Some(c) = d.json_crumb.as_mut() else { return };
+        let Some(c) = d.json_crumb.as_mut() else {
+            return;
+        };
         let start = match &c.index {
             _ if jsonl => match line {
-                Some(pos) => Checkpoint { pos, stack: Vec::new() },
+                Some(pos) => Checkpoint {
+                    pos,
+                    stack: Vec::new(),
+                },
                 None => return,
             },
-            _ if !big => Checkpoint { pos: bom, stack: Vec::new() },
-            Some((v, points)) if *v == want.0 => json::checkpoint_before(points, want.1).cloned().unwrap_or(Checkpoint { pos: bom, stack: Vec::new() }),
+            _ if !big => Checkpoint {
+                pos: bom,
+                stack: Vec::new(),
+            },
+            Some((v, points)) if *v == want.0 => json::checkpoint_before(points, want.1)
+                .cloned()
+                .unwrap_or(Checkpoint {
+                    pos: bom,
+                    stack: Vec::new(),
+                }),
             _ => {
                 // Checkpoints of this version first (the old path stays, greyed).
                 if c.building.as_ref().is_none_or(|b| b.0 != want.0) {
@@ -114,7 +162,11 @@ impl BigTextApp {
                     jobs::spawn("json-checkpoints", move || {
                         let result = json::checkpoints(&buf, EVERY, &cancel, Some(&progress));
                         if !cancel.is_cancelled() {
-                            let _ = tx.send(Msg::JsonCrumb(Box::new(CrumbMsg::Index { doc: id, version: want.0, result })));
+                            let _ = tx.send(Msg::JsonCrumb(Box::new(CrumbMsg::Index {
+                                doc: id,
+                                version: want.0,
+                                result,
+                            })));
                             waker();
                         }
                     });
@@ -126,15 +178,32 @@ impl BigTextApp {
         c.busy = Some(cancel.clone());
         jobs::spawn("json-path", move || {
             let result = json::path_at_from(&buf, &start, want.1, &cancel);
-            let _ = tx.send(Msg::JsonCrumb(Box::new(CrumbMsg::Path { doc: id, version: want.0, caret: want.1, result })));
+            let _ = tx.send(Msg::JsonCrumb(Box::new(CrumbMsg::Path {
+                doc: id,
+                version: want.0,
+                caret: want.1,
+                result,
+            })));
             waker();
         });
     }
 
     pub(super) fn on_json_crumb(&mut self, m: CrumbMsg) {
         match m {
-            CrumbMsg::Path { doc, version, caret, result } => {
-                let Some(c) = self.docs.iter_mut().find(|d| d.id == doc).and_then(|d| d.json_crumb.as_mut()) else { return };
+            CrumbMsg::Path {
+                doc,
+                version,
+                caret,
+                result,
+            } => {
+                let Some(c) = self
+                    .docs
+                    .iter_mut()
+                    .find(|d| d.id == doc)
+                    .and_then(|d| d.json_crumb.as_mut())
+                else {
+                    return;
+                };
                 c.busy = None;
                 match result {
                     Ok(steps) => {
@@ -145,8 +214,19 @@ impl BigTextApp {
                 }
                 (c.version, c.caret) = (version, caret);
             }
-            CrumbMsg::Index { doc, version, result } => {
-                let Some(c) = self.docs.iter_mut().find(|d| d.id == doc).and_then(|d| d.json_crumb.as_mut()) else { return };
+            CrumbMsg::Index {
+                doc,
+                version,
+                result,
+            } => {
+                let Some(c) = self
+                    .docs
+                    .iter_mut()
+                    .find(|d| d.id == doc)
+                    .and_then(|d| d.json_crumb.as_mut())
+                else {
+                    return;
+                };
                 if c.building.as_ref().is_some_and(|b| b.0 == version) {
                     c.building = None;
                 }

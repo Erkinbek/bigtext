@@ -14,7 +14,10 @@ pub fn guess_unit(text: &[u8]) -> u32 {
     let mut steps = [0usize; 9];
     let mut prev: Option<usize> = None;
     for line in text.split(|&b| b == b'\n') {
-        let ws = line.iter().take_while(|&&b| b == b' ' || b == b'\t').count();
+        let ws = line
+            .iter()
+            .take_while(|&&b| b == b' ' || b == b'\t')
+            .count();
         if line[ws..].iter().all(u8::is_ascii_whitespace) {
             continue;
         }
@@ -94,7 +97,10 @@ mod tests {
 
     #[test]
     fn blank_rows_follow_their_neighbours() {
-        assert_eq!(fill_blanks(&[Some(4), None, Some(8), None, None, Some(4)]), vec![4, 4, 8, 4, 4, 4]);
+        assert_eq!(
+            fill_blanks(&[Some(4), None, Some(8), None, None, Some(4)]),
+            vec![4, 4, 8, 4, 4, 4]
+        );
         assert_eq!(fill_blanks(&[None, Some(8), None]), vec![8, 8, 8]);
         assert_eq!(fill_blanks(&[None, None]), vec![0, 0]);
         assert_eq!(guide_cells(8, 4).collect::<Vec<_>>(), vec![0, 4]);

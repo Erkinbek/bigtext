@@ -71,9 +71,17 @@ pub struct Hunk {
 /// The line on the other side that corresponds to `line` on this one (`a_to_b`: from A to B):
 /// the start of the hunk it is in, or the same distance past the last hunk before it.
 pub fn map_line(hunks: &[Hunk], line: u64, a_to_b: bool) -> u64 {
-    let side = |h: &Hunk| if a_to_b { (h.a_line, h.a_count, h.b_line, h.b_count) } else { (h.b_line, h.b_count, h.a_line, h.a_count) };
+    let side = |h: &Hunk| {
+        if a_to_b {
+            (h.a_line, h.a_count, h.b_line, h.b_count)
+        } else {
+            (h.b_line, h.b_count, h.a_line, h.a_count)
+        }
+    };
     let k = hunks.partition_point(|h| side(h).0 <= line);
-    let Some(h) = k.checked_sub(1).map(|k| side(&hunks[k])) else { return line };
+    let Some(h) = k.checked_sub(1).map(|k| side(&hunks[k])) else {
+        return line;
+    };
     let (from, n, to, m) = h;
     if line < from + n {
         to
@@ -159,11 +167,17 @@ struct LineHasher {
 
 impl LineHasher {
     fn new() -> Self {
-        LineHasher { h: 0xcbf2_9ce4_8422_2325, tail: 0, tail_len: 0 }
+        LineHasher {
+            h: 0xcbf2_9ce4_8422_2325,
+            tail: 0,
+            tail_len: 0,
+        }
     }
     #[inline]
     fn word(&mut self, w: u64) {
-        self.h = (self.h ^ w).wrapping_mul(0x0000_0100_0000_01b3).rotate_left(29);
+        self.h = (self.h ^ w)
+            .wrapping_mul(0x0000_0100_0000_01b3)
+            .rotate_left(29);
     }
     fn update(&mut self, mut b: &[u8]) {
         while self.tail_len != 0 && !b.is_empty() {
@@ -213,7 +227,16 @@ struct Reader<'a> {
 
 impl<'a> Reader<'a> {
     fn new(src: &'a dyn LineSource, opts: &'a DiffOptions) -> Self {
-        Reader { src, pos: 0, line: 0, buf: vec![0; CHUNK], buf_start: 0, buf_len: 0, opts, text: Vec::new() }
+        Reader {
+            src,
+            pos: 0,
+            line: 0,
+            buf: vec![0; CHUNK],
+            buf_start: 0,
+            buf_len: 0,
+            opts,
+            text: Vec::new(),
+        }
     }
 
     fn eof(&self) -> bool {
@@ -260,7 +283,12 @@ impl<'a> Reader<'a> {
                     len += i as u64 + 1;
                     self.pos += i as u64 + 1;
                     self.line += 1;
-                    return Some(Line { off, len, hash: h.finish() ^ len, key: len });
+                    return Some(Line {
+                        off,
+                        len,
+                        hash: h.finish() ^ len,
+                        key: len,
+                    });
                 }
                 None => {
                     let n = chunk.len();
@@ -273,7 +301,12 @@ impl<'a> Reader<'a> {
         if len == 0 {
             None
         } else {
-            Some(Line { off, len, hash: h.finish() ^ len, key: len })
+            Some(Line {
+                off,
+                len,
+                hash: h.finish() ^ len,
+                key: len,
+            })
         }
     }
 
@@ -307,7 +340,9 @@ impl<'a> Reader<'a> {
                 break;
             }
         }
-        let norm = self.opts.normalise(text.strip_suffix(b"\n").unwrap_or(&text));
+        let norm = self
+            .opts
+            .normalise(text.strip_suffix(b"\n").unwrap_or(&text));
         self.text = text;
         if len == 0 {
             return None;
@@ -315,7 +350,12 @@ impl<'a> Reader<'a> {
         let mut h = LineHasher::new();
         h.update(&norm);
         let key = norm.len() as u64;
-        Some(Line { off, len, hash: h.finish() ^ key, key })
+        Some(Line {
+            off,
+            len,
+            hash: h.finish() ^ key,
+            key,
+        })
     }
 }
 
@@ -395,12 +435,25 @@ fn find_anchor(a: &[Line], b: &[Line], a_eof: bool, b_eof: bool) -> Option<(usiz
 
 /// Compares `a` and `b`, calling `on_hunk` for each differing region in order (return false to
 /// stop). Progress is reported in bytes of `a` + `b` consumed.
-pub fn diff(a: &dyn LineSource, b: &dyn LineSource, cancel: &CancelToken, progress: Option<&Progress>, on_hunk: impl FnMut(Hunk) -> bool) -> DiffEnd {
+pub fn diff(
+    a: &dyn LineSource,
+    b: &dyn LineSource,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    on_hunk: impl FnMut(Hunk) -> bool,
+) -> DiffEnd {
     diff_with(a, b, &DiffOptions::default(), cancel, progress, on_hunk)
 }
 
 /// [`diff`] where lines that differ only in what `opts` ignores count as the same.
-pub fn diff_with(a: &dyn LineSource, b: &dyn LineSource, opts: &DiffOptions, cancel: &CancelToken, progress: Option<&Progress>, mut on_hunk: impl FnMut(Hunk) -> bool) -> DiffEnd {
+pub fn diff_with(
+    a: &dyn LineSource,
+    b: &dyn LineSource,
+    opts: &DiffOptions,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut on_hunk: impl FnMut(Hunk) -> bool,
+) -> DiffEnd {
     let mut ra = Reader::new(a, opts);
     let mut rb = Reader::new(b, opts);
     if let Some(p) = progress {
@@ -414,8 +467,13 @@ pub fn diff_with(a: &dyn LineSource, b: &dyn LineSource, opts: &DiffOptions, can
             p.set_done(ra.pos + rb.pos);
         }
         // Fast path: skip identical bytes chunk by chunk, stopping at line starts.
-        let left = (ra.src.len() - ra.pos.min(ra.src.len()), rb.src.len() - rb.pos.min(rb.src.len()));
-        let (Some(x), Some(y)) = (ra.peek(), rb.peek()) else { return DiffEnd::Failed };
+        let left = (
+            ra.src.len() - ra.pos.min(ra.src.len()),
+            rb.src.len() - rb.pos.min(rb.src.len()),
+        );
+        let (Some(x), Some(y)) = (ra.peek(), rb.peek()) else {
+            return DiffEnd::Failed;
+        };
         if x.is_empty() && y.is_empty() {
             return DiffEnd::Completed;
         }
@@ -456,20 +514,38 @@ pub fn diff_with(a: &dyn LineSource, b: &dyn LineSource, opts: &DiffOptions, can
         }
         // Slow path: re-synchronise using line hashes.
         let (sa_line, sa_off, sb_line, sb_off) = (ra.line, ra.pos, rb.line, rb.pos);
-        let Some(wa) = read_window(&mut ra) else { return DiffEnd::Failed };
-        let Some(wb) = read_window(&mut rb) else { return DiffEnd::Failed };
+        let Some(wa) = read_window(&mut ra) else {
+            return DiffEnd::Failed;
+        };
+        let Some(wb) = read_window(&mut rb) else {
+            return DiffEnd::Failed;
+        };
         let (a_eof, b_eof) = (ra.eof(), rb.eof());
         let (i, j) = find_anchor(&wa, &wb, a_eof, b_eof).unwrap_or((wa.len(), wb.len()));
         if i > 0 || j > 0 {
-            let end = |w: &[Line], k: usize, off: u64| k.checked_sub(1).map(|k| w[k].off + w[k].len).unwrap_or(off);
-            let h = Hunk { a_line: sa_line, a_count: i as u64, a_off: sa_off, a_end: end(&wa, i, sa_off), b_line: sb_line, b_count: j as u64, b_off: sb_off, b_end: end(&wb, j, sb_off) };
+            let end = |w: &[Line], k: usize, off: u64| {
+                k.checked_sub(1).map(|k| w[k].off + w[k].len).unwrap_or(off)
+            };
+            let h = Hunk {
+                a_line: sa_line,
+                a_count: i as u64,
+                a_off: sa_off,
+                a_end: end(&wa, i, sa_off),
+                b_line: sb_line,
+                b_count: j as u64,
+                b_off: sb_off,
+                b_end: end(&wb, j, sb_off),
+            };
             if !on_hunk(h) {
                 return DiffEnd::Stopped;
             }
         }
         // Position both readers right after the hunk (before the anchor).
         let reposition = |r: &mut Reader, w: &[Line], k: usize, start_line: u64, start_off: u64| {
-            r.pos = w.get(k).map(|l| l.off).unwrap_or_else(|| w.last().map(|l| l.off + l.len).unwrap_or(start_off));
+            r.pos = w
+                .get(k)
+                .map(|l| l.off)
+                .unwrap_or_else(|| w.last().map(|l| l.off + l.len).unwrap_or(start_off));
             r.line = start_line + k as u64;
         };
         reposition(&mut ra, &wa, i, sa_line, sa_off);
@@ -522,7 +598,9 @@ mod tests {
     }
 
     fn summary(h: &[Hunk]) -> Vec<(u64, u64, u64, u64)> {
-        h.iter().map(|h| (h.a_line, h.a_count, h.b_line, h.b_count)).collect()
+        h.iter()
+            .map(|h| (h.a_line, h.a_count, h.b_line, h.b_count))
+            .collect()
     }
 
     #[test]
@@ -540,22 +618,44 @@ mod tests {
             summary(&v)
         };
         assert_eq!(run(&DiffOptions::default()), vec![(0, 3, 0, 3)]);
-        let all = DiffOptions { whitespace: true, case: true, timestamps: true, mask: Some(regex_automata::meta::Regex::new("req=[0-9a-f]+").unwrap()) };
+        let all = DiffOptions {
+            whitespace: true,
+            case: true,
+            timestamps: true,
+            mask: Some(regex_automata::meta::Regex::new("req=[0-9a-f]+").unwrap()),
+        };
         assert_eq!(run(&all), vec![(2, 1, 2, 1)]);
-        let no_mask = DiffOptions { mask: None, ..all.clone() };
+        let no_mask = DiffOptions {
+            mask: None,
+            ..all.clone()
+        };
         // One equal line between two changes is too short an anchor: one hunk.
         assert_eq!(run(&no_mask), vec![(0, 3, 0, 3)]);
         // Many lines that differ only in their times: no hunks, and quickly.
-        let big_a: String = (0..20_000).map(|i| format!("10:00:{:02} line {i}\n", i % 60)).collect();
-        let big_b: String = (0..20_000).map(|i| format!("11:30:{:02} line {i}\n", (i + 7) % 60)).collect();
+        let big_a: String = (0..20_000)
+            .map(|i| format!("10:00:{:02} line {i}\n", i % 60))
+            .collect();
+        let big_b: String = (0..20_000)
+            .map(|i| format!("11:30:{:02} line {i}\n", (i + 7) % 60))
+            .collect();
         let (_c, sc) = src(big_a.as_bytes());
         let (_d, sd) = src(big_b.as_bytes());
         let t = std::time::Instant::now();
         let mut n = 0;
-        diff_with(&sc, &sd, &DiffOptions { timestamps: true, ..Default::default() }, &CancelToken::new(), None, |_| {
-            n += 1;
-            true
-        });
+        diff_with(
+            &sc,
+            &sd,
+            &DiffOptions {
+                timestamps: true,
+                ..Default::default()
+            },
+            &CancelToken::new(),
+            None,
+            |_| {
+                n += 1;
+                true
+            },
+        );
         assert_eq!(n, 0);
         assert!(t.elapsed() < std::time::Duration::from_secs(5));
     }
@@ -590,7 +690,10 @@ mod tests {
         let (_b, sb) = src(b"a\nb");
         let h = diff_all(&sa, &sb);
         assert_eq!(summary(&h), vec![(1, 1, 1, 1)]);
-        assert_eq!((h[0].a_off, h[0].a_end, h[0].b_off, h[0].b_end), (2, 4, 2, 3));
+        assert_eq!(
+            (h[0].a_off, h[0].a_end, h[0].b_off, h[0].b_end),
+            (2, 4, 2, 3)
+        );
         let (_c, sc) = src(b"a\nb");
         assert!(diff_all(&sb, &sc).is_empty());
     }
@@ -598,7 +701,9 @@ mod tests {
     #[test]
     fn hunk_ends_and_line_mapping() {
         let a = lines(100);
-        let b = a.replace("line number 10\n", "line number ten\nand more\n").replace("line number 50\n", "");
+        let b = a
+            .replace("line number 10\n", "line number ten\nand more\n")
+            .replace("line number 50\n", "");
         let (_a, sa) = src(a.as_bytes());
         let (_b, sb) = src(b.as_bytes());
         let h = diff_all(&sa, &sb);
@@ -606,14 +711,23 @@ mod tests {
         assert_eq!((h[0].a_end, h[0].b_end), (at_line(&a, 11), at_line(&b, 12)));
         assert_eq!((h[1].a_end, h[1].b_end), (at_line(&a, 51), at_line(&b, 51)));
         assert_eq!(h[1].b_off, h[1].b_end);
-        let to_b: Vec<u64> = [0, 10, 11, 40, 50, 51, 99].iter().map(|&l| map_line(&h, l, true)).collect();
+        let to_b: Vec<u64> = [0, 10, 11, 40, 50, 51, 99]
+            .iter()
+            .map(|&l| map_line(&h, l, true))
+            .collect();
         assert_eq!(to_b, vec![0, 10, 12, 41, 51, 51, 99]);
-        let to_a: Vec<u64> = [0, 10, 11, 12, 41, 51, 98].iter().map(|&l| map_line(&h, l, false)).collect();
+        let to_a: Vec<u64> = [0, 10, 11, 12, 41, 51, 98]
+            .iter()
+            .map(|&l| map_line(&h, l, false))
+            .collect();
         assert_eq!(to_a, vec![0, 10, 10, 11, 40, 51, 98]);
     }
 
     fn at_line(text: &str, n: usize) -> u64 {
-        text.split_inclusive('\n').take(n).map(str::len).sum::<usize>() as u64
+        text.split_inclusive('\n')
+            .take(n)
+            .map(str::len)
+            .sum::<usize>() as u64
     }
 
     #[test]
@@ -679,8 +793,15 @@ mod tests {
         let h = diff_all(&a, &b);
         assert_eq!(h.len(), 6);
         for (k, x) in h.iter().enumerate() {
-            assert_eq!((x.a_line, x.a_count, x.b_count), (k as u64 * 50_000 + 7, 1, 1));
-            let at = base.lines().take(x.a_line as usize).map(|l| l.len() + 1).sum::<usize>() as u64;
+            assert_eq!(
+                (x.a_line, x.a_count, x.b_count),
+                (k as u64 * 50_000 + 7, 1, 1)
+            );
+            let at = base
+                .lines()
+                .take(x.a_line as usize)
+                .map(|l| l.len() + 1)
+                .sum::<usize>() as u64;
             assert_eq!(x.a_off, at);
         }
     }

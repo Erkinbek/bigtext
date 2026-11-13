@@ -117,9 +117,19 @@ impl Mapped {
         // SAFETY: read-only mapping. Another process truncating the file while it is mapped is
         // not possible on Windows (ERROR_USER_MAPPED_FILE); on Unix it is a known limitation of
         // every mmap-based viewer.
-        let map = Arc::new(unsafe { memmap2::MmapOptions::new().offset(start).len(len as usize).map(&self.file)? });
+        let map = Arc::new(unsafe {
+            memmap2::MmapOptions::new()
+                .offset(start)
+                .len(len as usize)
+                .map(&self.file)?
+        });
         if views.len() >= MAX_VIEWS {
-            if let Some(i) = views.iter().enumerate().min_by_key(|(_, v)| v.2).map(|(i, _)| i) {
+            if let Some(i) = views
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, v)| v.2)
+                .map(|(i, _)| i)
+            {
                 views.swap_remove(i);
             }
         }
@@ -132,7 +142,11 @@ impl Mapped {
         let vstart = k * VIEW_STRIDE;
         if r.end <= vstart + VIEW_STRIDE + VIEW_OVERLAP {
             let v = self.view(k)?;
-            Ok(Bytes(Repr::View(v, (r.start - vstart) as usize, (r.end - r.start) as usize)))
+            Ok(Bytes(Repr::View(
+                v,
+                (r.start - vstart) as usize,
+                (r.end - r.start) as usize,
+            )))
         } else {
             let mut buf = vec![0u8; (r.end - r.start) as usize];
             read_exact_at(&self.file, &mut buf, r.start)?;
@@ -171,7 +185,12 @@ pub struct Source {
 impl Source {
     /// An empty in-memory source (new, untitled documents).
     pub fn empty() -> Source {
-        Source { path: None, len: 0, backing: Backing::Empty, modified: None }
+        Source {
+            path: None,
+            len: 0,
+            backing: Backing::Empty,
+            modified: None,
+        }
     }
 
     pub fn open(path: &Path, mode: OpenMode) -> io::Result<Source> {
@@ -184,29 +203,70 @@ impl Source {
         let modified = meta.modified().ok();
         let path_buf = Some(path.to_path_buf());
         if len == 0 {
-            return Ok(Source { path: path_buf, len, backing: Backing::Empty, modified });
+            return Ok(Source {
+                path: path_buf,
+                len,
+                backing: Backing::Empty,
+                modified,
+            });
         }
         let force_chunked = mode == OpenMode::Chunked
             || std::env::var_os("BIGTEXT_FORCE_CHUNKED").is_some()
             || prefers_chunked(path);
         if !force_chunked {
-            let m = Mapped { file, len, views: Mutex::new(Vec::new()), tick: AtomicU64::new(0) };
+            let m = Mapped {
+                file,
+                len,
+                views: Mutex::new(Vec::new()),
+                tick: AtomicU64::new(0),
+            };
             // Map the first view now so that a file which cannot be mapped falls back here.
             match m.view(0) {
-                Ok(_) => return Ok(Source { path: path_buf, len, backing: Backing::Mapped(m), modified }),
+                Ok(_) => {
+                    return Ok(Source {
+                        path: path_buf,
+                        len,
+                        backing: Backing::Mapped(m),
+                        modified,
+                    })
+                }
                 Err(_) => {
-                    return Ok(Source { path: path_buf, len, backing: Backing::Chunked(Chunked::new(Box::new(m.file), len, CHUNK_BLOCK, false)), modified })
+                    return Ok(Source {
+                        path: path_buf,
+                        len,
+                        backing: Backing::Chunked(Chunked::new(
+                            Box::new(m.file),
+                            len,
+                            CHUNK_BLOCK,
+                            false,
+                        )),
+                        modified,
+                    })
                 }
             }
         }
-        Ok(Source { path: path_buf, len, backing: Backing::Chunked(Chunked::new(Box::new(file), len, CHUNK_BLOCK, false)), modified })
+        Ok(Source {
+            path: path_buf,
+            len,
+            backing: Backing::Chunked(Chunked::new(Box::new(file), len, CHUNK_BLOCK, false)),
+            modified,
+        })
     }
 
     /// A remote file of `len` bytes, read in parts through `reader` as they are needed (what is
     /// on screen, what a search reaches); nothing is downloaded up front.
     pub fn remote(reader: Box<dyn RangeRead>, len: u64, modified: Option<SystemTime>) -> Source {
-        let backing = if len == 0 { Backing::Empty } else { Backing::Chunked(Chunked::new(reader, len, REMOTE_BLOCK, true)) };
-        Source { path: None, len, backing, modified }
+        let backing = if len == 0 {
+            Backing::Empty
+        } else {
+            Backing::Chunked(Chunked::new(reader, len, REMOTE_BLOCK, true))
+        };
+        Source {
+            path: None,
+            len,
+            backing,
+            modified,
+        }
     }
 
     /// A remote file read in parts ([`Source::remote`]): whole-file scans such as the line
@@ -300,7 +360,10 @@ impl Source {
     /// Positional bulk read into a caller buffer (workers streaming through the file).
     pub fn read_into(&self, offset: u64, buf: &mut [u8]) -> io::Result<()> {
         if offset + buf.len() as u64 > self.len {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "read past end of source"));
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "read past end of source",
+            ));
         }
         match &self.backing {
             Backing::Empty => Ok(()),
@@ -380,7 +443,8 @@ impl ChunkedInner {
     /// Reads `buf` from `offset` past the cache (large reads of workers streaming the file).
     fn read_direct(&self, offset: u64, buf: &mut [u8]) -> io::Result<()> {
         self.reader.read_at(offset, buf)?;
-        self.bytes_read.fetch_add(buf.len() as u64, Ordering::Relaxed);
+        self.bytes_read
+            .fetch_add(buf.len() as u64, Ordering::Relaxed);
         Ok(())
     }
 
@@ -421,7 +485,10 @@ impl Chunked {
             block,
             capacity: (CACHE_BYTES / block) as usize,
             remote,
-            cache: Mutex::new(BlockCache { map: HashMap::new(), tick: 0 }),
+            cache: Mutex::new(BlockCache {
+                map: HashMap::new(),
+                tick: 0,
+            }),
             pending: Mutex::new(HashSet::new()),
             waker: Mutex::new(None),
             failed: AtomicBool::new(false),
@@ -556,7 +623,10 @@ pub fn read_exact_at(file: &File, buf: &mut [u8], offset: u64) -> io::Result<()>
         while done < buf.len() {
             let n = file.seek_read(&mut buf[done..], offset + done as u64)?;
             if n == 0 {
-                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "file shrank while open"));
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "file shrank while open",
+                ));
             }
             done += n;
         }
@@ -575,7 +645,10 @@ fn prefers_chunked(path: &Path) -> bool {
     }
     let b = s.as_bytes();
     if b.len() >= 2 && b[1] == b':' && b[0].is_ascii_alphabetic() {
-        let root: Vec<u16> = format!("{}:\\", b[0] as char).encode_utf16().chain(Some(0)).collect();
+        let root: Vec<u16> = format!("{}:\\", b[0] as char)
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
         // SAFETY: `root` is a valid NUL-terminated UTF-16 string.
         let t = unsafe { GetDriveTypeW(root.as_ptr()) };
         // DRIVE_REMOVABLE = 2, DRIVE_REMOTE = 4, DRIVE_CDROM = 5
@@ -624,7 +697,10 @@ pub fn file_id(path: &Path) -> Option<(u64, u64)> {
         let mut info = FileInformation::default();
         // SAFETY: the handle is open for the call and `info` is a BY_HANDLE_FILE_INFORMATION.
         let ok = unsafe { GetFileInformationByHandle(f.as_raw_handle(), &mut info) };
-        (ok != 0).then_some((info.volume_serial as u64, ((info.index_high as u64) << 32) | info.index_low as u64))
+        (ok != 0).then_some((
+            info.volume_serial as u64,
+            ((info.index_high as u64) << 32) | info.index_low as u64,
+        ))
     }
 }
 
@@ -689,8 +765,16 @@ mod tests {
         std::fs::write(dir.path().join("other.txt"), "x").unwrap();
         let old = dir.path().join("app-2020.log");
         std::fs::write(&old, "old").unwrap();
-        File::options().write(true).open(&old).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600)).unwrap();
-        assert_eq!(rotated_sibling(&log, std::time::SystemTime::now()), Some(dir.path().join("app.log.1")));
+        File::options()
+            .write(true)
+            .open(&old)
+            .unwrap()
+            .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(3600))
+            .unwrap();
+        assert_eq!(
+            rotated_sibling(&log, std::time::SystemTime::now()),
+            Some(dir.path().join("app.log.1"))
+        );
         assert_eq!(file_id(&dir.path().join("missing.log")), None);
     }
 
@@ -725,7 +809,10 @@ mod tests {
 
     impl RangeRead for Counting {
         fn read_at(&self, offset: u64, buf: &mut [u8]) -> io::Result<()> {
-            self.1.lock().unwrap().push(offset..offset + buf.len() as u64);
+            self.1
+                .lock()
+                .unwrap()
+                .push(offset..offset + buf.len() as u64);
             buf.copy_from_slice(&self.0[offset as usize..offset as usize + buf.len()]);
             Ok(())
         }
@@ -735,7 +822,11 @@ mod tests {
     fn a_remote_file_is_read_only_where_asked() {
         let data: Vec<u8> = (0..5_000_000u32).map(|i| (i % 253) as u8).collect();
         let asked = Arc::new(Mutex::new(Vec::new()));
-        let s = Source::remote(Box::new(Counting(data.clone(), asked.clone())), data.len() as u64, None);
+        let s = Source::remote(
+            Box::new(Counting(data.clone(), asked.clone())),
+            data.len() as u64,
+            None,
+        );
         assert!(s.is_remote() && s.kind_name() == "chunked" && s.path().is_none());
         // The UI asks without blocking: queued, then served from the cache.
         let mid = 2_600_000u64;
@@ -754,15 +845,26 @@ mod tests {
         // A read across two blocks fetches both with one request.
         asked.lock().unwrap().clear();
         let edge = 3 * REMOTE_BLOCK - 100;
-        assert_eq!(s.read(edge..edge + 200).unwrap().into_owned(), &data[edge as usize..edge as usize + 200]);
+        assert_eq!(
+            s.read(edge..edge + 200).unwrap().into_owned(),
+            &data[edge as usize..edge as usize + 200]
+        );
         assert_eq!(s.read(edge..edge + 200).unwrap().len(), 200);
-        assert_eq!(asked.lock().unwrap().len(), 2, "two blocks the first time, none the second");
+        assert_eq!(
+            asked.lock().unwrap().len(),
+            2,
+            "two blocks the first time, none the second"
+        );
         // Workers' large reads go straight to the reader.
         let mut buf = vec![0u8; 2 << 20];
         s.read_into(1000, &mut buf).unwrap();
         assert_eq!(&buf[..], &data[1000..1000 + (2 << 20)]);
         assert!(s.bytes_read() < data.len() as u64);
-        assert!(!Source::open(&std::env::current_exe().unwrap(), OpenMode::Chunked).unwrap().is_remote());
+        assert!(
+            !Source::open(&std::env::current_exe().unwrap(), OpenMode::Chunked)
+                .unwrap()
+                .is_remote()
+        );
     }
 
     #[test]
@@ -779,7 +881,10 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         let asked = asked.lock().unwrap();
-        assert_eq!((asked.len(), asked.first().cloned()), (1, Some(0..REMOTE_BLOCK * 4)));
+        assert_eq!(
+            (asked.len(), asked.first().cloned()),
+            (1, Some(0..REMOTE_BLOCK * 4))
+        );
     }
 
     #[test]

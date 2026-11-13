@@ -19,7 +19,11 @@ use crate::jobs::{CancelToken, Progress};
 const RELEASES_API: &str = "https://api.github.com/repos/Erkinbek/bigtext/releases?per_page=30";
 pub const RELEASES_PAGE: &str = "https://github.com/Erkinbek/bigtext/releases/latest";
 
-const EXE_NAME: &str = if cfg!(windows) { "bigtext.exe" } else { "bigtext" };
+const EXE_NAME: &str = if cfg!(windows) {
+    "bigtext.exe"
+} else {
+    "bigtext"
+};
 const INSTALLER_ASSET: &str = "bigtext-setup-windows-x64.exe";
 /// The release archive with this platform's build (names as CI publishes them).
 const ARCHIVE_ASSET: Option<&str> = if cfg!(all(windows, target_arch = "x86_64")) {
@@ -41,7 +45,13 @@ pub struct Version(pub u64, pub u64, pub u64);
 impl Version {
     /// This build's version; a pre-release build (`0.2.0-beta.1`) counts as its release.
     pub fn current() -> Version {
-        Version::parse(env!("CARGO_PKG_VERSION").split(['-', '+']).next().unwrap_or("")).unwrap_or(Version(0, 0, 0))
+        Version::parse(
+            env!("CARGO_PKG_VERSION")
+                .split(['-', '+'])
+                .next()
+                .unwrap_or(""),
+        )
+        .unwrap_or(Version(0, 0, 0))
     }
 
     /// Parses `1.2.3` or a tag such as `v1.2.3`; `1.2` means `1.2.0`. Pre-release versions
@@ -50,7 +60,11 @@ impl Version {
         let s = s.trim();
         let s = s.strip_prefix(['v', 'V']).unwrap_or(s);
         let mut parts = s.split('.').map(|p| p.parse::<u64>().ok());
-        let v = Version(parts.next()??, parts.next().unwrap_or(Some(0))?, parts.next().unwrap_or(Some(0))?);
+        let v = Version(
+            parts.next()??,
+            parts.next().unwrap_or(Some(0))?,
+            parts.next().unwrap_or(Some(0))?,
+        );
         parts.next().is_none().then_some(v)
     }
 }
@@ -111,7 +125,8 @@ struct ApiAsset {
 
 /// The stable releases newer than `current` in a GitHub "list releases" answer, newest first.
 pub fn parse_newer(json: &str, current: Version) -> Result<Vec<Release>, String> {
-    let list: Vec<ApiRelease> = serde_json::from_str(json).map_err(|e| format!("Unexpected answer from GitHub: {e}"))?;
+    let list: Vec<ApiRelease> =
+        serde_json::from_str(json).map_err(|e| format!("Unexpected answer from GitHub: {e}"))?;
     let mut out: Vec<Release> = list
         .into_iter()
         .filter(|r| !r.draft && !r.prerelease)
@@ -121,13 +136,20 @@ pub fn parse_newer(json: &str, current: Version) -> Result<Vec<Release>, String>
                 .assets
                 .into_iter()
                 .map(|a| Asset {
-                    sha256: a.digest.and_then(|d| d.strip_prefix("sha256:").map(|h| h.to_ascii_lowercase())),
+                    sha256: a
+                        .digest
+                        .and_then(|d| d.strip_prefix("sha256:").map(|h| h.to_ascii_lowercase())),
                     name: a.name,
                     url: a.browser_download_url,
                     size: a.size,
                 })
                 .collect();
-            Some(Release { version, notes: r.body.unwrap_or_default(), page: r.html_url, assets })
+            Some(Release {
+                version,
+                notes: r.body.unwrap_or_default(),
+                page: r.html_url,
+                assets,
+            })
         })
         .collect();
     out.sort_by_key(|r| std::cmp::Reverse(r.version));
@@ -137,7 +159,10 @@ pub fn parse_newer(json: &str, current: Version) -> Result<Vec<Release>, String>
 
 fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
-        .user_agent(format!("BigText/{} (+https://github.com/Erkinbek/bigtext)", env!("CARGO_PKG_VERSION")))
+        .user_agent(format!(
+            "BigText/{} (+https://github.com/Erkinbek/bigtext)",
+            env!("CARGO_PKG_VERSION")
+        ))
         .timeout_connect(Some(Duration::from_secs(15)))
         // A stalled connection fails instead of hanging; a slow download that moves is fine.
         .timeout_per_read(Some(Duration::from_secs(30)))
@@ -147,7 +172,9 @@ fn agent() -> ureq::Agent {
 
 fn net_error(e: ureq::Error) -> String {
     match e {
-        ureq::Error::StatusCode(403 | 429) => "GitHub refused the request (rate limit). Try again later.".into(),
+        ureq::Error::StatusCode(403 | 429) => {
+            "GitHub refused the request (rate limit). Try again later.".into()
+        }
         ureq::Error::StatusCode(code) => format!("GitHub answered with HTTP status {code}."),
         e => format!("Could not reach GitHub: {e}"),
     }
@@ -227,13 +254,26 @@ const APPIMAGE_ASSET: &str = "bigtext-linux-x64.AppImage";
 /// Run from an AppImage, the AppImage file: the executable inside it is on a read-only mount.
 pub fn current_exe() -> io::Result<PathBuf> {
     let exe = std::env::current_exe()?;
-    let exe = if cfg!(windows) { exe } else { fs::canonicalize(&exe).unwrap_or(exe) };
-    Ok(appimage_of(&exe, std::env::var_os("APPDIR"), std::env::var_os("APPIMAGE")).unwrap_or(exe))
+    let exe = if cfg!(windows) {
+        exe
+    } else {
+        fs::canonicalize(&exe).unwrap_or(exe)
+    };
+    Ok(appimage_of(
+        &exe,
+        std::env::var_os("APPDIR"),
+        std::env::var_os("APPIMAGE"),
+    )
+    .unwrap_or(exe))
 }
 
 /// The AppImage file `exe` runs from. Its runtime sets APPDIR (the mount) and APPIMAGE (the
 /// file); a program started from another AppImage inherits both, so `exe` must be inside APPDIR.
-fn appimage_of(exe: &Path, appdir: Option<std::ffi::OsString>, appimage: Option<std::ffi::OsString>) -> Option<PathBuf> {
+fn appimage_of(
+    exe: &Path,
+    appdir: Option<std::ffi::OsString>,
+    appimage: Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
     let (dir, file) = (PathBuf::from(appdir?), PathBuf::from(appimage?));
     let dir = fs::canonicalize(&dir).unwrap_or(dir);
     (exe.starts_with(&dir) && !dir.as_os_str().is_empty()).then_some(file)
@@ -241,7 +281,11 @@ fn appimage_of(exe: &Path, appdir: Option<std::ffi::OsString>, appimage: Option<
 
 /// Picks the update method for the executable at `exe` (reads the file system).
 pub fn method(release: &Release, exe: &Path) -> Method {
-    let appimage = std::env::current_exe().is_ok_and(|e| fs::canonicalize(&e).is_ok_and(|e| appimage_of(&e, std::env::var_os("APPDIR"), std::env::var_os("APPIMAGE")).is_some()));
+    let appimage = std::env::current_exe().is_ok_and(|e| {
+        fs::canonicalize(&e).is_ok_and(|e| {
+            appimage_of(&e, std::env::var_os("APPDIR"), std::env::var_os("APPIMAGE")).is_some()
+        })
+    });
     method_in(release, exe, appimage, Path::new("/"))
 }
 
@@ -250,7 +294,9 @@ fn method_in(release: &Release, exe: &Path, appimage: bool, root: &Path) -> Meth
     let dir = exe.parent().unwrap_or(Path::new(""));
     // Inno Setup puts its uninstaller next to the installed program.
     if cfg!(windows) && dir.join("unins000.exe").is_file() {
-        return release.asset(INSTALLER_ASSET).map_or(Method::Manual, |a| Method::Installer { asset: a.clone() });
+        return release
+            .asset(INSTALLER_ASSET)
+            .map_or(Method::Manual, |a| Method::Installer { asset: a.clone() });
     }
     let name = if appimage {
         Some(APPIMAGE_ASSET)
@@ -260,7 +306,10 @@ fn method_in(release: &Release, exe: &Path, appimage: bool, root: &Path) -> Meth
         ARCHIVE_ASSET
     };
     match name.and_then(|name| release.asset(name)) {
-        Some(a) => Method::Replace { asset: a.clone(), exe: exe.to_path_buf() },
+        Some(a) => Method::Replace {
+            asset: a.clone(),
+            exe: exe.to_path_buf(),
+        },
         None => Method::Manual,
     }
 }
@@ -277,16 +326,30 @@ fn package_manager(exe: &Path, root: &Path) -> Option<Manager> {
         return Some(Manager::Scoop);
     }
     let parts: Vec<&std::ffi::OsStr> = exe.iter().collect();
-    if parts.windows(2).any(|w| w[0] == "Cellar" && w[1] == "bigtext") {
+    if parts
+        .windows(2)
+        .any(|w| w[0] == "Cellar" && w[1] == "bigtext")
+    {
         return Some(Manager::Homebrew);
     }
     // The cask moves BigText.app to Applications and keeps its record in the Caskroom.
-    let in_app = parts.windows(3).any(|w| w[0].to_string_lossy().ends_with(".app") && w[1] == "Contents" && w[2] == "MacOS");
-    if in_app && ["opt/homebrew/Caskroom/bigtext-app", "usr/local/Caskroom/bigtext-app"].iter().any(|p| root.join(p).is_dir()) {
+    let in_app = parts
+        .windows(3)
+        .any(|w| w[0].to_string_lossy().ends_with(".app") && w[1] == "Contents" && w[2] == "MacOS");
+    if in_app
+        && [
+            "opt/homebrew/Caskroom/bigtext-app",
+            "usr/local/Caskroom/bigtext-app",
+        ]
+        .iter()
+        .any(|p| root.join(p).is_dir())
+    {
         return Some(Manager::HomebrewCask);
     }
     if dir == root.join("usr").join("bin") {
-        let pacman = fs::read_dir(root.join("var/lib/pacman/local")).is_ok_and(|mut d| d.any(|e| e.is_ok_and(|e| e.file_name().to_string_lossy().starts_with("bigtext-bin-"))));
+        let pacman = fs::read_dir(root.join("var/lib/pacman/local")).is_ok_and(|mut d| {
+            d.any(|e| e.is_ok_and(|e| e.file_name().to_string_lossy().starts_with("bigtext-bin-")))
+        });
         if pacman {
             return Some(Manager::Aur);
         }
@@ -298,9 +361,13 @@ fn package_manager(exe: &Path, root: &Path) -> Option<Manager> {
 }
 
 fn is_cargo_bin(dir: &Path) -> bool {
-    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(|h| PathBuf::from(h).join(".cargo"));
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .map(|h| PathBuf::from(h).join(".cargo"));
     let cargo_home = std::env::var_os("CARGO_HOME").map(PathBuf::from).or(home);
-    match (cargo_home.and_then(|h| fs::canonicalize(h.join("bin")).ok()), fs::canonicalize(dir)) {
+    match (
+        cargo_home.and_then(|h| fs::canonicalize(h.join("bin")).ok()),
+        fs::canonicalize(dir),
+    ) {
         (Some(bin), Ok(dir)) => bin == dir,
         _ => false,
     }
@@ -320,7 +387,12 @@ pub fn download_dir() -> PathBuf {
 
 /// Downloads `asset` to `dest` and checks its size and SHA-256; on any failure, or when
 /// `cancel` fires, nothing is left at `dest`.
-pub fn download(asset: &Asset, dest: &Path, progress: &Progress, cancel: &CancelToken) -> Result<(), String> {
+pub fn download(
+    asset: &Asset,
+    dest: &Path,
+    progress: &Progress,
+    cancel: &CancelToken,
+) -> Result<(), String> {
     let part = sibling(dest, ".part");
     let dir = dest.parent().unwrap_or(Path::new("."));
     // Created before the request, so an unwritable folder fails without a download.
@@ -339,7 +411,9 @@ pub fn download(asset: &Asset, dest: &Path, progress: &Progress, cancel: &Cancel
             if cancel.is_cancelled() {
                 return Err("Cancelled.".to_string());
             }
-            let n = body.read(&mut buf).map_err(|e| format!("The download failed: {e}"))?;
+            let n = body
+                .read(&mut buf)
+                .map_err(|e| format!("The download failed: {e}"))?;
             if n == 0 {
                 break;
             }
@@ -348,21 +422,31 @@ pub fn download(asset: &Asset, dest: &Path, progress: &Progress, cancel: &Cancel
                 return Err("The download is larger than GitHub reported.".into());
             }
             hash.update(&buf[..n]);
-            file.write_all(&buf[..n]).map_err(|e| format!("{}: {e}", part.display()))?;
+            file.write_all(&buf[..n])
+                .map_err(|e| format!("{}: {e}", part.display()))?;
             progress.set_done(got);
         }
         if got != asset.size {
-            return Err(format!("The download stopped early ({got} of {} bytes).", asset.size));
+            return Err(format!(
+                "The download stopped early ({got} of {} bytes).",
+                asset.size
+            ));
         }
         if let Some(want) = &asset.sha256 {
             if hex(&hash.finalize()) != *want {
-                return Err("The downloaded file is damaged (its SHA-256 does not match the release).".into());
+                return Err(
+                    "The downloaded file is damaged (its SHA-256 does not match the release)."
+                        .into(),
+                );
             }
         }
-        file.sync_all().map_err(|e| format!("{}: {e}", part.display()))
+        file.sync_all()
+            .map_err(|e| format!("{}: {e}", part.display()))
     })();
     drop(file);
-    match result.and_then(|()| fs::rename(&part, dest).map_err(|e| format!("{}: {e}", dest.display()))) {
+    match result
+        .and_then(|()| fs::rename(&part, dest).map_err(|e| format!("{}: {e}", dest.display())))
+    {
         Ok(()) => Ok(()),
         Err(e) => {
             let _ = fs::remove_file(&part);
@@ -378,7 +462,12 @@ fn hex(bytes: &[u8]) -> String {
 /// Downloads the release archive next to `exe`, unpacks the new executable and swaps it in (an
 /// AppImage is itself the new file). The running program keeps working; the new version starts
 /// next time.
-pub fn update_exe(asset: &Asset, exe: &Path, progress: &Progress, cancel: &CancelToken) -> Result<(), String> {
+pub fn update_exe(
+    asset: &Asset,
+    exe: &Path,
+    progress: &Progress,
+    cancel: &CancelToken,
+) -> Result<(), String> {
     let staged = sibling(exe, ".new");
     if asset.name.ends_with(".AppImage") {
         download(asset, &staged, progress, cancel)?;
@@ -388,7 +477,14 @@ pub fn update_exe(asset: &Asset, exe: &Path, progress: &Progress, cancel: &Cance
         }
         return result;
     }
-    let archive = sibling(exe, if asset.name.ends_with(".zip") { ".update.zip" } else { ".update.tar.gz" });
+    let archive = sibling(
+        exe,
+        if asset.name.ends_with(".zip") {
+            ".update.zip"
+        } else {
+            ".update.tar.gz"
+        },
+    );
     download(asset, &archive, progress, cancel)?;
     let result = extract_exe(&archive, &staged).and_then(|()| install_exe(&staged, exe));
     let _ = fs::remove_file(&archive);
@@ -407,7 +503,11 @@ pub fn extract_exe(archive: &Path, out: &Path) -> Result<(), String> {
         let mut found = false;
         for i in 0..zip.len() {
             let mut entry = zip.by_index(i).map_err(|e| bad(&e))?;
-            if entry.is_file() && entry.name().is_ok_and(|n| n.rsplit(['/', '\\']).next() == Some(EXE_NAME)) {
+            if entry.is_file()
+                && entry
+                    .name()
+                    .is_ok_and(|n| n.rsplit(['/', '\\']).next() == Some(EXE_NAME))
+            {
                 write_file(&mut entry, out)?;
                 found = true;
                 break;
@@ -419,7 +519,11 @@ pub fn extract_exe(archive: &Path, out: &Path) -> Result<(), String> {
         let mut found = false;
         for entry in tar.entries().map_err(|e| bad(&e))? {
             let mut entry = entry.map_err(|e| bad(&e))?;
-            if entry.header().entry_type().is_file() && entry.path().is_ok_and(|p| p.file_name().is_some_and(|n| n == EXE_NAME)) {
+            if entry.header().entry_type().is_file()
+                && entry
+                    .path()
+                    .is_ok_and(|p| p.file_name().is_some_and(|n| n == EXE_NAME))
+            {
                 write_file(&mut entry, out)?;
                 found = true;
                 break;
@@ -448,7 +552,9 @@ fn install_exe(staged: &Path, exe: &Path) -> Result<(), String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mode = fs::metadata(exe).map(|m| m.permissions().mode() & 0o777).unwrap_or(0o755);
+        let mode = fs::metadata(exe)
+            .map(|m| m.permissions().mode() & 0o777)
+            .unwrap_or(0o755);
         fs::set_permissions(staged, fs::Permissions::from_mode(mode)).map_err(err)?;
     }
     if cfg!(windows) {
@@ -468,7 +574,15 @@ fn install_exe(staged: &Path, exe: &Path) -> Result<(), String> {
 /// Removes what an earlier update left behind: the previous executable (Windows keeps it until
 /// that process has exited), half-done downloads and the downloaded installer.
 pub fn cleanup(exe: &Path) {
-    for suffix in [".old", ".new", ".new.part", ".update.zip", ".update.zip.part", ".update.tar.gz", ".update.tar.gz.part"] {
+    for suffix in [
+        ".old",
+        ".new",
+        ".new.part",
+        ".update.zip",
+        ".update.zip.part",
+        ".update.tar.gz",
+        ".update.tar.gz.part",
+    ] {
         let _ = fs::remove_file(sibling(exe, suffix));
     }
     if cfg!(windows) {
@@ -478,7 +592,12 @@ pub fn cleanup(exe: &Path) {
 
 /// Starts `exe` as a new process (the updated BigText).
 pub fn relaunch(exe: &Path) -> io::Result<()> {
-    Command::new(exe).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map(drop)
+    Command::new(exe)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(drop)
 }
 
 /// Starts the downloaded Windows installer without its wizard pages (it keeps the previous
@@ -486,7 +605,13 @@ pub fn relaunch(exe: &Path) -> io::Result<()> {
 /// see the `[Run]` section of installer/bigtext.iss.
 pub fn run_installer(setup: &Path, relaunch: bool) -> io::Result<()> {
     let mut cmd = Command::new(setup);
-    cmd.args(["/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/NORESTARTAPPLICATIONS"]);
+    cmd.args([
+        "/SILENT",
+        "/SUPPRESSMSGBOXES",
+        "/NORESTART",
+        "/CLOSEAPPLICATIONS",
+        "/NORESTARTAPPLICATIONS",
+    ]);
     if relaunch {
         cmd.arg("/relaunch=1");
     }
@@ -507,7 +632,11 @@ pub fn whats_new(notes: &str) -> &str {
             match start {
                 None => {
                     let t = title.to_lowercase().replace('’', "'");
-                    if t.starts_with("what's new") || t.starts_with("what's changed") || t == "changes" || t == "changelog" {
+                    if t.starts_with("what's new")
+                        || t.starts_with("what's changed")
+                        || t == "changes"
+                        || t == "changelog"
+                    {
                         start = Some((pos + line.len(), level));
                     }
                 }
@@ -526,7 +655,9 @@ pub fn whats_new(notes: &str) -> &str {
 fn heading(line: &str) -> Option<(usize, &str)> {
     let level = line.bytes().take_while(|&b| b == b'#').count();
     let title = line[level..].strip_prefix(' ')?;
-    (1..=6).contains(&level).then(|| (level, title.trim().trim_end_matches('#').trim()))
+    (1..=6)
+        .contains(&level)
+        .then(|| (level, title.trim().trim_end_matches('#').trim()))
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -584,16 +715,25 @@ pub fn parse_notes(md: &str) -> Vec<Block> {
         } else if let Some((_, title)) = heading(t) {
             raw.push(Raw::Heading(title.to_string()));
             open = false;
-        } else if let Some(rest) = t.strip_prefix("- ").or_else(|| t.strip_prefix("* ")).or_else(|| t.strip_prefix("+ ")) {
+        } else if let Some(rest) = t
+            .strip_prefix("- ")
+            .or_else(|| t.strip_prefix("* "))
+            .or_else(|| t.strip_prefix("+ "))
+        {
             raw.push(Raw::Item(depth, rest.trim().to_string()));
             open = true;
-        } else if t.split_once(". ").is_some_and(|(n, _)| (1..=3).contains(&n.len()) && n.bytes().all(|b| b.is_ascii_digit())) {
+        } else if t.split_once(". ").is_some_and(|(n, _)| {
+            (1..=3).contains(&n.len()) && n.bytes().all(|b| b.is_ascii_digit())
+        }) {
             // Numbered items keep their number.
             raw.push(Raw::Item(depth, t.to_string()));
             open = true;
         } else if t.starts_with('|') {
             let cells: Vec<&str> = t.trim_matches('|').split('|').map(str::trim).collect();
-            if cells.iter().all(|c| !c.is_empty() && c.chars().all(|ch| matches!(ch, '-' | ':' | ' '))) {
+            if cells
+                .iter()
+                .all(|c| !c.is_empty() && c.chars().all(|ch| matches!(ch, '-' | ':' | ' ')))
+            {
                 // The separator under the header row: the row before it was the header.
                 if was_table_row {
                     raw.pop();
@@ -623,7 +763,9 @@ pub fn parse_notes(md: &str) -> Vec<Block> {
             Raw::Heading(s) => Some(Block::Heading(inline(&s))),
             Raw::Item(d, s) => Some(Block::Item(d, inline(&s))),
             // A paragraph that was only an image has nothing left.
-            Raw::Para(s) => Some(inline(&s)).filter(|v| !v.is_empty()).map(Block::Paragraph),
+            Raw::Para(s) => Some(inline(&s))
+                .filter(|v| !v.is_empty())
+                .map(Block::Paragraph),
             Raw::Code(s) => Some(Block::Code(s)),
         })
         .collect()
@@ -637,13 +779,21 @@ fn inline(s: &str) -> Vec<Span> {
     let flush = |text: &mut String, out: &mut Vec<Span>, strong: bool| {
         if !text.is_empty() {
             let t = std::mem::take(text);
-            out.push(if strong { Span::Strong(t) } else { Span::Text(t) });
+            out.push(if strong {
+                Span::Strong(t)
+            } else {
+                Span::Text(t)
+            });
         }
     };
     let mut i = 0;
     while i < s.len() {
         let rest = &s[i..];
-        if let Some(c) = rest.strip_prefix('\\').and_then(|r| r.chars().next()).filter(char::is_ascii_punctuation) {
+        if let Some(c) = rest
+            .strip_prefix('\\')
+            .and_then(|r| r.chars().next())
+            .filter(char::is_ascii_punctuation)
+        {
             text.push(c);
             i += 2;
         } else if rest.starts_with("**") {
@@ -658,15 +808,24 @@ fn inline(s: &str) -> Vec<Span> {
             i += 1 + len;
         } else if let Some((label, url, len)) = link_at(rest) {
             flush(&mut text, &mut out, strong);
-            out.push(Span::Link(label.replace("**", "").replace('`', ""), url.to_string()));
+            out.push(Span::Link(
+                label.replace("**", "").replace('`', ""),
+                url.to_string(),
+            ));
             i += len;
-        } else if let Some(end) = rest.strip_prefix('<').filter(|r| r.starts_with("https://") || r.starts_with("http://")).and_then(|r| r.find('>')) {
+        } else if let Some(end) = rest
+            .strip_prefix('<')
+            .filter(|r| r.starts_with("https://") || r.starts_with("http://"))
+            .and_then(|r| r.find('>'))
+        {
             flush(&mut text, &mut out, strong);
             let url = &rest[1..1 + end];
             out.push(Span::Link(url.to_string(), url.to_string()));
             i += end + 2;
         } else if rest.starts_with("https://") || rest.starts_with("http://") {
-            let end = rest.find(|c: char| c.is_whitespace() || matches!(c, ')' | '>' | '<')).unwrap_or(rest.len());
+            let end = rest
+                .find(|c: char| c.is_whitespace() || matches!(c, ')' | '>' | '<'))
+                .unwrap_or(rest.len());
             let url = rest[..end].trim_end_matches(['.', ',', ';', ':', '!', '?']);
             flush(&mut text, &mut out, strong);
             out.push(Span::Link(url.to_string(), url.to_string()));
@@ -685,7 +844,9 @@ fn inline(s: &str) -> Vec<Span> {
 fn link_at(s: &str) -> Option<(&str, &str, usize)> {
     let close = s.strip_prefix('[')?.find(']')? + 1;
     let url_len = s[close..].strip_prefix("](")?.find(')')?;
-    let url = s[close + 2..close + 2 + url_len].split_whitespace().next()?;
+    let url = s[close + 2..close + 2 + url_len]
+        .split_whitespace()
+        .next()?;
     Some((&s[1..close], url, close + 2 + url_len + 1))
 }
 
@@ -726,32 +887,64 @@ mod tests {
         assert_eq!(r[0].notes, "## What's new in 0.1.10\n- B");
         assert_eq!(r[1].notes, "");
         let zip = r[0].asset("bigtext-windows-x64.zip").unwrap();
-        assert_eq!((zip.url.as_str(), zip.size, zip.sha256.as_deref()), ("https://x/a.zip", 10, Some("abcd")));
-        assert_eq!(r[0].asset("bigtext-setup-windows-x64.exe").unwrap().sha256, None);
+        assert_eq!(
+            (zip.url.as_str(), zip.size, zip.sha256.as_deref()),
+            ("https://x/a.zip", 10, Some("abcd"))
+        );
+        assert_eq!(
+            r[0].asset("bigtext-setup-windows-x64.exe").unwrap().sha256,
+            None
+        );
         assert!(parse_newer(RELEASES, Version(0, 1, 10)).unwrap().is_empty());
         assert!(parse_newer("{\"message\":\"Not Found\"}", Version(0, 1, 1)).is_err());
     }
 
     fn release(assets: &[&str]) -> Release {
-        let assets = assets.iter().map(|n| Asset { name: n.to_string(), url: String::new(), size: 1, sha256: None }).collect();
-        Release { version: Version(9, 0, 0), notes: String::new(), page: String::new(), assets }
+        let assets = assets
+            .iter()
+            .map(|n| Asset {
+                name: n.to_string(),
+                url: String::new(),
+                size: 1,
+                sha256: None,
+            })
+            .collect();
+        Release {
+            version: Version(9, 0, 0),
+            notes: String::new(),
+            page: String::new(),
+            assets,
+        }
     }
 
     #[test]
     fn update_method() {
         let dir = tempfile::tempdir().unwrap();
         let exe = dir.path().join(EXE_NAME);
-        let all = release(&["bigtext-setup-windows-x64.exe", "bigtext-windows-x64.zip", "bigtext-linux-x64.tar.gz", "bigtext-macos-arm64.tar.gz", "bigtext-macos-x64.tar.gz"]);
+        let all = release(&[
+            "bigtext-setup-windows-x64.exe",
+            "bigtext-windows-x64.zip",
+            "bigtext-linux-x64.tar.gz",
+            "bigtext-macos-arm64.tar.gz",
+            "bigtext-macos-x64.tar.gz",
+        ]);
         match (method(&all, &exe), ARCHIVE_ASSET) {
-            (Method::Replace { asset, exe: e }, Some(name)) => assert_eq!((asset.name.as_str(), e), (name, exe.clone())),
+            (Method::Replace { asset, exe: e }, Some(name)) => {
+                assert_eq!((asset.name.as_str(), e), (name, exe.clone()))
+            }
             (Method::Manual, None) => {}
             (m, _) => panic!("unexpected {m:?}"),
         }
         assert_eq!(method(&release(&[]), &exe), Method::Manual);
         if cfg!(windows) {
             fs::write(dir.path().join("unins000.exe"), b"").unwrap();
-            assert!(matches!(method(&all, &exe), Method::Installer { asset } if asset.name == INSTALLER_ASSET));
-            assert_eq!(method(&release(&["bigtext-windows-x64.zip"]), &exe), Method::Manual);
+            assert!(
+                matches!(method(&all, &exe), Method::Installer { asset } if asset.name == INSTALLER_ASSET)
+            );
+            assert_eq!(
+                method(&release(&["bigtext-windows-x64.zip"]), &exe),
+                Method::Manual
+            );
         }
     }
 
@@ -759,7 +952,13 @@ mod tests {
     fn package_managers_and_appimages() {
         let root = tempfile::tempdir().unwrap();
         let r = root.path();
-        let all = release(&["bigtext-windows-x64.zip", "bigtext-linux-x64.tar.gz", "bigtext-linux-x64.AppImage", "bigtext-macos-arm64.tar.gz", "bigtext-macos-x64.tar.gz"]);
+        let all = release(&[
+            "bigtext-windows-x64.zip",
+            "bigtext-linux-x64.tar.gz",
+            "bigtext-linux-x64.AppImage",
+            "bigtext-macos-arm64.tar.gz",
+            "bigtext-macos-x64.tar.gz",
+        ]);
         let pm = |exe: &Path| match method_in(&all, exe, false, r) {
             Method::Package(m) => Some(m),
             _ => None,
@@ -772,8 +971,14 @@ mod tests {
         fs::write(scoop.join("install.json"), b"{}").unwrap();
         assert_eq!(pm(&scoop.join(EXE_NAME)), Some(Manager::Scoop));
         // Homebrew: the formula's keg, and the cask's app with its Caskroom record.
-        assert_eq!(pm(&r.join("opt/homebrew/Cellar/bigtext/0.8.0/bin/bigtext")), Some(Manager::Homebrew));
-        assert_eq!(pm(&r.join("opt/homebrew/Cellar/other/1.0/bin/bigtext")), None);
+        assert_eq!(
+            pm(&r.join("opt/homebrew/Cellar/bigtext/0.8.0/bin/bigtext")),
+            Some(Manager::Homebrew)
+        );
+        assert_eq!(
+            pm(&r.join("opt/homebrew/Cellar/other/1.0/bin/bigtext")),
+            None
+        );
         let app = r.join("Applications/BigText.app/Contents/MacOS/bigtext");
         assert_eq!(pm(&app), None);
         fs::create_dir_all(r.join("opt/homebrew/Caskroom/bigtext-app/0.8.0")).unwrap();
@@ -782,16 +987,32 @@ mod tests {
         let usr_bin = r.join("usr").join("bin").join("bigtext");
         assert_eq!(pm(&usr_bin), None);
         fs::create_dir_all(r.join("var/lib/dpkg/info")).unwrap();
-        fs::write(r.join("var/lib/dpkg/info/bigtext.list"), b"/usr/bin/bigtext\n").unwrap();
+        fs::write(
+            r.join("var/lib/dpkg/info/bigtext.list"),
+            b"/usr/bin/bigtext\n",
+        )
+        .unwrap();
         assert_eq!(pm(&usr_bin), Some(Manager::Deb));
         fs::create_dir_all(r.join("var/lib/pacman/local/bigtext-bin-0.8.0-1")).unwrap();
         assert_eq!(pm(&usr_bin), Some(Manager::Aur));
         assert_eq!(pm(&r.join("home/me/bin/bigtext")), None);
         // An AppImage is replaced by the release's AppImage, wherever it is.
         let image = r.join("home/me/Apps/bigtext-linux-x64.AppImage");
-        assert!(matches!(method_in(&all, &image, true, r), Method::Replace { asset, exe } if asset.name == APPIMAGE_ASSET && exe == image));
-        assert_eq!(method_in(&release(&["bigtext-linux-x64.tar.gz"]), &image, true, r), Method::Manual);
-        for m in [Manager::Cargo, Manager::Scoop, Manager::Homebrew, Manager::HomebrewCask, Manager::Aur, Manager::Deb] {
+        assert!(
+            matches!(method_in(&all, &image, true, r), Method::Replace { asset, exe } if asset.name == APPIMAGE_ASSET && exe == image)
+        );
+        assert_eq!(
+            method_in(&release(&["bigtext-linux-x64.tar.gz"]), &image, true, r),
+            Method::Manual
+        );
+        for m in [
+            Manager::Cargo,
+            Manager::Scoop,
+            Manager::Homebrew,
+            Manager::HomebrewCask,
+            Manager::Aur,
+            Manager::Deb,
+        ] {
             assert!(m.command().contains("bigtext") && !m.name().is_empty());
         }
     }
@@ -799,12 +1020,20 @@ mod tests {
     #[test]
     fn an_appimage_is_found_only_from_inside_it() {
         let mount = tempfile::tempdir().unwrap();
-        let exe = fs::canonicalize(mount.path()).unwrap().join("usr/bin/bigtext");
+        let exe = fs::canonicalize(mount.path())
+            .unwrap()
+            .join("usr/bin/bigtext");
         let os = |p: &Path| Some(p.as_os_str().to_owned());
         let file = PathBuf::from("/home/me/bigtext.AppImage");
-        assert_eq!(appimage_of(&exe, os(mount.path()), os(&file)), Some(file.clone()));
+        assert_eq!(
+            appimage_of(&exe, os(mount.path()), os(&file)),
+            Some(file.clone())
+        );
         // Started from another AppImage (say a terminal), which set the variables for itself.
-        assert_eq!(appimage_of(Path::new("/usr/bin/bigtext"), os(mount.path()), os(&file)), None);
+        assert_eq!(
+            appimage_of(Path::new("/usr/bin/bigtext"), os(mount.path()), os(&file)),
+            None
+        );
         assert_eq!(appimage_of(&exe, None, os(&file)), None);
         assert_eq!(appimage_of(&exe, os(Path::new("")), os(&file)), None);
     }
@@ -818,7 +1047,12 @@ mod tests {
         let src = dir.path().join("served");
         fs::write(&src, new).unwrap();
         let url = format!("file://{}", src.display());
-        let asset = Asset { name: APPIMAGE_ASSET.into(), url, size: new.len() as u64, sha256: None };
+        let asset = Asset {
+            name: APPIMAGE_ASSET.into(),
+            url,
+            size: new.len() as u64,
+            sha256: None,
+        };
         // No network here: a file:// URL fails in ureq, and the old file must be left alone.
         let r = update_exe(&asset, &image, &Progress::default(), &CancelToken::new());
         assert!(r.is_err());
@@ -829,14 +1063,22 @@ mod tests {
     fn zip_with(entries: &[(&str, &[u8])]) -> Vec<u8> {
         let mut w = zip::ZipWriter::new(io::Cursor::new(Vec::new()));
         for (name, data) in entries {
-            w.start_file(*name, zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated)).unwrap();
+            w.start_file(
+                *name,
+                zip::write::SimpleFileOptions::default()
+                    .compression_method(zip::CompressionMethod::Deflated),
+            )
+            .unwrap();
             w.write_all(data).unwrap();
         }
         w.finish().unwrap().into_inner()
     }
 
     fn tar_gz_with(entries: &[(&str, &[u8])]) -> Vec<u8> {
-        let mut b = tar::Builder::new(flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()));
+        let mut b = tar::Builder::new(flate2::write::GzEncoder::new(
+            Vec::new(),
+            flate2::Compression::fast(),
+        ));
         for (name, data) in entries {
             let mut h = tar::Header::new_gnu();
             h.set_size(data.len() as u64);
@@ -851,10 +1093,20 @@ mod tests {
     fn extracts_the_executable() {
         let dir = tempfile::tempdir().unwrap();
         let out = dir.path().join("out");
-        let bench = format!("bigtext-x/bigtext-bench{}", if cfg!(windows) { ".exe" } else { "" });
+        let bench = format!(
+            "bigtext-x/bigtext-bench{}",
+            if cfg!(windows) { ".exe" } else { "" }
+        );
         let main = format!("bigtext-x/{EXE_NAME}");
-        let entries: [(&str, &[u8]); 3] = [("bigtext-x/README.md", b"readme"), (&bench, b"bench"), (&main, b"the new exe")];
-        for (name, data) in [("a.zip", zip_with(&entries)), ("a.tar.gz", tar_gz_with(&entries))] {
+        let entries: [(&str, &[u8]); 3] = [
+            ("bigtext-x/README.md", b"readme"),
+            (&bench, b"bench"),
+            (&main, b"the new exe"),
+        ];
+        for (name, data) in [
+            ("a.zip", zip_with(&entries)),
+            ("a.tar.gz", tar_gz_with(&entries)),
+        ] {
             let archive = dir.path().join(name);
             fs::write(&archive, data).unwrap();
             extract_exe(&archive, &out).unwrap();
@@ -862,9 +1114,13 @@ mod tests {
         }
         let archive = dir.path().join("b.zip");
         fs::write(&archive, zip_with(&entries[..2])).unwrap();
-        assert!(extract_exe(&archive, &out).unwrap_err().contains("does not contain"));
+        assert!(extract_exe(&archive, &out)
+            .unwrap_err()
+            .contains("does not contain"));
         fs::write(&archive, b"not a zip").unwrap();
-        assert!(extract_exe(&archive, &out).unwrap_err().contains("Could not unpack"));
+        assert!(extract_exe(&archive, &out)
+            .unwrap_err()
+            .contains("Could not unpack"));
     }
 
     #[test]
@@ -900,13 +1156,36 @@ mod tests {
             parse_notes(md),
             vec![
                 Block::Heading(vec![t("Fixes")]),
-                Block::Item(0, vec![Span::Strong("Icon".into()), t(" in "), Span::Code("bigtext.exe".into()), t(", see "), Span::Link("the docs".into(), "https://x/d".into()), t(". continued")]),
+                Block::Item(
+                    0,
+                    vec![
+                        Span::Strong("Icon".into()),
+                        t(" in "),
+                        Span::Code("bigtext.exe".into()),
+                        t(", see "),
+                        Span::Link("the docs".into(), "https://x/d".into()),
+                        t(". continued")
+                    ]
+                ),
                 Block::Item(1, vec![t("nested")]),
                 Block::Item(0, vec![t("1. first")]),
-                Block::Paragraph(vec![t("Some text more text "), Span::Link("https://a/b".into(), "https://a/b".into()), t(".")]),
-                Block::Item(0, vec![t("Linux · "), Span::Link("a.tar.gz".into(), "https://x/a".into())]),
+                Block::Paragraph(vec![
+                    t("Some text more text "),
+                    Span::Link("https://a/b".into(), "https://a/b".into()),
+                    t(".")
+                ]),
+                Block::Item(
+                    0,
+                    vec![
+                        t("Linux · "),
+                        Span::Link("a.tar.gz".into(), "https://x/a".into())
+                    ]
+                ),
                 Block::Code("code\n".into()),
-                Block::Paragraph(vec![Span::Link("https://x/y".into(), "https://x/y".into()), t(".")]),
+                Block::Paragraph(vec![
+                    Span::Link("https://x/y".into(), "https://x/y".into()),
+                    t(".")
+                ]),
             ]
         );
     }
@@ -918,13 +1197,19 @@ mod tests {
     fn live_download() {
         let releases = check(Version(0, 0, 0)).unwrap();
         let latest = &releases[0];
-        println!("latest {} with {} assets", latest.version, latest.assets.len());
+        println!(
+            "latest {} with {} assets",
+            latest.version,
+            latest.assets.len()
+        );
         let asset = latest.asset(ARCHIVE_ASSET.unwrap()).unwrap();
         let dir = tempfile::tempdir().unwrap();
         let exe = dir.path().join(EXE_NAME);
         fs::write(&exe, b"old").unwrap();
         update_exe(asset, &exe, &Progress::default(), &CancelToken::new()).unwrap();
         assert!(fs::metadata(&exe).unwrap().len() > 1 << 20);
-        assert!(!sibling(&exe, ".update.zip").exists() && !sibling(&exe, ".update.tar.gz").exists());
+        assert!(
+            !sibling(&exe, ".update.zip").exists() && !sibling(&exe, ".update.tar.gz").exists()
+        );
     }
 }

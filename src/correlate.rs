@@ -43,12 +43,20 @@ pub struct IdFinder {
 
 impl IdFinder {
     pub fn new<S: AsRef<str>>(keys: &[S]) -> IdFinder {
-        let keys: Vec<String> = keys.iter().map(|k| k.as_ref().trim()).filter(|k| !k.is_empty()).map(regex_syntax::escape).collect();
+        let keys: Vec<String> = keys
+            .iter()
+            .map(|k| k.as_ref().trim())
+            .filter(|k| !k.is_empty())
+            .map(regex_syntax::escape)
+            .collect();
         // key = value, key: value, "key": "value", [key=value].
         let keyed = (!keys.is_empty()).then(|| format!(r#"(?i)(?:^|[^A-Za-z0-9_\-])["']?({})["']?\s*[:=]\s*["']?([A-Za-z0-9][A-Za-z0-9_.:/@\-]*)"#, keys.join("|")));
         IdFinder {
             keyed: keyed.and_then(|p| Regex::new(&p).ok()),
-            uuid: Regex::new(r"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b").expect("uuid pattern"),
+            uuid: Regex::new(
+                r"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+            )
+            .expect("uuid pattern"),
         }
     }
 
@@ -58,12 +66,20 @@ impl IdFinder {
         let hay = line.as_bytes();
         if let Some(re) = &self.keyed {
             for caps in re.captures_iter(hay) {
-                let (Some(k), Some(v)) = (caps.get_group(1), caps.get_group(2)) else { continue };
+                let (Some(k), Some(v)) = (caps.get_group(1), caps.get_group(2)) else {
+                    continue;
+                };
                 let value = line[v.range()].trim_end_matches(['.', ':', '/', '-', '@']);
-                if value.is_empty() || value.len() > VALUE_MAX || out.iter().any(|f| f.value == value) {
+                if value.is_empty()
+                    || value.len() > VALUE_MAX
+                    || out.iter().any(|f| f.value == value)
+                {
                     continue;
                 }
-                out.push(FoundId { key: line[k.range()].to_string(), value: value.to_string() });
+                out.push(FoundId {
+                    key: line[k.range()].to_string(),
+                    value: value.to_string(),
+                });
                 if out.len() >= max {
                     return out;
                 }
@@ -73,7 +89,10 @@ impl IdFinder {
             for m in self.uuid.find_iter(hay) {
                 let value = &line[m.range()];
                 if !out.iter().any(|f| f.value.eq_ignore_ascii_case(value)) {
-                    out.push(FoundId { key: "uuid".into(), value: value.to_string() });
+                    out.push(FoundId {
+                        key: "uuid".into(),
+                        value: value.to_string(),
+                    });
                 }
                 if out.len() >= max {
                     break;
@@ -89,7 +108,11 @@ mod tests {
     use super::*;
 
     fn ids(line: &str) -> Vec<(String, String)> {
-        IdFinder::new(&DEFAULT_KEYS).find(line, 4).into_iter().map(|f| (f.key, f.value)).collect()
+        IdFinder::new(&DEFAULT_KEYS)
+            .find(line, 4)
+            .into_iter()
+            .map(|f| (f.key, f.value))
+            .collect()
     }
 
     fn pair(k: &str, v: &str) -> (String, String) {
@@ -98,8 +121,17 @@ mod tests {
 
     #[test]
     fn keyed_ids_in_common_forms() {
-        assert_eq!(ids("2024-05-01 10:00:00 INFO request_id=abc123 user_id=42 done."), [pair("request_id", "abc123"), pair("user_id", "42")]);
-        assert_eq!(ids(r#"{"ts":1,"traceId":"4bf92f3577b34da6","spanId": "00f067aa0ba902b7","msg":"x"}"#), [pair("traceId", "4bf92f3577b34da6"), pair("spanId", "00f067aa0ba902b7")]);
+        assert_eq!(
+            ids("2024-05-01 10:00:00 INFO request_id=abc123 user_id=42 done."),
+            [pair("request_id", "abc123"), pair("user_id", "42")]
+        );
+        assert_eq!(
+            ids(r#"{"ts":1,"traceId":"4bf92f3577b34da6","spanId": "00f067aa0ba902b7","msg":"x"}"#),
+            [
+                pair("traceId", "4bf92f3577b34da6"),
+                pair("spanId", "00f067aa0ba902b7")
+            ]
+        );
         assert_eq!(ids("[req_id: R-77.] GET /a"), [pair("req_id", "R-77")]);
         assert_eq!(ids("X-Request-ID=e1/2 ok"), [pair("X-Request-ID", "e1/2")]);
         // Part of a longer word is not the key.
@@ -116,7 +148,13 @@ mod tests {
         assert!(ids("nothing here 1234").is_empty());
         let none: [&str; 0] = [];
         assert_eq!(IdFinder::new(&none).find("request_id=1", 4), Vec::new());
-        assert_eq!(IdFinder::new(&["pid"]).find("pid=4711 x", 4), [FoundId { key: "pid".into(), value: "4711".into() }]);
+        assert_eq!(
+            IdFinder::new(&["pid"]).find("pid=4711 x", 4),
+            [FoundId {
+                key: "pid".into(),
+                value: "4711".into()
+            }]
+        );
     }
 
     #[test]

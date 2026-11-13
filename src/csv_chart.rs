@@ -52,13 +52,27 @@ fn nice(x: f64) -> f64 {
     }
     let p = 10f64.powf(x.log10().floor());
     let m = x / p;
-    p * if m <= 1.0 { 1.0 } else if m <= 2.0 { 2.0 } else if m <= 5.0 { 5.0 } else { 10.0 }
+    p * if m <= 1.0 {
+        1.0
+    } else if m <= 2.0 {
+        2.0
+    } else if m <= 5.0 {
+        5.0
+    } else {
+        10.0
+    }
 }
 
-const TIME_STEPS: [f64; 19] = [1e3, 2e3, 5e3, 1e4, 15e3, 3e4, 6e4, 12e4, 3e5, 6e5, 9e5, 18e5, 36e5, 72e5, 108e5, 216e5, 432e5, 864e5, 6048e5];
+const TIME_STEPS: [f64; 19] = [
+    1e3, 2e3, 5e3, 1e4, 15e3, 3e4, 6e4, 12e4, 3e5, 6e5, 9e5, 18e5, 36e5, 72e5, 108e5, 216e5, 432e5,
+    864e5, 6048e5,
+];
 
 fn nice_time(x: f64) -> f64 {
-    TIME_STEPS.into_iter().find(|&s| s >= x).unwrap_or(30.0 * 864e5)
+    TIME_STEPS
+        .into_iter()
+        .find(|&s| s >= x)
+        .unwrap_or(30.0 * 864e5)
 }
 
 fn show(x: f64) -> String {
@@ -143,7 +157,16 @@ impl Builder {
             ChartKind::Text => {
                 let mut v: Vec<(&String, &(u64, u64))> = self.texts.iter().collect();
                 v.sort_by(|a, b| b.1 .0.cmp(&a.1 .0).then(a.1 .1.cmp(&b.1 .1)));
-                v.into_iter().take(TEXT_BARS).map(|(k, &(n, first))| Bar { label: k.clone(), count: n, lo: f64::NAN, hi: f64::NAN, first }).collect()
+                v.into_iter()
+                    .take(TEXT_BARS)
+                    .map(|(k, &(n, first))| Bar {
+                        label: k.clone(),
+                        count: n,
+                        lo: f64::NAN,
+                        hi: f64::NAN,
+                        first,
+                    })
+                    .collect()
             }
             kind => {
                 let w = self.ranges.width;
@@ -156,7 +179,13 @@ impl Builder {
                             ChartKind::Times => timestamp::format_key(lo as i64, self.dated, true),
                             _ => format!("{} – {}", show(lo), show(hi)),
                         };
-                        Bar { label, count: n, lo, hi, first }
+                        Bar {
+                            label,
+                            count: n,
+                            lo,
+                            hi,
+                            first,
+                        }
                     })
                     .collect()
             }
@@ -167,7 +196,15 @@ impl Builder {
 
 /// Counts the values of column `col` in one pass; what the column holds is decided from its
 /// first values. `partial` gets the chart so far now and then.
-pub fn column_chart(buf: &TextBuf, d: Dialect, col: usize, header: bool, cancel: &CancelToken, progress: Option<&Progress>, mut partial: impl FnMut(&ColumnChart)) -> Result<ColumnChart, ScanEnd> {
+pub fn column_chart(
+    buf: &TextBuf,
+    d: Dialect,
+    col: usize,
+    header: bool,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut partial: impl FnMut(&ColumnChart),
+) -> Result<ColumnChart, ScanEnd> {
     let codec = buf.codec;
     let mut sample: Vec<(String, u64)> = Vec::new();
     let mut b: Option<Builder> = None;
@@ -175,21 +212,53 @@ pub fn column_chart(buf: &TextBuf, d: Dialect, col: usize, header: bool, cancel:
     let mut failed = false;
     let mut throttle = Throttle::new(std::time::Duration::from_millis(250));
     let decide = |sample: &[(String, u64)]| -> Builder {
-        let vals: Vec<&str> = sample.iter().map(|s| s.0.trim()).filter(|s| !s.is_empty()).collect();
-        let nums: Vec<f64> = vals.iter().filter_map(|v| csv::parse_number(v)).filter(|x| x.is_finite()).collect();
-        let times: Vec<timestamp::Stamp> = vals.iter().filter_map(|v| timestamp::parse(v)).collect();
+        let vals: Vec<&str> = sample
+            .iter()
+            .map(|s| s.0.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let nums: Vec<f64> = vals
+            .iter()
+            .filter_map(|v| csv::parse_number(v))
+            .filter(|x| x.is_finite())
+            .collect();
+        let times: Vec<timestamp::Stamp> =
+            vals.iter().filter_map(|v| timestamp::parse(v)).collect();
         let most = |n: usize| !vals.is_empty() && n * 10 >= vals.len() * 8;
         let (kind, width, dated) = if most(times.len()) && !most(nums.len()) {
-            let (lo, hi) = times.iter().fold((i64::MAX, i64::MIN), |(a, b), s| (a.min(s.ms), b.max(s.ms)));
-            (ChartKind::Times, nice_time((hi - lo) as f64 / 60.0), times.iter().all(|s| s.has_date))
+            let (lo, hi) = times
+                .iter()
+                .fold((i64::MAX, i64::MIN), |(a, b), s| (a.min(s.ms), b.max(s.ms)));
+            (
+                ChartKind::Times,
+                nice_time((hi - lo) as f64 / 60.0),
+                times.iter().all(|s| s.has_date),
+            )
         } else if most(nums.len()) {
-            let (lo, hi) = nums.iter().fold((f64::MAX, f64::MIN), |(a, b), &x| (a.min(x), b.max(x)));
+            let (lo, hi) = nums
+                .iter()
+                .fold((f64::MAX, f64::MIN), |(a, b), &x| (a.min(x), b.max(x)));
             (ChartKind::Numbers, nice((hi - lo) / 50.0), false)
         } else {
             (ChartKind::Text, 1.0, false)
         };
-        let out = ColumnChart { kind, bars: Vec::new(), values: 0, other: 0, capped: 0 };
-        let mut b = Builder { kind, ranges: Ranges { width, map: BTreeMap::new() }, texts: HashMap::new(), dated, out };
+        let out = ColumnChart {
+            kind,
+            bars: Vec::new(),
+            values: 0,
+            other: 0,
+            capped: 0,
+        };
+        let mut b = Builder {
+            kind,
+            ranges: Ranges {
+                width,
+                map: BTreeMap::new(),
+            },
+            texts: HashMap::new(),
+            dated,
+            out,
+        };
         for (v, off) in sample {
             b.add(v, *off);
         }
@@ -253,7 +322,16 @@ mod tests {
         let idx = crate::index::build_blocking(&src, Codec::utf8());
         let mut t = TextBuf::new(src, idx, Codec::utf8());
         t.blocking = true;
-        column_chart(&t, Dialect::new(b','), col, true, &CancelToken::new(), None, |_| {}).unwrap()
+        column_chart(
+            &t,
+            Dialect::new(b','),
+            col,
+            true,
+            &CancelToken::new(),
+            None,
+            |_| {},
+        )
+        .unwrap()
     }
 
     #[test]
@@ -265,11 +343,22 @@ mod tests {
         assert!(c.bars[0].lo <= 3.0 && c.bars[0].hi > 3.0);
         let t = chart("city,qty\nT,3\nB,5\nT,7\nB,1\nT,2\n", 0);
         assert_eq!(t.kind, ChartKind::Text);
-        assert_eq!((t.bars[0].label.as_str(), t.bars[0].count, t.bars[1].label.as_str()), ("T", 3, "B"));
+        assert_eq!(
+            (
+                t.bars[0].label.as_str(),
+                t.bars[0].count,
+                t.bars[1].label.as_str()
+            ),
+            ("T", 3, "B")
+        );
         let m = chart("city,qty,ts\nT,3,2024-05-01 10:00:00\nB,5,2024-05-01 10:30:00\nT,7,2024-05-01 12:00:00\n", 2);
         assert_eq!(m.kind, ChartKind::Times);
         assert_eq!(m.values, 3);
-        assert!(m.bars[0].label.starts_with("2024-05-01 10:"), "{:?}", m.bars[0].label);
+        assert!(
+            m.bars[0].label.starts_with("2024-05-01 10:"),
+            "{:?}",
+            m.bars[0].label
+        );
     }
 
     #[test]

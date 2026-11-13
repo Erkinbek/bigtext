@@ -24,8 +24,14 @@ use super::BigTextApp;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Source {
     /// `target` is `user@host` or `host`; a `path` without a leading `/` is in the home folder.
-    Ssh { target: String, port: Option<u16>, path: String },
-    Http { url: String },
+    Ssh {
+        target: String,
+        port: Option<u16>,
+        path: String,
+    },
+    Http {
+        url: String,
+    },
 }
 
 impl Source {
@@ -34,9 +40,23 @@ impl Source {
         match self {
             Source::Ssh { target, path, .. } => {
                 let host = target.rsplit('@').next().unwrap_or(target);
-                format!("{} ({host})", path.rsplit('/').next().filter(|n| !n.is_empty()).unwrap_or(path))
+                format!(
+                    "{} ({host})",
+                    path.rsplit('/')
+                        .next()
+                        .filter(|n| !n.is_empty())
+                        .unwrap_or(path)
+                )
             }
-            Source::Http { url } => url.split(['?', '#']).next().unwrap_or(url).trim_end_matches('/').rsplit('/').next().unwrap_or(url).to_string(),
+            Source::Http { url } => url
+                .split(['?', '#'])
+                .next()
+                .unwrap_or(url)
+                .trim_end_matches('/')
+                .rsplit('/')
+                .next()
+                .unwrap_or(url)
+                .to_string(),
         }
     }
 
@@ -44,9 +64,25 @@ impl Source {
     fn file_name(&self) -> String {
         let raw = match self {
             Source::Ssh { path, .. } => path.rsplit('/').next().unwrap_or("remote"),
-            Source::Http { url } => url.split(['?', '#']).next().unwrap_or(url).trim_end_matches('/').rsplit('/').next().unwrap_or("remote"),
+            Source::Http { url } => url
+                .split(['?', '#'])
+                .next()
+                .unwrap_or(url)
+                .trim_end_matches('/')
+                .rsplit('/')
+                .next()
+                .unwrap_or("remote"),
         };
-        let clean: String = raw.chars().map(|c| if c.is_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' }).collect();
+        let clean: String = raw
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
         if clean.is_empty() || clean.contains("://") {
             "remote.txt".into()
         } else {
@@ -67,32 +103,62 @@ pub fn parse(addr: &str) -> Option<Source> {
         if bucket.is_empty() || key.is_empty() {
             return None;
         }
-        return Some(Source::Http { url: format!("https://{bucket}.s3.amazonaws.com/{key}") });
+        return Some(Source::Http {
+            url: format!("https://{bucket}.s3.amazonaws.com/{key}"),
+        });
     }
-    if let Some(rest) = a.strip_prefix("ssh://").or_else(|| a.strip_prefix("sftp://")) {
+    if let Some(rest) = a
+        .strip_prefix("ssh://")
+        .or_else(|| a.strip_prefix("sftp://"))
+    {
         let (host_part, path) = rest.split_once('/')?;
         let (target, port) = match host_part.rsplit_once(':') {
-            Some((h, p)) if p.bytes().all(|b| b.is_ascii_digit()) && !p.is_empty() => (h, p.parse().ok()),
+            Some((h, p)) if p.bytes().all(|b| b.is_ascii_digit()) && !p.is_empty() => {
+                (h, p.parse().ok())
+            }
             _ => (host_part, None),
         };
         if target.is_empty() || path.is_empty() {
             return None;
         }
         // ssh://host/~/x is in the home folder; ssh://host/var/x is /var/x.
-        let path = if path.starts_with('~') { path.to_string() } else { format!("/{path}") };
-        return Some(Source::Ssh { target: target.into(), port, path });
+        let path = if path.starts_with('~') {
+            path.to_string()
+        } else {
+            format!("/{path}")
+        };
+        return Some(Source::Ssh {
+            target: target.into(),
+            port,
+            path,
+        });
     }
     // user@host:path — the @ keeps a Windows path (C:\x) from looking like one.
     let (target, path) = a.split_once(':')?;
-    if !target.contains('@') || target.contains(['/', '\\', ' ']) || path.is_empty() || target.starts_with('@') || target.ends_with('@') {
+    if !target.contains('@')
+        || target.contains(['/', '\\', ' '])
+        || path.is_empty()
+        || target.starts_with('@')
+        || target.ends_with('@')
+    {
         return None;
     }
-    Some(Source::Ssh { target: target.into(), port: None, path: path.into() })
+    Some(Source::Ssh {
+        target: target.into(),
+        port: None,
+        path: path.into(),
+    })
 }
 
 /// The `ssh` command that sends the file: all of it, or its last `tail` bytes, then (when
 /// `follow`) whatever is added to it.
-pub fn ssh_command(target: &str, port: Option<u16>, path: &str, tail: Option<u64>, follow: bool) -> Command {
+pub fn ssh_command(
+    target: &str,
+    port: Option<u16>,
+    path: &str,
+    tail: Option<u64>,
+    follow: bool,
+) -> Command {
     let mut c = ssh_base(target, port);
     let q = quote(path);
     let remote = match (tail, follow) {
@@ -102,7 +168,9 @@ pub fn ssh_command(target: &str, port: Option<u16>, path: &str, tail: Option<u64
         (Some(n), false) => format!("tail -c {n} -- {q}"),
     };
     c.arg(remote);
-    c.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    c.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     c
 }
 
@@ -134,7 +202,12 @@ pub(crate) fn temp_copy(name: &str) -> Result<(PathBuf, File), String> {
 }
 
 /// Copies `from` into `to` until the end, `cancel` or an error; returns the bytes copied.
-fn pump(mut from: impl Read, to: &mut File, progress: Option<&Progress>, cancel: Option<&CancelToken>) -> std::io::Result<u64> {
+fn pump(
+    mut from: impl Read,
+    to: &mut File,
+    progress: Option<&Progress>,
+    cancel: Option<&CancelToken>,
+) -> std::io::Result<u64> {
     let mut buf = vec![0u8; 256 * 1024];
     let mut n = 0u64;
     loop {
@@ -155,7 +228,12 @@ fn pump(mut from: impl Read, to: &mut File, progress: Option<&Progress>, cancel:
 }
 
 /// Downloads all of `src` into `file` (a task: progress and cancel).
-fn download(src: &Source, file: &mut File, progress: &Progress, cancel: &CancelToken) -> Result<u64, String> {
+fn download(
+    src: &Source,
+    file: &mut File,
+    progress: &Progress,
+    cancel: &CancelToken,
+) -> Result<u64, String> {
     match src {
         Source::Http { url } => {
             let agent = ureq::Agent::config_builder()
@@ -165,13 +243,27 @@ fn download(src: &Source, file: &mut File, progress: &Progress, cancel: &CancelT
                 .build()
                 .new_agent();
             let resp = agent.get(url).call().map_err(|e| match e {
-                ureq::Error::StatusCode(code) => trf("The server answered with HTTP status {code}.", &[("code", &code.to_string())]),
+                ureq::Error::StatusCode(code) => trf(
+                    "The server answered with HTTP status {code}.",
+                    &[("code", &code.to_string())],
+                ),
                 e => e.to_string(),
             })?;
-            if let Some(len) = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok()) {
+            if let Some(len) = resp
+                .headers()
+                .get("content-length")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<u64>().ok())
+            {
                 progress.set_total(len);
             }
-            pump(resp.into_body().into_reader(), file, Some(progress), Some(cancel)).map_err(|e| e.to_string())
+            pump(
+                resp.into_body().into_reader(),
+                file,
+                Some(progress),
+                Some(cancel),
+            )
+            .map_err(|e| e.to_string())
         }
         Source::Ssh { target, port, path } => {
             let mut child = spawn_ssh(ssh_command(target, *port, path, None, false))?;
@@ -212,7 +304,10 @@ struct Follow {
 /// closing tab needs to kill it; `None` when it was killed or does not end in two seconds.
 fn exit_code(held: &Mutex<Option<Child>>) -> Option<i32> {
     for _ in 0..100 {
-        let state = held.lock().ok().map(|mut c| c.as_mut().map(|c| c.try_wait()));
+        let state = held
+            .lock()
+            .ok()
+            .map(|mut c| c.as_mut().map(|c| c.try_wait()));
         match state {
             Some(Some(Ok(Some(st)))) => return st.code(),
             Some(Some(Ok(None))) => std::thread::sleep(Duration::from_millis(20)),
@@ -274,7 +369,15 @@ pub struct RemoteUi {
 
 impl Default for RemoteUi {
     fn default() -> Self {
-        RemoteUi { open: false, addr: String::new(), choice: Choice::InPlace, tail_mb: 1, error: None, focus: false, follows: Vec::new() }
+        RemoteUi {
+            open: false,
+            addr: String::new(),
+            choice: Choice::InPlace,
+            tail_mb: 1,
+            error: None,
+            focus: false,
+            follows: Vec::new(),
+        }
     }
 }
 
@@ -313,24 +416,39 @@ fn open_parts(src: &Source) -> Result<Box<RemoteOpened>, RemoteFail> {
             HttpOpen::NoRanges => return Err(RemoteFail::NoRanges),
         },
         Source::Ssh { target, port, path } => {
-            let file = SshFile { target: target.clone(), port: *port, path: path.clone() };
+            let file = SshFile {
+                target: target.clone(),
+                port: *port,
+                path: path.clone(),
+            };
             let (r, len) = SshRange::open(&file).map_err(|e| RemoteFail::Error(e.replace("ssh was not found. Install the OpenSSH client (on Windows: Settings → System → Optional features).", tr("ssh was not found. Install the OpenSSH client (on Windows: Settings → System → Optional features)."))))?;
             (Box::new(r), len, Some(file))
         }
     };
     let source = Arc::new(bigtext::file::Source::remote(reader, len, None));
     let n = len.min(1 << 20);
-    let sample = source.read(0..n).map_err(|e| RemoteFail::Error(e.to_string()))?;
+    let sample = source
+        .read(0..n)
+        .map_err(|e| RemoteFail::Error(e.to_string()))?;
     let detected = bigtext::encoding::detect(&sample, n == len);
     let block = bigtext::index::BLOCK;
-    let blocks = if n == len { len.div_ceil(block) } else { n / block };
+    let blocks = if n == len {
+        len.div_ceil(block)
+    } else {
+        n / block
+    };
     let mut prefix = vec![0u64];
     for k in 0..blocks {
         let (s, e) = (k * block, ((k + 1) * block).min(len));
         let before = *prefix.last().unwrap_or(&0);
         prefix.push(before + detected.codec.count_nl(&sample[s as usize..e as usize], s));
     }
-    Ok(Box::new(RemoteOpened { source, detected, prefix, ssh }))
+    Ok(Box::new(RemoteOpened {
+        source,
+        detected,
+        prefix,
+        ssh,
+    }))
 }
 
 impl BigTextApp {
@@ -351,23 +469,43 @@ impl BigTextApp {
         }
         let (path, mut file) = temp_file(&src)?;
         match (&src, how) {
-            (Source::Ssh { target, port, path: rpath }, How::Tail(mb)) => {
-                let cmd = ssh_command(target, *port, rpath, Some(mb.max(1) as u64 * 1024 * 1024), true);
+            (
+                Source::Ssh {
+                    target,
+                    port,
+                    path: rpath,
+                },
+                How::Tail(mb),
+            ) => {
+                let cmd = ssh_command(
+                    target,
+                    *port,
+                    rpath,
+                    Some(mb.max(1) as u64 * 1024 * 1024),
+                    true,
+                );
                 self.follow_with(cmd, title, path, file)?;
             }
             _ => {
                 let label = trf("Reading {name}…", &[("name", &title)]);
-                self.spawn_task(label, move |progress, cancel| match download(&src, &mut file, progress, cancel) {
-                    _ if cancel.is_cancelled() => {
-                        drop(file);
-                        bigtext::decompress::remove_temp(&path);
-                        TaskOutcome::Cancelled
-                    }
-                    Ok(bytes) => TaskOutcome::Remote(Box::new(RemoteDone { path, title, bytes })),
-                    Err(e) => {
-                        drop(file);
-                        bigtext::decompress::remove_temp(&path);
-                        TaskOutcome::Failed(format!("{}: {e}", trf("Could not read {name}", &[("name", &title)])))
+                self.spawn_task(label, move |progress, cancel| {
+                    match download(&src, &mut file, progress, cancel) {
+                        _ if cancel.is_cancelled() => {
+                            drop(file);
+                            bigtext::decompress::remove_temp(&path);
+                            TaskOutcome::Cancelled
+                        }
+                        Ok(bytes) => {
+                            TaskOutcome::Remote(Box::new(RemoteDone { path, title, bytes }))
+                        }
+                        Err(e) => {
+                            drop(file);
+                            bigtext::decompress::remove_temp(&path);
+                            TaskOutcome::Failed(format!(
+                                "{}: {e}",
+                                trf("Could not read {name}", &[("name", &title)])
+                            ))
+                        }
                     }
                 });
             }
@@ -378,12 +516,19 @@ impl BigTextApp {
     /// A tab for `src` read in place; it fills when the connection is made and the first
     /// megabyte is read.
     fn open_in_place(&mut self, src: Source) {
-        if let Some(i) = self.docs.iter().position(|d| d.path.is_none() && d.temporary && d.title == src.title() && d.buf.source.is_remote()) {
+        if let Some(i) = self.docs.iter().position(|d| {
+            d.path.is_none() && d.temporary && d.title == src.title() && d.buf.source.is_remote()
+        }) {
             self.active = i;
             return;
         }
         // Replace a pristine untitled tab.
-        if self.docs.len() == 1 && self.docs[0].path.is_none() && !self.docs[0].is_modified() && self.docs[0].buf.is_empty() && !self.docs[0].temporary {
+        if self.docs.len() == 1
+            && self.docs[0].path.is_none()
+            && !self.docs[0].is_modified()
+            && self.docs[0].buf.is_empty()
+            && !self.docs[0].temporary
+        {
             self.docs.clear();
         }
         let id = self.alloc_id();
@@ -398,14 +543,23 @@ impl BigTextApp {
         let (tx, waker) = (self.tx.clone(), self.waker.clone());
         bigtext::jobs::spawn("remote-open", move || {
             let result = open_parts(&src);
-            let _ = tx.send(super::Msg::RemoteOpened { doc: id, src, result });
+            let _ = tx.send(super::Msg::RemoteOpened {
+                doc: id,
+                src,
+                result,
+            });
             waker();
         });
     }
 
     /// The remote file of tab `doc` is open to be read in place, or falls back to a download,
     /// or failed.
-    pub(super) fn remote_opened(&mut self, doc: u64, src: Source, result: Result<Box<RemoteOpened>, RemoteFail>) {
+    pub(super) fn remote_opened(
+        &mut self,
+        doc: u64,
+        src: Source,
+        result: Result<Box<RemoteOpened>, RemoteFail>,
+    ) {
         let waker = self.waker.clone();
         match result {
             Ok(o) => {
@@ -432,7 +586,13 @@ impl BigTextApp {
                 let name = src.title();
                 match fail {
                     RemoteFail::NoRanges => {
-                        self.notify(trf("{name}: this server sends only whole files, so it is downloaded.", &[("name", &name)]), None);
+                        self.notify(
+                            trf(
+                                "{name}: this server sends only whole files, so it is downloaded.",
+                                &[("name", &name)],
+                            ),
+                            None,
+                        );
                         let addr = match &src {
                             Source::Http { url } => url.clone(),
                             Source::Ssh { .. } => return,
@@ -441,7 +601,12 @@ impl BigTextApp {
                             self.error = Some(e);
                         }
                     }
-                    RemoteFail::Error(e) => self.error = Some(format!("{}: {e}", trf("Could not open {name}", &[("name", &name)]))),
+                    RemoteFail::Error(e) => {
+                        self.error = Some(format!(
+                            "{}: {e}",
+                            trf("Could not open {name}", &[("name", &name)])
+                        ))
+                    }
                 }
             }
         }
@@ -449,7 +614,13 @@ impl BigTextApp {
 
     /// Runs `cmd` (an `ssh … tail -F`), opens `path` followed and read-only, and keeps adding
     /// what `cmd` writes to `file` until the tab closes (which ends `cmd`).
-    pub(crate) fn follow_with(&mut self, cmd: Command, title: String, path: PathBuf, mut file: File) -> Result<(), String> {
+    pub(crate) fn follow_with(
+        &mut self,
+        cmd: Command,
+        title: String,
+        path: PathBuf,
+        mut file: File,
+    ) -> Result<(), String> {
         let mut child = spawn_ssh(cmd)?;
         let stdout = child.stdout.take().ok_or("no output")?;
         let mut stderr = child.stderr.take().ok_or("no output")?;
@@ -469,13 +640,21 @@ impl BigTextApp {
             waker();
         });
         self.open_path(path);
-        let Some(d) = self.docs.get_mut(self.active) else { return Ok(()) };
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return Ok(());
+        };
         d.title = title.clone();
         d.temporary = true;
         d.read_only = true;
         d.follow = true;
         let doc = d.id;
-        self.remote.follows.push(Follow { doc, title, child, done: rx, command: false });
+        self.remote.follows.push(Follow {
+            doc,
+            title,
+            child,
+            done: rx,
+            command: false,
+        });
         Ok(())
     }
 
@@ -483,7 +662,14 @@ impl BigTextApp {
     /// opens `path` followed and read-only, and keeps adding what `cmd` prints — its errors too,
     /// line by line — until the tab closes (which ends `cmd`). `program` names what was started,
     /// for when it is not installed.
-    pub(crate) fn follow_process(&mut self, mut cmd: Command, title: String, path: PathBuf, file: File, program: &str) -> Result<(), String> {
+    pub(crate) fn follow_process(
+        &mut self,
+        mut cmd: Command,
+        title: String,
+        path: PathBuf,
+        file: File,
+        program: &str,
+    ) -> Result<(), String> {
         let mut child = cmd.spawn().map_err(|e| missing(&e, program))?;
         let stdout = child.stdout.take().ok_or("no output")?;
         let stderr = child.stderr.take().ok_or("no output")?;
@@ -501,19 +687,29 @@ impl BigTextApp {
             waker();
         });
         self.open_path(path);
-        let Some(d) = self.docs.get_mut(self.active) else { return Ok(()) };
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return Ok(());
+        };
         d.title = title.clone();
         d.temporary = true;
         d.read_only = true;
         d.follow = true;
         let doc = d.id;
-        self.remote.follows.push(Follow { doc, title, child, done: rx, command: true });
+        self.remote.follows.push(Follow {
+            doc,
+            title,
+            child,
+            done: rx,
+            command: true,
+        });
         Ok(())
     }
 
     /// Self-test: follows what `cmd` prints, as a remote file named `name`.
     pub(crate) fn test_follow(&mut self, cmd: Command, name: &str) -> Result<(), String> {
-        let src = Source::Http { url: format!("http://test/{name}") };
+        let src = Source::Http {
+            url: format!("http://test/{name}"),
+        };
         let (path, file) = temp_file(&src)?;
         self.follow_with(cmd, name.to_string(), path, file)
     }
@@ -526,7 +722,13 @@ impl BigTextApp {
             d.temporary = true;
             d.read_only = true;
         }
-        self.notify(trf("Read {name} ({size}).", &[("name", &r.title), ("size", &human_bytes(r.bytes))]), None);
+        self.notify(
+            trf(
+                "Read {name} ({size}).",
+                &[("name", &r.title), ("size", &human_bytes(r.bytes))],
+            ),
+            None,
+        );
     }
 
     /// Ends the `ssh` of closed tabs; reports a follow that stopped.
@@ -617,16 +819,60 @@ mod tests {
 
     #[test]
     fn addresses() {
-        assert_eq!(parse("ann@web1:/var/log/app.log"), Some(Source::Ssh { target: "ann@web1".into(), port: None, path: "/var/log/app.log".into() }));
-        assert_eq!(parse("ssh://ann@web1:2222/var/log/x.log"), Some(Source::Ssh { target: "ann@web1".into(), port: Some(2222), path: "/var/log/x.log".into() }));
-        assert_eq!(parse("ssh://web1/~/notes.md"), Some(Source::Ssh { target: "web1".into(), port: None, path: "~/notes.md".into() }));
-        assert_eq!(parse("s3://logs/2024/a.gz"), Some(Source::Http { url: "https://logs.s3.amazonaws.com/2024/a.gz".into() }));
-        assert_eq!(parse("https://x.org/a/big.log?sig=1"), Some(Source::Http { url: "https://x.org/a/big.log?sig=1".into() }));
-        for not in [r"C:\logs\a.log", "a.log", "web1:/x", "ssh://web1", "@h:/x", "s3://bucket"] {
+        assert_eq!(
+            parse("ann@web1:/var/log/app.log"),
+            Some(Source::Ssh {
+                target: "ann@web1".into(),
+                port: None,
+                path: "/var/log/app.log".into()
+            })
+        );
+        assert_eq!(
+            parse("ssh://ann@web1:2222/var/log/x.log"),
+            Some(Source::Ssh {
+                target: "ann@web1".into(),
+                port: Some(2222),
+                path: "/var/log/x.log".into()
+            })
+        );
+        assert_eq!(
+            parse("ssh://web1/~/notes.md"),
+            Some(Source::Ssh {
+                target: "web1".into(),
+                port: None,
+                path: "~/notes.md".into()
+            })
+        );
+        assert_eq!(
+            parse("s3://logs/2024/a.gz"),
+            Some(Source::Http {
+                url: "https://logs.s3.amazonaws.com/2024/a.gz".into()
+            })
+        );
+        assert_eq!(
+            parse("https://x.org/a/big.log?sig=1"),
+            Some(Source::Http {
+                url: "https://x.org/a/big.log?sig=1".into()
+            })
+        );
+        for not in [
+            r"C:\logs\a.log",
+            "a.log",
+            "web1:/x",
+            "ssh://web1",
+            "@h:/x",
+            "s3://bucket",
+        ] {
             assert_eq!(parse(not), None, "{not}");
         }
-        assert_eq!(parse("ann@web1:/var/log/app.log").unwrap().title(), "app.log (web1)");
-        assert_eq!(parse("https://x.org/a/big.log?sig=1").unwrap().file_name(), "big.log");
+        assert_eq!(
+            parse("ann@web1:/var/log/app.log").unwrap().title(),
+            "app.log (web1)"
+        );
+        assert_eq!(
+            parse("https://x.org/a/big.log?sig=1").unwrap().file_name(),
+            "big.log"
+        );
         assert_eq!(quote("/a/it's here"), r"'/a/it'\''s here'");
         assert_eq!(quote("~/x y"), "~/'x y'");
     }
@@ -634,10 +880,24 @@ mod tests {
     #[test]
     fn ssh_commands() {
         let c = ssh_command("ann@web1", Some(2222), "/var/log/app.log", Some(1024), true);
-        let args: Vec<String> = c.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let args: Vec<String> = c
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         assert_eq!(c.get_program(), "ssh");
-        assert!(args.windows(2).any(|w| w == ["-p", "2222"]) && args.contains(&"BatchMode=yes".to_string()), "{args:?}");
-        assert_eq!(args[args.len() - 3..], ["ann@web1".to_string(), "--".into(), "tail -c 1024 -F -- '/var/log/app.log'".into()]);
+        assert!(
+            args.windows(2).any(|w| w == ["-p", "2222"])
+                && args.contains(&"BatchMode=yes".to_string()),
+            "{args:?}"
+        );
+        assert_eq!(
+            args[args.len() - 3..],
+            [
+                "ann@web1".to_string(),
+                "--".into(),
+                "tail -c 1024 -F -- '/var/log/app.log'".into()
+            ]
+        );
         let whole = ssh_command("h", None, "a b", None, false);
         assert_eq!(whole.get_args().last().unwrap(), "cat -- 'a b'");
     }
@@ -652,7 +912,12 @@ mod tests {
         bigtext::decompress::remove_temp(&path);
         match r {
             Err(e) if e.contains("ssh was not found") => {}
-            Err(e) => assert!(e.to_lowercase().contains("refused") || e.contains("port 1") || e.contains("connect"), "{e}"),
+            Err(e) => assert!(
+                e.to_lowercase().contains("refused")
+                    || e.contains("port 1")
+                    || e.contains("connect"),
+                "{e}"
+            ),
             Ok(n) => panic!("read {n} bytes from a closed port"),
         }
     }
@@ -673,7 +938,10 @@ mod tests {
         let (path, mut file) = temp_file(&src).unwrap();
         let n = download(&src, &mut file, &Progress::default(), &CancelToken::new()).unwrap();
         drop(file);
-        assert_eq!((n, std::fs::read_to_string(&path).unwrap()), (11, "line1\nline2".to_string()));
+        assert_eq!(
+            (n, std::fs::read_to_string(&path).unwrap()),
+            (11, "line1\nline2".to_string())
+        );
         assert!(path.ends_with("app.log"));
         bigtext::decompress::remove_temp(&path);
     }

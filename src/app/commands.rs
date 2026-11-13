@@ -156,9 +156,27 @@ const fn key(m: Modifiers, k: Key) -> Option<KeyboardShortcut> {
 }
 
 const CTRL: Modifiers = Modifiers::COMMAND;
-const CTRL_SHIFT: Modifiers = Modifiers { alt: false, ctrl: false, shift: true, mac_cmd: false, command: true };
-const CTRL_SHIFT_RAW: Modifiers = Modifiers { alt: false, ctrl: true, shift: true, mac_cmd: false, command: false };
-const CTRL_ALT: Modifiers = Modifiers { alt: true, ctrl: false, shift: false, mac_cmd: false, command: true };
+const CTRL_SHIFT: Modifiers = Modifiers {
+    alt: false,
+    ctrl: false,
+    shift: true,
+    mac_cmd: false,
+    command: true,
+};
+const CTRL_SHIFT_RAW: Modifiers = Modifiers {
+    alt: false,
+    ctrl: true,
+    shift: true,
+    mac_cmd: false,
+    command: false,
+};
+const CTRL_ALT: Modifiers = Modifiers {
+    alt: true,
+    ctrl: false,
+    shift: false,
+    mac_cmd: false,
+    command: true,
+};
 
 impl Cmd {
     pub const ALL: [Cmd; 125] = [
@@ -344,7 +362,9 @@ impl Cmd {
             Cmd::PrevTab => "Previous tab",
             Cmd::NextTabBar => "Next tab in the bar",
             Cmd::PrevTabBar => "Previous tab in the bar",
-            Cmd::GotoTab(n) => ["Tab 1", "Tab 2", "Tab 3", "Tab 4", "Tab 5", "Tab 6", "Tab 7", "Tab 8", "Last tab"][(n.clamp(1, 9) - 1) as usize],
+            Cmd::GotoTab(n) => [
+                "Tab 1", "Tab 2", "Tab 3", "Tab 4", "Tab 5", "Tab 6", "Tab 7", "Tab 8", "Last tab",
+            ][(n.clamp(1, 9) - 1) as usize],
             Cmd::Exit => "Exit",
             Cmd::ExportLines => "Export lines…",
             Cmd::SaveSelection => "Save selection as…",
@@ -470,7 +490,38 @@ impl Cmd {
     /// Menu the command lives in (shown in the palette).
     pub fn group(self) -> &'static str {
         match self {
-            Cmd::New | Cmd::Open | Cmd::OpenFolder | Cmd::OpenRemote | Cmd::OpenLogSource | Cmd::CloseFolder | Cmd::Save | Cmd::SaveAs | Cmd::CloseTab | Cmd::CloseOthers | Cmd::PinTab | Cmd::NextTab | Cmd::PrevTab | Cmd::Exit | Cmd::ExportLines | Cmd::SaveSelection | Cmd::SplitFile | Cmd::Compare | Cmd::CompareSaved | Cmd::CompareBackup | Cmd::ApplyPatch | Cmd::Properties | Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault | Cmd::MergeLogs | Cmd::JoinTables | Cmd::CompareJson | Cmd::ArrayToLines | Cmd::LinesToArray | Cmd::LogfmtTable | Cmd::SqlDump => "File",
+            Cmd::New
+            | Cmd::Open
+            | Cmd::OpenFolder
+            | Cmd::OpenRemote
+            | Cmd::OpenLogSource
+            | Cmd::CloseFolder
+            | Cmd::Save
+            | Cmd::SaveAs
+            | Cmd::CloseTab
+            | Cmd::CloseOthers
+            | Cmd::PinTab
+            | Cmd::NextTab
+            | Cmd::PrevTab
+            | Cmd::Exit
+            | Cmd::ExportLines
+            | Cmd::SaveSelection
+            | Cmd::SplitFile
+            | Cmd::Compare
+            | Cmd::CompareSaved
+            | Cmd::CompareBackup
+            | Cmd::ApplyPatch
+            | Cmd::Properties
+            | Cmd::RevealFile
+            | Cmd::OpenTerminal
+            | Cmd::OpenWithDefault
+            | Cmd::MergeLogs
+            | Cmd::JoinTables
+            | Cmd::CompareJson
+            | Cmd::ArrayToLines
+            | Cmd::LinesToArray
+            | Cmd::LogfmtTable
+            | Cmd::SqlDump => "File",
             Cmd::Undo
             | Cmd::Redo
             | Cmd::SelectAll
@@ -490,8 +541,45 @@ impl Cmd {
             | Cmd::ReadOnly
             | Cmd::RunCommand
             | Cmd::Text(_) => "Edit",
-            Cmd::Find | Cmd::Replace | Cmd::FindNext | Cmd::FindPrev | Cmd::FindAll | Cmd::Filter | Cmd::FilterWithin | Cmd::FindInFiles | Cmd::NextLevel | Cmd::PrevLevel | Cmd::FollowId | Cmd::IdPatterns | Cmd::NavBack | Cmd::NavForward | Cmd::NextResult | Cmd::PrevResult | Cmd::NextDiff | Cmd::PrevDiff | Cmd::OnlyIn | Cmd::GotoFile | Cmd::GotoSymbol | Cmd::GotoLine | Cmd::GotoOffset | Cmd::GotoTime | Cmd::TimeAllTabs | Cmd::Timeline | Cmd::TimeGaps | Cmd::Patterns | Cmd::LogReport | Cmd::CheckJson | Cmd::MatchBracket => "Search",
-            Cmd::Palette | Cmd::Shortcuts | Cmd::ExportSettings | Cmd::ImportSettings | Cmd::Portable | Cmd::UnpackDir | Cmd::CheckUpdates | Cmd::About => "Help",
+            Cmd::Find
+            | Cmd::Replace
+            | Cmd::FindNext
+            | Cmd::FindPrev
+            | Cmd::FindAll
+            | Cmd::Filter
+            | Cmd::FilterWithin
+            | Cmd::FindInFiles
+            | Cmd::NextLevel
+            | Cmd::PrevLevel
+            | Cmd::FollowId
+            | Cmd::IdPatterns
+            | Cmd::NavBack
+            | Cmd::NavForward
+            | Cmd::NextResult
+            | Cmd::PrevResult
+            | Cmd::NextDiff
+            | Cmd::PrevDiff
+            | Cmd::OnlyIn
+            | Cmd::GotoFile
+            | Cmd::GotoSymbol
+            | Cmd::GotoLine
+            | Cmd::GotoOffset
+            | Cmd::GotoTime
+            | Cmd::TimeAllTabs
+            | Cmd::Timeline
+            | Cmd::TimeGaps
+            | Cmd::Patterns
+            | Cmd::LogReport
+            | Cmd::CheckJson
+            | Cmd::MatchBracket => "Search",
+            Cmd::Palette
+            | Cmd::Shortcuts
+            | Cmd::ExportSettings
+            | Cmd::ImportSettings
+            | Cmd::Portable
+            | Cmd::UnpackDir
+            | Cmd::CheckUpdates
+            | Cmd::About => "Help",
             _ => "View",
         }
     }
@@ -538,7 +626,20 @@ impl Cmd {
             Cmd::PrevResult => key(Modifiers::SHIFT, Key::F4),
             Cmd::NextTabBar => key(CTRL, Key::PageDown),
             Cmd::PrevTabBar => key(CTRL, Key::PageUp),
-            Cmd::GotoTab(n) => key(CTRL, [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9][(n.clamp(1, 9) - 1) as usize]),
+            Cmd::GotoTab(n) => key(
+                CTRL,
+                [
+                    Key::Num1,
+                    Key::Num2,
+                    Key::Num3,
+                    Key::Num4,
+                    Key::Num5,
+                    Key::Num6,
+                    Key::Num7,
+                    Key::Num8,
+                    Key::Num9,
+                ][(n.clamp(1, 9) - 1) as usize],
+            ),
             Cmd::NavBack => key(Modifiers::ALT, Key::ArrowLeft),
             Cmd::NavForward => key(Modifiers::ALT, Key::ArrowRight),
             Cmd::GotoFile => key(CTRL, Key::P),
@@ -568,7 +669,10 @@ impl Cmd {
 
     /// Editing keys the text view handles itself; they are listed but cannot be rebound.
     pub fn fixed_key(self) -> bool {
-        matches!(self, Cmd::Undo | Cmd::Redo | Cmd::SelectAll | Cmd::DeleteLine)
+        matches!(
+            self,
+            Cmd::Undo | Cmd::Redo | Cmd::SelectAll | Cmd::DeleteLine
+        )
     }
 }
 
@@ -593,7 +697,10 @@ impl Keymap {
     /// The bindings in matching order: more modifiers first, because egui matches a shortcut
     /// even when extra Shift is held.
     pub fn bound(&self) -> Vec<(Cmd, KeyboardShortcut)> {
-        let mut v: Vec<(Cmd, KeyboardShortcut)> = Cmd::all().filter(|c| !c.fixed_key()).filter_map(|c| Some((c, self.get(c)?))).collect();
+        let mut v: Vec<(Cmd, KeyboardShortcut)> = Cmd::all()
+            .filter(|c| !c.fixed_key())
+            .filter_map(|c| Some((c, self.get(c)?)))
+            .collect();
         let n = |m: Modifiers| m.shift as u8 + m.alt as u8 + (m.ctrl || m.command) as u8;
         v.sort_by_key(|(_, k)| std::cmp::Reverse(n(k.modifiers)));
         v
@@ -615,7 +722,12 @@ pub fn key_to_string(k: Option<KeyboardShortcut>) -> String {
     let Some(k) = k else { return "none".into() };
     let m = k.modifiers;
     let mut s = String::new();
-    for (on, name) in [(m.command, "ctrl+"), (m.ctrl && !m.command, "rawctrl+"), (m.alt, "alt+"), (m.shift, "shift+")] {
+    for (on, name) in [
+        (m.command, "ctrl+"),
+        (m.ctrl && !m.command, "rawctrl+"),
+        (m.alt, "alt+"),
+        (m.shift, "shift+"),
+    ] {
         if on {
             s.push_str(name);
         }
@@ -669,8 +781,14 @@ pub struct ShortcutsUi {
 
 /// Keys that are not commands, for the shortcuts window.
 const OTHER_KEYS: &[(&str, &str)] = &[
-    ("Ctrl+←/→, Ctrl+Backspace/Delete", "Word movement / delete word"),
-    ("Home / End, Ctrl+Home / Ctrl+End", "Line start (smart) / end, document start / end"),
+    (
+        "Ctrl+←/→, Ctrl+Backspace/Delete",
+        "Word movement / delete word",
+    ),
+    (
+        "Home / End, Ctrl+Home / Ctrl+End",
+        "Line start (smart) / end, document start / end",
+    ),
     ("Ctrl+wheel", "Zoom"),
     ("Double / triple click", "Select word / line"),
     ("Alt+drag", "Column (block) selection"),
@@ -682,7 +800,10 @@ const OTHER_KEYS: &[(&str, &str)] = &[
 /// True if every word of `query` occurs in `text` (case-insensitive).
 fn matches(query: &str, text: &str) -> bool {
     let t = text.to_lowercase();
-    query.to_lowercase().split_whitespace().all(|w| t.contains(w))
+    query
+        .to_lowercase()
+        .split_whitespace()
+        .all(|w| t.contains(w))
 }
 
 impl BigTextApp {
@@ -766,9 +887,12 @@ impl BigTextApp {
             Cmd::DuplicateLine => doc(self).into_iter().for_each(|d| d.duplicate_line()),
             Cmd::DeleteLine => doc(self).into_iter().for_each(|d| d.delete_line()),
             Cmd::ToggleComment => {
-                let done = doc(self).map(|d| d.effective_lang().comment().map(|c| d.toggle_comment(c)));
+                let done =
+                    doc(self).map(|d| d.effective_lang().comment().map(|c| d.toggle_comment(c)));
                 match done {
-                    Some(None) => self.notify(tr("This kind of file has no comments.").into(), None),
+                    Some(None) => {
+                        self.notify(tr("This kind of file has no comments.").into(), None)
+                    }
                     Some(Some(Err(e))) => self.error = Some(tr(e).into()),
                     _ => {}
                 }
@@ -779,7 +903,9 @@ impl BigTextApp {
             Cmd::PrevBookmark => doc(self).into_iter().for_each(|d| d.goto_bookmark(false)),
             Cmd::ClearBookmarks => doc(self).into_iter().for_each(|d| d.bookmarks.clear()),
             Cmd::ReadOnly => {
-                doc(self).into_iter().for_each(|d| d.read_only = !d.read_only);
+                doc(self)
+                    .into_iter()
+                    .for_each(|d| d.read_only = !d.read_only);
                 self.persist_state();
             }
             Cmd::Find => self.open_search(false),
@@ -873,12 +999,19 @@ impl BigTextApp {
             Cmd::CompareSideBySide => {
                 self.side_by_side = !self.side_by_side;
                 if self.side_by_side && self.diff.is_none() {
-                    self.notify(tr("Compare the file with another first (File → Compare with…).").into(), None);
+                    self.notify(
+                        tr("Compare the file with another first (File → Compare with…).").into(),
+                        None,
+                    );
                 }
             }
             Cmd::Syntax => self.settings.syntax = !self.settings.syntax,
             Cmd::ShowWhitespace => {
-                let on = if self.code_shown() { &mut self.settings.show_ws_code } else { &mut self.settings.show_ws };
+                let on = if self.code_shown() {
+                    &mut self.settings.show_ws_code
+                } else {
+                    &mut self.settings.show_ws
+                };
                 *on = !*on;
                 self.persist_state();
             }
@@ -905,11 +1038,15 @@ impl BigTextApp {
                 self.apply_look(ctx);
                 self.persist_state();
             }
-            Cmd::Fullscreen => ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!self.fullscreen)),
+            Cmd::Fullscreen => {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!self.fullscreen))
+            }
             Cmd::Zen => {
                 self.settings.zen = !self.settings.zen;
                 if self.settings.zen {
-                    ctx.data_mut(|d| d.insert_temp(egui::Id::new("zen-hint"), std::time::Instant::now()));
+                    ctx.data_mut(|d| {
+                        d.insert_temp(egui::Id::new("zen-hint"), std::time::Instant::now())
+                    });
                 }
             }
             Cmd::LineNumbers => {
@@ -936,7 +1073,12 @@ impl BigTextApp {
             Cmd::ZoomReset => self.settings.font_size = 14.0,
             Cmd::PerfOverlay => self.settings.show_perf = !self.settings.show_perf,
             Cmd::Font => self.fonts.open = true,
-            Cmd::Palette => self.palette = Some(Palette { focus: true, ..Default::default() }),
+            Cmd::Palette => {
+                self.palette = Some(Palette {
+                    focus: true,
+                    ..Default::default()
+                })
+            }
             Cmd::Shortcuts => self.shortcuts_ui.open = true,
             Cmd::ExportSettings => self.export_settings(),
             Cmd::ImportSettings => self.import_settings(ctx),
@@ -950,7 +1092,11 @@ impl BigTextApp {
 
     /// The active tab shows code (in colour): whitespace is shown or not apart from other text.
     pub(crate) fn code_shown(&self) -> bool {
-        self.settings.syntax && self.docs.get(self.active).is_some_and(|d| d.effective_lang().is_code())
+        self.settings.syntax
+            && self
+                .docs
+                .get(self.active)
+                .is_some_and(|d| d.effective_lang().is_code())
     }
 
     /// Whether a toggle command is on (for menu check marks).
@@ -997,11 +1143,20 @@ impl BigTextApp {
         let before = (self.settings.wrap_column, self.settings.ruler);
         ui.menu_button(tr("Wrap at"), |ui| {
             let s = &mut self.settings;
-            if ui.radio(s.wrap_column.is_none(), tr("Window width")).clicked() {
+            if ui
+                .radio(s.wrap_column.is_none(), tr("Window width"))
+                .clicked()
+            {
                 s.wrap_column = None;
             }
             for c in [80, 120, 160] {
-                if ui.radio(s.wrap_column == Some(c), trf("Column {n}", &[("n", &c.to_string())])).clicked() {
+                if ui
+                    .radio(
+                        s.wrap_column == Some(c),
+                        trf("Column {n}", &[("n", &c.to_string())]),
+                    )
+                    .clicked()
+                {
                     s.wrap_column = Some(c);
                 }
             }
@@ -1011,7 +1166,10 @@ impl BigTextApp {
                 if ui.radio(custom, tr("Column")).clicked() && !custom {
                     s.wrap_column = Some(100);
                 }
-                if ui.add(egui::DragValue::new(&mut col).range(super::WRAP_MIN..=4000)).changed() {
+                if ui
+                    .add(egui::DragValue::new(&mut col).range(super::WRAP_MIN..=4000))
+                    .changed()
+                {
                     s.wrap_column = Some(col);
                 }
             });
@@ -1023,7 +1181,10 @@ impl BigTextApp {
                 s.ruler = on.then_some(s.ruler.unwrap_or(80));
             }
             let mut col = s.ruler.unwrap_or(80);
-            if ui.add_enabled(on, egui::DragValue::new(&mut col).range(1..=4000)).changed() {
+            if ui
+                .add_enabled(on, egui::DragValue::new(&mut col).range(1..=4000))
+                .changed()
+            {
                 s.ruler = Some(col);
             }
         });
@@ -1039,7 +1200,34 @@ impl BigTextApp {
     }
 
     fn is_toggle(cmd: Cmd) -> bool {
-        matches!(cmd, Cmd::ReadOnly | Cmd::WordWrap | Cmd::HexView | Cmd::TableView | Cmd::JsonStructure | Cmd::LogFields | Cmd::Follow | Cmd::SplitView | Cmd::CompareSideBySide | Cmd::Syntax | Cmd::ShowWhitespace | Cmd::DarkTheme | Cmd::SystemTheme | Cmd::ColourBlind | Cmd::Fullscreen | Cmd::Zen | Cmd::LineNumbers | Cmd::JsonCrumb | Cmd::Sidebar | Cmd::Theme(_) | Cmd::CodeTheme(_) | Cmd::Scale(_) | Cmd::PerfOverlay | Cmd::LevelBar | Cmd::Timeline)
+        matches!(
+            cmd,
+            Cmd::ReadOnly
+                | Cmd::WordWrap
+                | Cmd::HexView
+                | Cmd::TableView
+                | Cmd::JsonStructure
+                | Cmd::LogFields
+                | Cmd::Follow
+                | Cmd::SplitView
+                | Cmd::CompareSideBySide
+                | Cmd::Syntax
+                | Cmd::ShowWhitespace
+                | Cmd::DarkTheme
+                | Cmd::SystemTheme
+                | Cmd::ColourBlind
+                | Cmd::Fullscreen
+                | Cmd::Zen
+                | Cmd::LineNumbers
+                | Cmd::JsonCrumb
+                | Cmd::Sidebar
+                | Cmd::Theme(_)
+                | Cmd::CodeTheme(_)
+                | Cmd::Scale(_)
+                | Cmd::PerfOverlay
+                | Cmd::LevelBar
+                | Cmd::Timeline
+        )
     }
 
     fn enabled(&self, cmd: Cmd) -> bool {
@@ -1049,11 +1237,17 @@ impl BigTextApp {
             Cmd::CloseFolder => self.folder.root.is_some(),
             Cmd::NavBack => !self.nav.back.is_empty(),
             Cmd::NextDiff | Cmd::PrevDiff => self.diff.is_some(),
-            Cmd::CompareSaved => d.is_some_and(|d| d.path.is_some() && d.is_ready() && d.is_modified()),
-            Cmd::CompareBackup => d.and_then(|d| d.path.as_deref()).is_some_and(|p| bigtext::save::backup_path_for(p).exists()),
+            Cmd::CompareSaved => {
+                d.is_some_and(|d| d.path.is_some() && d.is_ready() && d.is_modified())
+            }
+            Cmd::CompareBackup => d
+                .and_then(|d| d.path.as_deref())
+                .is_some_and(|p| bigtext::save::backup_path_for(p).exists()),
             Cmd::ApplyPatch => d.is_some_and(|d| d.is_ready() && d.editable()),
             Cmd::ColumnEditor => d.is_some_and(|d| d.is_ready() && d.editable() && !d.view.wrap),
-            Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault => d.is_some_and(|d| d.path.is_some()),
+            Cmd::RevealFile | Cmd::OpenTerminal | Cmd::OpenWithDefault => {
+                d.is_some_and(|d| d.path.is_some())
+            }
             Cmd::PasteHistory => !self.clips.items.is_empty(),
             Cmd::CopyMarkdown | Cmd::CopyHtml => d.is_some_and(|d| d.has_selection()),
             Cmd::Properties => d.is_some_and(|d| d.is_ready()),
@@ -1061,7 +1255,10 @@ impl BigTextApp {
             Cmd::RunCommand => d.is_some_and(|d| d.is_ready()),
             // A copy still being unpacked stays read-only.
             Cmd::ReadOnly => d.is_none_or(|d| d.growing.is_none()),
-            Cmd::FoldAll1 | Cmd::FoldAll2 => self.foldable() && d.is_some_and(|d| d.effective_lang() == crate::view::highlight::Lang::Json),
+            Cmd::FoldAll1 | Cmd::FoldAll2 => {
+                self.foldable()
+                    && d.is_some_and(|d| d.effective_lang() == crate::view::highlight::Lang::Json)
+            }
             Cmd::Unfold | Cmd::UnfoldAll => d.is_some_and(|d| !d.view.folds.is_empty()),
             Cmd::CheckRows => d.is_some_and(|d| d.table),
             Cmd::NavForward => !self.nav.forward.is_empty(),
@@ -1076,14 +1273,23 @@ impl BigTextApp {
     pub(super) fn shortcuts(&mut self, ctx: &egui::Context) {
         for (cmd, k) in self.keymap.bound() {
             // Alt+arrows move by words in a text field.
-            if matches!(cmd, Cmd::NavBack | Cmd::NavForward) && ctx.memory(|m| m.focused()).is_some_and(|id| egui::TextEdit::load_state(ctx, id).is_some()) {
+            if matches!(cmd, Cmd::NavBack | Cmd::NavForward)
+                && ctx
+                    .memory(|m| m.focused())
+                    .is_some_and(|id| egui::TextEdit::load_state(ctx, id).is_some())
+            {
                 continue;
             }
             // Shift+Alt+arrows grow a column block (egui would match them to Alt+arrows).
             if matches!(cmd, Cmd::NavBack | Cmd::NavForward) && ctx.input(|i| i.modifiers.shift) {
                 continue;
             }
-            let hit = ctx.input_mut(|i| i.consume_shortcut(&k) || (cmd == Cmd::ZoomIn && k == Cmd::ZoomIn.default_key().unwrap() && i.consume_shortcut(&KeyboardShortcut::new(CTRL, Key::Plus))));
+            let hit = ctx.input_mut(|i| {
+                i.consume_shortcut(&k)
+                    || (cmd == Cmd::ZoomIn
+                        && k == Cmd::ZoomIn.default_key().unwrap()
+                        && i.consume_shortcut(&KeyboardShortcut::new(CTRL, Key::Plus)))
+            });
             if hit {
                 self.run(ctx, cmd);
             }
@@ -1100,7 +1306,8 @@ impl BigTextApp {
                 Some(k) => format!("{label}\t{}", key_text(k)),
                 None => label.to_string(),
             };
-            ui.add_enabled(enabled, egui::Checkbox::new(&mut on, text)).clicked()
+            ui.add_enabled(enabled, egui::Checkbox::new(&mut on, text))
+                .clicked()
         } else {
             let mut b = egui::Button::new(label);
             if let Some(k) = self.keymap.get(cmd) {
@@ -1369,7 +1576,14 @@ impl BigTextApp {
     /// The command palette: type to find any command, Enter runs it.
     pub(super) fn palette_window(&mut self, ctx: &egui::Context) {
         let Some(p) = &mut self.palette else { return };
-        let found: Vec<Cmd> = Cmd::all().filter(|&c| matches(&p.query, &format!("{} {} {}", tr(c.label()), c.label(), tr(c.group())))).collect();
+        let found: Vec<Cmd> = Cmd::all()
+            .filter(|&c| {
+                matches(
+                    &p.query,
+                    &format!("{} {} {}", tr(c.label()), c.label(), tr(c.group())),
+                )
+            })
+            .collect();
         p.selected = p.selected.min(found.len().saturating_sub(1));
         let (up, down, enter, esc) = ctx.input_mut(|i| {
             (
@@ -1395,7 +1609,11 @@ impl BigTextApp {
             .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 60.0))
             .fixed_size(egui::vec2(520.0, 0.0))
             .show(ctx, |ui| {
-                let r = ui.add(egui::TextEdit::singleline(&mut p.query).hint_text(tr("Type a command")).desired_width(f32::INFINITY));
+                let r = ui.add(
+                    egui::TextEdit::singleline(&mut p.query)
+                        .hint_text(tr("Type a command"))
+                        .desired_width(f32::INFINITY),
+                );
                 if p.focus {
                     r.request_focus();
                     p.focus = false;
@@ -1404,25 +1622,32 @@ impl BigTextApp {
                     p.selected = 0;
                 }
                 ui.separator();
-                egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
-                    for (i, &c) in found.iter().enumerate() {
-                        let text = format!("{}: {}", tr(c.group()), tr(c.label()));
-                        let mut b = egui::Button::new(text).selected(i == p.selected).frame(i == p.selected);
-                        if let Some(k) = keymap.get(c) {
-                            b = b.shortcut_text(key_text(k));
+                egui::ScrollArea::vertical()
+                    .max_height(360.0)
+                    .show(ui, |ui| {
+                        for (i, &c) in found.iter().enumerate() {
+                            let text = format!("{}: {}", tr(c.group()), tr(c.label()));
+                            let mut b = egui::Button::new(text)
+                                .selected(i == p.selected)
+                                .frame(i == p.selected);
+                            if let Some(k) = keymap.get(c) {
+                                b = b.shortcut_text(key_text(k));
+                            }
+                            let r = ui.add_enabled(
+                                enabled[i],
+                                b.min_size(egui::vec2(ui.available_width(), 0.0)),
+                            );
+                            if i == p.selected {
+                                r.scroll_to_me(None);
+                            }
+                            if r.clicked() {
+                                chosen = Some(c);
+                            }
                         }
-                        let r = ui.add_enabled(enabled[i], b.min_size(egui::vec2(ui.available_width(), 0.0)));
-                        if i == p.selected {
-                            r.scroll_to_me(None);
+                        if found.is_empty() {
+                            ui.weak(tr("No command matches."));
                         }
-                        if r.clicked() {
-                            chosen = Some(c);
-                        }
-                    }
-                    if found.is_empty() {
-                        ui.weak(tr("No command matches."));
-                    }
-                });
+                    });
             });
         if let Some(c) = chosen.filter(|&c| self.enabled(c)) {
             self.palette = None;
@@ -1441,7 +1666,12 @@ impl BigTextApp {
         if let Some(cmd) = self.shortcuts_ui.capturing {
             let pressed = ctx.input(|i| {
                 i.events.iter().find_map(|e| match e {
-                    egui::Event::Key { key, pressed: true, modifiers, .. } => Some((*key, *modifiers)),
+                    egui::Event::Key {
+                        key,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } => Some((*key, *modifiers)),
                     _ => None,
                 })
             });
@@ -1450,16 +1680,28 @@ impl BigTextApp {
                 if k == Key::Escape && m.is_none() {
                     self.shortcuts_ui.capturing = None;
                 } else {
-                    let m = Modifiers { alt: m.alt, shift: m.shift, command: m.command || m.ctrl, ctrl: false, mac_cmd: false };
+                    let m = Modifiers {
+                        alt: m.alt,
+                        shift: m.shift,
+                        command: m.command || m.ctrl,
+                        ctrl: false,
+                        mac_cmd: false,
+                    };
                     let new = KeyboardShortcut::new(m, k);
                     match self.keymap.owner(new).filter(|&o| o != cmd) {
                         Some(o) if o.fixed_key() => {
-                            self.shortcuts_ui.conflict = Some(trf("{key} is used by “{cmd}”, which cannot be changed.", &[("key", &key_text(new)), ("cmd", tr(o.label()))]));
+                            self.shortcuts_ui.conflict = Some(trf(
+                                "{key} is used by “{cmd}”, which cannot be changed.",
+                                &[("key", &key_text(new)), ("cmd", tr(o.label()))],
+                            ));
                         }
                         other => {
                             if let Some(o) = other {
                                 self.keymap.changed.insert(o, None);
-                                self.shortcuts_ui.conflict = Some(trf("{key} was moved from “{cmd}”.", &[("key", &key_text(new)), ("cmd", tr(o.label()))]));
+                                self.shortcuts_ui.conflict = Some(trf(
+                                    "{key} was moved from “{cmd}”.",
+                                    &[("key", &key_text(new)), ("cmd", tr(o.label()))],
+                                ));
                             } else {
                                 self.shortcuts_ui.conflict = None;
                             }
@@ -1545,7 +1787,10 @@ mod tests {
         sorted.dedup();
         assert_eq!(sorted.len(), ids.len());
         assert_eq!(Cmd::GotoOffset.id(), "goto_offset");
-        assert_eq!(Cmd::from_id("text.jsonpretty"), Some(Cmd::Text(Op::JsonPretty)));
+        assert_eq!(
+            Cmd::from_id("text.jsonpretty"),
+            Some(Cmd::Text(Op::JsonPretty))
+        );
     }
 
     #[test]
@@ -1553,8 +1798,16 @@ mod tests {
         let mut seen = HashMap::new();
         for c in Cmd::all() {
             if let Some(k) = c.default_key() {
-                assert!(seen.insert(k, c).is_none(), "{c:?} clashes with {:?}", seen[&k]);
-                assert_eq!(key_from_string(&key_to_string(Some(k))), Some(Some(k)), "{c:?}");
+                assert!(
+                    seen.insert(k, c).is_none(),
+                    "{c:?} clashes with {:?}",
+                    seen[&k]
+                );
+                assert_eq!(
+                    key_from_string(&key_to_string(Some(k))),
+                    Some(Some(k)),
+                    "{c:?}"
+                );
             }
         }
         assert_eq!(key_from_string("none"), Some(None));

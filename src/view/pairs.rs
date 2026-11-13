@@ -35,7 +35,10 @@ pub fn enabled(lang: Lang) -> bool {
 fn pairs_quote(lang: Lang, q: char) -> bool {
     match q {
         '\'' => !matches!(lang, Lang::Rust),
-        '`' => matches!(lang, Lang::JavaScript | Lang::TypeScript | Lang::Go | Lang::Shell),
+        '`' => matches!(
+            lang,
+            Lang::JavaScript | Lang::TypeScript | Lang::Go | Lang::Shell
+        ),
         _ => true,
     }
 }
@@ -66,7 +69,9 @@ fn free_after(c: Option<char>) -> bool {
 /// `t` typed with one caret: true if it was handled here.
 pub fn typed(doc: &mut Document, t: &str, lang: Lang) -> bool {
     let mut chars = t.chars();
-    let (Some(c), None) = (chars.next(), chars.next()) else { return false };
+    let (Some(c), None) = (chars.next(), chars.next()) else {
+        return false;
+    };
     if !enabled(lang) || !doc.editable() {
         return false;
     }
@@ -75,11 +80,15 @@ pub fn typed(doc: &mut Document, t: &str, lang: Lang) -> bool {
     let close = partner(c);
     // A selection is wrapped, and stays selected inside the pair.
     if s < e {
-        let Some(close) = close.filter(|_| e - s <= WRAP_MAX) else { return false };
+        let Some(close) = close.filter(|_| e - s <= WRAP_MAX) else {
+            return false;
+        };
         if is_quote(c) && !pairs_quote(lang, c) {
             return false;
         }
-        let Some(inner) = doc.buf.read(s..e) else { return false };
+        let Some(inner) = doc.buf.read(s..e) else {
+            return false;
+        };
         let open = codec.encode(&c.to_string());
         let mut bytes = open.clone();
         bytes.extend_from_slice(&inner);
@@ -91,7 +100,10 @@ pub fn typed(doc: &mut Document, t: &str, lang: Lang) -> bool {
     }
     let next = char_after(doc, s);
     // The closing character over its partner: step over it.
-    if (matches!(c, ')' | ']' | '}') || is_quote(c)) && next == Some(c) && (!is_quote(c) || pairs_quote(lang, c)) {
+    if (matches!(c, ')' | ']' | '}') || is_quote(c))
+        && next == Some(c)
+        && (!is_quote(c) || pairs_quote(lang, c))
+    {
         doc.set_caret(doc.buf.next_char(s), false);
         return true;
     }
@@ -102,7 +114,9 @@ pub fn typed(doc: &mut Document, t: &str, lang: Lang) -> bool {
     if is_quote(c) {
         let prev = char_before(doc, s);
         // Not after a letter (don't), a backslash or another quote.
-        if !pairs_quote(lang, c) || prev.is_some_and(|p| p.is_alphanumeric() || p == '_' || p == '\\' || is_quote(p)) {
+        if !pairs_quote(lang, c)
+            || prev.is_some_and(|p| p.is_alphanumeric() || p == '_' || p == '\\' || is_quote(p))
+        {
             return false;
         }
     }
@@ -120,7 +134,9 @@ pub fn backspace(doc: &mut Document, lang: Lang) -> bool {
         return false;
     }
     let c = doc.view.caret;
-    let (Some(p), Some(n)) = (char_before(doc, c), char_after(doc, c)) else { return false };
+    let (Some(p), Some(n)) = (char_before(doc, c), char_after(doc, c)) else {
+        return false;
+    };
     if partner(p) != Some(n) || (is_quote(p) && !pairs_quote(lang, p)) {
         return false;
     }
@@ -138,7 +154,8 @@ pub fn enter(doc: &mut Document, lang: Lang, unit: &str) -> bool {
     }
     let c = doc.view.caret;
     let prev = char_before(doc, c);
-    let opens = prev.is_some_and(|p| matches!(p, '{' | '[' | '(')) || (matches!(lang, Lang::Python | Lang::Yaml) && prev == Some(':'));
+    let opens = prev.is_some_and(|p| matches!(p, '{' | '[' | '('))
+        || (matches!(lang, Lang::Python | Lang::Yaml) && prev == Some(':'));
     if !opens {
         return false;
     }
@@ -146,7 +163,11 @@ pub fn enter(doc: &mut Document, lang: Lang, unit: &str) -> bool {
     let indent = doc.indent_of_line(c);
     let nl = codec.line_break(doc.line_ending);
     let tab = codec.encode("\t");
-    let step = if indent.starts_with(&tab) { tab } else { codec.encode(unit) };
+    let step = if indent.starts_with(&tab) {
+        tab
+    } else {
+        codec.encode(unit)
+    };
     let mut bytes = nl.clone();
     bytes.extend_from_slice(&indent);
     bytes.extend_from_slice(&step);

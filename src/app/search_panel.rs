@@ -136,7 +136,11 @@ impl BigTextApp {
                 if let Some(b) = d.buf.read(s..e) {
                     let t = d.buf.codec.decode_lossy(&b);
                     if !t.contains('\n') {
-                        self.search.query.pattern = if self.search.query.regex { regex_syntax::escape(&t) } else { t };
+                        self.search.query.pattern = if self.search.query.regex {
+                            regex_syntax::escape(&t)
+                        } else {
+                            t
+                        };
                     }
                 }
             }
@@ -153,7 +157,9 @@ impl BigTextApp {
             super::time_range::Window::Bytes(a, b) => Some(a..b),
             super::time_range::Window::All => None,
         };
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let m = match self.search.matcher(d.buf.codec) {
             Ok(m) => m,
             Err(e) => {
@@ -189,7 +195,11 @@ impl BigTextApp {
         self.search.show_results = true;
         let waker = self.waker.clone();
         // A file read in place over SSH is searched where it is.
-        if let Some(file) = d.remote_ssh.clone().filter(|_| bigtext::remote::server_can_search(&self.search.query, &d.buf.codec)) {
+        if let Some(file) = d
+            .remote_ssh
+            .clone()
+            .filter(|_| bigtext::remote::server_can_search(&self.search.query, &d.buf.codec))
+        {
             let (q, whole) = (self.search.query.clone(), range == (0..d.buf.len()));
             data.lock().unwrap().server = true;
             jobs::spawn("find-all-server", move || {
@@ -217,7 +227,11 @@ impl BigTextApp {
                 g.matches.append(&mut batch);
                 g.capped = capped;
                 g.done = true;
-                g.end = Some(if cancel.is_cancelled() { SearchEnd::Cancelled } else { SearchEnd::Completed });
+                g.end = Some(if cancel.is_cancelled() {
+                    SearchEnd::Cancelled
+                } else {
+                    SearchEnd::Completed
+                });
                 g.error = r.err();
                 g.elapsed = Some(started.elapsed());
                 drop(g);
@@ -263,7 +277,9 @@ impl BigTextApp {
             self.open_search(false);
             return;
         }
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         if !d.is_ready() {
             return;
         }
@@ -283,7 +299,12 @@ impl BigTextApp {
         // Fast path: complete results for the same query and version.
         if let Some(r) = &d.results {
             let g = r.data.lock().unwrap();
-            if g.done && !g.capped && r.query == self.search.query && r.version == d.version && r.range == (0..d.buf.len()) {
+            if g.done
+                && !g.capped
+                && r.query == self.search.query
+                && r.version == d.version
+                && r.range == (0..d.buf.len())
+            {
                 let v = &g.matches;
                 if v.is_empty() {
                     self.search.status = tr("No matches").into();
@@ -295,18 +316,33 @@ impl BigTextApp {
                     if i < v.len() && v[i] == (s, e) {
                         i += 1;
                     }
-                    if i < v.len() { i } else { 0 }
+                    if i < v.len() {
+                        i
+                    } else {
+                        0
+                    }
                 } else {
                     let i = v.partition_point(|&(ms, _)| ms < from);
-                    if i > 0 { i - 1 } else { v.len() - 1 }
+                    if i > 0 {
+                        i - 1
+                    } else {
+                        v.len() - 1
+                    }
                 };
                 let (ms, me) = v[idx];
                 drop(g);
                 let d = &mut self.docs[self.active];
                 d.select(ms, me);
                 d.view.center();
-                let total = self.docs[self.active].results.as_ref().map(|r| r.data.lock().unwrap().matches.len()).unwrap_or(0);
-                self.search.status = trf("Match {i} of {n}", &[("i", &(idx + 1).to_string()), ("n", &total.to_string())]);
+                let total = self.docs[self.active]
+                    .results
+                    .as_ref()
+                    .map(|r| r.data.lock().unwrap().matches.len())
+                    .unwrap_or(0);
+                self.search.status = trf(
+                    "Match {i} of {n}",
+                    &[("i", &(idx + 1).to_string()), ("n", &total.to_string())],
+                );
                 return;
             }
         }
@@ -315,7 +351,9 @@ impl BigTextApp {
             j.cancel.cancel();
         }
         let cancel = CancelToken::new();
-        d.find_job = Some(FindJob { cancel: cancel.clone() });
+        d.find_job = Some(FindJob {
+            cancel: cancel.clone(),
+        });
         let snap = d.buf.snapshot();
         let version = d.version;
         let id = d.id;
@@ -323,7 +361,11 @@ impl BigTextApp {
         let waker = self.waker.clone();
         let sel_is_empty = s == e;
         // Over SSH: grep on the server finds the next match from the caret.
-        if let Some(file) = d.remote_ssh.clone().filter(|_| bigtext::remote::server_can_search(&self.search.query, &snap.codec)) {
+        if let Some(file) = d
+            .remote_ssh
+            .clone()
+            .filter(|_| bigtext::remote::server_can_search(&self.search.query, &snap.codec))
+        {
             let q = self.search.query.clone();
             jobs::spawn("find-next-server", move || {
                 use bigtext::remote::{grep_script, run_grep, ssh_script, Pick};
@@ -332,7 +374,8 @@ impl BigTextApp {
                 let mut one = |range: (u64, u64), pick: Pick| {
                     let mut f = None;
                     if range.1 > range.0 {
-                        let cmd = ssh_script(&file, &grep_script(&file.path, &q, Some(range), pick));
+                        let cmd =
+                            ssh_script(&file, &grep_script(&file.path, &q, Some(range), pick));
                         if let Err(e) = run_grep(cmd, range.0, &cancel, |a, b| {
                             f = Some((a, b));
                             pick == Pick::Last
@@ -360,7 +403,12 @@ impl BigTextApp {
                 if let Some(e) = error.filter(|_| found.is_none()) {
                     let _ = tx.send(Msg::Error(e));
                 }
-                let _ = tx.send(Msg::Found { doc: id, version, found, wrapped });
+                let _ = tx.send(Msg::Found {
+                    doc: id,
+                    version,
+                    found,
+                    wrapped,
+                });
                 waker();
             });
             self.search.status = tr("Searching on the server…").into();
@@ -393,15 +441,28 @@ impl BigTextApp {
                 })
             };
             if !cancel.is_cancelled() {
-                let _ = tx.send(Msg::Found { doc: id, version, found, wrapped });
+                let _ = tx.send(Msg::Found {
+                    doc: id,
+                    version,
+                    found,
+                    wrapped,
+                });
                 waker();
             }
         });
         self.search.status = tr("Searching…").into();
     }
 
-    pub(super) fn on_found(&mut self, doc: u64, version: u64, found: Option<(u64, u64)>, wrapped: bool) {
-        let Some(d) = self.docs.iter_mut().find(|d| d.id == doc) else { return };
+    pub(super) fn on_found(
+        &mut self,
+        doc: u64,
+        version: u64,
+        found: Option<(u64, u64)>,
+        wrapped: bool,
+    ) {
+        let Some(d) = self.docs.iter_mut().find(|d| d.id == doc) else {
+            return;
+        };
         d.find_job = None;
         if d.version != version {
             return;
@@ -410,7 +471,11 @@ impl BigTextApp {
             Some((s, e)) => {
                 d.select(s, e);
                 d.view.center();
-                self.search.status = if wrapped { tr("Wrapped around").into() } else { String::new() };
+                self.search.status = if wrapped {
+                    tr("Wrapped around").into()
+                } else {
+                    String::new()
+                };
             }
             None => self.search.status = tr("No matches").into(),
         }
@@ -420,7 +485,11 @@ impl BigTextApp {
     }
 
     pub(super) fn search_panel(&mut self, ui: &mut egui::Ui) {
-        let codec = self.docs.get(self.active).map(|d| d.buf.codec).unwrap_or(Codec::utf8());
+        let codec = self
+            .docs
+            .get(self.active)
+            .map(|d| d.buf.codec)
+            .unwrap_or(Codec::utf8());
         let mut do_next = None;
         let mut do_all = false;
         let mut do_cancel = false;
@@ -525,15 +594,22 @@ impl BigTextApp {
         if !self.search.query.pattern.is_empty() {
             if let Err(e) = self.search.matcher(codec) {
                 let color = ui.visuals().error_fg_color;
-                egui::Frame::new().inner_margin(egui::Margin::symmetric(8, 2)).show(ui, |ui| {
-                    ui.label(RichText::new(regex_error_text(&e)).monospace().color(color));
-                });
+                egui::Frame::new()
+                    .inner_margin(egui::Margin::symmetric(8, 2))
+                    .show(ui, |ui| {
+                        ui.label(RichText::new(regex_error_text(&e)).monospace().color(color));
+                    });
             }
         }
         if self.search.replace_open {
             ui.horizontal(|ui| {
                 ui.label(tr("Replace"));
-                ui.add(TextEdit::singleline(&mut self.search.replace_with).desired_width(320.0).hint_text("$1, ${name}, \\n, \\t").font(egui::TextStyle::Monospace));
+                ui.add(
+                    TextEdit::singleline(&mut self.search.replace_with)
+                        .desired_width(320.0)
+                        .hint_text("$1, ${name}, \\n, \\t")
+                        .font(egui::TextStyle::Monospace),
+                );
                 if ui.button(tr("Replace")).clicked() {
                     do_replace = true;
                 }
@@ -579,11 +655,21 @@ impl BigTextApp {
     /// Virtualized "Find All" results list.
     pub(super) fn results_panel(&mut self, ui: &mut egui::Ui) {
         let font = FontId::monospace(self.settings.font_size.min(14.0));
-        let Some(d) = self.docs.get_mut(self.active) else { return };
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
         let Some(r) = &d.results else { return };
         let (n, capped, done, elapsed, end, server, error) = {
             let g = r.data.lock().unwrap();
-            (g.matches.len(), g.capped, g.done, g.elapsed, g.end, g.server, g.error.clone())
+            (
+                g.matches.len(),
+                g.capped,
+                g.done,
+                g.elapsed,
+                g.end,
+                g.server,
+                g.error.clone(),
+            )
         };
         let mut close = false;
         let mut jump = None;
@@ -639,20 +725,24 @@ impl BigTextApp {
         let data = r.data.clone();
         let buf = &d.buf;
         let caret = d.view.caret;
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, row_h, n, |ui, range| {
-            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
-            let g = data.lock().unwrap();
-            for i in range {
-                let Some(&(s, e)) = g.matches.get(i) else { break };
-                let (line, exact) = buf.line_of(s.min(buf.len()));
-                let job = snippet_job(buf, s, e, line, exact, &font, ui.visuals(), stale);
-                let sel = caret >= s && caret <= e;
-                let resp = ui.selectable_label(sel, job);
-                if resp.clicked() {
-                    jump = Some((s, e));
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show_rows(ui, row_h, n, |ui, range| {
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                let g = data.lock().unwrap();
+                for i in range {
+                    let Some(&(s, e)) = g.matches.get(i) else {
+                        break;
+                    };
+                    let (line, exact) = buf.line_of(s.min(buf.len()));
+                    let job = snippet_job(buf, s, e, line, exact, &font, ui.visuals(), stale);
+                    let sel = caret >= s && caret <= e;
+                    let resp = ui.selectable_label(sel, job);
+                    if resp.clicked() {
+                        jump = Some((s, e));
+                    }
                 }
-            }
-        });
+            });
         if let Some((s, e)) = jump {
             if !stale {
                 d.select(s, e);
@@ -669,13 +759,21 @@ impl BigTextApp {
             self.open_values(save);
         }
         if let Some(save) = lines_action {
-            let Some(d) = self.docs.get(self.active) else { return };
+            let Some(d) = self.docs.get(self.active) else {
+                return;
+            };
             let Some(r) = &d.results else { return };
             match Matcher::new(&r.query, d.buf.codec) {
                 Ok(m) => {
                     let (snap, id, name) = (d.buf.snapshot(), d.id, d.title.clone());
                     if save {
-                        self.save_lines_dialog(snap, Arc::new(m), Default::default(), Vec::new(), &name);
+                        self.save_lines_dialog(
+                            snap,
+                            Arc::new(m),
+                            Default::default(),
+                            Vec::new(),
+                            &name,
+                        );
                     } else {
                         self.copy_lines(snap, Arc::new(m), Default::default(), Vec::new(), id);
                     }
@@ -696,7 +794,10 @@ impl BigTextApp {
 
     /// Everything painted behind the text of the active document, bottom to top: highlights
     /// (marks), the other occurrences of the selected text, and search matches.
-    pub(crate) fn view_highlights(&mut self, dark: bool) -> impl Fn(&TextBuf, Range<u64>) -> Vec<(u64, u64, Color32)> {
+    pub(crate) fn view_highlights(
+        &mut self,
+        dark: bool,
+    ) -> impl Fn(&TextBuf, Range<u64>) -> Vec<(u64, u64, Color32)> {
         let found = self.view_highlighter();
         let marks = match self.docs.get(self.active).map(|d| d.buf.codec) {
             Some(c) => self.mark_matchers(c),
@@ -704,14 +805,45 @@ impl BigTextApp {
         };
         let occ = self.occurrence_matcher();
         let pair = self.caret_pair();
-        let pair_color = super::theme::role(if dark { Color32::from_rgba_unmultiplied(110, 170, 255, 85) } else { Color32::from_rgba_unmultiplied(40, 110, 230, 65) }, super::theme::Tone::Info, dark);
+        let pair_color = super::theme::role(
+            if dark {
+                Color32::from_rgba_unmultiplied(110, 170, 255, 85)
+            } else {
+                Color32::from_rgba_unmultiplied(40, 110, 230, 65)
+            },
+            super::theme::Tone::Info,
+            dark,
+        );
         // The file labels of a merged log, each in its file's colour.
-        let tags: Vec<(Arc<Matcher>, usize)> = self.docs.get(self.active).and_then(|d| d.merged.as_ref()).map(|t| t.matchers.iter().cloned().zip(0..).collect()).unwrap_or_default();
-        let found_color = super::theme::role(if dark { Color32::from_rgba_unmultiplied(200, 160, 0, 90) } else { Color32::from_rgba_unmultiplied(255, 200, 0, 120) }, super::theme::Tone::Found, dark);
-        let occ_color = if dark { Color32::from_white_alpha(30) } else { Color32::from_black_alpha(30) };
+        let tags: Vec<(Arc<Matcher>, usize)> = self
+            .docs
+            .get(self.active)
+            .and_then(|d| d.merged.as_ref())
+            .map(|t| t.matchers.iter().cloned().zip(0..).collect())
+            .unwrap_or_default();
+        let found_color = super::theme::role(
+            if dark {
+                Color32::from_rgba_unmultiplied(200, 160, 0, 90)
+            } else {
+                Color32::from_rgba_unmultiplied(255, 200, 0, 120)
+            },
+            super::theme::Tone::Found,
+            dark,
+        );
+        let occ_color = if dark {
+            Color32::from_white_alpha(30)
+        } else {
+            Color32::from_black_alpha(30)
+        };
         move |b: &TextBuf, r: Range<u64>| {
             let mut v = Vec::new();
-            let mut add = |m: &Matcher, color: Color32| v.extend(search::matches_in_view(b, m, r.clone(), 2000).into_iter().map(|(s, e)| (s, e, color)));
+            let mut add = |m: &Matcher, color: Color32| {
+                v.extend(
+                    search::matches_in_view(b, m, r.clone(), 2000)
+                        .into_iter()
+                        .map(|(s, e)| (s, e, color)),
+                )
+            };
             for (m, c) in &tags {
                 add(m, super::marks::fill(*c, dark));
             }
@@ -730,7 +862,12 @@ impl BigTextApp {
                 Some(bigtext::brackets::Pair::Tags(a, b)) => [a, b],
                 None => [(0, 0); 2],
             };
-            v.extend(ranges.into_iter().filter(|&(s, e)| e > s && e > r.start && s < r.end).map(|(s, e)| (s, e, pair_color)));
+            v.extend(
+                ranges
+                    .into_iter()
+                    .filter(|&(s, e)| e > s && e > r.start && s < r.end)
+                    .map(|(s, e)| (s, e, pair_color)),
+            );
             v
         }
     }
@@ -745,7 +882,10 @@ impl BigTextApp {
         }
         let codec = d.buf.codec;
         let text = codec.decode_lossy(&d.buf.read(s..e)?);
-        if text.contains(['\n', '\r']) || text.trim().is_empty() || (self.search.open && self.search.query.pattern == text) {
+        if text.contains(['\n', '\r'])
+            || text.trim().is_empty()
+            || (self.search.open && self.search.query.pattern == text)
+        {
             return None;
         }
         if let Some((t, c, m)) = &self.occurrences {
@@ -754,7 +894,12 @@ impl BigTextApp {
             }
         }
         let word = text.chars().all(|c| c.is_alphanumeric() || c == '_');
-        let q = Query { pattern: text.clone(), case_sensitive: true, whole_word: word, ..Default::default() };
+        let q = Query {
+            pattern: text.clone(),
+            case_sensitive: true,
+            whole_word: word,
+            ..Default::default()
+        };
         let m = Matcher::new(&q, codec).ok().map(Arc::new);
         self.occurrences = Some((text, codec, m.clone()));
         m
@@ -764,22 +909,67 @@ impl BigTextApp {
 /// A regex error without blank lines and the generic first line, its indentation removed
 /// evenly so the caret still points at the right character.
 fn regex_error_text(e: &str) -> String {
-    let lines: Vec<&str> = e.lines().filter(|l| !l.trim().is_empty() && l.trim() != "error parsing regex").collect();
-    let indent = lines.iter().map(|l| l.len() - l.trim_start().len()).min().unwrap_or(0);
-    lines.iter().map(|l| &l[indent.min(l.len())..]).collect::<Vec<_>>().join("\n")
+    let lines: Vec<&str> = e
+        .lines()
+        .filter(|l| !l.trim().is_empty() && l.trim() != "error parsing regex")
+        .collect();
+    let indent = lines
+        .iter()
+        .map(|l| l.len() - l.trim_start().len())
+        .min()
+        .unwrap_or(0);
+    lines
+        .iter()
+        .map(|l| &l[indent.min(l.len())..])
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[allow(clippy::too_many_arguments)]
-fn snippet_job(buf: &TextBuf, s: u64, e: u64, line: u64, exact: bool, font: &FontId, v: &egui::Visuals, stale: bool) -> LayoutJob {
+fn snippet_job(
+    buf: &TextBuf,
+    s: u64,
+    e: u64,
+    line: u64,
+    exact: bool,
+    font: &FontId,
+    v: &egui::Visuals,
+    stale: bool,
+) -> LayoutJob {
     let mut job = LayoutJob::default();
-    let weak = TextFormat { font_id: font.clone(), color: v.weak_text_color(), ..Default::default() };
-    let normal = TextFormat { font_id: font.clone(), color: if stale { v.weak_text_color() } else { v.text_color() }, ..Default::default() };
-    let hl = TextFormat { font_id: font.clone(), color: v.strong_text_color(), background: v.selection.bg_fill, ..Default::default() };
-    job.append(&format!("{}{:>8}  ", if exact { " " } else { "~" }, line + 1), 0.0, weak);
+    let weak = TextFormat {
+        font_id: font.clone(),
+        color: v.weak_text_color(),
+        ..Default::default()
+    };
+    let normal = TextFormat {
+        font_id: font.clone(),
+        color: if stale {
+            v.weak_text_color()
+        } else {
+            v.text_color()
+        },
+        ..Default::default()
+    };
+    let hl = TextFormat {
+        font_id: font.clone(),
+        color: v.strong_text_color(),
+        background: v.selection.bg_fill,
+        ..Default::default()
+    };
+    job.append(
+        &format!("{}{:>8}  ", if exact { " " } else { "~" }, line + 1),
+        0.0,
+        weak,
+    );
     let codec = buf.codec;
     let e_vis = e.min(s + 200);
     let pre_start = s.saturating_sub(60);
-    let (pre, mid, post) = match (buf.read(pre_start..s), buf.read(s..e_vis), buf.read(e_vis..(e_vis + 120).min(buf.len()))) {
+    let (pre, mid, post) = match (
+        buf.read(pre_start..s),
+        buf.read(s..e_vis),
+        buf.read(e_vis..(e_vis + 120).min(buf.len())),
+    ) {
         (Some(a), Some(b), Some(c)) => (a.into_owned(), b.into_owned(), c.into_owned()),
         _ => {
             job.append("…", 0.0, normal);
@@ -796,7 +986,21 @@ fn snippet_job(buf: &TextBuf, s: u64, e: u64, line: u64, exact: bool, font: &Fon
         None => post,
     };
     let clean = |b: &[u8]| -> String {
-        codec.decode_lossy(b).chars().map(|c| if c.is_control() { if c == '\t' { ' ' } else { '·' } } else { c }).collect()
+        codec
+            .decode_lossy(b)
+            .chars()
+            .map(|c| {
+                if c.is_control() {
+                    if c == '\t' {
+                        ' '
+                    } else {
+                        '·'
+                    }
+                } else {
+                    c
+                }
+            })
+            .collect()
     };
     let pre_s = clean(skip_partial(&codec, &pre));
     job.append(&pre_s, 0.0, normal.clone());
@@ -819,7 +1023,11 @@ mod tests {
 
     #[test]
     fn regex_error_keeps_the_caret_under_the_error() {
-        let q = Query { pattern: "ab(cd".into(), regex: true, ..Default::default() };
+        let q = Query {
+            pattern: "ab(cd".into(),
+            regex: true,
+            ..Default::default()
+        };
         let e = Matcher::new(&q, Codec::utf8()).err().unwrap();
         let t = regex_error_text(&e);
         let lines: Vec<&str> = t.lines().collect();

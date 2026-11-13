@@ -25,7 +25,13 @@ type Res<T> = Result<T, String>;
 
 impl<'a> Src<'a> {
     fn new(buf: &'a TextBuf, at: u64, cancel: &'a CancelToken) -> Src<'a> {
-        Src { buf, data: Vec::new(), start: at, i: 0, cancel }
+        Src {
+            buf,
+            data: Vec::new(),
+            start: at,
+            i: 0,
+            cancel,
+        }
     }
 
     fn pos(&self) -> u64 {
@@ -43,14 +49,22 @@ impl<'a> Src<'a> {
         if at >= self.buf.len() {
             return Ok(false);
         }
-        self.data = self.buf.read(at..(at + CHUNK).min(self.buf.len())).ok_or("could not read the file")?.to_vec();
+        self.data = self
+            .buf
+            .read(at..(at + CHUNK).min(self.buf.len()))
+            .ok_or("could not read the file")?
+            .to_vec();
         self.start = at;
         self.i = 0;
         Ok(true)
     }
 
     fn peek(&mut self) -> Res<Option<u8>> {
-        Ok(if self.fill()? { Some(self.data[self.i]) } else { None })
+        Ok(if self.fill()? {
+            Some(self.data[self.i])
+        } else {
+            None
+        })
     }
 
     /// Whether the text at the position starts with `s` (looking at most `s.len()` bytes ahead).
@@ -62,7 +76,10 @@ impl<'a> Src<'a> {
             return Ok(self.data[self.i..].starts_with(s));
         }
         let at = self.pos();
-        Ok(self.buf.read(at..(at + s.len() as u64).min(self.buf.len())).is_some_and(|b| &b[..] == s))
+        Ok(self
+            .buf
+            .read(at..(at + s.len() as u64).min(self.buf.len()))
+            .is_some_and(|b| &b[..] == s))
     }
 
     /// Moves to the next `<`.
@@ -85,7 +102,10 @@ impl<'a> Src<'a> {
     fn past(&mut self, end: &[u8]) -> Res<()> {
         loop {
             if !self.fill()? {
-                return Err(format!("{} is missing at the end of the file", String::from_utf8_lossy(end)));
+                return Err(format!(
+                    "{} is missing at the end of the file",
+                    String::from_utf8_lossy(end)
+                ));
             }
             if self.starts(end)? {
                 self.i += end.len();
@@ -114,7 +134,9 @@ impl<'a> Src<'a> {
             // <!DOCTYPE …> with an internal subset in [ ].
             let mut depth = 0;
             loop {
-                let Some(c) = self.peek()? else { return Err("a declaration does not end".into()) };
+                let Some(c) = self.peek()? else {
+                    return Err("a declaration does not end".into());
+                };
                 self.i += 1;
                 match c {
                     b'[' => depth += 1,
@@ -135,7 +157,9 @@ impl<'a> Src<'a> {
         let mut text = Vec::new();
         let mut quote = 0u8;
         loop {
-            let Some(c) = self.peek()? else { return Err("a tag does not end".into()) };
+            let Some(c) = self.peek()? else {
+                return Err("a tag does not end".into());
+            };
             self.i += 1;
             if quote != 0 {
                 if c == quote {
@@ -169,7 +193,12 @@ impl<'a> Src<'a> {
             if closing {
                 let n = tag_name(&text[1..]);
                 if names.last().is_some_and(|l| l.as_slice() != n) {
-                    return Err(format!("</{}> does not match <{}> at byte {}", String::from_utf8_lossy(n), String::from_utf8_lossy(names.last().map(|v| v.as_slice()).unwrap_or(b"")), self.pos()));
+                    return Err(format!(
+                        "</{}> does not match <{}> at byte {}",
+                        String::from_utf8_lossy(n),
+                        String::from_utf8_lossy(names.last().map(|v| v.as_slice()).unwrap_or(b"")),
+                        self.pos()
+                    ));
                 }
                 names.pop();
                 depth -= 1;
@@ -184,12 +213,18 @@ impl<'a> Src<'a> {
                 }
             }
         }
-        Err(format!("<{}> is never closed", String::from_utf8_lossy(name)))
+        Err(format!(
+            "<{}> is never closed",
+            String::from_utf8_lossy(name)
+        ))
     }
 }
 
 fn tag_name(text: &[u8]) -> &[u8] {
-    let end = text.iter().position(|c| c.is_ascii_whitespace() || *c == b'/' || *c == b'>').unwrap_or(text.len());
+    let end = text
+        .iter()
+        .position(|c| c.is_ascii_whitespace() || *c == b'/' || *c == b'>')
+        .unwrap_or(text.len());
     &text[..end]
 }
 
@@ -218,7 +253,13 @@ pub fn root(buf: &TextBuf, cancel: &CancelToken) -> Result<u64, String> {
 }
 
 /// The child elements of the element at `at` (a `<`), up to `max` of them, from `resume`.
-pub fn children(buf: &TextBuf, at: u64, resume: Option<Resume>, max: usize, cancel: &CancelToken) -> Result<Page, String> {
+pub fn children(
+    buf: &TextBuf,
+    at: u64,
+    resume: Option<Resume>,
+    max: usize,
+    cancel: &CancelToken,
+) -> Result<Page, String> {
     let mut s = Src::new(buf, at, cancel);
     let mut index = 0;
     match resume {
@@ -241,15 +282,29 @@ pub fn children(buf: &TextBuf, at: u64, resume: Option<Resume>, max: usize, canc
             continue;
         }
         if page.items.len() >= max {
-            page.resume = Some(Resume { at: start, index, object: false });
+            page.resume = Some(Resume {
+                at: start,
+                index,
+                object: false,
+            });
             return Ok(page);
         }
         let (text, selfclosing, closing) = s.tag()?;
         if closing {
             return Ok(page);
         }
-        let has = if selfclosing { false } else { s.skip_content(tag_name(&text))? };
-        page.items.push(Child { key: Some(label(&text)), index, start, end: s.pos(), kind: if has { Kind::Object } else { Kind::Other } });
+        let has = if selfclosing {
+            false
+        } else {
+            s.skip_content(tag_name(&text))?
+        };
+        page.items.push(Child {
+            key: Some(label(&text)),
+            index,
+            start,
+            end: s.pos(),
+            kind: if has { Kind::Object } else { Kind::Other },
+        });
         index += 1;
     }
     Ok(page)
@@ -270,16 +325,35 @@ pub fn parse_path(p: &str) -> Result<Vec<XStep>, String> {
         .filter(|s| !s.is_empty())
         .map(|seg| match seg.split_once('[') {
             Some((name, rest)) => {
-                let n: usize = rest.strip_suffix(']').and_then(|n| n.parse().ok()).filter(|&n| n > 0).ok_or(format!("not an index: [{rest}"))?;
-                Ok(XStep { name: name.to_string(), nth: n })
+                let n: usize = rest
+                    .strip_suffix(']')
+                    .and_then(|n| n.parse().ok())
+                    .filter(|&n| n > 0)
+                    .ok_or(format!("not an index: [{rest}"))?;
+                Ok(XStep {
+                    name: name.to_string(),
+                    nth: n,
+                })
             }
-            None => Ok(XStep { name: seg.to_string(), nth: 1 }),
+            None => Ok(XStep {
+                name: seg.to_string(),
+                nth: 1,
+            }),
         })
         .collect()
 }
 
 pub fn format_path(steps: &[XStep]) -> String {
-    steps.iter().map(|s| if s.nth > 1 { format!("/{}[{}]", s.name, s.nth) } else { format!("/{}", s.name) }).collect()
+    steps
+        .iter()
+        .map(|s| {
+            if s.nth > 1 {
+                format!("/{}[{}]", s.name, s.nth)
+            } else {
+                format!("/{}", s.name)
+            }
+        })
+        .collect()
 }
 
 /// The byte range of the element at `path`.
@@ -288,7 +362,9 @@ pub fn resolve(buf: &TextBuf, path: &[XStep], cancel: &CancelToken) -> Result<(u
     let mut s = Src::new(buf, at, cancel);
     let (text, selfclosing, _) = s.tag()?;
     let root_name = String::from_utf8_lossy(tag_name(&text)).into_owned();
-    let Some(first) = path.first() else { return Err("the path is empty".into()) };
+    let Some(first) = path.first() else {
+        return Err("the path is empty".into());
+    };
     if first.name != root_name || first.nth != 1 {
         return Err(format!("the root element is <{root_name}>"));
     }
@@ -301,7 +377,11 @@ pub fn resolve(buf: &TextBuf, path: &[XStep], cancel: &CancelToken) -> Result<(u
         loop {
             let page = children(buf, node, resume, 10_000, cancel)?;
             for c in &page.items {
-                let name = c.key.as_deref().map(|k| String::from_utf8_lossy(tag_name(k.as_bytes())).into_owned()).unwrap_or_default();
+                let name = c
+                    .key
+                    .as_deref()
+                    .map(|k| String::from_utf8_lossy(tag_name(k.as_bytes())).into_owned())
+                    .unwrap_or_default();
                 if name == step.name {
                     seen += 1;
                     if seen == step.nth {
@@ -315,7 +395,13 @@ pub fn resolve(buf: &TextBuf, path: &[XStep], cancel: &CancelToken) -> Result<(u
             }
             resume = page.resume;
         }
-        let Some(r) = found else { return Err(format!("no {} in {}", format_path(std::slice::from_ref(step)), format_path(&path[..1]))) };
+        let Some(r) = found else {
+            return Err(format!(
+                "no {} in {}",
+                format_path(std::slice::from_ref(step)),
+                format_path(&path[..1])
+            ));
+        };
         range = r;
         node = r.0;
     }
@@ -327,7 +413,10 @@ pub fn path_at(buf: &TextBuf, off: u64, cancel: &CancelToken) -> Result<Vec<XSte
     let at = root(buf, cancel)?;
     let mut s = Src::new(buf, at, cancel);
     let (text, _, _) = s.tag()?;
-    let mut path = vec![XStep { name: String::from_utf8_lossy(tag_name(&text)).into_owned(), nth: 1 }];
+    let mut path = vec![XStep {
+        name: String::from_utf8_lossy(tag_name(&text)).into_owned(),
+        nth: 1,
+    }];
     let mut node = at;
     loop {
         let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -336,7 +425,11 @@ pub fn path_at(buf: &TextBuf, off: u64, cancel: &CancelToken) -> Result<Vec<XSte
         'pages: loop {
             let page = children(buf, node, resume, 10_000, cancel)?;
             for c in &page.items {
-                let name = c.key.as_deref().map(|k| String::from_utf8_lossy(tag_name(k.as_bytes())).into_owned()).unwrap_or_default();
+                let name = c
+                    .key
+                    .as_deref()
+                    .map(|k| String::from_utf8_lossy(tag_name(k.as_bytes())).into_owned())
+                    .unwrap_or_default();
                 let n = counts.entry(name.clone()).or_insert(0);
                 *n += 1;
                 if c.start > off {
@@ -391,8 +484,19 @@ mod tests {
         assert!(DOC[at as usize..].starts_with("<catalog>"));
         let page = children(&t, at, None, 100, &c).unwrap();
         let labels: Vec<String> = page.items.iter().map(|x| x.key.clone().unwrap()).collect();
-        assert_eq!(labels, ["item id=\"1\"", "item id=\"2\" note=\"a > b\"", "empty", "item id=\"3\""]);
-        assert_eq!(page.items.iter().map(|x| x.kind).collect::<Vec<_>>(), [Kind::Object, Kind::Object, Kind::Other, Kind::Other]);
+        assert_eq!(
+            labels,
+            [
+                "item id=\"1\"",
+                "item id=\"2\" note=\"a > b\"",
+                "empty",
+                "item id=\"3\""
+            ]
+        );
+        assert_eq!(
+            page.items.iter().map(|x| x.kind).collect::<Vec<_>>(),
+            [Kind::Object, Kind::Object, Kind::Other, Kind::Other]
+        );
         // Pages.
         let first = children(&t, at, None, 2, &c).unwrap();
         assert_eq!(first.items.len(), 2);
@@ -401,7 +505,10 @@ mod tests {
         // A path to an element and back.
         let (s, e) = resolve(&t, &parse_path("/catalog/item[2]/price").unwrap(), &c).unwrap();
         assert_eq!(&DOC[s as usize..e as usize], "<price>12</price>");
-        assert_eq!(format_path(&path_at(&t, s + 8, &c).unwrap()), "/catalog/item[2]/price");
+        assert_eq!(
+            format_path(&path_at(&t, s + 8, &c).unwrap()),
+            "/catalog/item[2]/price"
+        );
         assert_eq!(format_path(&path_at(&t, at + 3, &c).unwrap()), "/catalog");
         assert!(resolve(&t, &parse_path("/catalog/item[9]").unwrap(), &c).is_err());
         assert!(resolve(&t, &parse_path("/other").unwrap(), &c).is_err());
@@ -411,7 +518,9 @@ mod tests {
     #[test]
     fn mismatched_and_unclosed() {
         let (_f, t) = buf("<a><b></c></a>");
-        assert!(children(&t, 0, None, 10, &CancelToken::new()).unwrap_err().contains("does not match"));
+        assert!(children(&t, 0, None, 10, &CancelToken::new())
+            .unwrap_err()
+            .contains("does not match"));
         let (_g, u) = buf("<a><b>");
         assert!(children(&u, 0, None, 10, &CancelToken::new()).is_err());
     }

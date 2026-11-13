@@ -33,7 +33,13 @@ pub struct Counts {
 
 /// Hashes each line of `buf` as it compares; `f` gets the line's offset and hash, and stops
 /// the walk by returning false. `None` when cancelled.
-fn each_line(buf: &TextBuf, opts: &DiffOptions, cancel: &CancelToken, progress: Option<(&Progress, u64)>, mut f: impl FnMut(u64, u64) -> io::Result<bool>) -> io::Result<Option<()>> {
+fn each_line(
+    buf: &TextBuf,
+    opts: &DiffOptions,
+    cancel: &CancelToken,
+    progress: Option<(&Progress, u64)>,
+    mut f: impl FnMut(u64, u64) -> io::Result<bool>,
+) -> io::Result<Option<()>> {
     let mut r = LineReader::new(buf);
     let utf8 = buf.codec.enc == Encoding::Utf8;
     let mut n = 0u64;
@@ -45,7 +51,11 @@ fn each_line(buf: &TextBuf, opts: &DiffOptions, cancel: &CancelToken, progress: 
             decoded = buf.codec.decode_lossy(line);
             decoded.as_bytes()
         };
-        let hash = if opts.plain() { line_hash(text) } else { line_hash(&opts.normalise(text)) };
+        let hash = if opts.plain() {
+            line_hash(text)
+        } else {
+            line_hash(&opts.normalise(text))
+        };
         if !f(off, hash)? {
             break;
         }
@@ -63,7 +73,9 @@ fn each_line(buf: &TextBuf, opts: &DiffOptions, cancel: &CancelToken, progress: 
 }
 
 fn writers(spill: &Spill, side: &str) -> io::Result<Vec<BufWriter<File>>> {
-    (0..PARTS).map(|i| spill.create(&format!("{side}-{i:03}"))).collect()
+    (0..PARTS)
+        .map(|i| spill.create(&format!("{side}-{i:03}")))
+        .collect()
 }
 
 fn part(hash: u64) -> usize {
@@ -71,7 +83,11 @@ fn part(hash: u64) -> usize {
 }
 
 /// Reads 8-byte little-endian numbers until the end.
-fn read_u64s(spill: &Spill, name: &str, mut f: impl FnMut(u64) -> io::Result<()>) -> io::Result<()> {
+fn read_u64s(
+    spill: &Spill,
+    name: &str,
+    mut f: impl FnMut(u64) -> io::Result<()>,
+) -> io::Result<()> {
     let mut r = spill.open(name)?;
     let mut b = [0u8; 8];
     while read_record(&mut r, &mut b)? {
@@ -83,7 +99,15 @@ fn read_u64s(spill: &Spill, name: &str, mut f: impl FnMut(u64) -> io::Result<()>
 /// Calls `on_line` with the offset of each line of `a` that is not in `b`, in order (return
 /// false to stop). `budget` is the number of distinct line hashes of `b` held in memory before
 /// spilling to disk. `None` when cancelled.
-pub fn only_in(a: &TextBuf, b: &TextBuf, opts: &DiffOptions, budget: usize, cancel: &CancelToken, progress: Option<&Progress>, mut on_line: impl FnMut(u64) -> bool) -> io::Result<Option<Counts>> {
+pub fn only_in(
+    a: &TextBuf,
+    b: &TextBuf,
+    opts: &DiffOptions,
+    budget: usize,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut on_line: impl FnMut(u64) -> bool,
+) -> io::Result<Option<Counts>> {
     if let Some(p) = progress {
         p.set_total(a.len() + b.len());
     }
@@ -170,7 +194,9 @@ pub fn only_in(a: &TextBuf, b: &TextBuf, opts: &DiffOptions, budget: usize, canc
         out.flush()?;
     }
     // Merge the partitions back into the text's order.
-    let mut readers: Vec<BufReader<File>> = (0..PARTS).map(|i| spill.open(&format!("o-{i:03}"))).collect::<io::Result<_>>()?;
+    let mut readers: Vec<BufReader<File>> = (0..PARTS)
+        .map(|i| spill.open(&format!("o-{i:03}")))
+        .collect::<io::Result<_>>()?;
     let next = |r: &mut BufReader<File>| -> io::Result<Option<u64>> {
         let mut b = [0u8; 8];
         Ok(read_record(r, &mut b)?.then(|| u64::from_le_bytes(b)))
@@ -199,7 +225,9 @@ pub fn write_line_at(buf: &TextBuf, off: u64, w: &mut dyn Write) -> io::Result<(
     let mut chunk = Vec::new();
     while pos < len {
         let end = (pos + (64 << 10)).min(len);
-        let n = buf.read_to(pos..end, &mut chunk).ok_or_else(|| io::Error::other("reading the text failed"))?;
+        let n = buf
+            .read_to(pos..end, &mut chunk)
+            .ok_or_else(|| io::Error::other("reading the text failed"))?;
         let part = &chunk[..n];
         if let Some(i) = buf.codec.find_nl(part, pos) {
             let stop = (i + buf.codec.unit()).min(n);
@@ -262,8 +290,13 @@ mod tests {
 
     #[test]
     fn spilling_to_disk_gives_the_same_answer() {
-        let a: String = (0..5000).map(|i| format!("line {}\n", i * 7 % 5000)).collect();
-        let b: String = (0..5000).filter(|i| i % 3 != 0).map(|i| format!("line {i}\n")).collect();
+        let a: String = (0..5000)
+            .map(|i| format!("line {}\n", i * 7 % 5000))
+            .collect();
+        let b: String = (0..5000)
+            .filter(|i| i % 3 != 0)
+            .map(|i| format!("line {i}\n"))
+            .collect();
         let (_a, a) = buf(a.as_bytes());
         let (_b, b) = buf(b.as_bytes());
         let mem = run(&a, &b, &DiffOptions::default(), BUDGET);
@@ -276,11 +309,19 @@ mod tests {
     fn options_encodings_and_masks() {
         let (_a, a) = buf(b"10:00:01 start job=17\n10:00:02 Working\n10:00:03 done\n");
         let (_b, b) = buf(b"11:30:00 start job=99\n11:30:05 working\n");
-        let opts = DiffOptions { timestamps: true, case: true, mask: Some(regex_automata::meta::Regex::new("job=[0-9]+").unwrap()), ..Default::default() };
+        let opts = DiffOptions {
+            timestamps: true,
+            case: true,
+            mask: Some(regex_automata::meta::Regex::new("job=[0-9]+").unwrap()),
+            ..Default::default()
+        };
         assert_eq!(run(&a, &b, &opts, BUDGET).0, vec!["10:00:03 done"]);
         assert_eq!(run(&a, &b, &DiffOptions::default(), BUDGET).1.only, 3);
         // UTF-16 against UTF-8.
-        let utf16: Vec<u8> = [0xFF, 0xFE].into_iter().chain("один\nдва\n".encode_utf16().flat_map(|u| u.to_le_bytes())).collect();
+        let utf16: Vec<u8> = [0xFF, 0xFE]
+            .into_iter()
+            .chain("один\nдва\n".encode_utf16().flat_map(|u| u.to_le_bytes()))
+            .collect();
         let (_c, c) = buf(&utf16);
         let (_d, d) = buf("два\n".as_bytes());
         assert_eq!(run(&c, &d, &DiffOptions::default(), BUDGET).0, vec!["один"]);

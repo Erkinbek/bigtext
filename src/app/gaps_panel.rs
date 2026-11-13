@@ -6,7 +6,6 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-
 use bigtext::gaps::{self, Gaps};
 use bigtext::jobs::{self, CancelToken, Progress};
 use bigtext::timestamp;
@@ -53,7 +52,13 @@ pub struct GapsUi {
 
 impl Default for GapsUi {
     fn default() -> Self {
-        GapsUi { open: false, min_secs: 30.0, largest_first: true, order: None, delta: None }
+        GapsUi {
+            open: false,
+            min_secs: 30.0,
+            largest_first: true,
+            order: None,
+            delta: None,
+        }
     }
 }
 
@@ -62,7 +67,11 @@ impl BigTextApp {
     pub(crate) fn open_gaps(&mut self) {
         self.gaps.open = true;
         let min_ms = (self.gaps.min_secs * 1000.0) as i64;
-        let fresh = self.docs.get(self.active).and_then(|d| d.gaps.as_ref().map(|g| g.version == d.version && g.min_ms == min_ms));
+        let fresh = self.docs.get(self.active).and_then(|d| {
+            d.gaps
+                .as_ref()
+                .map(|g| g.version == d.version && g.min_ms == min_ms)
+        });
         if fresh != Some(true) {
             self.start_gaps();
         }
@@ -70,7 +79,9 @@ impl BigTextApp {
 
     pub(crate) fn start_gaps(&mut self) {
         let min_ms = ((self.gaps.min_secs * 1000.0) as i64).max(1);
-        let Some(d) = self.docs.get_mut(self.active) else { return };
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
         if !d.is_ready() {
             return;
         }
@@ -79,7 +90,13 @@ impl BigTextApp {
         }
         let data = Arc::new(Mutex::new(GapsData::default()));
         let (cancel, progress) = (CancelToken::new(), Progress::new(d.buf.len()));
-        d.gaps = Some(GapsResults { min_ms, version: d.version, data: data.clone(), cancel: cancel.clone(), progress: progress.clone() });
+        d.gaps = Some(GapsResults {
+            min_ms,
+            version: d.version,
+            data: data.clone(),
+            cancel: cancel.clone(),
+            progress: progress.clone(),
+        });
         let snap = d.buf.snapshot();
         let waker = self.waker.clone();
         jobs::spawn("gaps", move || {
@@ -105,7 +122,9 @@ impl BigTextApp {
         let (mut close, mut rerun, mut jump) = (false, false, None);
         let (mut secs, mut largest) = (self.gaps.min_secs, self.gaps.largest_first);
         {
-            let Some(d) = self.docs.get(self.active) else { return };
+            let Some(d) = self.docs.get(self.active) else {
+                return;
+            };
             let Some(r) = &d.gaps else { return };
             let g = r.data.lock().unwrap();
             let stale = r.version != d.version;
@@ -113,14 +132,26 @@ impl BigTextApp {
             ui.horizontal(|ui| {
                 ui.strong(trf("{n} time gaps", &[("n", &fmt_count(n as u64))]));
                 ui.label(tr("of at least"));
-                ui.add(egui::DragValue::new(&mut secs).range(0.001..=86_400.0 * 30.0).speed(1.0).suffix(" s"));
+                ui.add(
+                    egui::DragValue::new(&mut secs)
+                        .range(0.001..=86_400.0 * 30.0)
+                        .speed(1.0)
+                        .suffix(" s"),
+                );
                 ui.checkbox(&mut largest, tr("Largest first"));
                 if g.gaps.capped {
-                    ui.label(trf("(list capped at {n})", &[("n", &fmt_count(gaps::GAPS_MAX as u64))]));
+                    ui.label(trf(
+                        "(list capped at {n})",
+                        &[("n", &fmt_count(gaps::GAPS_MAX as u64))],
+                    ));
                 }
                 if !g.done {
                     let f = r.progress.fraction();
-                    ui.add(egui::ProgressBar::new(f).desired_width(140.0).text(format!("{:.0}%", f * 100.0)));
+                    ui.add(
+                        egui::ProgressBar::new(f)
+                            .desired_width(140.0)
+                            .text(format!("{:.0}%", f * 100.0)),
+                    );
                     ui.ctx().request_repaint_after(Duration::from_millis(100));
                     if ui.small_button(tr("Cancel")).clicked() {
                         r.cancel.cancel();
@@ -159,28 +190,44 @@ impl BigTextApp {
                 let order = &self.gaps.order.as_ref().expect("order").1;
                 let row_h = ui.ctx().fonts_mut(|f| f.row_height(&font)) + 4.0;
                 let dated = g.gaps.dated;
-                egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, row_h, n, |ui, range| {
-                    for &i in &order[range.start.min(n)..range.end.min(n)] {
-                        let gap = g.gaps.gaps[i as usize];
-                        let back = gap.ms() < 0;
-                        let (line, exact) = d.buf.line_of(gap.after);
-                        let text = format!(
-                            "{:>18}   {} → {}   {}{}",
-                            timestamp::format_delta(gap.ms()),
-                            timestamp::format_key(gap.from, dated, true),
-                            timestamp::format_key(gap.to, dated, true),
-                            trf("line {n}", &[("n", &format!("{}{}", if exact { "" } else { "~" }, fmt_count(line + 1)))]),
-                            if back { format!("  {}", tr("(clock went back)")) } else { String::new() },
-                        );
-                        let mut rt = egui::RichText::new(text).font(font.clone());
-                        if back {
-                            rt = rt.color(super::theme::warn_text(ui));
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show_rows(ui, row_h, n, |ui, range| {
+                        for &i in &order[range.start.min(n)..range.end.min(n)] {
+                            let gap = g.gaps.gaps[i as usize];
+                            let back = gap.ms() < 0;
+                            let (line, exact) = d.buf.line_of(gap.after);
+                            let text = format!(
+                                "{:>18}   {} → {}   {}{}",
+                                timestamp::format_delta(gap.ms()),
+                                timestamp::format_key(gap.from, dated, true),
+                                timestamp::format_key(gap.to, dated, true),
+                                trf(
+                                    "line {n}",
+                                    &[(
+                                        "n",
+                                        &format!(
+                                            "{}{}",
+                                            if exact { "" } else { "~" },
+                                            fmt_count(line + 1)
+                                        )
+                                    )]
+                                ),
+                                if back {
+                                    format!("  {}", tr("(clock went back)"))
+                                } else {
+                                    String::new()
+                                },
+                            );
+                            let mut rt = egui::RichText::new(text).font(font.clone());
+                            if back {
+                                rt = rt.color(super::theme::warn_text(ui));
+                            }
+                            if ui.selectable_label(false, rt).clicked() && !stale {
+                                jump = Some(gap.after);
+                            }
                         }
-                        if ui.selectable_label(false, rt).clicked() && !stale {
-                            jump = Some(gap.after);
-                        }
-                    }
-                });
+                    });
             }
         }
         if let Some(off) = jump {
@@ -204,7 +251,11 @@ impl BigTextApp {
     /// Time from the previous line with a timestamp to the caret's line, for logs (cached).
     pub(crate) fn caret_time_delta(&mut self) -> Option<i64> {
         let d = self.docs.get(self.active)?;
-        if !d.is_ready() || d.hex || d.table || d.effective_lang() != crate::view::highlight::Lang::Log {
+        if !d.is_ready()
+            || d.hex
+            || d.table
+            || d.effective_lang() != crate::view::highlight::Lang::Log
+        {
             return None;
         }
         let (ls, _, _) = d.line_bounds(d.view.caret, BACK)?;
@@ -238,12 +289,17 @@ fn prev_delta(buf: &bigtext::text::TextBuf, ls: u64) -> Option<i64> {
             None => return None,
         };
         let line = &b[start..end];
-        let text = codec.decode_lossy(&line[..line.len().min(640) - line.len().min(640) % unit as usize]);
+        let text =
+            codec.decode_lossy(&line[..line.len().min(640) - line.len().min(640) % unit as usize]);
         if let Some(prev) = timestamp::parse(&text) {
             if prev.has_date != here.has_date {
                 return None;
             }
-            let ms = if prev.tz.is_some() && here.tz.is_some() { here.utc_ms() - prev.utc_ms() } else { here.ms - prev.ms };
+            let ms = if prev.tz.is_some() && here.tz.is_some() {
+                here.utc_ms() - prev.utc_ms()
+            } else {
+                here.ms - prev.ms
+            };
             return Some(ms);
         }
         if start == 0 {

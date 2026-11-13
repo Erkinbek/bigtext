@@ -11,8 +11,8 @@ use bigtext::jobs::{self, CancelToken, Progress};
 use super::document::{Document, Restore};
 use super::i18n::{tr, trf};
 use super::tasks::TaskOutcome;
-use crate::view::text_view::{self, DiffOverlay, ViewEnv};
 use super::BigTextApp;
+use crate::view::text_view::{self, DiffOverlay, ViewEnv};
 
 pub const RECENT_MAX: usize = 15;
 pub const DIFF_CAP: usize = 100_000;
@@ -140,23 +140,52 @@ pub const FILE_OPTS_MAX: usize = 200;
 impl FileOpts {
     /// Anything other than what the file gets anyway.
     pub(super) fn worth_keeping(&self) -> bool {
-        self.enc.is_some() || self.lang.is_some() || self.table != super::document::table_by_default(&self.path) || self.hex || self.follow || self.read_only || self.wrap || self.layout.is_some()
+        self.enc.is_some()
+            || self.lang.is_some()
+            || self.table != super::document::table_by_default(&self.path)
+            || self.hex
+            || self.follow
+            || self.read_only
+            || self.wrap
+            || self.layout.is_some()
     }
 }
 
 /// "enc|lang|flags|layout|path"; flags are t(able) h(ex) f(ollow) r(ead-only) w(rap), the
 /// layout "delimiter/header/sig/scroll/col:width,…".
 pub(super) fn file_opts_line(o: &FileOpts) -> String {
-    let flags: String = [(o.table, 't'), (o.hex, 'h'), (o.follow, 'f'), (o.read_only, 'r'), (o.wrap, 'w')].iter().filter(|x| x.0).map(|x| x.1).collect();
+    let flags: String = [
+        (o.table, 't'),
+        (o.hex, 'h'),
+        (o.follow, 'f'),
+        (o.read_only, 'r'),
+        (o.wrap, 'w'),
+    ]
+    .iter()
+    .filter(|x| x.0)
+    .map(|x| x.1)
+    .collect();
     let layout = o
         .layout
         .as_ref()
         .map(|l| {
             let widths: Vec<String> = l.fixed.iter().map(|(c, w)| format!("{c}:{w}")).collect();
-            format!("{}/{}/{:x}/{}/{}", l.delim, u8::from(l.header), l.sig, l.scroll_x, widths.join(","))
+            format!(
+                "{}/{}/{:x}/{}/{}",
+                l.delim,
+                u8::from(l.header),
+                l.sig,
+                l.scroll_x,
+                widths.join(",")
+            )
         })
         .unwrap_or_default();
-    format!("{}|{}|{flags}|{layout}|{}", o.enc.map(|e| e.name()).unwrap_or_default(), o.lang.map(|l| l.name()).unwrap_or_default(), file::display_path(&o.path))
+    format!(
+        "{}|{}|{flags}|{layout}|{}",
+        o.enc.map(|e| e.name()).unwrap_or_default(),
+        o.lang.map(|l| l.name()).unwrap_or_default(),
+        file::display_path(&o.path)
+    )
 }
 
 pub(super) fn parse_file_opts(v: &str) -> Option<FileOpts> {
@@ -172,21 +201,43 @@ pub(super) fn parse_file_opts(v: &str) -> Option<FileOpts> {
             let delim = p.next()?.parse().ok()?;
             let header = p.next()? == "1";
             let sig = u64::from_str_radix(p.next()?, 16).ok()?;
-            let scroll_x = p.next()?.parse::<f32>().ok().filter(|x| x.is_finite())?.max(0.0);
+            let scroll_x = p
+                .next()?
+                .parse::<f32>()
+                .ok()
+                .filter(|x| x.is_finite())?
+                .max(0.0);
             let fixed = p
                 .next()?
                 .split(',')
                 .filter_map(|x| x.split_once(':'))
-                .filter_map(|(c, w)| Some((c.parse().ok()?, w.parse::<f32>().ok().filter(|w| w.is_finite() && *w > 0.0)?)))
+                .filter_map(|(c, w)| {
+                    Some((
+                        c.parse().ok()?,
+                        w.parse::<f32>()
+                            .ok()
+                            .filter(|w| w.is_finite() && *w > 0.0)?,
+                    ))
+                })
                 .take(crate::view::table_view::LAYOUT_COLUMNS_MAX)
                 .collect();
-            Some(crate::view::table_view::TableLayout { delim, header, sig, fixed, scroll_x })
+            Some(crate::view::table_view::TableLayout {
+                delim,
+                header,
+                sig,
+                fixed,
+                scroll_x,
+            })
         })
         .flatten();
     Some(FileOpts {
         path,
-        enc: bigtext::encoding::Encoding::ALL.into_iter().find(|e| e.name() == enc),
-        lang: crate::view::highlight::Lang::ALL.into_iter().find(|l| l.name() == lang),
+        enc: bigtext::encoding::Encoding::ALL
+            .into_iter()
+            .find(|e| e.name() == enc),
+        lang: crate::view::highlight::Lang::ALL
+            .into_iter()
+            .find(|l| l.name() == lang),
         table: flags.contains('t'),
         hex: flags.contains('h'),
         follow: flags.contains('f'),
@@ -202,7 +253,9 @@ fn opts_key(d: &Document) -> Option<PathBuf> {
     if d.member.is_some() || (d.temporary && d.unpacked_from.is_none()) {
         return None;
     }
-    Some(PathBuf::from(file::display_path(d.unpacked_from.as_deref().or(d.path.as_deref())?)))
+    Some(PathBuf::from(file::display_path(
+        d.unpacked_from.as_deref().or(d.path.as_deref())?,
+    )))
 }
 
 /// What to remember for `d` (`None` while it is opening).
@@ -248,7 +301,13 @@ fn parse_saved(v: &str) -> Option<super::saved_searches::SavedSearch> {
 
 /// "enabled|color|flags|pattern".
 pub(super) fn mark_line(m: &super::marks::Mark) -> String {
-    format!("{}|{}|{}|{}", if m.enabled { "1" } else { "0" }, m.color, query_flags(&m.query), m.query.pattern)
+    format!(
+        "{}|{}|{}|{}",
+        if m.enabled { "1" } else { "0" },
+        m.color,
+        query_flags(&m.query),
+        m.query.pattern
+    )
 }
 
 /// Between an archive's path and its file in a tab line.
@@ -258,8 +317,19 @@ const MEMBER_SEP: char = '\u{1f}';
 /// it is one.
 pub(super) fn tab_line(t: &TabState) -> String {
     let bm: Vec<String> = t.bookmarks.iter().map(|x| x.to_string()).collect();
-    let member = t.member.as_deref().map(|m| format!("{MEMBER_SEP}{m}")).unwrap_or_default();
-    format!("{}|{}|{}|{}|{}{member}", t.caret, t.top, if t.wrap { "1" } else { "0" }, bm.join(","), t.path.display())
+    let member = t
+        .member
+        .as_deref()
+        .map(|m| format!("{MEMBER_SEP}{m}"))
+        .unwrap_or_default();
+    format!(
+        "{}|{}|{}|{}|{}{member}",
+        t.caret,
+        t.top,
+        if t.wrap { "1" } else { "0" },
+        bm.join(","),
+        t.path.display()
+    )
 }
 
 pub(super) fn parse_tab(v: &str) -> Option<TabState> {
@@ -291,7 +361,11 @@ pub(super) fn parse_mark(v: &str) -> Option<super::marks::Mark> {
         whole_word: flags.contains('w'),
         dot_all: flags.contains('d'),
     };
-    Some(super::marks::Mark { query, color, enabled })
+    Some(super::marks::Mark {
+        query,
+        color,
+        enabled,
+    })
 }
 
 pub fn state_file() -> Option<PathBuf> {
@@ -299,9 +373,14 @@ pub fn state_file() -> Option<PathBuf> {
 }
 
 pub fn load() -> Persisted {
-    let Some(path) = state_file() else { return Persisted::default() };
+    let Some(path) = state_file() else {
+        return Persisted::default();
+    };
     match std::fs::read_to_string(path) {
-        Ok(text) => Persisted { loaded: true, ..parse(&text) },
+        Ok(text) => Persisted {
+            loaded: true,
+            ..parse(&text)
+        },
         Err(_) => Persisted::default(),
     }
 }
@@ -309,7 +388,9 @@ pub fn load() -> Persisted {
 pub(super) fn parse(text: &str) -> Persisted {
     let mut p = Persisted::default();
     for line in text.lines() {
-        let Some((k, v)) = line.split_once('=') else { continue };
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
         match k {
             "recent" => p.recent.push(PathBuf::from(v)),
             "active" => p.active = v.parse().unwrap_or(0),
@@ -325,8 +406,19 @@ pub(super) fn parse(text: &str) -> Persisted {
             "show_ws" => p.show_ws = Some(v == "1"),
             "show_ws_code" => p.show_ws_code = Some(v == "1"),
             "code_theme" => p.code_theme = super::theme::CodeTheme::from_id(v),
-            "id_keys" => p.id_keys = Some(v.split(',').filter(|k| !k.is_empty()).map(String::from).collect()),
-            "filter_ctx" => p.filter_ctx = v.split_once('|').and_then(|(n, e)| Some((n.parse().ok()?, e == "1"))),
+            "id_keys" => {
+                p.id_keys = Some(
+                    v.split(',')
+                        .filter(|k| !k.is_empty())
+                        .map(String::from)
+                        .collect(),
+                )
+            }
+            "filter_ctx" => {
+                p.filter_ctx = v
+                    .split_once('|')
+                    .and_then(|(n, e)| Some((n.parse().ok()?, e == "1")))
+            }
             "update_check" => p.update_check = Some(v == "1"),
             "update_asked" => p.update_asked = Some(v == "1"),
             "skip_version" => p.skip_version = Some(v.to_string()),
@@ -341,19 +433,34 @@ pub(super) fn parse(text: &str) -> Persisted {
             "unpack_dir" => p.unpack_dir = Some(PathBuf::from(v)),
             "recovery" => p.recovery = Some(v == "1"),
             "clip" => p.clips.push(super::clipboard::unescape(v)),
-            "key" => p.keys.extend(v.split_once('=').map(|(a, b)| (a.to_string(), b.to_string()))),
+            "key" => p.keys.extend(
+                v.split_once('=')
+                    .map(|(a, b)| (a.to_string(), b.to_string())),
+            ),
             "tab" => p.tabs.extend(parse_tab(v)),
             "fileopt" => p.file_opts.extend(parse_file_opts(v)),
             "status" => p.status = Some(super::status_bar::StatusFields::from_line(v)),
             "gutter" => p.gutter = Some(v == "1"),
             // 0: the window's width, or no ruler.
-            "wrap_column" => p.wrap_column = v.parse::<u16>().ok().map(|c| (c > 0).then_some(c.max(super::WRAP_MIN))),
+            "wrap_column" => {
+                p.wrap_column = v
+                    .parse::<u16>()
+                    .ok()
+                    .map(|c| (c > 0).then_some(c.max(super::WRAP_MIN)))
+            }
             "ruler" => p.ruler = v.parse::<u16>().ok().map(|c| (c > 0).then_some(c)),
             "json_crumb" => p.json_crumb = Some(v == "1"),
             "log_sources" => p.log_sources = Some(v.to_string()),
             "alert_options" => p.alert_options = Some(v.to_string()),
             "alert" => p.alert_recent.push(v.to_string()),
-            "tool" => p.tools.extend(v.split_once('|').filter(|(n, c)| !n.is_empty() && !c.is_empty()).map(|(n, c)| super::run_command::Tool { name: n.to_string(), command: c.to_string() })),
+            "tool" => p.tools.extend(
+                v.split_once('|')
+                    .filter(|(n, c)| !n.is_empty() && !c.is_empty())
+                    .map(|(n, c)| super::run_command::Tool {
+                        name: n.to_string(),
+                        command: c.to_string(),
+                    }),
+            ),
             "cmd" => p.commands.push(v.to_string()),
             "shell" => p.shell = Some(v.to_string()),
             "folder" => p.folder = Some(PathBuf::from(v)).filter(|f| !f.as_os_str().is_empty()),
@@ -434,7 +541,11 @@ pub(super) fn serialize(p: &Persisted) -> String {
         s.push_str(&format!("alert={a}\n"));
     }
     for t in p.tools.iter().filter(|t| !t.command.contains(['\n', '\r'])) {
-        s.push_str(&format!("tool={}|{}\n", t.name.replace('|', "/"), t.command));
+        s.push_str(&format!(
+            "tool={}|{}\n",
+            t.name.replace('|', "/"),
+            t.command
+        ));
     }
     for c in p.commands.iter().filter(|c| !c.contains(['\n', '\r'])) {
         s.push_str(&format!("cmd={c}\n"));
@@ -444,7 +555,10 @@ pub(super) fn serialize(p: &Persisted) -> String {
     }
     if let Some(f) = &p.folder {
         s.push_str(&format!("folder={}\n", f.display()));
-        s.push_str(&format!("folder_open={}\n", b(p.folder_open.unwrap_or(true))));
+        s.push_str(&format!(
+            "folder_open={}\n",
+            b(p.folder_open.unwrap_or(true))
+        ));
         for x in &p.folder_expanded {
             s.push_str(&format!("folder_expand={}\n", x.display()));
         }
@@ -485,9 +599,19 @@ pub(super) fn serialize(p: &Persisted) -> String {
     for m in &p.marks {
         s.push_str(&format!("mark={}\n", mark_line(m)));
     }
-    for x in p.saved.iter().filter(|x| !x.query.pattern.contains(['\n', '\r'])) {
+    for x in p
+        .saved
+        .iter()
+        .filter(|x| !x.query.pattern.contains(['\n', '\r']))
+    {
         let col = x.column.map(|c| c.to_string()).unwrap_or_default();
-        s.push_str(&format!("saved={}|{}|{}|{col}|{}\n", x.name.replace('|', "/"), query_flags(&x.query), b(x.invert), x.query.pattern));
+        s.push_str(&format!(
+            "saved={}|{}|{}|{col}|{}\n",
+            x.name.replace('|', "/"),
+            query_flags(&x.query),
+            b(x.invert),
+            x.query.pattern
+        ));
     }
     for x in &p.pinned {
         s.push_str(&format!("pinned={}\n", x.display()));
@@ -562,20 +686,32 @@ impl DiffSwitches {
     pub fn options(&self) -> Result<diff::DiffOptions, String> {
         let mask = match self.mask.trim() {
             "" => None,
-            m => Some(regex_automata::meta::Regex::new(m).map_err(|e| trf("Mask: {error}", &[("error", &e.to_string())]))?),
+            m => Some(
+                regex_automata::meta::Regex::new(m)
+                    .map_err(|e| trf("Mask: {error}", &[("error", &e.to_string())]))?,
+            ),
         };
-        Ok(diff::DiffOptions { whitespace: self.whitespace, case: self.case, timestamps: self.timestamps, mask })
+        Ok(diff::DiffOptions {
+            whitespace: self.whitespace,
+            case: self.case,
+            timestamps: self.timestamps,
+            mask,
+        })
     }
 
     /// The switches that are on, "white space, case", or `None`.
     pub fn summary(&self) -> Option<String> {
         let mask = self.mask.trim();
-        let parts: Vec<String> = [(self.whitespace, tr("white space")), (self.case, tr("case")), (self.timestamps, tr("timestamps"))]
-            .into_iter()
-            .filter(|(on, _)| *on)
-            .map(|(_, s)| s.to_string())
-            .chain((!mask.is_empty()).then(|| format!("{} {mask}", tr("mask"))))
-            .collect();
+        let parts: Vec<String> = [
+            (self.whitespace, tr("white space")),
+            (self.case, tr("case")),
+            (self.timestamps, tr("timestamps")),
+        ]
+        .into_iter()
+        .filter(|(on, _)| *on)
+        .map(|(_, s)| s.to_string())
+        .chain((!mask.is_empty()).then(|| format!("{} {mask}", tr("mask"))))
+        .collect();
         (!parts.is_empty()).then(|| parts.join(", "))
     }
 }
@@ -620,10 +756,24 @@ impl Drop for SideBySide {
 
 /// The ranges of `hunks`' lines on one side (`a`: A) that meet `range`; a hunk without lines on
 /// that side gives an empty range where the other side's lines go.
-pub fn diff_spans(hunks: &[Hunk], range: std::ops::Range<u64>, a: bool) -> Vec<std::ops::Range<u64>> {
-    let span = |h: &Hunk| if a { h.a_off..h.a_end } else { h.b_off..h.b_end };
+pub fn diff_spans(
+    hunks: &[Hunk],
+    range: std::ops::Range<u64>,
+    a: bool,
+) -> Vec<std::ops::Range<u64>> {
+    let span = |h: &Hunk| {
+        if a {
+            h.a_off..h.a_end
+        } else {
+            h.b_off..h.b_end
+        }
+    };
     let k = hunks.partition_point(|h| span(h).end < range.start);
-    hunks[k..].iter().map(span).take_while(|s| s.start <= range.end).collect()
+    hunks[k..]
+        .iter()
+        .map(span)
+        .take_while(|s| s.start <= range.end)
+        .collect()
 }
 
 /// The lengths of the common start and end of two lines, on character boundaries.
@@ -633,7 +783,13 @@ fn prefix_suffix(a: &[u8], b: &[u8]) -> (usize, usize) {
         p -= 1;
     }
     let room = a.len().min(b.len()) - p;
-    let mut s = a.iter().rev().zip(b.iter().rev()).take(room).take_while(|(x, y)| x == y).count();
+    let mut s = a
+        .iter()
+        .rev()
+        .zip(b.iter().rev())
+        .take(room)
+        .take_while(|(x, y)| x == y)
+        .count();
     while s > 0 && a[a.len() - s] & 0xC0 == 0x80 {
         s -= 1;
     }
@@ -642,7 +798,14 @@ fn prefix_suffix(a: &[u8], b: &[u8]) -> (usize, usize) {
 
 /// The changed middle of each line of the hunks that replace as many lines as they remove (and
 /// are not long), on one side, within `range`.
-fn changed_parts(hunks: &[Hunk], own: &bigtext::text::TextBuf, other: &bigtext::text::TextBuf, range: std::ops::Range<u64>, a: bool, color: egui::Color32) -> Vec<(u64, u64, egui::Color32)> {
+fn changed_parts(
+    hunks: &[Hunk],
+    own: &bigtext::text::TextBuf,
+    other: &bigtext::text::TextBuf,
+    range: std::ops::Range<u64>,
+    a: bool,
+    color: egui::Color32,
+) -> Vec<(u64, u64, egui::Color32)> {
     const MAX_HUNK: u64 = 256 << 10;
     const MAX_LINE: usize = 16 << 10;
     let trim = |l: &[u8]| -> usize {
@@ -652,16 +815,29 @@ fn changed_parts(hunks: &[Hunk], own: &bigtext::text::TextBuf, other: &bigtext::
     let mut out = Vec::new();
     let k = hunks.partition_point(|h| (if a { h.a_end } else { h.b_end }) <= range.start);
     for h in &hunks[k..] {
-        let (mine, theirs) = if a { (h.a_off..h.a_end, h.b_off..h.b_end) } else { (h.b_off..h.b_end, h.a_off..h.a_end) };
+        let (mine, theirs) = if a {
+            (h.a_off..h.a_end, h.b_off..h.b_end)
+        } else {
+            (h.b_off..h.b_end, h.a_off..h.a_end)
+        };
         if mine.start >= range.end {
             break;
         }
-        if h.a_count != h.b_count || h.a_count > 200 || mine.end - mine.start > MAX_HUNK || theirs.end - theirs.start > MAX_HUNK {
+        if h.a_count != h.b_count
+            || h.a_count > 200
+            || mine.end - mine.start > MAX_HUNK
+            || theirs.end - theirs.start > MAX_HUNK
+        {
             continue;
         }
-        let (Some(x), Some(y)) = (own.read(mine.clone()), other.read(theirs)) else { continue };
+        let (Some(x), Some(y)) = (own.read(mine.clone()), other.read(theirs)) else {
+            continue;
+        };
         let mut at = mine.start;
-        for (lx, ly) in x.split_inclusive(|&c| c == b'\n').zip(y.split_inclusive(|&c| c == b'\n')) {
+        for (lx, ly) in x
+            .split_inclusive(|&c| c == b'\n')
+            .zip(y.split_inclusive(|&c| c == b'\n'))
+        {
             let (nx, ny) = (trim(lx), trim(ly));
             if nx <= MAX_LINE && ny <= MAX_LINE && lx[..nx] != ly[..ny] {
                 let (p, s) = prefix_suffix(&lx[..nx], &ly[..ny]);
@@ -681,7 +857,12 @@ fn line_top(buf: &bigtext::text::TextBuf, line: u64) -> (u64, bool) {
         Some((o, false)) => (bigtext::text::rows::seg_start(buf, o).unwrap_or(o), false),
         None => {
             let (n, exact) = buf.line_count();
-            (buf.line_start(n.saturating_sub(1)).map(|(o, _)| o).unwrap_or(0), exact)
+            (
+                buf.line_start(n.saturating_sub(1))
+                    .map(|(o, _)| o)
+                    .unwrap_or(0),
+                exact,
+            )
         }
     }
 }
@@ -693,7 +874,10 @@ fn sync_tops(a: &mut Document, side: &mut SideBySide, hunks: &[Hunk], lead_b: bo
     let first = side.synced.0 == u64::MAX;
     // Which pane follows (true: A) and the line it should show.
     let target = if lead_b && !first && bt != side.synced.1 {
-        Some((true, diff::map_line(hunks, side.doc.buf.line_of(bt).0, false)))
+        Some((
+            true,
+            diff::map_line(hunks, side.doc.buf.line_of(bt).0, false),
+        ))
     } else if at != side.synced.0 {
         Some((false, diff::map_line(hunks, a.buf.line_of(at).0, true)))
     } else {
@@ -716,7 +900,12 @@ fn sync_tops(a: &mut Document, side: &mut SideBySide, hunks: &[Hunk], lead_b: bo
 
 /// Draws the document (A, left) and the file it is compared with (B, right), their differing
 /// lines tinted, scrolling together.
-pub(super) fn show_side_by_side(ui: &mut egui::Ui, a: &mut Document, r: &mut DiffResults, env: &mut ViewEnv) {
+pub(super) fn show_side_by_side(
+    ui: &mut egui::Ui,
+    a: &mut Document,
+    r: &mut DiffResults,
+    env: &mut ViewEnv,
+) {
     let Some(side) = r.side.as_mut() else { return };
     let g = r.data.lock().unwrap();
     let hunks: &[Hunk] = &g.hunks;
@@ -727,13 +916,37 @@ pub(super) fn show_side_by_side(ui: &mut egui::Ui, a: &mut Document, r: &mut Dif
     let mid = full.center().x.round();
     let left = egui::Rect::from_min_max(full.min, egui::pos2(mid - 2.0, full.bottom()));
     let right = egui::Rect::from_min_max(egui::pos2(mid + 2.0, full.top()), full.max);
-    ui.painter().vline(mid, full.y_range(), ui.visuals().widgets.noninteractive.bg_stroke);
-    let lead_b = ui.ctx().pointer_hover_pos().is_some_and(|p| right.contains(p));
+    ui.painter().vline(
+        mid,
+        full.y_range(),
+        ui.visuals().widgets.noninteractive.bg_stroke,
+    );
+    let lead_b = ui
+        .ctx()
+        .pointer_hover_pos()
+        .is_some_and(|p| right.contains(p));
     let alpha = if dark { 90 } else { 110 };
-    let (red, green) = (super::theme::role(egui::Color32::from_rgba_unmultiplied(230, 70, 70, alpha), super::theme::Tone::Bad, dark), super::theme::role(egui::Color32::from_rgba_unmultiplied(70, 190, 90, alpha), super::theme::Tone::Ok, dark));
+    let (red, green) = (
+        super::theme::role(
+            egui::Color32::from_rgba_unmultiplied(230, 70, 70, alpha),
+            super::theme::Tone::Bad,
+            dark,
+        ),
+        super::theme::role(
+            egui::Color32::from_rgba_unmultiplied(70, 190, 90, alpha),
+            super::theme::Tone::Ok,
+            dark,
+        ),
+    );
     {
         let b_buf = &side.doc.buf;
-        let spans = |range: std::ops::Range<u64>| if outdated { Vec::new() } else { diff_spans(hunks, range, true) };
+        let spans = |range: std::ops::Range<u64>| {
+            if outdated {
+                Vec::new()
+            } else {
+                diff_spans(hunks, range, true)
+            }
+        };
         let hl = |buf: &bigtext::text::TextBuf, range: std::ops::Range<u64>| {
             let mut v = (env.highlight)(buf, range.clone());
             if !outdated {
@@ -741,17 +954,61 @@ pub(super) fn show_side_by_side(ui: &mut egui::Ui, a: &mut Document, r: &mut Dif
             }
             v
         };
-        let mut e = ViewEnv { font_size: &mut *env.font_size, highlight: &hl, actions: &mut *env.actions, focus: env.focus, lang: env.lang, pane: 0, show_ws: env.show_ws, show_gutter: env.show_gutter, wrap_column: env.wrap_column, ruler: env.ruler, diff: Some(DiffOverlay { spans: &spans, added: false }) };
-        ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| text_view::show(ui, a, &mut e));
+        let mut e = ViewEnv {
+            font_size: &mut *env.font_size,
+            highlight: &hl,
+            actions: &mut *env.actions,
+            focus: env.focus,
+            lang: env.lang,
+            pane: 0,
+            show_ws: env.show_ws,
+            show_gutter: env.show_gutter,
+            wrap_column: env.wrap_column,
+            ruler: env.ruler,
+            diff: Some(DiffOverlay {
+                spans: &spans,
+                added: false,
+            }),
+        };
+        ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {
+            text_view::show(ui, a, &mut e)
+        });
     }
     {
         let a_buf = &a.buf;
         let spans = |range: std::ops::Range<u64>| diff_spans(hunks, range, false);
-        let hl = |buf: &bigtext::text::TextBuf, range: std::ops::Range<u64>| if outdated { Vec::new() } else { changed_parts(hunks, buf, a_buf, range, false, green) };
-        let lang = if env.lang == crate::view::highlight::Lang::Plain { env.lang } else { side.doc.effective_lang() };
+        let hl = |buf: &bigtext::text::TextBuf, range: std::ops::Range<u64>| {
+            if outdated {
+                Vec::new()
+            } else {
+                changed_parts(hunks, buf, a_buf, range, false, green)
+            }
+        };
+        let lang = if env.lang == crate::view::highlight::Lang::Plain {
+            env.lang
+        } else {
+            side.doc.effective_lang()
+        };
         let mut actions = Vec::new();
-        let mut e = ViewEnv { font_size: &mut *env.font_size, highlight: &hl, actions: &mut actions, focus: env.focus, lang, pane: 1, show_ws: env.show_ws, show_gutter: env.show_gutter, wrap_column: env.wrap_column, ruler: env.ruler, diff: Some(DiffOverlay { spans: &spans, added: true }) };
-        ui.scope_builder(egui::UiBuilder::new().max_rect(right), |ui| text_view::show(ui, &mut side.doc, &mut e));
+        let mut e = ViewEnv {
+            font_size: &mut *env.font_size,
+            highlight: &hl,
+            actions: &mut actions,
+            focus: env.focus,
+            lang,
+            pane: 1,
+            show_ws: env.show_ws,
+            show_gutter: env.show_gutter,
+            wrap_column: env.wrap_column,
+            ruler: env.ruler,
+            diff: Some(DiffOverlay {
+                spans: &spans,
+                added: true,
+            }),
+        };
+        ui.scope_builder(egui::UiBuilder::new().max_rect(right), |ui| {
+            text_view::show(ui, &mut side.doc, &mut e)
+        });
     }
     if !outdated && a.is_ready() && side.doc.is_ready() {
         sync_tops(a, side, hunks, lead_b);
@@ -801,7 +1058,9 @@ impl BigTextApp {
                 .filter(|d| !d.temporary || d.unpacked_from.is_some())
                 .filter_map(|d| {
                     Some(TabState {
-                        path: PathBuf::from(file::display_path(d.unpacked_from.as_deref().or(d.path.as_deref())?)),
+                        path: PathBuf::from(file::display_path(
+                            d.unpacked_from.as_deref().or(d.path.as_deref())?,
+                        )),
                         member: d.member.clone(),
                         caret: d.view.caret,
                         top: d.view.top,
@@ -831,7 +1090,11 @@ impl BigTextApp {
             font: self.settings.font_path.clone(),
             unpack_dir: self.settings.unpack_dir.clone(),
             recovery: Some(self.recovery.enabled),
-            clips: if self.clips.keep { self.clips.items.iter().cloned().collect() } else { Vec::new() },
+            clips: if self.clips.keep {
+                self.clips.items.iter().cloned().collect()
+            } else {
+                Vec::new()
+            },
             level_bar: Some(self.settings.level_bar),
             status: Some(self.settings.status),
             gutter: Some(self.settings.show_gutter),
@@ -840,21 +1103,49 @@ impl BigTextApp {
             json_crumb: Some(self.settings.json_crumb),
             log_sources: Some(self.log_sources.to_line()),
             alert_options: Some(self.alerts.options_line()),
-            alert_recent: self.alerts.recent.iter().map(super::alerts::query_line).collect(),
+            alert_recent: self
+                .alerts
+                .recent
+                .iter()
+                .map(super::alerts::query_line)
+                .collect(),
             tools: self.settings.tools.clone(),
             commands: self.run_cmd.history.clone(),
             shell: Some(self.run_cmd.shell.id().to_string()),
-            folder: self.folder.root.as_deref().map(|r| PathBuf::from(file::display_path(r))),
+            folder: self
+                .folder
+                .root
+                .as_deref()
+                .map(|r| PathBuf::from(file::display_path(r))),
             folder_open: Some(self.folder.visible),
-            folder_expanded: self.folder.expanded_to_keep().iter().map(|p| PathBuf::from(file::display_path(p))).collect(),
+            folder_expanded: self
+                .folder
+                .expanded_to_keep()
+                .iter()
+                .map(|p| PathBuf::from(file::display_path(p)))
+                .collect(),
             saved: self.settings.saved.clone(),
             show_ws: Some(self.settings.show_ws),
             show_ws_code: Some(self.settings.show_ws_code),
             code_theme: Some(self.settings.code_theme),
             filter_ctx: Some((self.settings.filter_context, self.settings.filter_entries)),
             id_keys: self.settings.id_keys.clone(),
-            pinned: self.docs.iter().filter(|d| d.pinned).filter_map(|d| Some(PathBuf::from(file::display_path(d.unpacked_from.as_deref().or(d.path.as_deref())?)))).collect(),
-            keys: self.keymap.changed.iter().map(|(c, k)| (c.id(), super::commands::key_to_string(*k))).collect(),
+            pinned: self
+                .docs
+                .iter()
+                .filter(|d| d.pinned)
+                .filter_map(|d| {
+                    Some(PathBuf::from(file::display_path(
+                        d.unpacked_from.as_deref().or(d.path.as_deref())?,
+                    )))
+                })
+                .collect(),
+            keys: self
+                .keymap
+                .changed
+                .iter()
+                .map(|(c, k)| (c.id(), super::commands::key_to_string(*k)))
+                .collect(),
             file_opts: {
                 let mut list = self.file_opts.clone();
                 for d in self.docs.iter().rev() {
@@ -867,14 +1158,23 @@ impl BigTextApp {
 
     /// What was remembered for the file at `path`.
     pub(super) fn opts_for(&self, path: &Path) -> Option<FileOpts> {
-        self.file_opts.iter().find(|o| super::same_path(&o.path, path)).cloned()
+        self.file_opts
+            .iter()
+            .find(|o| super::same_path(&o.path, path))
+            .cloned()
     }
 
     /// Takes the theme, colours and scale of saved settings (without showing them yet).
     pub(super) fn restore_look(&mut self, p: &Persisted) {
         if p.theme_system == Some(true) {
             self.settings.theme_system = true;
-        } else if let Some(t) = p.theme.or(p.dark.map(|d| if d { super::theme::Theme::Dark } else { super::theme::Theme::Light })) {
+        } else if let Some(t) = p.theme.or(p.dark.map(|d| {
+            if d {
+                super::theme::Theme::Dark
+            } else {
+                super::theme::Theme::Light
+            }
+        })) {
             self.settings.theme = t;
             self.settings.theme_system = false;
         }
@@ -904,7 +1204,12 @@ impl BigTextApp {
 
     /// Shows the theme, colours and interface scale.
     pub(crate) fn apply_look(&self, ctx: &egui::Context) {
-        super::theme::apply(ctx, self.settings.theme, self.settings.theme_system, self.settings.cvd);
+        super::theme::apply(
+            ctx,
+            self.settings.theme,
+            self.settings.theme_system,
+            self.settings.cvd,
+        );
         super::theme::set_code_theme(self.settings.code_theme);
         ctx.set_zoom_factor(self.settings.scale as f32 / 100.0);
     }
@@ -938,7 +1243,13 @@ impl BigTextApp {
             self.open_path_member(t.path.clone(), t.member.clone());
             if let Some(d) = self.docs.last_mut() {
                 d.pinned = pinned;
-                d.restore = Some(Restore { caret: t.caret, top: t.top, wrap: t.wrap, bookmarks: t.bookmarks, ..Default::default() });
+                d.restore = Some(Restore {
+                    caret: t.caret,
+                    top: t.top,
+                    wrap: t.wrap,
+                    bookmarks: t.bookmarks,
+                    ..Default::default()
+                });
             }
         }
         if !self.docs.is_empty() {
@@ -950,7 +1261,10 @@ impl BigTextApp {
         if !self.docs.get(self.active).is_some_and(|d| d.is_ready()) {
             return;
         }
-        if let Some(other) = rfd::FileDialog::new().set_title(tr("Compare with…")).pick_file() {
+        if let Some(other) = rfd::FileDialog::new()
+            .set_title(tr("Compare with…"))
+            .pick_file()
+        {
             self.start_diff(other);
         }
     }
@@ -958,15 +1272,23 @@ impl BigTextApp {
     /// Next (or previous) difference of the comparison of the active document (F7, Shift+F7).
     pub(crate) fn step_diff(&mut self, forward: bool) {
         let Some(r) = &self.diff else {
-            self.notify(tr("Compare the file with another first (File → Compare with…).").into(), None);
+            self.notify(
+                tr("Compare the file with another first (File → Compare with…).").into(),
+                None,
+            );
             return;
         };
         let capped = r.data.lock().unwrap().capped;
         let doc = r.doc;
-        let Some(i) = self.docs.iter().position(|d| d.id == doc) else { return };
+        let Some(i) = self.docs.iter().position(|d| d.id == doc) else {
+            return;
+        };
         self.active = i;
         if let Some((k, n)) = self.docs[i].goto_diff(forward) {
-            let mut msg = trf("Difference {i} of {n}", &[("i", &k.to_string()), ("n", &n.to_string())]);
+            let mut msg = trf(
+                "Difference {i} of {n}",
+                &[("i", &k.to_string()), ("n", &n.to_string())],
+            );
             if capped {
                 msg.push_str(tr(" (capped, more exist)"));
             }
@@ -977,9 +1299,23 @@ impl BigTextApp {
     /// Compares the other way round: the other file becomes the document, this one the file
     /// compared with.
     pub(crate) fn swap_diff(&mut self) {
-        let Some(DiffResults { other: DiffOther::File(other), doc, .. }) = &self.diff else { return };
+        let Some(DiffResults {
+            other: DiffOther::File(other),
+            doc,
+            ..
+        }) = &self.diff
+        else {
+            return;
+        };
         let other = other.clone();
-        let Some(a) = self.docs.iter().find(|d| d.id == *doc).and_then(|d| d.path.clone()) else { return };
+        let Some(a) = self
+            .docs
+            .iter()
+            .find(|d| d.id == *doc)
+            .and_then(|d| d.path.clone())
+        else {
+            return;
+        };
         self.open_path(other);
         if let Some(d) = self.docs.get(self.active) {
             self.diff_pending = Some((d.id, a));
@@ -988,7 +1324,9 @@ impl BigTextApp {
 
     /// Starts a comparison waiting for its document to be ready.
     pub(super) fn run_pending_diff(&mut self) {
-        let Some((id, other)) = self.diff_pending.clone() else { return };
+        let Some((id, other)) = self.diff_pending.clone() else {
+            return;
+        };
         let Some(i) = self.docs.iter().position(|d| d.id == id) else {
             self.diff_pending = None;
             return;
@@ -1006,7 +1344,9 @@ impl BigTextApp {
 
     /// Compares the active document, unsaved edits included, with `other`.
     pub(crate) fn start_diff_with(&mut self, other: DiffOther) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let old_side = match self.diff.take() {
             Some(mut r) => {
                 r.cancel.cancel();
@@ -1015,12 +1355,17 @@ impl BigTextApp {
             None => None,
         };
         // Comparing again with the same file keeps it open beside.
-        let b_path = other.path().map(Path::to_path_buf).or_else(|| d.path.clone());
-        let side = old_side.filter(|s| Some(&s.path) == b_path.as_ref() && s.doc.banner.is_none()).map(|mut s| {
-            s.synced = (u64::MAX, u64::MAX);
-            s.pending = None;
-            s
-        });
+        let b_path = other
+            .path()
+            .map(Path::to_path_buf)
+            .or_else(|| d.path.clone());
+        let side = old_side
+            .filter(|s| Some(&s.path) == b_path.as_ref() && s.doc.banner.is_none())
+            .map(|mut s| {
+                s.synced = (u64::MAX, u64::MAX);
+                s.pending = None;
+                s
+            });
         let switches = self.diff_switches.clone();
         let opts = match switches.options() {
             Ok(o) => o,
@@ -1034,7 +1379,16 @@ impl BigTextApp {
         let data = Arc::new(Mutex::new(DiffData::default()));
         let cancel = CancelToken::new();
         let progress = Progress::default();
-        self.diff = Some(DiffResults { doc: d.id, other: other.clone(), version: d.version, switches, side, data: data.clone(), cancel: cancel.clone(), progress: progress.clone() });
+        self.diff = Some(DiffResults {
+            doc: d.id,
+            other: other.clone(),
+            version: d.version,
+            switches,
+            side,
+            data: data.clone(),
+            cancel: cancel.clone(),
+            progress: progress.clone(),
+        });
         let waker = self.waker.clone();
         jobs::spawn("diff", move || {
             let t = Instant::now();
@@ -1087,13 +1441,29 @@ impl BigTextApp {
 
     pub(super) fn save_diff_dialog(&mut self) {
         let Some(r) = &self.diff else { return };
-        let stem = |p: &Path| p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        let a = self.docs.iter().find(|d| d.id == r.doc).and_then(|d| d.path.as_deref().map(stem)).unwrap_or_else(|| "a".into());
+        let stem = |p: &Path| {
+            p.file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        };
+        let a = self
+            .docs
+            .iter()
+            .find(|d| d.id == r.doc)
+            .and_then(|d| d.path.as_deref().map(stem))
+            .unwrap_or_else(|| "a".into());
         let name = match r.other.path() {
-            Some(p) if !matches!(r.other, DiffOther::Backup(_)) => format!("{a}-vs-{}.diff", stem(p)),
+            Some(p) if !matches!(r.other, DiffOther::Backup(_)) => {
+                format!("{a}-vs-{}.diff", stem(p))
+            }
             _ => format!("{a}.diff"),
         };
-        if let Some(target) = rfd::FileDialog::new().set_title(tr("Save as .diff…")).set_file_name(name).add_filter("diff", &["diff", "patch"]).save_file() {
+        if let Some(target) = rfd::FileDialog::new()
+            .set_title(tr("Save as .diff…"))
+            .set_file_name(name)
+            .add_filter("diff", &["diff", "patch"])
+            .save_file()
+        {
             self.export_diff(target);
         }
     }
@@ -1103,7 +1473,9 @@ impl BigTextApp {
     /// changed).
     pub(crate) fn export_diff(&mut self, target: PathBuf) {
         let Some(r) = &self.diff else { return };
-        let Some(d) = self.docs.iter().find(|d| d.id == r.doc) else { return };
+        let Some(d) = self.docs.iter().find(|d| d.id == r.doc) else {
+            return;
+        };
         let opts = match r.switches.options() {
             Ok(o) => o,
             Err(e) => {
@@ -1112,7 +1484,11 @@ impl BigTextApp {
             }
         };
         let doc = d.buf.snapshot();
-        let doc_name = d.path.as_deref().map(file::display_path).unwrap_or_else(|| d.title.clone());
+        let doc_name = d
+            .path
+            .as_deref()
+            .map(file::display_path)
+            .unwrap_or_else(|| d.title.clone());
         let (other, doc_first) = match &r.other {
             DiffOther::File(p) => (p.clone(), true),
             DiffOther::Backup(p) => (p.clone(), false),
@@ -1132,12 +1508,32 @@ impl BigTextApp {
             };
             let other_name = file::display_path(&other);
             let (a, b, a_name, b_name): (&dyn diff::LineSource, &dyn diff::LineSource, &str, &str) =
-                if doc_first { (&doc, &*src, &doc_name, &other_name) } else { (&*src, &doc, &other_name, &doc_name) };
-            let u = bigtext::unified::Unified { a, b, a_name, b_name, opts: &opts, context: 3 };
-            let file_name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                if doc_first {
+                    (&doc, &*src, &doc_name, &other_name)
+                } else {
+                    (&*src, &doc, &other_name, &doc_name)
+                };
+            let u = bigtext::unified::Unified {
+                a,
+                b,
+                a_name,
+                b_name,
+                opts: &opts,
+                context: 3,
+            };
+            let file_name = target
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
             super::tasks::write_via_temp(&target, |w| {
                 let differ = bigtext::unified::write_unified(&u, w, cancel, Some(progress))?;
-                Ok(differ.map(|d| if d { trf("Saved the differences as {file}.", &[("file", &file_name)]) } else { tr("The files are the same; the diff is empty.").into() }))
+                Ok(differ.map(|d| {
+                    if d {
+                        trf("Saved the differences as {file}.", &[("file", &file_name)])
+                    } else {
+                        tr("The files are the same; the diff is empty.").into()
+                    }
+                }))
             })
         });
     }
@@ -1146,7 +1542,12 @@ impl BigTextApp {
         if !self.docs.get(self.active).is_some_and(|d| d.is_ready()) {
             return;
         }
-        if let Some(p) = rfd::FileDialog::new().set_title(tr("Apply patch…")).add_filter("diff, patch", &["diff", "patch"]).add_filter("*", &["*"]).pick_file() {
+        if let Some(p) = rfd::FileDialog::new()
+            .set_title(tr("Apply patch…"))
+            .add_filter("diff, patch", &["diff", "patch"])
+            .add_filter("*", &["*"])
+            .pick_file()
+        {
             self.apply_patch_file(p);
         }
     }
@@ -1154,15 +1555,23 @@ impl BigTextApp {
     /// Applies the unified diff in `patch` to the active document as one undo step: each hunk
     /// where it says or, found in one place only, a few lines away.
     pub(crate) fn apply_patch_file(&mut self, patch: PathBuf) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         if !d.editable() {
             self.notify(tr("The document is read-only").into(), None);
             return;
         }
-        let pname = patch.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let pname = patch
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let text = match std::fs::metadata(&patch) {
             Ok(m) if m.len() > 512 << 20 => {
-                self.error = Some(trf("{file} is too large for a patch ({size}).", &[("file", &pname), ("size", &jobs::human_bytes(m.len()))]));
+                self.error = Some(trf(
+                    "{file} is too large for a patch ({size}).",
+                    &[("file", &pname), ("size", &jobs::human_bytes(m.len()))],
+                ));
                 return;
             }
             _ => match std::fs::read(&patch) {
@@ -1176,15 +1585,34 @@ impl BigTextApp {
         let mut files = match bigtext::patch::parse(&text) {
             Ok(f) => f,
             Err(e) => {
-                self.error = Some(trf("{file} is not a patch: {error}", &[("file", &pname), ("error", &e)]));
+                self.error = Some(trf(
+                    "{file} is not a patch: {error}",
+                    &[("file", &pname), ("error", &e)],
+                ));
                 return;
             }
         };
         // The file named like the document, or the only one.
-        let name = d.path.as_deref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| d.title.clone());
+        let name = d
+            .path
+            .as_deref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| d.title.clone());
         let named = |n: &str| n.replace('\\', "/").rsplit('/').next() == Some(name.as_str());
-        let Some(i) = files.iter().position(|f| named(&f.new_name) || named(&f.old_name)).or((files.len() == 1).then_some(0)) else {
-            self.error = Some(trf("{file} changes {n} files, none of them named {name}.", &[("file", &pname), ("n", &files.len().to_string()), ("name", &name)]));
+        let Some(i) = files
+            .iter()
+            .position(|f| named(&f.new_name) || named(&f.old_name))
+            .or((files.len() == 1).then_some(0))
+        else {
+            self.error = Some(trf(
+                "{file} changes {n} files, none of them named {name}.",
+                &[
+                    ("file", &pname),
+                    ("n", &files.len().to_string()),
+                    ("name", &name),
+                ],
+            ));
             return;
         };
         let hunks = files.swap_remove(i).hunks;
@@ -1196,17 +1624,37 @@ impl BigTextApp {
         let eol = eol.to_vec();
         let snap = d.buf.snapshot();
         let (doc, version, total) = (d.id, d.version, hunks.len());
-        self.spawn_task(trf("Applying {file}", &[("file", &pname)]), move |progress, cancel| match bigtext::patch::plan(&snap, &hunks, &eol, cancel, Some(progress)) {
-            Some(planned) => TaskOutcome::Patch(Box::new(PatchDone { doc, version, name: pname, total, planned })),
-            None if cancel.is_cancelled() => TaskOutcome::Cancelled,
-            None => TaskOutcome::Failed(tr("Reading the document failed.").into()),
-        });
+        self.spawn_task(
+            trf("Applying {file}", &[("file", &pname)]),
+            move |progress, cancel| match bigtext::patch::plan(
+                &snap,
+                &hunks,
+                &eol,
+                cancel,
+                Some(progress),
+            ) {
+                Some(planned) => TaskOutcome::Patch(Box::new(PatchDone {
+                    doc,
+                    version,
+                    name: pname,
+                    total,
+                    planned,
+                })),
+                None if cancel.is_cancelled() => TaskOutcome::Cancelled,
+                None => TaskOutcome::Failed(tr("Reading the document failed.").into()),
+            },
+        );
     }
 
     pub(super) fn on_patch_done(&mut self, p: PatchDone) {
-        let Some(d) = self.docs.iter_mut().find(|d| d.id == p.doc) else { return };
+        let Some(d) = self.docs.iter_mut().find(|d| d.id == p.doc) else {
+            return;
+        };
         if d.version != p.version {
-            self.error = Some(tr("The document changed while the patch was being placed; nothing was changed.").into());
+            self.error = Some(
+                tr("The document changed while the patch was being placed; nothing was changed.")
+                    .into(),
+            );
             return;
         }
         let planned = p.planned;
@@ -1218,10 +1666,20 @@ impl BigTextApp {
             d.set_caret(first.min(d.buf.len()), false);
             d.view.center();
         }
-        let mut msg = trf("Applied {n} of {total} hunks from {file} (undo with Ctrl+Z).", &[("n", &planned.applied.to_string()), ("total", &p.total.to_string()), ("file", &p.name)]);
+        let mut msg = trf(
+            "Applied {n} of {total} hunks from {file} (undo with Ctrl+Z).",
+            &[
+                ("n", &planned.applied.to_string()),
+                ("total", &p.total.to_string()),
+                ("file", &p.name),
+            ],
+        );
         if planned.moved > 0 {
             msg.push(' ');
-            msg.push_str(&trf("{n} were found a few lines away.", &[("n", &planned.moved.to_string())]));
+            msg.push_str(&trf(
+                "{n} were found a few lines away.",
+                &[("n", &planned.moved.to_string())],
+            ));
         }
         if !planned.rejected.is_empty() {
             let list: Vec<String> = planned
@@ -1233,10 +1691,20 @@ impl BigTextApp {
                         bigtext::patch::Reject::NotFound => tr("not found"),
                         bigtext::patch::Reject::Ambiguous => tr("matches more than one place"),
                     };
-                    trf("#{k} (line {line}): {why}", &[("k", &(k + 1).to_string()), ("line", &line.to_string()), ("why", why)])
+                    trf(
+                        "#{k} (line {line}): {why}",
+                        &[
+                            ("k", &(k + 1).to_string()),
+                            ("line", &line.to_string()),
+                            ("why", why),
+                        ],
+                    )
                 })
                 .collect();
-            d.banner = Some(super::document::Banner::Info(trf("Patch hunks not applied: {list}", &[("list", &list.join("; "))])));
+            d.banner = Some(super::document::Banner::Info(trf(
+                "Patch hunks not applied: {list}",
+                &[("list", &list.join("; "))],
+            )));
         }
         self.notify(msg, None);
     }
@@ -1254,7 +1722,12 @@ impl BigTextApp {
         }
         let path = match r.other.path() {
             Some(p) => p.to_path_buf(),
-            None => match self.docs.iter().find(|d| d.id == r.doc).and_then(|d| d.path.clone()) {
+            None => match self
+                .docs
+                .iter()
+                .find(|d| d.id == r.doc)
+                .and_then(|d| d.path.clone())
+            {
                 Some(p) => p,
                 None => return,
             },
@@ -1263,7 +1736,12 @@ impl BigTextApp {
         let mut doc = Document::loading(id, path.clone());
         doc.read_only = true;
         if let Some(r) = &mut self.diff {
-            r.side = Some(SideBySide { doc: Box::new(doc), path: path.clone(), synced: (u64::MAX, u64::MAX), pending: None });
+            r.side = Some(SideBySide {
+                doc: Box::new(doc),
+                path: path.clone(),
+                synced: (u64::MAX, u64::MAX),
+                pending: None,
+            });
         }
         self.spawn_open(id, path, None);
     }
@@ -1292,7 +1770,14 @@ impl BigTextApp {
         let row_h = ui.ctx().fonts_mut(|f| f.row_height(&font)) + 2.0;
         let (n, done, capped, err, elapsed, other) = {
             let g = r.data.lock().unwrap();
-            (g.hunks.len(), g.done, g.capped, g.error.clone(), g.elapsed, g.other.clone())
+            (
+                g.hunks.len(),
+                g.done,
+                g.capped,
+                g.error.clone(),
+                g.elapsed,
+                g.other.clone(),
+            )
         };
         let mut close = false;
         let mut open_other: Option<u64> = None;
@@ -1356,10 +1841,18 @@ impl BigTextApp {
             ui.label(tr("Ignore:"));
             ui.checkbox(&mut switches.whitespace, tr("white space"));
             ui.checkbox(&mut switches.case, tr("case"));
-            ui.checkbox(&mut switches.timestamps, tr("timestamps")).on_hover_text(tr("The time at the start of each line"));
+            ui.checkbox(&mut switches.timestamps, tr("timestamps"))
+                .on_hover_text(tr("The time at the start of each line"));
             ui.label(tr("mask"));
-            let resp = ui.add(egui::TextEdit::singleline(&mut switches.mask).desired_width(160.0).hint_text("req=[0-9a-f]+").font(egui::TextStyle::Monospace));
-            resp.on_hover_text(tr("A regular expression; its matches do not count (ids, durations)"));
+            let resp = ui.add(
+                egui::TextEdit::singleline(&mut switches.mask)
+                    .desired_width(160.0)
+                    .hint_text("req=[0-9a-f]+")
+                    .font(egui::TextStyle::Monospace),
+            );
+            resp.on_hover_text(tr(
+                "A regular expression; its matches do not count (ids, durations)",
+            ));
             if (switches != r.switches || outdated) && ui.button(tr("Run again")).clicked() {
                 rerun = true;
             }
@@ -1367,52 +1860,115 @@ impl BigTextApp {
         let a_buf = a_doc.map(|d| &d.buf);
         let has_b_file = r.other.path().is_some();
         let data = r.data.clone();
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, row_h, n, |ui, range| {
-            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
-            let g = data.lock().unwrap();
-            for i in range {
-                let Some(h) = g.hunks.get(i).copied() else { break };
-                let snippet = |b: Option<&[u8]>, codec: bigtext::encoding::Codec| -> String {
-                    match b {
-                        Some(b) => {
-                            let s = codec.decode_lossy(b);
-                            s.lines().next().unwrap_or("").chars().map(|c| if c.is_control() { '·' } else { c }).collect()
-                        }
-                        None => "…".into(),
-                    }
-                };
-                let (a_text, codec) = match a_buf {
-                    Some(buf) if h.a_count > 0 => (snippet(buf.read(h.a_off..h.a_off + 160).as_deref(), buf.codec), buf.codec),
-                    Some(buf) => (String::new(), buf.codec),
-                    None => (String::new(), bigtext::encoding::Codec::utf8()),
-                };
-                let b_text = match &other {
-                    Some(s) if h.b_count > 0 => snippet(s.get(h.b_off..(h.b_off + 160).min(s.len()), false).as_deref(), codec),
-                    _ => String::new(),
-                };
-                ui.horizontal(|ui| {
-                    let label = format!("A {:>8} −{:<5} B {:>8} +{:<5}", h.a_line + 1, h.a_count, h.b_line + 1, h.b_count);
-                    if ui.add(egui::Button::new(egui::RichText::new(label).font(font.clone())).frame(false)).on_hover_text(tr("Go to this line in A")).clicked() {
-                        jump = Some(h.a_line + 1);
-                    }
-                    if has_b_file && ui.small_button("B").on_hover_text(tr("Open the other file at this line")).clicked() {
-                        open_other = Some(h.b_line + 1);
-                    }
-                    // Both sides get half of the remaining width so B stays visible next to a long A line.
-                    let w = ((ui.available_width() - 2.0 * ui.spacing().item_spacing.x - 16.0) / 2.0).max(40.0);
-                    let side = |ui: &mut egui::Ui, text: String, color: egui::Color32| {
-                        ui.allocate_ui_with_layout(egui::vec2(w, row_h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            ui.set_width(w);
-                            ui.add(egui::Label::new(egui::RichText::new(text).font(font.clone()).color(color)).truncate());
-                        });
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show_rows(ui, row_h, n, |ui, range| {
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                let g = data.lock().unwrap();
+                for i in range {
+                    let Some(h) = g.hunks.get(i).copied() else {
+                        break;
                     };
-                    side(ui, a_text, super::theme::role(egui::Color32::from_rgb(220, 110, 110), super::theme::Tone::Bad, ui.visuals().dark_mode));
-                    // The arrow is in the monospace font only.
-                    ui.monospace("→");
-                    side(ui, b_text, super::theme::role(egui::Color32::from_rgb(110, 190, 110), super::theme::Tone::Ok, ui.visuals().dark_mode));
-                });
-            }
-        });
+                    let snippet = |b: Option<&[u8]>, codec: bigtext::encoding::Codec| -> String {
+                        match b {
+                            Some(b) => {
+                                let s = codec.decode_lossy(b);
+                                s.lines()
+                                    .next()
+                                    .unwrap_or("")
+                                    .chars()
+                                    .map(|c| if c.is_control() { '·' } else { c })
+                                    .collect()
+                            }
+                            None => "…".into(),
+                        }
+                    };
+                    let (a_text, codec) = match a_buf {
+                        Some(buf) if h.a_count > 0 => (
+                            snippet(buf.read(h.a_off..h.a_off + 160).as_deref(), buf.codec),
+                            buf.codec,
+                        ),
+                        Some(buf) => (String::new(), buf.codec),
+                        None => (String::new(), bigtext::encoding::Codec::utf8()),
+                    };
+                    let b_text = match &other {
+                        Some(s) if h.b_count > 0 => snippet(
+                            s.get(h.b_off..(h.b_off + 160).min(s.len()), false)
+                                .as_deref(),
+                            codec,
+                        ),
+                        _ => String::new(),
+                    };
+                    ui.horizontal(|ui| {
+                        let label = format!(
+                            "A {:>8} −{:<5} B {:>8} +{:<5}",
+                            h.a_line + 1,
+                            h.a_count,
+                            h.b_line + 1,
+                            h.b_count
+                        );
+                        if ui
+                            .add(
+                                egui::Button::new(egui::RichText::new(label).font(font.clone()))
+                                    .frame(false),
+                            )
+                            .on_hover_text(tr("Go to this line in A"))
+                            .clicked()
+                        {
+                            jump = Some(h.a_line + 1);
+                        }
+                        if has_b_file
+                            && ui
+                                .small_button("B")
+                                .on_hover_text(tr("Open the other file at this line"))
+                                .clicked()
+                        {
+                            open_other = Some(h.b_line + 1);
+                        }
+                        // Both sides get half of the remaining width so B stays visible next to a long A line.
+                        let w = ((ui.available_width() - 2.0 * ui.spacing().item_spacing.x - 16.0)
+                            / 2.0)
+                            .max(40.0);
+                        let side = |ui: &mut egui::Ui, text: String, color: egui::Color32| {
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(w, row_h),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.set_width(w);
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(text)
+                                                .font(font.clone())
+                                                .color(color),
+                                        )
+                                        .truncate(),
+                                    );
+                                },
+                            );
+                        };
+                        side(
+                            ui,
+                            a_text,
+                            super::theme::role(
+                                egui::Color32::from_rgb(220, 110, 110),
+                                super::theme::Tone::Bad,
+                                ui.visuals().dark_mode,
+                            ),
+                        );
+                        // The arrow is in the monospace font only.
+                        ui.monospace("→");
+                        side(
+                            ui,
+                            b_text,
+                            super::theme::role(
+                                egui::Color32::from_rgb(110, 190, 110),
+                                super::theme::Tone::Ok,
+                                ui.visuals().dark_mode,
+                            ),
+                        );
+                    });
+                }
+            });
         let (doc_id, other_path) = (r.doc, r.other.path().map(Path::to_path_buf));
         if let Some(line) = jump {
             if let Some(i) = self.docs.iter().position(|d| d.id == doc_id) {
@@ -1421,7 +1977,11 @@ impl BigTextApp {
             }
         }
         if let (Some(line), Some(other_path)) = (open_other, other_path) {
-            let existing = self.docs.iter().position(|d| d.path.as_deref().is_some_and(|p| super::same_path(p, &other_path)));
+            let existing = self.docs.iter().position(|d| {
+                d.path
+                    .as_deref()
+                    .is_some_and(|p| super::same_path(p, &other_path))
+            });
             match existing {
                 Some(i) => {
                     self.active = i;
@@ -1430,7 +1990,10 @@ impl BigTextApp {
                 None => {
                     self.open_path(other_path);
                     if let Some(d) = self.docs.last_mut() {
-                        d.restore = Some(Restore { line: Some(line), ..Default::default() });
+                        d.restore = Some(Restore {
+                            line: Some(line),
+                            ..Default::default()
+                        });
                     }
                 }
             }
@@ -1472,18 +2035,48 @@ mod tests {
         let mut list = Vec::new();
         let csv = PathBuf::from("/data/x.csv");
         // A .csv file shown as a table is what it gets anyway.
-        merge_opts(&mut list, FileOpts { path: csv.clone(), table: true, ..Default::default() });
+        merge_opts(
+            &mut list,
+            FileOpts {
+                path: csv.clone(),
+                table: true,
+                ..Default::default()
+            },
+        );
         assert!(list.is_empty());
-        merge_opts(&mut list, FileOpts { path: csv.clone(), table: false, ..Default::default() });
+        merge_opts(
+            &mut list,
+            FileOpts {
+                path: csv.clone(),
+                table: false,
+                ..Default::default()
+            },
+        );
         assert_eq!(list.len(), 1);
         for i in 0..FILE_OPTS_MAX + 5 {
-            merge_opts(&mut list, FileOpts { path: PathBuf::from(format!("/data/{i}.txt")), hex: true, ..Default::default() });
+            merge_opts(
+                &mut list,
+                FileOpts {
+                    path: PathBuf::from(format!("/data/{i}.txt")),
+                    hex: true,
+                    ..Default::default()
+                },
+            );
         }
         assert_eq!(list.len(), FILE_OPTS_MAX);
-        assert_eq!(list[0].path, PathBuf::from(format!("/data/{}.txt", FILE_OPTS_MAX + 4)));
+        assert_eq!(
+            list[0].path,
+            PathBuf::from(format!("/data/{}.txt", FILE_OPTS_MAX + 4))
+        );
         // Turning everything off forgets the file.
         let first = list[0].path.clone();
-        merge_opts(&mut list, FileOpts { path: first, ..Default::default() });
+        merge_opts(
+            &mut list,
+            FileOpts {
+                path: first,
+                ..Default::default()
+            },
+        );
         assert_eq!(list.len(), FILE_OPTS_MAX - 1);
         assert!(parse_file_opts("|||1/0/zz/0/|/x.csv").is_some_and(|o| o.layout.is_none()));
         assert!(parse_file_opts("||t||").is_none());
@@ -1491,23 +2084,55 @@ mod tests {
 
     #[test]
     fn following_the_system_theme_is_saved_for_new_and_old_versions() {
-        let p = Persisted { theme: Some(super::super::theme::Theme::Dark), theme_system: Some(true), dark: Some(true), ..Default::default() };
+        let p = Persisted {
+            theme: Some(super::super::theme::Theme::Dark),
+            theme_system: Some(true),
+            dark: Some(true),
+            ..Default::default()
+        };
         let text = serialize(&p);
         assert!(text.contains("theme=system\n") && text.contains("dark=1\n"));
         let q = parse(&text);
-        assert_eq!((q.theme_system, q.theme, q.dark), (Some(true), None, Some(true)));
+        assert_eq!(
+            (q.theme_system, q.theme, q.dark),
+            (Some(true), None, Some(true))
+        );
         // A chosen theme is saved by its name, as before.
-        let q = parse(&serialize(&Persisted { theme: Some(super::super::theme::Theme::Light), theme_system: Some(false), ..Default::default() }));
-        assert_eq!((q.theme_system, q.theme), (None, Some(super::super::theme::Theme::Light)));
+        let q = parse(&serialize(&Persisted {
+            theme: Some(super::super::theme::Theme::Light),
+            theme_system: Some(false),
+            ..Default::default()
+        }));
+        assert_eq!(
+            (q.theme_system, q.theme),
+            (None, Some(super::super::theme::Theme::Light))
+        );
     }
 
     #[test]
     fn session_roundtrip() {
         let p = Persisted {
-            recent: vec![PathBuf::from(r"C:\logs\a.log"), PathBuf::from("/tmp/b|c.txt")],
+            recent: vec![
+                PathBuf::from(r"C:\logs\a.log"),
+                PathBuf::from("/tmp/b|c.txt"),
+            ],
             tabs: vec![
-                TabState { path: PathBuf::from(r"D:\big file.txt"), member: None, caret: 123, top: 100, wrap: true, bookmarks: vec![0, 55, 1 << 40] },
-                TabState { path: PathBuf::from(r"D:\logs|old.zip"), member: Some("logs/app.log.gz".into()), caret: 1, top: 0, wrap: false, bookmarks: vec![] },
+                TabState {
+                    path: PathBuf::from(r"D:\big file.txt"),
+                    member: None,
+                    caret: 123,
+                    top: 100,
+                    wrap: true,
+                    bookmarks: vec![0, 55, 1 << 40],
+                },
+                TabState {
+                    path: PathBuf::from(r"D:\logs|old.zip"),
+                    member: Some("logs/app.log.gz".into()),
+                    caret: 1,
+                    top: 0,
+                    wrap: false,
+                    bookmarks: vec![],
+                },
             ],
             active: 0,
             font_size: Some(16.0),
@@ -1525,19 +2150,32 @@ mod tests {
             seen_version: Some("0.7.2".into()),
             loaded: false,
             marks: vec![super::super::marks::Mark {
-                query: bigtext::search::Query { pattern: r"id=\d+|x".into(), regex: true, case_sensitive: true, whole_word: false, dot_all: false },
+                query: bigtext::search::Query {
+                    pattern: r"id=\d+|x".into(),
+                    regex: true,
+                    case_sensitive: true,
+                    whole_word: false,
+                    dot_all: false,
+                },
                 color: 3,
                 enabled: false,
             }],
             history: vec!["ERROR".into(), "a|b=c".into()],
-            keys: vec![("goto_time".into(), "ctrl+alt+T".into()), ("find_all".into(), "none".into())],
+            keys: vec![
+                ("goto_time".into(), "ctrl+alt+T".into()),
+                ("find_all".into(), "none".into()),
+            ],
             lang: Some("uz".into()),
             font: Some(PathBuf::from(r"C:\Windows\Fonts\consola.ttf")),
             unpack_dir: Some(PathBuf::from(r"D:\scratch")),
             recovery: Some(false),
             clips: vec!["two\nlines".into(), "a=b\\c".into()],
             level_bar: Some(false),
-            status: Some(super::super::status_bar::StatusFields { path: true, legend: false, ..Default::default() }),
+            status: Some(super::super::status_bar::StatusFields {
+                path: true,
+                legend: false,
+                ..Default::default()
+            }),
             gutter: Some(false),
             wrap_column: Some(Some(100)),
             ruler: Some(None),
@@ -1545,12 +2183,18 @@ mod tests {
             log_sources: Some("deploy@web1|journal|docker|all|10000|60|1|0".into()),
             alert_options: Some("011".into()),
             alert_recent: vec!["rc|ERROR|FATAL".into(), "|timeout".into()],
-            tools: vec![super::super::run_command::Tool { name: "Open in VS Code".into(), command: "code -g \"{file}:{line}\"".into() }],
+            tools: vec![super::super::run_command::Tool {
+                name: "Open in VS Code".into(),
+                command: "code -g \"{file}:{line}\"".into(),
+            }],
             commands: vec!["sort | uniq -c".into(), "jq .".into()],
             shell: Some("git-bash".into()),
             folder: Some(PathBuf::from(r"D:\projects\app")),
             folder_open: Some(false),
-            folder_expanded: vec![PathBuf::from(r"D:\projects\app\src"), PathBuf::from(r"D:\projects\app\logs|old")],
+            folder_expanded: vec![
+                PathBuf::from(r"D:\projects\app\src"),
+                PathBuf::from(r"D:\projects\app\logs|old"),
+            ],
             show_ws: Some(true),
             show_ws_code: Some(false),
             code_theme: Some(super::super::theme::CodeTheme::Monokai),
@@ -1564,21 +2208,45 @@ mod tests {
                     lang: Some(crate::view::highlight::Lang::Csv(b'\t')),
                     table: true,
                     read_only: true,
-                    layout: Some(crate::view::table_view::TableLayout { delim: b';', header: false, sig: u64::MAX - 7, fixed: vec![(0, 120.5), (7, 64.0)], scroll_x: 33.25 }),
+                    layout: Some(crate::view::table_view::TableLayout {
+                        delim: b';',
+                        header: false,
+                        sig: u64::MAX - 7,
+                        fixed: vec![(0, 120.5), (7, 64.0)],
+                        scroll_x: 33.25,
+                    }),
                     ..Default::default()
                 },
-                FileOpts { path: PathBuf::from(r"C:\logs\app.log"), follow: true, wrap: true, hex: true, ..Default::default() },
+                FileOpts {
+                    path: PathBuf::from(r"C:\logs\app.log"),
+                    follow: true,
+                    wrap: true,
+                    hex: true,
+                    ..Default::default()
+                },
             ],
             saved: vec![
                 super::super::saved_searches::SavedSearch {
                     name: "5xx responses".into(),
-                    query: bigtext::search::Query { pattern: r#"" 5\d\d |a|b"#.into(), regex: true, case_sensitive: true, whole_word: false, dot_all: false },
+                    query: bigtext::search::Query {
+                        pattern: r#"" 5\d\d |a|b"#.into(),
+                        regex: true,
+                        case_sensitive: true,
+                        whole_word: false,
+                        dot_all: false,
+                    },
                     invert: false,
                     column: None,
                 },
                 super::super::saved_searches::SavedSearch {
                     name: "not ok".into(),
-                    query: bigtext::search::Query { pattern: "ok".into(), regex: false, case_sensitive: false, whole_word: true, dot_all: false },
+                    query: bigtext::search::Query {
+                        pattern: "ok".into(),
+                        regex: false,
+                        case_sensitive: false,
+                        whole_word: true,
+                        dot_all: false,
+                    },
                     invert: true,
                     column: Some(3),
                 },
@@ -1590,13 +2258,41 @@ mod tests {
         assert_eq!(parse(&serialize(&p)).status, p.status);
         assert_eq!(parse(&serialize(&p)).gutter, Some(false));
         assert_eq!(q0.seen_version.as_deref(), Some("0.7.2"));
-        assert_eq!((q0.wrap_column, q0.ruler, q0.json_crumb), (Some(Some(100)), Some(None), Some(false)));
-        assert_eq!(q0.log_sources.as_deref(), Some("deploy@web1|journal|docker|all|10000|60|1|0"));
-        assert_eq!((q0.alert_options.as_deref(), q0.alert_recent.clone()), (Some("011"), vec!["rc|ERROR|FATAL".to_string(), "|timeout".to_string()]));
-        assert_eq!((&q0.tools, &q0.commands, q0.shell.as_deref()), (&p.tools, &p.commands, Some("git-bash")));
-        assert_eq!((q0.theme, q0.cvd, q0.scale, q0.dark), (p.theme, Some(true), Some(150), Some(false)));
-        assert_eq!((q0.show_ws, q0.show_ws_code, q0.code_theme), (Some(true), Some(false), Some(super::super::theme::CodeTheme::Monokai)));
-        assert_eq!((&q0.folder, q0.folder_open, &q0.folder_expanded), (&p.folder, Some(false), &p.folder_expanded));
+        assert_eq!(
+            (q0.wrap_column, q0.ruler, q0.json_crumb),
+            (Some(Some(100)), Some(None), Some(false))
+        );
+        assert_eq!(
+            q0.log_sources.as_deref(),
+            Some("deploy@web1|journal|docker|all|10000|60|1|0")
+        );
+        assert_eq!(
+            (q0.alert_options.as_deref(), q0.alert_recent.clone()),
+            (
+                Some("011"),
+                vec!["rc|ERROR|FATAL".to_string(), "|timeout".to_string()]
+            )
+        );
+        assert_eq!(
+            (&q0.tools, &q0.commands, q0.shell.as_deref()),
+            (&p.tools, &p.commands, Some("git-bash"))
+        );
+        assert_eq!(
+            (q0.theme, q0.cvd, q0.scale, q0.dark),
+            (p.theme, Some(true), Some(150), Some(false))
+        );
+        assert_eq!(
+            (q0.show_ws, q0.show_ws_code, q0.code_theme),
+            (
+                Some(true),
+                Some(false),
+                Some(super::super::theme::CodeTheme::Monokai)
+            )
+        );
+        assert_eq!(
+            (&q0.folder, q0.folder_open, &q0.folder_expanded),
+            (&p.folder, Some(false), &p.folder_expanded)
+        );
         assert_eq!(parse(&serialize(&p)).filter_ctx, Some((3, true)));
         assert_eq!(parse(&serialize(&p)).id_keys, p.id_keys);
         assert_eq!(parse(&serialize(&p)).pinned, p.pinned);
@@ -1607,14 +2303,40 @@ mod tests {
         assert_eq!(parse(&serialize(&p)).level_bar, Some(false));
         assert_eq!(parse(&serialize(&p)).lang.as_deref(), Some("uz"));
         let q = parse(&serialize(&p));
-        assert_eq!((q.marks.clone(), q.history.clone(), q.keys.clone()), (p.marks.clone(), p.history.clone(), p.keys.clone()));
+        assert_eq!(
+            (q.marks.clone(), q.history.clone(), q.keys.clone()),
+            (p.marks.clone(), p.history.clone(), p.keys.clone())
+        );
         assert_eq!(q.recent, p.recent);
         assert_eq!(q.tabs.len(), 2);
-        assert_eq!((q.tabs[1].path.clone(), q.tabs[1].member.as_deref()), (PathBuf::from(r"D:\logs|old.zip"), Some("logs/app.log.gz")));
+        assert_eq!(
+            (q.tabs[1].path.clone(), q.tabs[1].member.as_deref()),
+            (PathBuf::from(r"D:\logs|old.zip"), Some("logs/app.log.gz"))
+        );
         assert_eq!(q.tabs[0].member, None);
         let t = &q.tabs[0];
-        assert_eq!((t.caret, t.top, t.wrap, t.bookmarks.clone(), t.path.clone()), (123, 100, true, vec![0, 55, 1 << 40], PathBuf::from(r"D:\big file.txt")));
-        assert_eq!((q.font_size, q.dark, q.backup_on_save, q.syntax), (Some(16.0), Some(false), Some(true), Some(false)));
-        assert_eq!((q.update_check, q.update_asked, q.skip_version.as_deref(), q.update_checked), (Some(false), Some(true), Some("0.2.0"), Some(1_761_550_000)));
+        assert_eq!(
+            (t.caret, t.top, t.wrap, t.bookmarks.clone(), t.path.clone()),
+            (
+                123,
+                100,
+                true,
+                vec![0, 55, 1 << 40],
+                PathBuf::from(r"D:\big file.txt")
+            )
+        );
+        assert_eq!(
+            (q.font_size, q.dark, q.backup_on_save, q.syntax),
+            (Some(16.0), Some(false), Some(true), Some(false))
+        );
+        assert_eq!(
+            (
+                q.update_check,
+                q.update_asked,
+                q.skip_version.as_deref(),
+                q.update_checked
+            ),
+            (Some(false), Some(true), Some("0.2.0"), Some(1_761_550_000))
+        );
     }
 }

@@ -41,7 +41,11 @@ pub struct SortSpec {
 
 fn leading_number(s: &str) -> Option<f64> {
     let t = s.trim_start();
-    let end = t.char_indices().find(|&(i, c)| !(c.is_ascii_digit() || c == '.' || (i == 0 && (c == '-' || c == '+')))).map(|x| x.0).unwrap_or(t.len());
+    let end = t
+        .char_indices()
+        .find(|&(i, c)| !(c.is_ascii_digit() || c == '.' || (i == 0 && (c == '-' || c == '+'))))
+        .map(|x| x.0)
+        .unwrap_or(t.len());
     t[..end].parse().ok()
 }
 
@@ -52,7 +56,13 @@ fn compare(codec: &Codec, spec: &SortSpec, a: &[u8], b: &[u8]) -> Ordering {
         return rev(a.cmp(b));
     }
     let (x, y) = (codec.decode_lossy(a), codec.decode_lossy(b));
-    let by_text = || if spec.ignore_case { x.to_lowercase().cmp(&y.to_lowercase()) } else { x.cmp(&y) };
+    let by_text = || {
+        if spec.ignore_case {
+            x.to_lowercase().cmp(&y.to_lowercase())
+        } else {
+            x.cmp(&y)
+        }
+    };
     if !spec.numeric {
         return rev(by_text());
     }
@@ -170,8 +180,17 @@ impl Ord for Head<'_> {
     }
 }
 
-fn merge(spill: &Spill, runs: &[String], cmp: &dyn Fn(&[u8], &[u8]) -> Ordering, cancel: &CancelToken, emit: &mut dyn FnMut(&[u8]) -> io::Result<()>) -> io::Result<Option<()>> {
-    let mut readers: Vec<BufReader<File>> = runs.iter().map(|r| spill.open(r)).collect::<io::Result<_>>()?;
+fn merge(
+    spill: &Spill,
+    runs: &[String],
+    cmp: &dyn Fn(&[u8], &[u8]) -> Ordering,
+    cancel: &CancelToken,
+    emit: &mut dyn FnMut(&[u8]) -> io::Result<()>,
+) -> io::Result<Option<()>> {
+    let mut readers: Vec<BufReader<File>> = runs
+        .iter()
+        .map(|r| spill.open(r))
+        .collect::<io::Result<_>>()?;
     let mut heap = BinaryHeap::new();
     for (i, r) in readers.iter_mut().enumerate() {
         if let Some(rec) = next_record(r)? {
@@ -182,7 +201,11 @@ fn merge(spill: &Spill, runs: &[String], cmp: &dyn Fn(&[u8], &[u8]) -> Ordering,
     while let Some(Reverse(h)) = heap.pop() {
         emit(&h.rec)?;
         if let Some(rec) = next_record(&mut readers[h.run])? {
-            heap.push(Reverse(Head { rec, run: h.run, cmp }));
+            heap.push(Reverse(Head {
+                rec,
+                run: h.run,
+                cmp,
+            }));
         }
         n += 1;
         if n.is_multiple_of(65_536) && cancel.is_cancelled() {
@@ -194,12 +217,27 @@ fn merge(spill: &Spill, runs: &[String], cmp: &dyn Fn(&[u8], &[u8]) -> Ordering,
 
 /// Writes the document's lines sorted (unique, or counted) by `spec`, each ending with `eol`
 /// (encoded), keeping a byte order mark. Returns the lines written, or `None` when cancelled.
-pub fn sort_to(buf: &TextBuf, spec: SortSpec, eol: &[u8], out: &mut dyn Write, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<u64>> {
+pub fn sort_to(
+    buf: &TextBuf,
+    spec: SortSpec,
+    eol: &[u8],
+    out: &mut dyn Write,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<u64>> {
     sort_runs(buf, spec, eol, out, cancel, progress, RUN_BYTES)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn sort_runs(buf: &TextBuf, spec: SortSpec, eol: &[u8], out: &mut dyn Write, cancel: &CancelToken, progress: Option<&Progress>, run_bytes: usize) -> io::Result<Option<u64>> {
+fn sort_runs(
+    buf: &TextBuf,
+    spec: SortSpec,
+    eol: &[u8],
+    out: &mut dyn Write,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    run_bytes: usize,
+) -> io::Result<Option<u64>> {
     let codec = buf.codec;
     if let Some(p) = progress {
         p.set_total(buf.len());
@@ -207,7 +245,9 @@ fn sort_runs(buf: &TextBuf, spec: SortSpec, eol: &[u8], out: &mut dyn Write, can
     if spec.counts_csv {
         out.write_all(b"count,line\n")?;
     } else {
-        let bom = buf.read(0..codec.bom_len as u64).ok_or_else(|| io::Error::other("Could not read the document"))?;
+        let bom = buf
+            .read(0..codec.bom_len as u64)
+            .ok_or_else(|| io::Error::other("Could not read the document"))?;
         out.write_all(&bom)?;
     }
     let mut lines = LineReader::new(buf);
@@ -312,7 +352,10 @@ fn sort_runs(buf: &TextBuf, spec: SortSpec, eol: &[u8], out: &mut dyn Write, can
                 let n = u64::MAX - u64::from_be_bytes(rec[..8].try_into().unwrap());
                 written += 1;
                 if spec.counts_csv {
-                    let line = crate::csv::quote_field(&codec.decode_lossy(&rec[8..]), crate::csv::Dialect::new(b','));
+                    let line = crate::csv::quote_field(
+                        &codec.decode_lossy(&rec[8..]),
+                        crate::csv::Dialect::new(b','),
+                    );
                     return writeln!(out, "{n},{line}");
                 }
                 out.write_all(&codec.encode(&n.to_string()))?;
@@ -338,13 +381,26 @@ mod tests {
         f.flush().unwrap();
         let s = Arc::new(Source::open(f.path(), OpenMode::Auto).unwrap());
         let det = crate::encoding::detect(data, true);
-        (f, TextBuf::new(s.clone(), LineIndex::new(s.len()), det.codec))
+        (
+            f,
+            TextBuf::new(s.clone(), LineIndex::new(s.len()), det.codec),
+        )
     }
 
     fn sorted(data: &str, spec: SortSpec, run_bytes: usize) -> String {
         let (_f, b) = buf(data.as_bytes());
         let mut out = Vec::new();
-        sort_runs(&b, spec, b"\n", &mut out, &CancelToken::new(), None, run_bytes).unwrap().unwrap();
+        sort_runs(
+            &b,
+            spec,
+            b"\n",
+            &mut out,
+            &CancelToken::new(),
+            None,
+            run_bytes,
+        )
+        .unwrap()
+        .unwrap();
         String::from_utf8(out).unwrap()
     }
 
@@ -352,36 +408,137 @@ mod tests {
     fn modes_in_memory_and_through_runs() {
         let text = "pear\napple\nPear\nbanana\napple\n10 x\n9 y\napple\n";
         for run in [usize::MAX, 30, 1] {
-            assert_eq!(sorted(text, SortSpec::default(), run), "10 x\n9 y\nPear\napple\napple\napple\nbanana\npear\n", "run {run}");
-            assert_eq!(sorted(text, SortSpec { mode: SortMode::Unique, ..Default::default() }, run), "10 x\n9 y\nPear\napple\nbanana\npear\n");
-            assert_eq!(sorted(text, SortSpec { reverse: true, ..Default::default() }, run).lines().next(), Some("pear"));
-            assert_eq!(sorted(text, SortSpec { numeric: true, ..Default::default() }, run).lines().take(2).collect::<Vec<_>>(), ["9 y", "10 x"]);
+            assert_eq!(
+                sorted(text, SortSpec::default(), run),
+                "10 x\n9 y\nPear\napple\napple\napple\nbanana\npear\n",
+                "run {run}"
+            );
+            assert_eq!(
+                sorted(
+                    text,
+                    SortSpec {
+                        mode: SortMode::Unique,
+                        ..Default::default()
+                    },
+                    run
+                ),
+                "10 x\n9 y\nPear\napple\nbanana\npear\n"
+            );
+            assert_eq!(
+                sorted(
+                    text,
+                    SortSpec {
+                        reverse: true,
+                        ..Default::default()
+                    },
+                    run
+                )
+                .lines()
+                .next(),
+                Some("pear")
+            );
+            assert_eq!(
+                sorted(
+                    text,
+                    SortSpec {
+                        numeric: true,
+                        ..Default::default()
+                    },
+                    run
+                )
+                .lines()
+                .take(2)
+                .collect::<Vec<_>>(),
+                ["9 y", "10 x"]
+            );
             // Ignoring case keeps the original order of equal keys (stable).
-            assert!(sorted(text, SortSpec { ignore_case: true, ..Default::default() }, run).contains("pear\nPear\n"), "run {run}");
-            assert_eq!(sorted(text, SortSpec { mode: SortMode::Count, ..Default::default() }, run), "3\tapple\n1\t10 x\n1\t9 y\n1\tPear\n1\tbanana\n1\tpear\n", "run {run}");
-            assert!(sorted("b,1\na\nb,1\n", SortSpec { mode: SortMode::Count, counts_csv: true, ..Default::default() }, run).starts_with("count,line\n2,\"b,1\"\n1,a\n"));
+            assert!(
+                sorted(
+                    text,
+                    SortSpec {
+                        ignore_case: true,
+                        ..Default::default()
+                    },
+                    run
+                )
+                .contains("pear\nPear\n"),
+                "run {run}"
+            );
+            assert_eq!(
+                sorted(
+                    text,
+                    SortSpec {
+                        mode: SortMode::Count,
+                        ..Default::default()
+                    },
+                    run
+                ),
+                "3\tapple\n1\t10 x\n1\t9 y\n1\tPear\n1\tbanana\n1\tpear\n",
+                "run {run}"
+            );
+            assert!(sorted(
+                "b,1\na\nb,1\n",
+                SortSpec {
+                    mode: SortMode::Count,
+                    counts_csv: true,
+                    ..Default::default()
+                },
+                run
+            )
+            .starts_with("count,line\n2,\"b,1\"\n1,a\n"));
         }
     }
 
     #[test]
     fn many_runs_merge_in_levels_and_keep_the_bom() {
-        let text: String = (0..3000).map(|i| format!("{:04}\n", (i * 7919) % 3000)).collect();
+        let text: String = (0..3000)
+            .map(|i| format!("{:04}\n", (i * 7919) % 3000))
+            .collect();
         let out = sorted(&text, SortSpec::default(), 8);
         let want: String = (0..3000).map(|i| format!("{i:04}\n")).collect();
         assert!(out == want);
         let with_bom = "\u{feff}b\na\n".to_string();
         assert_eq!(sorted(&with_bom, SortSpec::default(), 1), "\u{feff}a\nb\n");
         // UTF-16, CRLF.
-        let utf16: Vec<u8> = [0xFF, 0xFE].into_iter().chain("b\r\nä\r\na\r\n".encode_utf16().flat_map(|u| u.to_le_bytes())).collect();
+        let utf16: Vec<u8> = [0xFF, 0xFE]
+            .into_iter()
+            .chain(
+                "b\r\nä\r\na\r\n"
+                    .encode_utf16()
+                    .flat_map(|u| u.to_le_bytes()),
+            )
+            .collect();
         let (_f, b) = buf(&utf16);
         let mut out = Vec::new();
-        let eol: Vec<u8> = "\r\n".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
-        sort_runs(&b, SortSpec::default(), &eol, &mut out, &CancelToken::new(), None, 1).unwrap().unwrap();
-        let back = String::from_utf16(&out[2..].chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect::<Vec<_>>()).unwrap();
+        let eol: Vec<u8> = "\r\n"
+            .encode_utf16()
+            .flat_map(|u| u.to_le_bytes())
+            .collect();
+        sort_runs(
+            &b,
+            SortSpec::default(),
+            &eol,
+            &mut out,
+            &CancelToken::new(),
+            None,
+            1,
+        )
+        .unwrap()
+        .unwrap();
+        let back = String::from_utf16(
+            &out[2..]
+                .chunks(2)
+                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
         assert_eq!(back, "a\r\nb\r\nä\r\n");
         let c = CancelToken::new();
         c.cancel();
         let (_g, b) = buf(text.as_bytes());
-        assert_eq!(sort_runs(&b, SortSpec::default(), b"\n", &mut Vec::new(), &c, None, 8).unwrap(), None);
+        assert_eq!(
+            sort_runs(&b, SortSpec::default(), b"\n", &mut Vec::new(), &c, None, 8).unwrap(),
+            None
+        );
     }
 }

@@ -34,17 +34,26 @@ fn kind(l: Level) -> Kind {
 impl BigTextApp {
     /// The levels the active document's filter shows (empty when it has no level filter).
     fn shown_levels(&self) -> Levels {
-        self.docs.get(self.active).and_then(|d| d.filter.as_ref()).and_then(|r| r.levels).unwrap_or_default()
+        self.docs
+            .get(self.active)
+            .and_then(|d| d.filter.as_ref())
+            .and_then(|r| r.levels)
+            .unwrap_or_default()
     }
 
     /// Whether the level bar is shown for the active document.
     pub(crate) fn level_bar_visible(&self) -> bool {
-        self.settings.level_bar && self.docs.get(self.active).is_some_and(|d| d.is_ready() && !d.hex && !d.table && d.effective_lang() == Lang::Log)
+        self.settings.level_bar
+            && self.docs.get(self.active).is_some_and(|d| {
+                d.is_ready() && !d.hex && !d.table && d.effective_lang() == Lang::Log
+            })
     }
 
     /// Lists the lines of `levels` in the filter view (an empty set closes a level filter).
     pub(crate) fn filter_levels(&mut self, levels: Levels) {
-        let Some(d) = self.docs.get_mut(self.active) else { return };
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
         if !d.is_ready() {
             return;
         }
@@ -57,7 +66,12 @@ impl BigTextApp {
             return;
         };
         // Conditions added to a level filter stay when the levels change.
-        let terms = d.filter.as_ref().filter(|r| r.levels.is_some()).map(|r| r.terms.clone()).unwrap_or_default();
+        let terms = d
+            .filter
+            .as_ref()
+            .filter(|r| r.levels.is_some())
+            .map(|r| r.terms.clone())
+            .unwrap_or_default();
         let codec = d.buf.codec;
         let range = match self.time_window(super::time_range::After::Levels(levels)) {
             super::time_range::Window::Wait => return,
@@ -66,8 +80,22 @@ impl BigTextApp {
         };
         match Matcher::new(&query, codec) {
             Ok(m) => {
-                let spec = self.with_context(FilterSpec { range, ..Default::default() });
-                self.run_filter_req(super::filter_panel::FilterRequest { query, m: std::sync::Arc::new(m), spec, levels: Some(levels), follow: None, terms, json: None }, None);
+                let spec = self.with_context(FilterSpec {
+                    range,
+                    ..Default::default()
+                });
+                self.run_filter_req(
+                    super::filter_panel::FilterRequest {
+                        query,
+                        m: std::sync::Arc::new(m),
+                        spec,
+                        levels: Some(levels),
+                        follow: None,
+                        terms,
+                        json: None,
+                    },
+                    None,
+                );
             }
             Err(e) => self.error = Some(e),
         }
@@ -75,8 +103,12 @@ impl BigTextApp {
 
     /// Moves to the next (previous) line of the shown levels, or of ERROR when none is shown.
     pub(crate) fn next_level(&mut self, forward: bool) {
-        let levels = Some(self.shown_levels()).filter(|l| !l.is_empty()).unwrap_or(Levels::only(Level::Error));
-        let Some(d) = self.docs.get_mut(self.active) else { return };
+        let levels = Some(self.shown_levels())
+            .filter(|l| !l.is_empty())
+            .unwrap_or(Levels::only(Level::Error));
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
         if !d.is_ready() {
             return;
         }
@@ -92,7 +124,9 @@ impl BigTextApp {
             j.cancel.cancel();
         }
         let cancel = CancelToken::new();
-        d.find_job = Some(super::search_panel::FindJob { cancel: cancel.clone() });
+        d.find_job = Some(super::search_panel::FindJob {
+            cancel: cancel.clone(),
+        });
         let (snap, caret, version, id) = (d.buf.snapshot(), d.view.caret, d.version, d.id);
         let (tx, waker) = (self.tx.clone(), self.waker.clone());
         jobs::spawn("next-level", move || {
@@ -121,14 +155,22 @@ impl BigTextApp {
                 })
             };
             if !cancel.is_cancelled() {
-                let _ = tx.send(Msg::LevelFound(Box::new(LevelFound { doc: id, version, levels, found, wrapped })));
+                let _ = tx.send(Msg::LevelFound(Box::new(LevelFound {
+                    doc: id,
+                    version,
+                    levels,
+                    found,
+                    wrapped,
+                })));
                 waker();
             }
         });
     }
 
     pub(super) fn on_level_found(&mut self, f: LevelFound) {
-        let Some(d) = self.docs.iter_mut().find(|d| d.id == f.doc) else { return };
+        let Some(d) = self.docs.iter_mut().find(|d| d.id == f.doc) else {
+            return;
+        };
         d.find_job = None;
         if d.version != f.version {
             return;
@@ -141,18 +183,38 @@ impl BigTextApp {
                     self.notify(tr("Wrapped around").into(), None);
                 }
             }
-            None => self.notify(trf("No {levels} lines", &[("levels", &f.levels.names())]), None),
+            None => self.notify(
+                trf("No {levels} lines", &[("levels", &f.levels.names())]),
+                None,
+            ),
         }
     }
 
     pub(super) fn level_bar(&mut self, ui: &mut egui::Ui) {
         let on = self.shown_levels();
         let dark = ui.visuals().dark_mode;
-        let nav = if on.is_empty() { Levels::only(Level::Error) } else { on };
-        let keys = |c: Cmd| self.keymap.get(c).map(|k| format!(" ({})", key_text(k))).unwrap_or_default();
+        let nav = if on.is_empty() {
+            Levels::only(Level::Error)
+        } else {
+            on
+        };
+        let keys = |c: Cmd| {
+            self.keymap
+                .get(c)
+                .map(|k| format!(" ({})", key_text(k)))
+                .unwrap_or_default()
+        };
         let (prev_tip, next_tip) = (
-            format!("{}{}", trf("Previous {levels} line", &[("levels", &nav.names())]), keys(Cmd::PrevLevel)),
-            format!("{}{}", trf("Next {levels} line", &[("levels", &nav.names())]), keys(Cmd::NextLevel)),
+            format!(
+                "{}{}",
+                trf("Previous {levels} line", &[("levels", &nav.names())]),
+                keys(Cmd::PrevLevel)
+            ),
+            format!(
+                "{}{}",
+                trf("Next {levels} line", &[("levels", &nav.names())]),
+                keys(Cmd::NextLevel)
+            ),
         );
         let mut toggle = None;
         let mut step = None;
@@ -160,9 +222,20 @@ impl BigTextApp {
         ui.horizontal(|ui| {
             ui.label(tr("Levels:"));
             for l in Level::ALL {
-                let text = RichText::new(l.name()).monospace().strong().color(highlight::color(kind(l), dark));
-                let tip = if on.contains(l) { tr("Click to stop showing these lines") } else { tr("Show only the lines of this level (click more levels to add them)") };
-                if ui.selectable_label(on.contains(l), text).on_hover_text(tip).clicked() {
+                let text = RichText::new(l.name())
+                    .monospace()
+                    .strong()
+                    .color(highlight::color(kind(l), dark));
+                let tip = if on.contains(l) {
+                    tr("Click to stop showing these lines")
+                } else {
+                    tr("Show only the lines of this level (click more levels to add them)")
+                };
+                if ui
+                    .selectable_label(on.contains(l), text)
+                    .on_hover_text(tip)
+                    .clicked()
+                {
                     toggle = Some(l);
                 }
             }
@@ -174,7 +247,11 @@ impl BigTextApp {
                 step = Some(true);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.small_button("×").on_hover_text(tr("Hide the level bar (View → Log level bar)")).clicked() {
+                if ui
+                    .small_button("×")
+                    .on_hover_text(tr("Hide the level bar (View → Log level bar)"))
+                    .clicked()
+                {
                     hide = true;
                 }
             });

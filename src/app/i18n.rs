@@ -20,7 +20,16 @@ pub enum Lang {
 }
 
 impl Lang {
-    pub const ALL: [Lang; 8] = [Lang::En, Lang::Ru, Lang::Uz, Lang::Zh, Lang::Es, Lang::Pt, Lang::De, Lang::Tr];
+    pub const ALL: [Lang; 8] = [
+        Lang::En,
+        Lang::Ru,
+        Lang::Uz,
+        Lang::Zh,
+        Lang::Es,
+        Lang::Pt,
+        Lang::De,
+        Lang::Tr,
+    ];
 
     /// Native name, shown in the language menu.
     pub fn name(self) -> &'static str {
@@ -61,7 +70,10 @@ pub fn set_lang(l: Lang) {
 }
 
 pub fn lang() -> Lang {
-    Lang::ALL.get(LANG.load(Ordering::Relaxed) as usize).copied().unwrap_or(Lang::En)
+    Lang::ALL
+        .get(LANG.load(Ordering::Relaxed) as usize)
+        .copied()
+        .unwrap_or(Lang::En)
 }
 
 /// The language the system is set to, when BigText speaks it (for a first start).
@@ -82,15 +94,27 @@ fn os_locale() -> Option<String> {
 
 #[cfg(not(windows))]
 fn os_locale() -> Option<String> {
-    ["LC_ALL", "LC_MESSAGES", "LANG"].iter().find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty() && v != "C" && v != "POSIX"))
+    ["LC_ALL", "LC_MESSAGES", "LANG"].iter().find_map(|k| {
+        std::env::var(k)
+            .ok()
+            .filter(|v| !v.is_empty() && v != "C" && v != "POSIX")
+    })
 }
 
 type Table = HashMap<&'static str, &'static str>;
 
 fn table(l: Lang) -> Option<&'static Table> {
     static TABLES: [OnceLock<Table>; 8] = [const { OnceLock::new() }; 8];
-    let column = |col: usize| -> Table { TEXTS.iter().map(|t| (t[0], t[col])).filter(|(_, v)| !v.is_empty()).collect() };
-    let pairs = |p: &'static [(&'static str, &'static str)]| -> Table { p.iter().copied().filter(|(_, v)| !v.is_empty()).collect() };
+    let column = |col: usize| -> Table {
+        TEXTS
+            .iter()
+            .map(|t| (t[0], t[col]))
+            .filter(|(_, v)| !v.is_empty())
+            .collect()
+    };
+    let pairs = |p: &'static [(&'static str, &'static str)]| -> Table {
+        p.iter().copied().filter(|(_, v)| !v.is_empty()).collect()
+    };
     let cell = &TABLES[l as usize];
     Some(match l {
         Lang::En => return None,
@@ -236,7 +260,10 @@ mod tests {
                 let name = format!("{dir}/{}", e.file_name().to_string_lossy());
                 let text = std::fs::read_to_string(e.path()).unwrap_or_default();
                 let uses = !keys_in(&text).is_empty();
-                assert!(!uses || name == "app/i18n.rs" || SOURCES.iter().any(|s| s.0 == name), "add {name} to SOURCES in i18n.rs");
+                assert!(
+                    !uses || name == "app/i18n.rs" || SOURCES.iter().any(|s| s.0 == name),
+                    "add {name} to SOURCES in i18n.rs"
+                );
             }
         }
     }
@@ -372,7 +399,10 @@ mod tests {
         let mut keys = Vec::new();
         let mut i = 0;
         while i < b.len() {
-            let name_len = ["tr_f(", "trf(", "tr("].iter().find(|n| b[i..].starts_with(&n.chars().collect::<Vec<_>>())).map(|n| n.len());
+            let name_len = ["tr_f(", "trf(", "tr("]
+                .iter()
+                .find(|n| b[i..].starts_with(&n.chars().collect::<Vec<_>>()))
+                .map(|n| n.len());
             let word_start = i == 0 || !(b[i - 1].is_alphanumeric() || b[i - 1] == '_');
             let (Some(n), true) = (name_len, word_start) else {
                 i += 1;
@@ -400,15 +430,27 @@ mod tests {
                 }
                 j += 1;
             }
-            let end = if first_only { first_end.unwrap_or(j - 1) } else { j - 1 };
-            keys.extend(literals(&b[i + n..end].iter().collect::<String>()).into_iter().filter(|s| !s.is_empty()));
+            let end = if first_only {
+                first_end.unwrap_or(j - 1)
+            } else {
+                j - 1
+            };
+            keys.extend(
+                literals(&b[i + n..end].iter().collect::<String>())
+                    .into_iter()
+                    .filter(|s| !s.is_empty()),
+            );
             i += n;
         }
         keys
     }
 
     fn placeholders(s: &str) -> Vec<String> {
-        let mut v: Vec<String> = s.split('{').skip(1).filter_map(|p| p.split_once('}').map(|x| x.0.to_string())).collect();
+        let mut v: Vec<String> = s
+            .split('{')
+            .skip(1)
+            .filter_map(|p| p.split_once('}').map(|x| x.0.to_string()))
+            .collect();
         v.sort();
         v.dedup();
         v
@@ -417,13 +459,23 @@ mod tests {
     #[test]
     fn every_text_is_translated() {
         let mut keys: Vec<String> = SOURCES.iter().flat_map(|s| keys_in(s.1)).collect();
-        keys.extend(Cmd::all().flat_map(|c| [c.label(), c.group()]).map(String::from));
+        keys.extend(
+            Cmd::all()
+                .flat_map(|c| [c.label(), c.group()])
+                .map(String::from),
+        );
         keys.extend(DYNAMIC.iter().map(|s| s.to_string()));
         let known: HashMap<&str, &[&str; 3]> = TEXTS.iter().map(|t| (t[0], t)).collect();
-        let mut missing: Vec<&String> = keys.iter().filter(|k| !known.contains_key(k.as_str())).collect();
+        let mut missing: Vec<&String> = keys
+            .iter()
+            .filter(|k| !known.contains_key(k.as_str()))
+            .collect();
         missing.sort();
         missing.dedup();
-        assert!(missing.is_empty(), "texts without a translation: {missing:#?}");
+        assert!(
+            missing.is_empty(),
+            "texts without a translation: {missing:#?}"
+        );
         assert!(keys.len() > 300, "the scan found only {} texts", keys.len());
     }
 
@@ -441,18 +493,30 @@ mod tests {
 
     #[test]
     fn every_language_has_every_text() {
-        let tables: [(&str, &[(&str, &str)]); 5] =
-            [("zh", crate::app::i18n_zh::ZH), ("es", crate::app::i18n_es::ES), ("pt", crate::app::i18n_pt::PT), ("de", crate::app::i18n_de::DE), ("tr", crate::app::i18n_tr::TR)];
+        let tables: [(&str, &[(&str, &str)]); 5] = [
+            ("zh", crate::app::i18n_zh::ZH),
+            ("es", crate::app::i18n_es::ES),
+            ("pt", crate::app::i18n_pt::PT),
+            ("de", crate::app::i18n_de::DE),
+            ("tr", crate::app::i18n_tr::TR),
+        ];
         let english: std::collections::HashSet<&str> = TEXTS.iter().map(|t| t[0]).collect();
         for (code, table) in tables {
             let map: HashMap<&str, &str> = table.iter().copied().collect();
             assert_eq!(map.len(), table.len(), "{code}: a text is there twice");
-            let mut missing: Vec<&&str> = english.iter().filter(|k| !map.contains_key(*k)).collect();
+            let mut missing: Vec<&&str> =
+                english.iter().filter(|k| !map.contains_key(*k)).collect();
             missing.sort();
-            assert!(missing.is_empty(), "{code}: texts without a translation: {missing:#?}");
+            assert!(
+                missing.is_empty(),
+                "{code}: texts without a translation: {missing:#?}"
+            );
             for (k, v) in table {
                 assert!(english.contains(k), "{code}: {k:?} is not an English text");
-                assert!(!v.trim().is_empty(), "{code}: {k:?} has an empty translation");
+                assert!(
+                    !v.trim().is_empty(),
+                    "{code}: {k:?} has an empty translation"
+                );
                 assert_eq!(placeholders(v), placeholders(k), "{code}: {k:?} → {v:?}");
             }
         }

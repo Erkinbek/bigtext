@@ -55,13 +55,18 @@ fn shareable(p: &Persisted) -> Persisted {
 
 impl BigTextApp {
     pub(crate) fn export_settings_to(&self, path: &Path) -> Result<(), String> {
-        let text = extras::serialize(&shareable(&self.persisted())).replace("# BigText session state", "# BigText settings");
+        let text = extras::serialize(&shareable(&self.persisted()))
+            .replace("# BigText session state", "# BigText settings");
         std::fs::write(path, text).map_err(|e| super::friendly_io(&e, path))
     }
 
     /// Takes the settings in `path`: highlights and saved searches are added (a saved search
     /// of the same name is replaced), everything else replaces the current value.
-    pub(crate) fn import_settings_from(&mut self, path: &Path, ctx: Option<&egui::Context>) -> Result<(), String> {
+    pub(crate) fn import_settings_from(
+        &mut self,
+        path: &Path,
+        ctx: Option<&egui::Context>,
+    ) -> Result<(), String> {
         let text = std::fs::read_to_string(path).map_err(|e| super::friendly_io(&e, path))?;
         let p = extras::parse(&text);
         self.restore_look(&p);
@@ -129,7 +134,9 @@ impl BigTextApp {
             if super::fonts::apply_font(ctx, Some(&f)).is_ok() {
                 self.settings.font_path = Some(f);
             }
-        } else if let (Some(ctx), Some(i18n::Lang::Zh)) = (ctx, p.lang.as_deref().and_then(i18n::Lang::from_code)) {
+        } else if let (Some(ctx), Some(i18n::Lang::Zh)) =
+            (ctx, p.lang.as_deref().and_then(i18n::Lang::from_code))
+        {
             // Chinese needs a font with its characters.
             let _ = super::fonts::apply_font(ctx, self.settings.font_path.as_deref());
         }
@@ -138,15 +145,33 @@ impl BigTextApp {
     }
 
     pub(crate) fn export_settings(&mut self) {
-        let Some(path) = rfd::FileDialog::new().set_title(tr("Export settings")).set_file_name("bigtext.settings").save_file() else { return };
+        let Some(path) = rfd::FileDialog::new()
+            .set_title(tr("Export settings"))
+            .set_file_name("bigtext.settings")
+            .save_file()
+        else {
+            return;
+        };
         match self.export_settings_to(&path) {
-            Ok(()) => self.notify(trf("Settings saved to {file}.", &[("file", &super::filter_panel::file_name(&path))]), None),
+            Ok(()) => self.notify(
+                trf(
+                    "Settings saved to {file}.",
+                    &[("file", &super::filter_panel::file_name(&path))],
+                ),
+                None,
+            ),
             Err(e) => self.error = Some(e),
         }
     }
 
     pub(crate) fn import_settings(&mut self, ctx: &egui::Context) {
-        let Some(path) = rfd::FileDialog::new().set_title(tr("Import settings")).add_filter("BigText settings", &["settings", "txt"]).pick_file() else { return };
+        let Some(path) = rfd::FileDialog::new()
+            .set_title(tr("Import settings"))
+            .add_filter("BigText settings", &["settings", "txt"])
+            .pick_file()
+        else {
+            return;
+        };
         match self.import_settings_from(&path, Some(ctx)) {
             Ok(()) => self.notify(tr("Settings imported.").into(), None),
             Err(e) => self.error = Some(e),

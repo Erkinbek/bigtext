@@ -52,21 +52,47 @@ pub enum HttpOpen {
 
 /// `bytes 0-0/12345` → 12345.
 fn total_of(content_range: &str) -> Option<u64> {
-    content_range.trim().strip_prefix("bytes ")?.rsplit_once('/')?.1.trim().parse().ok()
+    content_range
+        .trim()
+        .strip_prefix("bytes ")?
+        .rsplit_once('/')?
+        .1
+        .trim()
+        .parse()
+        .ok()
 }
 
 impl HttpRange {
     /// Asks for the first byte: a 206 answer gives the length and shows that ranges work.
     pub fn open(url: &str) -> Result<HttpOpen, String> {
         let agent = agent();
-        let resp = agent.get(url).header("Range", "bytes=0-0").header("Accept-Encoding", "identity").call().map_err(http_error)?;
+        let resp = agent
+            .get(url)
+            .header("Range", "bytes=0-0")
+            .header("Accept-Encoding", "identity")
+            .call()
+            .map_err(http_error)?;
         if resp.status().as_u16() != 206 {
             return Ok(HttpOpen::NoRanges);
         }
-        let header = |n: &str| resp.headers().get(n).and_then(|v| v.to_str().ok()).map(str::to_owned);
-        let Some(len) = header("content-range").as_deref().and_then(total_of) else { return Ok(HttpOpen::NoRanges) };
+        let header = |n: &str| {
+            resp.headers()
+                .get(n)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_owned)
+        };
+        let Some(len) = header("content-range").as_deref().and_then(total_of) else {
+            return Ok(HttpOpen::NoRanges);
+        };
         let etag = header("etag").filter(|e| !e.starts_with("W/"));
-        Ok(HttpOpen::Ranges(HttpRange { agent, url: url.to_string(), etag }, len))
+        Ok(HttpOpen::Ranges(
+            HttpRange {
+                agent,
+                url: url.to_string(),
+                etag,
+            },
+            len,
+        ))
     }
 }
 
@@ -79,20 +105,37 @@ impl RangeRead for HttpRange {
         let mut tries = 0;
         loop {
             tries += 1;
-            let mut req = self.agent.get(&self.url).header("Range", format!("bytes={offset}-{last}")).header("Accept-Encoding", "identity");
+            let mut req = self
+                .agent
+                .get(&self.url)
+                .header("Range", format!("bytes={offset}-{last}"))
+                .header("Accept-Encoding", "identity");
             if let Some(e) = &self.etag {
                 req = req.header("If-Match", e);
             }
             match req.call() {
                 Ok(resp) if resp.status().as_u16() == 206 => {
-                    let starts = resp.headers().get("content-range").and_then(|v| v.to_str().ok()).is_some_and(|v| v.trim().starts_with(&format!("bytes {offset}-")));
+                    let starts = resp
+                        .headers()
+                        .get("content-range")
+                        .and_then(|v| v.to_str().ok())
+                        .is_some_and(|v| v.trim().starts_with(&format!("bytes {offset}-")));
                     if !starts {
-                        return Err(io::Error::other("The server sent another part of the file than the one asked for."));
+                        return Err(io::Error::other(
+                            "The server sent another part of the file than the one asked for.",
+                        ));
                     }
                     return resp.into_body().into_reader().read_exact(buf);
                 }
-                Ok(resp) => return Err(io::Error::other(format!("The server answered a range request with HTTP status {}.", resp.status().as_u16()))),
-                Err(ureq::Error::StatusCode(412)) => return Err(io::Error::other("The file changed on the server.")),
+                Ok(resp) => {
+                    return Err(io::Error::other(format!(
+                        "The server answered a range request with HTTP status {}.",
+                        resp.status().as_u16()
+                    )))
+                }
+                Err(ureq::Error::StatusCode(412)) => {
+                    return Err(io::Error::other("The file changed on the server."))
+                }
                 // One more try for a dropped connection.
                 Err(e) if tries < 2 && !matches!(e, ureq::Error::StatusCode(_)) => continue,
                 Err(e) => return Err(io::Error::other(http_error(e))),
@@ -135,7 +178,14 @@ pub fn ssh_base(target: &str, port: Option<u16>) -> Command {
     if let Some(config) = std::env::var_os("BIGTEXT_SSH_CONFIG") {
         c.arg("-F").arg(config);
     }
-    c.args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=30"]);
+    c.args([
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=15",
+        "-o",
+        "ServerAliveInterval=30",
+    ]);
     if let Some(p) = port {
         c.arg("-p").arg(p.to_string());
     }
@@ -184,7 +234,9 @@ struct Session {
 impl Session {
     /// Starts `cmd` (ssh running [`serve_script`]) and reads the size line.
     fn start(mut cmd: Command) -> Result<(Session, u64), String> {
-        cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         let mut child = cmd.spawn().map_err(|e| if e.kind() == io::ErrorKind::NotFound { "ssh was not found. Install the OpenSSH client (on Windows: Settings → System → Optional features).".to_string() } else { e.to_string() })?;
         let stdin = child.stdin.take().ok_or("no input")?;
         let mut stdout = BufReader::new(child.stdout.take().ok_or("no output")?);
@@ -197,7 +249,14 @@ impl Session {
         let mut line = String::new();
         let got = stdout.read_line(&mut line);
         match line.trim().parse::<u64>() {
-            Ok(len) if got.is_ok() => Ok((Session { child, stdin, stdout }, len)),
+            Ok(len) if got.is_ok() => Ok((
+                Session {
+                    child,
+                    stdin,
+                    stdout,
+                },
+                len,
+            )),
             _ => {
                 let _ = child.kill();
                 let status = child.wait().ok().and_then(|s| s.code());
@@ -223,7 +282,11 @@ impl Drop for Session {
 /// What went wrong with `ssh`, in words a user can act on.
 pub fn ssh_error(stderr: &str, code: Option<i32>) -> String {
     let s = stderr.trim();
-    let mut msg = if s.is_empty() { format!("ssh exited with code {}", code.unwrap_or(-1)) } else { s.lines().last().unwrap_or(s).to_string() };
+    let mut msg = if s.is_empty() {
+        format!("ssh exited with code {}", code.unwrap_or(-1))
+    } else {
+        s.lines().last().unwrap_or(s).to_string()
+    };
     if s.contains("Permission denied") || s.contains("Host key verification failed") {
         msg = format!("{msg}\nBigText signs in with your SSH keys or agent (and known hosts); password sign-in is not supported.");
     }
@@ -250,9 +313,17 @@ impl SshRange {
 
     /// [`SshRange::open`] with the command made by `make` (tests run the script with a local
     /// `sh`).
-    pub fn open_with(make: Box<dyn Fn() -> Command + Send + Sync>) -> Result<(SshRange, u64), String> {
+    pub fn open_with(
+        make: Box<dyn Fn() -> Command + Send + Sync>,
+    ) -> Result<(SshRange, u64), String> {
         let (s, len) = Session::start(make())?;
-        Ok((SshRange { session: Mutex::new(Some(s)), make }, len))
+        Ok((
+            SshRange {
+                session: Mutex::new(Some(s)),
+                make,
+            },
+            len,
+        ))
     }
 }
 
@@ -317,16 +388,27 @@ pub fn grep_script(path: &str, q: &Query, range: Option<(u64, u64)>, pick: Pick)
     // Plain text ignoring case goes as an escaped ERE: grep 3.0 (Git for Windows, older
     // servers) aborts on -o -i -F.
     let (mode, pattern) = match (q.regex, q.case_sensitive) {
-        (true, _) => ("m=-E; echo | grep -qP '' 2>/dev/null && m=-P; ", q.pattern.clone()),
+        (true, _) => (
+            "m=-E; echo | grep -qP '' 2>/dev/null && m=-P; ",
+            q.pattern.clone(),
+        ),
         (false, true) => ("m=-F; ", q.pattern.clone()),
         (false, false) => ("m=-E; ", ere_escape(&q.pattern)),
     };
     // Case-folding beyond ASCII needs a UTF-8 locale; byte offsets are bytes either way.
-    let locale = if q.case_sensitive || q.pattern.is_ascii() { "C" } else { "C.UTF-8" };
+    let locale = if q.case_sensitive || q.pattern.is_ascii() {
+        "C"
+    } else {
+        "C.UTF-8"
+    };
     let pattern = quote_all(&pattern);
     let grep = match range {
         None => format!("grep {flags} $m -e {pattern} -- \"$f\""),
-        Some((s, e)) => format!("tail -c +{} -- \"$f\" | head -c {} | grep {flags} $m -e {pattern}", s + 1, e.saturating_sub(s)),
+        Some((s, e)) => format!(
+            "tail -c +{} -- \"$f\" | head -c {} | grep {flags} $m -e {pattern}",
+            s + 1,
+            e.saturating_sub(s)
+        ),
     };
     // -m 1 stops after the first matching line, but -o prints every match on it.
     let tail = match pick {
@@ -334,7 +416,10 @@ pub fn grep_script(path: &str, q: &Query, range: Option<(u64, u64)>, pick: Pick)
         Pick::First => " | head -n 1",
         Pick::Last => " | tail -n 1",
     };
-    format!("LC_ALL={locale}; export LC_ALL; f={}; {mode}{grep}{tail}", quote(path))
+    format!(
+        "LC_ALL={locale}; export LC_ALL; f={}; {mode}{grep}{tail}",
+        quote(path)
+    )
 }
 
 /// `s` as a POSIX extended regular expression matching it literally.
@@ -359,8 +444,15 @@ pub fn parse_grep_line(line: &[u8], base: u64) -> Option<(u64, u64)> {
 
 /// Runs `cmd` (a [`grep_script`] through ssh) and calls `found` with each match until it returns
 /// false, the output ends or `cancel` fires. Errors carry what ssh or grep said.
-pub fn run_grep(mut cmd: Command, base: u64, cancel: &CancelToken, mut found: impl FnMut(u64, u64) -> bool) -> Result<(), String> {
-    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+pub fn run_grep(
+    mut cmd: Command,
+    base: u64,
+    cancel: &CancelToken,
+    mut found: impl FnMut(u64, u64) -> bool,
+) -> Result<(), String> {
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let child = cmd.spawn().map_err(|e| e.to_string())?;
     let child = Arc::new(Mutex::new(child));
     let stdout = child.lock().unwrap().stdout.take().ok_or("no output")?;
@@ -422,7 +514,10 @@ pub fn ssh_script(file: &SshFile, script: &str) -> Command {
 pub fn serve_for_test(path: PathBuf, ranges: bool) -> io::Result<String> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let port = listener.local_addr()?.port();
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let path = path.clone();
@@ -482,10 +577,14 @@ mod tests {
     fn web_ranges_read_parts_of_a_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("big.log");
-        let data: Vec<u8> = (0..3_000_000u32).map(|i| b"abcdefghij\n"[(i % 11) as usize]).collect();
+        let data: Vec<u8> = (0..3_000_000u32)
+            .map(|i| b"abcdefghij\n"[(i % 11) as usize])
+            .collect();
         std::fs::write(&path, &data).unwrap();
         let url = serve_for_test(path.clone(), true).unwrap();
-        let HttpOpen::Ranges(r, len) = HttpRange::open(&url).unwrap() else { panic!("no ranges") };
+        let HttpOpen::Ranges(r, len) = HttpRange::open(&url).unwrap() else {
+            panic!("no ranges")
+        };
         assert_eq!(len, data.len() as u64);
         let mut buf = vec![0u8; 5000];
         r.read_at(2_000_000, &mut buf).unwrap();
@@ -494,27 +593,67 @@ mod tests {
         assert_eq!(&buf[..10], &data[data.len() - 10..]);
         // A server that sends only whole files is told apart.
         let whole = serve_for_test(path, false).unwrap();
-        assert!(matches!(HttpRange::open(&whole).unwrap(), HttpOpen::NoRanges));
+        assert!(matches!(
+            HttpRange::open(&whole).unwrap(),
+            HttpOpen::NoRanges
+        ));
         assert_eq!(total_of("bytes 0-0/12345"), Some(12345));
         assert_eq!(total_of("bytes 0-0/*"), None);
     }
 
     #[test]
     fn grep_scripts_and_their_output() {
-        let q = Query { pattern: "it's".into(), regex: false, case_sensitive: true, whole_word: false, dot_all: false };
+        let q = Query {
+            pattern: "it's".into(),
+            regex: false,
+            case_sensitive: true,
+            whole_word: false,
+            dot_all: false,
+        };
         let s = grep_script("/var/log/a b.log", &q, None, Pick::All);
-        assert!(s.contains("LC_ALL=C;") && s.contains("m=-F") && s.contains(r"-e 'it'\''s'") && s.contains("f='/var/log/a b.log'"), "{s}");
-        let rq = Query { pattern: r"err\d+".into(), regex: true, case_sensitive: false, whole_word: true, dot_all: false };
+        assert!(
+            s.contains("LC_ALL=C;")
+                && s.contains("m=-F")
+                && s.contains(r"-e 'it'\''s'")
+                && s.contains("f='/var/log/a b.log'"),
+            "{s}"
+        );
+        let rq = Query {
+            pattern: r"err\d+".into(),
+            regex: true,
+            case_sensitive: false,
+            whole_word: true,
+            dot_all: false,
+        };
         let s = grep_script("~/x.log", &rq, Some((100, 900)), Pick::First);
-        assert!(s.contains("grep -qP") && s.contains("-i -w -m 1") && s.contains("tail -c +101") && s.contains("head -c 800") && s.contains("f=~/'x.log'"), "{s}");
+        assert!(
+            s.contains("grep -qP")
+                && s.contains("-i -w -m 1")
+                && s.contains("tail -c +101")
+                && s.contains("head -c 800")
+                && s.contains("f=~/'x.log'"),
+            "{s}"
+        );
         assert!(grep_script("x", &q, None, Pick::Last).ends_with("| tail -n 1"));
         assert_eq!(parse_grep_line(b"1234:ERROR", 100), Some((1334, 1339)));
         assert_eq!(parse_grep_line(b"7:a:b", 0), Some((7, 10)));
         assert_eq!(parse_grep_line(b"garbage", 0), None);
         let utf8 = Codec::utf8();
         assert!(server_can_search(&q, &utf8));
-        assert!(!server_can_search(&Query { dot_all: true, ..q.clone() }, &utf8));
-        assert!(!server_can_search(&Query { pattern: String::new(), ..q }, &utf8));
+        assert!(!server_can_search(
+            &Query {
+                dot_all: true,
+                ..q.clone()
+            },
+            &utf8
+        ));
+        assert!(!server_can_search(
+            &Query {
+                pattern: String::new(),
+                ..q
+            },
+            &utf8
+        ));
     }
 
     /// `sh` for running the server-side scripts locally (skipped where there is none).
@@ -561,14 +700,37 @@ mod tests {
     #[test]
     #[ignore]
     fn ssh_live() {
-        let Ok(spec) = std::env::var("BIGTEXT_SSH_LIVE") else { return };
+        let Ok(spec) = std::env::var("BIGTEXT_SSH_LIVE") else {
+            return;
+        };
         let v: Vec<String> = spec.split_whitespace().map(str::to_owned).collect();
-        let (target, port, path, key, known) = (v[0].clone(), v[1].clone(), v[2].clone(), v[3].clone(), v[4].clone());
+        let (target, port, path, key, known) = (
+            v[0].clone(),
+            v[1].clone(),
+            v[2].clone(),
+            v[3].clone(),
+            v[4].clone(),
+        );
         let ssh = {
-            let (target, port, key, known) = (target.clone(), port.clone(), key.clone(), known.clone());
+            let (target, port, key, known) =
+                (target.clone(), port.clone(), key.clone(), known.clone());
             move |script: &str| {
                 let mut c = Command::new("ssh");
-                c.args(["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o"]).arg(format!("UserKnownHostsFile={known}")).arg("-i").arg(&key).arg("-p").arg(&port).arg(&target).arg("--").arg(sh_c(script));
+                c.args([
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "StrictHostKeyChecking=accept-new",
+                    "-o",
+                ])
+                .arg(format!("UserKnownHostsFile={known}"))
+                .arg("-i")
+                .arg(&key)
+                .arg("-p")
+                .arg(&port)
+                .arg(&target)
+                .arg("--")
+                .arg(sh_c(script));
                 c
             }
         };
@@ -583,31 +745,63 @@ mod tests {
             r.read_at(line * 64, &mut buf).unwrap();
             let text = String::from_utf8_lossy(&buf);
             eprintln!("line {line} in {:?}: {}", t.elapsed(), text.trim_end());
-            assert!(text.starts_with(&format!("line {line:07} of the remote file")), "{text}");
+            assert!(
+                text.starts_with(&format!("line {line:07} of the remote file")),
+                "{text}"
+            );
         }
         let mut big = vec![0u8; 256 * 1024];
         let t = std::time::Instant::now();
         r.read_at(10_000_000, &mut big).unwrap();
         eprintln!("256 KB in {:?}", t.elapsed());
-        let q = Query { pattern: "ERROR disk".into(), regex: false, case_sensitive: true, whole_word: false, dot_all: false };
+        let q = Query {
+            pattern: "ERROR disk".into(),
+            regex: false,
+            case_sensitive: true,
+            whole_word: false,
+            dot_all: false,
+        };
         let t = std::time::Instant::now();
         let mut n = 0;
         let mut first = None;
-        run_grep(ssh(&grep_script(&path, &q, None, Pick::All)), 0, &CancelToken::new(), |s, e| {
-            first.get_or_insert((s, e));
-            n += 1;
-            true
-        })
+        run_grep(
+            ssh(&grep_script(&path, &q, None, Pick::All)),
+            0,
+            &CancelToken::new(),
+            |s, e| {
+                first.get_or_insert((s, e));
+                n += 1;
+                true
+            },
+        )
         .unwrap();
-        eprintln!("{n} matches on the server in {:?}, first {first:?}", t.elapsed());
+        eprintln!(
+            "{n} matches on the server in {:?}, first {first:?}",
+            t.elapsed()
+        );
         // "line 0000007 of the remote file" is 31 bytes, then " ERROR".
         assert_eq!(first, Some((7 * 64 + 32, 7 * 64 + 42)));
         let mut last = None;
-        let rq = Query { pattern: r"line 0[0-9]+007 of the remote file ERROR".into(), regex: true, case_sensitive: false, ..q };
-        run_grep(ssh(&grep_script(&path, &rq, Some((0, 500_000 * 64)), Pick::Last)), 0, &CancelToken::new(), |s, e| {
-            last = Some((s, e));
-            true
-        })
+        let rq = Query {
+            pattern: r"line 0[0-9]+007 of the remote file ERROR".into(),
+            regex: true,
+            case_sensitive: false,
+            ..q
+        };
+        run_grep(
+            ssh(&grep_script(
+                &path,
+                &rq,
+                Some((0, 500_000 * 64)),
+                Pick::Last,
+            )),
+            0,
+            &CancelToken::new(),
+            |s, e| {
+                last = Some((s, e));
+                true
+            },
+        )
         .unwrap();
         eprintln!("last before line 500000: {last:?}");
         assert_eq!(last.map(|l| l.0), Some(499_007 * 64));
@@ -616,7 +810,13 @@ mod tests {
     #[test]
     fn grep_runs_and_reports_byte_offsets() {
         let Some(_) = local_sh() else { return };
-        if Command::new("sh").arg("-c").arg("echo x | grep -q x").status().map(|s| !s.success()).unwrap_or(true) {
+        if Command::new("sh")
+            .arg("-c")
+            .arg("echo x | grep -q x")
+            .status()
+            .map(|s| !s.success())
+            .unwrap_or(true)
+        {
             return;
         }
         let dir = tempfile::tempdir().unwrap();
@@ -635,17 +835,43 @@ mod tests {
             v
         };
         // "ok one\n" 0-6, "ERROR two\n" 7-16, "ok\n" 17-19, "error three ERROR\n" 20-37.
-        let q = Query { pattern: "ERROR".into(), regex: false, case_sensitive: true, whole_word: false, dot_all: false };
+        let q = Query {
+            pattern: "ERROR".into(),
+            regex: false,
+            case_sensitive: true,
+            whole_word: false,
+            dot_all: false,
+        };
         assert_eq!(run(&q, None, Pick::All), vec![(7, 12), (32, 37)]);
-        let qi = Query { case_sensitive: false, ..q.clone() };
+        let qi = Query {
+            case_sensitive: false,
+            ..q.clone()
+        };
         assert_eq!(run(&qi, None, Pick::All), vec![(7, 12), (20, 25), (32, 37)]);
         assert_eq!(run(&qi, Some((10, 38)), Pick::First), vec![(20, 25)]);
         assert_eq!(run(&qi, Some((0, 30)), Pick::Last), vec![(20, 25)]);
-        let rq = Query { pattern: "e[a-z]+r".into(), regex: true, case_sensitive: true, ..q.clone() };
+        let rq = Query {
+            pattern: "e[a-z]+r".into(),
+            regex: true,
+            case_sensitive: true,
+            ..q.clone()
+        };
         assert_eq!(run(&rq, None, Pick::All), vec![(20, 25)]);
-        assert!(run(&Query { pattern: "nothing".into(), ..q.clone() }, None, Pick::All).is_empty());
+        assert!(run(
+            &Query {
+                pattern: "nothing".into(),
+                ..q.clone()
+            },
+            None,
+            Pick::All
+        )
+        .is_empty());
         // Plain text with regex characters, ignoring case, stays plain.
-        let dots = Query { pattern: "E.R".into(), case_sensitive: false, ..q };
+        let dots = Query {
+            pattern: "E.R".into(),
+            case_sensitive: false,
+            ..q
+        };
         assert!(run(&dots, None, Pick::All).is_empty());
         assert_eq!(ere_escape("a.b*(c)"), r"a\.b\*\(c\)");
     }

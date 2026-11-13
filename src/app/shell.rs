@@ -21,7 +21,9 @@ fn folder_of(path: &Path) -> PathBuf {
     if path.is_dir() {
         return path.to_path_buf();
     }
-    path.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
+    path.parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 /// The command that does `action` for `path` here.
@@ -43,7 +45,9 @@ pub fn command(action: ShellAction, path: &Path) -> Command {
         ShellAction::Terminal => {
             // CREATE_NEW_CONSOLE: its own window.
             let mut c = Command::new("cmd.exe");
-            c.arg("/K").current_dir(folder_of(path)).creation_flags(0x10);
+            c.arg("/K")
+                .current_dir(folder_of(path))
+                .creation_flags(0x10);
             c
         }
         ShellAction::Default => {
@@ -76,7 +80,10 @@ pub fn command(action: ShellAction, path: &Path) -> Command {
             c
         }
         ShellAction::Terminal => {
-            let term = std::env::var("TERMINAL").ok().filter(|t| !t.is_empty()).unwrap_or_else(|| "x-terminal-emulator".into());
+            let term = std::env::var("TERMINAL")
+                .ok()
+                .filter(|t| !t.is_empty())
+                .unwrap_or_else(|| "x-terminal-emulator".into());
             let mut c = Command::new(term);
             c.current_dir(folder_of(path));
             c
@@ -94,10 +101,15 @@ pub fn command(action: ShellAction, path: &Path) -> Command {
 #[cfg(windows)]
 pub fn move_to_trash(path: &Path) -> Result<(), String> {
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::UI::Shell::{SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FO_DELETE, SHFILEOPSTRUCTW};
+    use windows_sys::Win32::UI::Shell::{
+        SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FO_DELETE,
+        SHFILEOPSTRUCTW,
+    };
     // The shell takes neither `\\?\` paths nor relative ones; the list ends with two NULs.
     let full = std::path::absolute(path).map_err(|e| e.to_string())?;
-    let mut from: Vec<u16> = std::ffi::OsStr::new(&bigtext::file::display_path(&full)).encode_wide().collect();
+    let mut from: Vec<u16> = std::ffi::OsStr::new(&bigtext::file::display_path(&full))
+        .encode_wide()
+        .collect();
     from.extend([0, 0]);
     // SAFETY: the struct is plain data, zero is a valid value for every field, and `from`
     // outlives the call.
@@ -116,7 +128,10 @@ pub fn move_to_trash(path: &Path) -> Result<(), String> {
     match code {
         0 => Ok(()),
         -1 => Err(tr("The operation was cancelled.").into()),
-        c => Err(format!("{} (0x{c:X})", tr("Windows could not move it to the Recycle Bin"))),
+        c => Err(format!(
+            "{} (0x{c:X})",
+            tr("Windows could not move it to the Recycle Bin")
+        )),
     }
 }
 
@@ -124,8 +139,17 @@ pub fn move_to_trash(path: &Path) -> Result<(), String> {
 #[cfg(target_os = "macos")]
 pub fn move_to_trash(path: &Path) -> Result<(), String> {
     let full = std::path::absolute(path).map_err(|e| e.to_string())?;
-    let p = full.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
-    let out = Command::new("osascript").arg("-e").arg(format!("tell application \"Finder\" to delete POSIX file \"{p}\"")).output().map_err(|e| e.to_string())?;
+    let p = full
+        .to_string_lossy()
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
+    let out = Command::new("osascript")
+        .arg("-e")
+        .arg(format!(
+            "tell application \"Finder\" to delete POSIX file \"{p}\""
+        ))
+        .output()
+        .map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok(())
     } else {
@@ -138,27 +162,64 @@ pub fn move_to_trash(path: &Path) -> Result<(), String> {
 #[cfg(all(unix, not(target_os = "macos")))]
 pub fn move_to_trash(path: &Path) -> Result<(), String> {
     let full = std::path::absolute(path).map_err(|e| e.to_string())?;
-    if Command::new("gio").arg("trash").arg("--").arg(&full).output().is_ok_and(|o| o.status.success()) {
+    if Command::new("gio")
+        .arg("trash")
+        .arg("--")
+        .arg(&full)
+        .output()
+        .is_ok_and(|o| o.status.success())
+    {
         return Ok(());
     }
-    let data = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share"))).ok_or("no home folder")?;
+    let data = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share")))
+        .ok_or("no home folder")?;
     let trash = data.join("Trash");
     let (files, info) = (trash.join("files"), trash.join("info"));
-    std::fs::create_dir_all(&files).and_then(|_| std::fs::create_dir_all(&info)).map_err(|e| e.to_string())?;
-    let name = full.file_name().ok_or("no file name")?.to_string_lossy().into_owned();
+    std::fs::create_dir_all(&files)
+        .and_then(|_| std::fs::create_dir_all(&info))
+        .map_err(|e| e.to_string())?;
+    let name = full
+        .file_name()
+        .ok_or("no file name")?
+        .to_string_lossy()
+        .into_owned();
     let mut n = 0;
     let target = loop {
-        let candidate = if n == 0 { name.clone() } else { format!("{name}.{n}") };
-        if !files.join(&candidate).exists() && !info.join(format!("{candidate}.trashinfo")).exists() {
+        let candidate = if n == 0 {
+            name.clone()
+        } else {
+            format!("{name}.{n}")
+        };
+        if !files.join(&candidate).exists() && !info.join(format!("{candidate}.trashinfo")).exists()
+        {
             break candidate;
         }
         n += 1;
     };
-    let encoded: String = full.to_string_lossy().bytes().map(|b| if b.is_ascii_alphanumeric() || b"/-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect();
-    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let encoded: String = full
+        .to_string_lossy()
+        .bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || b"/-_.~".contains(&b) {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect();
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     // In UTC: the specification asks for local time, which needs no more than a label here.
     let date = bigtext::timestamp::format_key(secs as i64 * 1000, true, true).replace(' ', "T");
-    std::fs::write(info.join(format!("{target}.trashinfo")), format!("[Trash Info]\nPath={encoded}\nDeletionDate={date}\n")).map_err(|e| e.to_string())?;
+    std::fs::write(
+        info.join(format!("{target}.trashinfo")),
+        format!("[Trash Info]\nPath={encoded}\nDeletionDate={date}\n"),
+    )
+    .map_err(|e| e.to_string())?;
     std::fs::rename(&full, files.join(&target)).map_err(|e| {
         let _ = std::fs::remove_file(info.join(format!("{target}.trashinfo")));
         e.to_string()
@@ -190,7 +251,9 @@ impl BigTextApp {
         if let Err(e) = run(action, path) {
             let what = match action {
                 ShellAction::Reveal => tr("Could not show the file in its folder"),
-                ShellAction::Terminal => tr("Could not open a terminal (set the TERMINAL variable to yours)"),
+                ShellAction::Terminal => {
+                    tr("Could not open a terminal (set the TERMINAL variable to yours)")
+                }
                 ShellAction::Default => tr("Could not open the file with its default app"),
             };
             self.error = Some(format!("{what}: {e}"));
@@ -203,7 +266,12 @@ mod tests {
     use super::*;
 
     fn argv(c: &Command) -> (String, Vec<String>) {
-        (c.get_program().to_string_lossy().into_owned(), c.get_args().map(|a| a.to_string_lossy().into_owned()).collect())
+        (
+            c.get_program().to_string_lossy().into_owned(),
+            c.get_args()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect(),
+        )
     }
 
     #[test]
@@ -217,10 +285,16 @@ mod tests {
         let term = command(ShellAction::Terminal, &f);
         assert_eq!(term.get_current_dir(), Some(dir.path()));
         if cfg!(windows) {
-            assert_eq!((prog.as_str(), args[0].as_str()), ("rundll32.exe", "url.dll,FileProtocolHandler"));
+            assert_eq!(
+                (prog.as_str(), args[0].as_str()),
+                ("rundll32.exe", "url.dll,FileProtocolHandler")
+            );
             assert!(args[1].ends_with("a b.log"));
             assert_eq!(rprog, "explorer.exe");
-            assert!(rargs[0].starts_with("/select,\"") && rargs[0].ends_with("a b.log\""), "{rargs:?}");
+            assert!(
+                rargs[0].starts_with("/select,\"") && rargs[0].ends_with("a b.log\""),
+                "{rargs:?}"
+            );
             assert!(!gone.1[0].starts_with("/select"));
         } else if cfg!(target_os = "macos") {
             assert_eq!((prog.as_str(), rargs[0].as_str()), ("open", "-R"));

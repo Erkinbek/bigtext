@@ -80,7 +80,11 @@ fn tokens(src: &str) -> Result<Vec<(Tok, usize)>, String> {
         if c.is_whitespace() {
             i += 1;
         } else if c == '{' {
-            let end = b[i..].iter().position(|&x| x == '}').ok_or(format!("a {{ without }} at {}", at + 1))? + i;
+            let end = b[i..]
+                .iter()
+                .position(|&x| x == '}')
+                .ok_or(format!("a {{ without }} at {}", at + 1))?
+                + i;
             out.push((Tok::Col(b[i + 1..end].iter().collect()), at));
             i = end + 1;
         } else if c == '"' {
@@ -104,19 +108,42 @@ fn tokens(src: &str) -> Result<Vec<(Tok, usize)>, String> {
                 }
             }
             out.push((Tok::Text(s), at));
-        } else if c.is_ascii_digit() || (c == '.' && b.get(i + 1).is_some_and(|d| d.is_ascii_digit())) {
-            let end = b[i..].iter().position(|x| !(x.is_ascii_digit() || *x == '.')).map_or(b.len(), |n| i + n);
+        } else if c.is_ascii_digit()
+            || (c == '.' && b.get(i + 1).is_some_and(|d| d.is_ascii_digit()))
+        {
+            let end = b[i..]
+                .iter()
+                .position(|x| !(x.is_ascii_digit() || *x == '.'))
+                .map_or(b.len(), |n| i + n);
             let t: String = b[i..end].iter().collect();
-            out.push((Tok::Num(t.parse().map_err(|_| format!("not a number: {t}"))?), at));
+            out.push((
+                Tok::Num(t.parse().map_err(|_| format!("not a number: {t}"))?),
+                at,
+            ));
             i = end;
         } else if c.is_alphabetic() || c == '_' {
-            let end = b[i..].iter().position(|x| !(x.is_alphanumeric() || *x == '_')).map_or(b.len(), |n| i + n);
-            out.push((Tok::Ident(b[i..end].iter().collect::<String>().to_lowercase()), at));
+            let end = b[i..]
+                .iter()
+                .position(|x| !(x.is_alphanumeric() || *x == '_'))
+                .map_or(b.len(), |n| i + n);
+            out.push((
+                Tok::Ident(b[i..end].iter().collect::<String>().to_lowercase()),
+                at,
+            ));
             i = end;
         } else {
             let two: String = b[i..(i + 2).min(b.len())].iter().collect();
-            let sym = ["<>", "<=", ">=", "!="].into_iter().find(|s| *s == two).or_else(|| ["+", "-", "*", "/", "&", "=", "<", ">", "(", ")", ","].into_iter().find(|s| s.starts_with(c)));
-            let Some(s) = sym else { return Err(format!("unexpected {c} at {}", at + 1)) };
+            let sym = ["<>", "<=", ">=", "!="]
+                .into_iter()
+                .find(|s| *s == two)
+                .or_else(|| {
+                    ["+", "-", "*", "/", "&", "=", "<", ">", "(", ")", ","]
+                        .into_iter()
+                        .find(|s| s.starts_with(c))
+                });
+            let Some(s) = sym else {
+                return Err(format!("unexpected {c} at {}", at + 1));
+            };
             out.push((Tok::Sym(if s == "!=" { "<>" } else { s }), at));
             i += s.chars().count();
         }
@@ -136,12 +163,14 @@ impl Parser<'_> {
     }
 
     fn eat(&mut self, sym: &str) -> bool {
-        if self.peek() == Some(&Tok::Sym(match sym {
-            "(" => "(",
-            ")" => ")",
-            "," => ",",
-            _ => return false,
-        })) {
+        if self.peek()
+            == Some(&Tok::Sym(match sym {
+                "(" => "(",
+                ")" => ")",
+                "," => ",",
+                _ => return false,
+            }))
+        {
             self.pos += 1;
             return true;
         }
@@ -195,7 +224,9 @@ impl Parser<'_> {
     }
 
     fn atom(&mut self) -> Result<Node, String> {
-        let Some((tok, at)) = self.toks.get(self.pos).cloned() else { return Err("the expression ends too early".into()) };
+        let Some((tok, at)) = self.toks.get(self.pos).cloned() else {
+            return Err("the expression ends too early".into());
+        };
         self.pos += 1;
         match tok {
             Tok::Num(n) => Ok(Node::Num(n)),
@@ -247,16 +278,27 @@ impl Parser<'_> {
                     }
                 }
                 let (lo, hi) = match func {
-                    Func::Upper | Func::Lower | Func::Trim | Func::Len | Func::Num | Func::Abs => (1, 1),
+                    Func::Upper | Func::Lower | Func::Trim | Func::Len | Func::Num | Func::Abs => {
+                        (1, 1)
+                    }
                     Func::Substr | Func::Regex(_) => (2, 3),
                     Func::Round => (1, 2),
                     Func::Replace | Func::If => (3, 3),
                 };
                 if args.len() < lo || args.len() > hi {
-                    return Err(format!("{f} takes {lo}{} arguments", if hi > lo { format!(" to {hi}") } else { String::new() }));
+                    return Err(format!(
+                        "{f} takes {lo}{} arguments",
+                        if hi > lo {
+                            format!(" to {hi}")
+                        } else {
+                            String::new()
+                        }
+                    ));
                 }
                 let func = match (func, args.get(1)) {
-                    (Func::Regex(_), Some(Node::Text(p))) => Func::Regex(Some(Regex::new(p).map_err(|e| format!("regex: {e}"))?)),
+                    (Func::Regex(_), Some(Node::Text(p))) => {
+                        Func::Regex(Some(Regex::new(p).map_err(|e| format!("regex: {e}"))?))
+                    }
                     (f, _) => f,
                 };
                 Ok(Node::Call(func, args))
@@ -273,7 +315,11 @@ impl Expr {
         if toks.is_empty() {
             return Err("the expression is empty".into());
         }
-        let mut p = Parser { toks, pos: 0, names };
+        let mut p = Parser {
+            toks,
+            pos: 0,
+            names,
+        };
         let e = p.expr(0)?;
         if p.pos < p.toks.len() {
             return Err(format!("unexpected text at {}", p.toks[p.pos].1 + 1));
@@ -327,7 +373,10 @@ fn eval(n: &Node, f: &[String]) -> String {
                 Op::Add => both().map(|(p, q)| show(p + q)).unwrap_or_default(),
                 Op::Sub => both().map(|(p, q)| show(p - q)).unwrap_or_default(),
                 Op::Mul => both().map(|(p, q)| show(p * q)).unwrap_or_default(),
-                Op::Div => both().filter(|&(_, q)| q != 0.0).map(|(p, q)| show(p / q)).unwrap_or_default(),
+                Op::Div => both()
+                    .filter(|&(_, q)| q != 0.0)
+                    .map(|(p, q)| show(p / q))
+                    .unwrap_or_default(),
                 _ => {
                     let ord = match both() {
                         Some((p, q)) => p.partial_cmp(&q).unwrap_or(std::cmp::Ordering::Equal),
@@ -356,14 +405,21 @@ fn eval(n: &Node, f: &[String]) -> String {
                     let s = arg(0);
                     let start = num(&arg(1)).unwrap_or(0.0).max(0.0) as usize;
                     let taken: Box<dyn Iterator<Item = char>> = Box::new(s.chars().skip(start));
-                    match args.get(2).map(|_| num(&arg(2)).unwrap_or(0.0).max(0.0) as usize) {
+                    match args
+                        .get(2)
+                        .map(|_| num(&arg(2)).unwrap_or(0.0).max(0.0) as usize)
+                    {
                         Some(n) => taken.take(n).collect(),
                         None => taken.collect(),
                     }
                 }
                 Func::Replace => {
                     let from = arg(1);
-                    if from.is_empty() { arg(0) } else { arg(0).replace(&from, &arg(2)) }
+                    if from.is_empty() {
+                        arg(0)
+                    } else {
+                        arg(0).replace(&from, &arg(2))
+                    }
                 }
                 Func::Regex(re) => {
                     let s = arg(0);
@@ -378,10 +434,21 @@ fn eval(n: &Node, f: &[String]) -> String {
                             Err(_) => return String::new(),
                         },
                     };
-                    let g = args.get(2).map(|_| num(&arg(2)).unwrap_or(1.0) as usize).unwrap_or(if re.group_info().group_len(regex_automata::PatternID::ZERO) > 1 { 1 } else { 0 });
+                    let g = args
+                        .get(2)
+                        .map(|_| num(&arg(2)).unwrap_or(1.0) as usize)
+                        .unwrap_or(
+                            if re.group_info().group_len(regex_automata::PatternID::ZERO) > 1 {
+                                1
+                            } else {
+                                0
+                            },
+                        );
                     let mut caps = re.create_captures();
                     re.captures(s.as_bytes(), &mut caps);
-                    caps.get_group(g).map(|sp| s[sp.range()].to_string()).unwrap_or_default()
+                    caps.get_group(g)
+                        .map(|sp| s[sp.range()].to_string())
+                        .unwrap_or_default()
                 }
                 Func::If => {
                     if truthy(&arg(0)) {
@@ -393,9 +460,15 @@ fn eval(n: &Node, f: &[String]) -> String {
                 Func::Num => num(&arg(0)).map(show).unwrap_or_default(),
                 Func::Abs => num(&arg(0)).map(|x| show(x.abs())).unwrap_or_default(),
                 Func::Round => {
-                    let digits = args.get(1).map(|_| num(&arg(1)).unwrap_or(0.0)).unwrap_or(0.0).clamp(0.0, 12.0) as i32;
+                    let digits = args
+                        .get(1)
+                        .map(|_| num(&arg(1)).unwrap_or(0.0))
+                        .unwrap_or(0.0)
+                        .clamp(0.0, 12.0) as i32;
                     let m = 10f64.powi(digits);
-                    num(&arg(0)).map(|x| show((x * m).round() / m)).unwrap_or_default()
+                    num(&arg(0))
+                        .map(|x| show((x * m).round() / m))
+                        .unwrap_or_default()
                 }
             }
         }
@@ -407,9 +480,14 @@ mod tests {
     use super::*;
 
     fn run(src: &str, row: &[&str]) -> String {
-        let names: Vec<String> = ["price", "qty", "status", "url", "ts"].iter().map(|s| s.to_string()).collect();
+        let names: Vec<String> = ["price", "qty", "status", "url", "ts"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let row: Vec<String> = row.iter().map(|s| s.to_string()).collect();
-        Expr::compile(src, &names).unwrap_or_else(|e| panic!("{src}: {e}")).eval(&row)
+        Expr::compile(src, &names)
+            .unwrap_or_else(|e| panic!("{src}: {e}"))
+            .eval(&row)
     }
 
     const ROW: [&str; 5] = ["2.5", "4", "ok", "/a?id=42&x=1", "2024-05-01 10:00:00"];
@@ -434,7 +512,13 @@ mod tests {
     #[test]
     fn logic_and_regex() {
         assert_eq!(run("if({status} = \"ok\", 1, 0)", &ROW), "1");
-        assert_eq!(run("if({qty} > 10 or {status} <> \"ok\", \"big\", \"small\")", &ROW), "small");
+        assert_eq!(
+            run(
+                "if({qty} > 10 or {status} <> \"ok\", \"big\", \"small\")",
+                &ROW
+            ),
+            "small"
+        );
         assert_eq!(run("{qty} >= 4 and not {qty} > 4", &ROW), "1");
         assert_eq!(run("\"10\" > \"9\"", &ROW), "1");
         assert_eq!(run("\"b\" > \"a\"", &ROW), "1");
@@ -446,9 +530,24 @@ mod tests {
     #[test]
     fn errors() {
         let names = vec!["a".to_string()];
-        for bad in ["{nope} + 1", "1 +", "(1", "frob(1)", "upper(1, 2)", "\"open", "{a} $ 2", "regex({a}, \"(\")", ""] {
+        for bad in [
+            "{nope} + 1",
+            "1 +",
+            "(1",
+            "frob(1)",
+            "upper(1, 2)",
+            "\"open",
+            "{a} $ 2",
+            "regex({a}, \"(\")",
+            "",
+        ] {
             assert!(Expr::compile(bad, &names).is_err(), "{bad} compiled");
         }
-        assert_eq!(Expr::compile("{1} & \"x\"", &names).unwrap().eval(&["v".into()]), "vx");
+        assert_eq!(
+            Expr::compile("{1} & \"x\"", &names)
+                .unwrap()
+                .eval(&["v".into()]),
+            "vx"
+        );
     }
 }

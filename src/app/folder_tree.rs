@@ -18,7 +18,15 @@ use super::shell::ShellAction;
 use super::BigTextApp;
 
 /// Names never shown: version control and system clutter, as Sublime Text hides them.
-const HIDDEN: &[&str] = &[".git", ".svn", ".hg", "CVS", ".DS_Store", "Thumbs.db", "desktop.ini"];
+const HIDDEN: &[&str] = &[
+    ".git",
+    ".svn",
+    ".hg",
+    "CVS",
+    ".DS_Store",
+    "Thumbs.db",
+    "desktop.ini",
+];
 /// Expanded folders remembered at most.
 pub const EXPANDED_MAX: usize = 200;
 /// Indent of each level of the tree, in points.
@@ -41,7 +49,11 @@ enum Listing {
 /// One row of the tree as drawn.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Row {
-    Entry { depth: u16, entry: Entry, open: bool },
+    Entry {
+        depth: u16,
+        entry: Entry,
+        open: bool,
+    },
     /// A folder being read.
     Loading(u16),
     /// A folder that could not be read.
@@ -143,8 +155,15 @@ pub fn list_dir(dir: &Path) -> Result<Vec<Entry>, String> {
             Ok(t) if t.is_symlink() => std::fs::metadata(&path).or_else(|_| e.metadata()),
             _ => e.metadata(),
         };
-        let (dir, size) = meta.map(|m| (m.is_dir(), if m.is_dir() { 0 } else { m.len() })).unwrap_or((false, 0));
-        v.push(Entry { name, path, dir, size });
+        let (dir, size) = meta
+            .map(|m| (m.is_dir(), if m.is_dir() { 0 } else { m.len() }))
+            .unwrap_or((false, 0));
+        v.push(Entry {
+            name,
+            path,
+            dir,
+            size,
+        });
     }
     v.sort_by(|a, b| b.dir.cmp(&a.dir).then_with(|| natural(&a.name, &b.name)));
     Ok(v)
@@ -169,7 +188,8 @@ impl FolderUi {
     fn poll(&mut self) {
         while let Ok((dir, r)) = self.rx.try_recv() {
             self.pending.remove(&dir);
-            self.listings.insert(dir, r.map_or_else(Listing::Failed, Listing::Ready));
+            self.listings
+                .insert(dir, r.map_or_else(Listing::Failed, Listing::Ready));
             self.dirty = true;
         }
     }
@@ -181,7 +201,14 @@ impl FolderUi {
             self.rows.clear();
             if let Some(root) = &self.root {
                 let filter = self.filter.trim().to_lowercase();
-                add_children(&self.listings, &self.expanded, root, 0, &filter, &mut self.rows);
+                add_children(
+                    &self.listings,
+                    &self.expanded,
+                    root,
+                    0,
+                    &filter,
+                    &mut self.rows,
+                );
             }
         }
         &self.rows
@@ -194,8 +221,15 @@ impl FolderUi {
 
     /// The expanded folders to remember: inside the open folder, the root left out.
     pub fn expanded_to_keep(&self) -> Vec<PathBuf> {
-        let Some(root) = &self.root else { return Vec::new() };
-        let mut v: Vec<PathBuf> = self.expanded.iter().filter(|p| *p != root && p.starts_with(root)).cloned().collect();
+        let Some(root) = &self.root else {
+            return Vec::new();
+        };
+        let mut v: Vec<PathBuf> = self
+            .expanded
+            .iter()
+            .filter(|p| *p != root && p.starts_with(root))
+            .cloned()
+            .collect();
         v.sort();
         v.truncate(EXPANDED_MAX);
         v
@@ -204,7 +238,14 @@ impl FolderUi {
 
 /// The rows of `dir`'s files at `depth`, and of its expanded folders below each. With a filter,
 /// only matching names and the folders that lead to them; returns whether anything matched.
-fn add_children(listings: &HashMap<PathBuf, Listing>, expanded: &HashSet<PathBuf>, dir: &Path, depth: u16, filter: &str, out: &mut Vec<Row>) -> bool {
+fn add_children(
+    listings: &HashMap<PathBuf, Listing>,
+    expanded: &HashSet<PathBuf>,
+    dir: &Path,
+    depth: u16,
+    filter: &str,
+    out: &mut Vec<Row>,
+) -> bool {
     let entries = match listings.get(dir) {
         None => {
             if filter.is_empty() {
@@ -226,16 +267,25 @@ fn add_children(listings: &HashMap<PathBuf, Listing>, expanded: &HashSet<PathBuf
         let hit = filter.is_empty() || e.name.to_lowercase().contains(filter);
         if !e.dir {
             if hit {
-                out.push(Row::Entry { depth, entry: e.clone(), open: false });
+                out.push(Row::Entry {
+                    depth,
+                    entry: e.clone(),
+                    open: false,
+                });
                 any = true;
             }
             continue;
         }
         let at = out.len();
         let open = expanded.contains(&e.path);
-        out.push(Row::Entry { depth, entry: e.clone(), open });
+        out.push(Row::Entry {
+            depth,
+            entry: e.clone(),
+            open,
+        });
         // A filter looks into every folder read so far, open or not.
-        let below = (open || (!filter.is_empty() && listings.contains_key(&e.path))) && add_children(listings, expanded, &e.path, depth + 1, filter, out);
+        let below = (open || (!filter.is_empty() && listings.contains_key(&e.path)))
+            && add_children(listings, expanded, &e.path, depth + 1, filter, out);
         if !filter.is_empty() {
             if below {
                 if let Some(Row::Entry { open, .. }) = out.get_mut(at) {
@@ -272,7 +322,12 @@ impl BigTextApp {
     /// File → Open folder…
     pub(crate) fn open_folder_dialog(&mut self) {
         let mut dlg = rfd::FileDialog::new().set_title(tr("Open folder"));
-        if let Some(dir) = self.folder.root.as_deref().or_else(|| self.docs.get(self.active).and_then(|d| d.path.as_deref()).and_then(Path::parent)) {
+        if let Some(dir) = self.folder.root.as_deref().or_else(|| {
+            self.docs
+                .get(self.active)
+                .and_then(|d| d.path.as_deref())
+                .and_then(Path::parent)
+        }) {
             dlg = dlg.set_directory(dir);
         }
         if let Some(dir) = dlg.pick_folder() {
@@ -303,7 +358,11 @@ impl BigTextApp {
         let f = &mut self.folder;
         f.root = Some(root.clone());
         f.visible = visible;
-        f.expanded = expanded.into_iter().filter(|p| p.starts_with(&root)).take(EXPANDED_MAX).collect();
+        f.expanded = expanded
+            .into_iter()
+            .filter(|p| p.starts_with(&root))
+            .take(EXPANDED_MAX)
+            .collect();
         f.expanded.insert(root);
         let dirs: Vec<PathBuf> = f.expanded.iter().cloned().collect();
         for d in dirs {
@@ -355,20 +414,43 @@ impl BigTextApp {
     }
 
     pub(super) fn folder_panel(&mut self, ui: &mut egui::Ui) {
-        let Some(root) = self.folder.root.clone() else { return };
+        let Some(root) = self.folder.root.clone() else {
+            return;
+        };
         let mut act = None;
-        let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| display_path(&root));
+        let name = root
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| display_path(&root));
         ui.horizontal(|ui| {
-            let head = ui.add(egui::Label::new(egui::RichText::new(&name).strong()).truncate().sense(egui::Sense::click())).on_hover_text(display_path(&root));
+            let head = ui
+                .add(
+                    egui::Label::new(egui::RichText::new(&name).strong())
+                        .truncate()
+                        .sense(egui::Sense::click()),
+                )
+                .on_hover_text(display_path(&root));
             head.context_menu(|ui| folder_menu(ui, &root, true, &mut act));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.small_button("×").on_hover_text(tr("Hide the side bar")).clicked() {
+                if ui
+                    .small_button("×")
+                    .on_hover_text(tr("Hide the side bar"))
+                    .clicked()
+                {
                     act = Some(Act::Hide);
                 }
-                if ui.small_button("⟳").on_hover_text(tr("Read the folders again")).clicked() {
+                if ui
+                    .small_button("⟳")
+                    .on_hover_text(tr("Read the folders again"))
+                    .clicked()
+                {
                     act = Some(Act::Refresh);
                 }
-                if ui.small_button("⊟").on_hover_text(tr("Collapse all folders")).clicked() {
+                if ui
+                    .small_button("⊟")
+                    .on_hover_text(tr("Collapse all folders"))
+                    .clicked()
+                {
                     act = Some(Act::CollapseAll);
                 }
                 if self.folder.busy() {
@@ -376,12 +458,19 @@ impl BigTextApp {
                 }
             });
         });
-        let filter = ui.add(egui::TextEdit::singleline(&mut self.folder.filter).hint_text(tr("Filter names")).desired_width(f32::INFINITY));
+        let filter = ui.add(
+            egui::TextEdit::singleline(&mut self.folder.filter)
+                .hint_text(tr("Filter names"))
+                .desired_width(f32::INFINITY),
+        );
         if filter.changed() {
             self.folder.dirty = true;
         }
         ui.separator();
-        let active = self.docs.get(self.active).and_then(|d| d.unpacked_from.clone().or_else(|| d.path.clone()));
+        let active = self
+            .docs
+            .get(self.active)
+            .and_then(|d| d.unpacked_from.clone().or_else(|| d.path.clone()));
         let row_h = ui.text_style_height(&egui::TextStyle::Body) + 6.0;
         // Borrowed out for the frame (a folder may have hundreds of thousands of rows).
         self.folder.rows();
@@ -390,62 +479,112 @@ impl BigTextApp {
             ui.weak(tr("No names match the filter in the folders read so far."));
         }
         let mut drawn = Vec::new();
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, row_h, rows.len(), |ui, range| {
-            ui.spacing_mut().item_spacing.y = 0.0;
-            for row in &rows[range] {
-                let depth = match row {
-                    Row::Entry { depth, .. } | Row::Loading(depth) | Row::Failed(depth, _) | Row::Empty(depth) => *depth,
-                };
-                ui.horizontal(|ui| {
-                    ui.add_space(depth as f32 * INDENT);
-                    match row {
-                        Row::Entry { entry, open, .. } => {
-                            // A folder's triangle (drawn: the fonts lack ▾), pointing down when open.
-                            let (icon, icon_r) = ui.allocate_exact_size(egui::vec2(INDENT, row_h), egui::Sense::click());
-                            if entry.dir {
-                                let c = icon.center();
-                                let s = 3.5;
-                                let points = if *open { vec![c + egui::vec2(-s, -s * 0.6), c + egui::vec2(s, -s * 0.6), c + egui::vec2(0.0, s * 0.8)] } else { vec![c + egui::vec2(-s * 0.6, -s), c + egui::vec2(s * 0.8, 0.0), c + egui::vec2(-s * 0.6, s)] };
-                                ui.painter().add(egui::Shape::convex_polygon(points, ui.visuals().weak_text_color(), egui::Stroke::NONE));
-                                if icon_r.clicked() {
-                                    act = Some(Act::Toggle(entry.path.clone()));
-                                }
-                            }
-                            let width = ui.available_width();
-                            let selected = !entry.dir && active.as_deref().is_some_and(|a| super::same_path(a, &entry.path));
-                            let b = egui::Button::selectable(selected, entry.name.as_str()).truncate().min_size(egui::vec2(width, row_h));
-                            // The size on the right (and, for a folder, nothing: the name stays on the left).
-                            let b = b.shortcut_text(if entry.dir { String::new() } else { human_bytes(entry.size) });
-                            let r = ui.add(b).on_hover_text(display_path(&entry.path));
-                            if r.clicked() {
-                                act = Some(if entry.dir { Act::Toggle(entry.path.clone()) } else { Act::Open(entry.path.clone()) });
-                            }
-                            r.context_menu(|ui| {
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show_rows(ui, row_h, rows.len(), |ui, range| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                for row in &rows[range] {
+                    let depth = match row {
+                        Row::Entry { depth, .. }
+                        | Row::Loading(depth)
+                        | Row::Failed(depth, _)
+                        | Row::Empty(depth) => *depth,
+                    };
+                    ui.horizontal(|ui| {
+                        ui.add_space(depth as f32 * INDENT);
+                        match row {
+                            Row::Entry { entry, open, .. } => {
+                                // A folder's triangle (drawn: the fonts lack ▾), pointing down when open.
+                                let (icon, icon_r) = ui.allocate_exact_size(
+                                    egui::vec2(INDENT, row_h),
+                                    egui::Sense::click(),
+                                );
                                 if entry.dir {
-                                    folder_menu(ui, &entry.path, false, &mut act);
-                                } else {
-                                    file_menu(ui, &entry.path, &mut act);
+                                    let c = icon.center();
+                                    let s = 3.5;
+                                    let points = if *open {
+                                        vec![
+                                            c + egui::vec2(-s, -s * 0.6),
+                                            c + egui::vec2(s, -s * 0.6),
+                                            c + egui::vec2(0.0, s * 0.8),
+                                        ]
+                                    } else {
+                                        vec![
+                                            c + egui::vec2(-s * 0.6, -s),
+                                            c + egui::vec2(s * 0.8, 0.0),
+                                            c + egui::vec2(-s * 0.6, s),
+                                        ]
+                                    };
+                                    ui.painter().add(egui::Shape::convex_polygon(
+                                        points,
+                                        ui.visuals().weak_text_color(),
+                                        egui::Stroke::NONE,
+                                    ));
+                                    if icon_r.clicked() {
+                                        act = Some(Act::Toggle(entry.path.clone()));
+                                    }
                                 }
-                            });
-                            drawn.push((entry.path.clone(), r.rect));
+                                let width = ui.available_width();
+                                let selected = !entry.dir
+                                    && active
+                                        .as_deref()
+                                        .is_some_and(|a| super::same_path(a, &entry.path));
+                                let b = egui::Button::selectable(selected, entry.name.as_str())
+                                    .truncate()
+                                    .min_size(egui::vec2(width, row_h));
+                                // The size on the right (and, for a folder, nothing: the name stays on the left).
+                                let b = b.shortcut_text(if entry.dir {
+                                    String::new()
+                                } else {
+                                    human_bytes(entry.size)
+                                });
+                                let r = ui.add(b).on_hover_text(display_path(&entry.path));
+                                if r.clicked() {
+                                    act = Some(if entry.dir {
+                                        Act::Toggle(entry.path.clone())
+                                    } else {
+                                        Act::Open(entry.path.clone())
+                                    });
+                                }
+                                r.context_menu(|ui| {
+                                    if entry.dir {
+                                        folder_menu(ui, &entry.path, false, &mut act);
+                                    } else {
+                                        file_menu(ui, &entry.path, &mut act);
+                                    }
+                                });
+                                drawn.push((entry.path.clone(), r.rect));
+                            }
+                            Row::Loading(_) | Row::Empty(_) | Row::Failed(..) => {
+                                ui.add_space(INDENT);
+                                let (text, color) = match row {
+                                    Row::Loading(_) => {
+                                        (tr("Reading…").to_string(), ui.visuals().weak_text_color())
+                                    }
+                                    Row::Empty(_) => {
+                                        (tr("(empty)").to_string(), ui.visuals().weak_text_color())
+                                    }
+                                    Row::Failed(_, e) => (e.clone(), ui.visuals().error_fg_color),
+                                    _ => unreachable!(),
+                                };
+                                let r = ui.allocate_ui_with_layout(
+                                    egui::vec2(ui.available_width(), row_h),
+                                    egui::Layout::left_to_right(egui::Align::Center),
+                                    |ui| {
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(&text).color(color),
+                                            )
+                                            .truncate(),
+                                        );
+                                    },
+                                );
+                                r.response.on_hover_text(text);
+                            }
                         }
-                        Row::Loading(_) | Row::Empty(_) | Row::Failed(..) => {
-                            ui.add_space(INDENT);
-                            let (text, color) = match row {
-                                Row::Loading(_) => (tr("Reading…").to_string(), ui.visuals().weak_text_color()),
-                                Row::Empty(_) => (tr("(empty)").to_string(), ui.visuals().weak_text_color()),
-                                Row::Failed(_, e) => (e.clone(), ui.visuals().error_fg_color),
-                                _ => unreachable!(),
-                            };
-                            let r = ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), row_h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                                ui.add(egui::Label::new(egui::RichText::new(&text).color(color)).truncate());
-                            });
-                            r.response.on_hover_text(text);
-                        }
-                    }
-                });
-            }
-        });
+                    });
+                }
+            });
         self.folder.rows = rows;
         self.folder.drawn = drawn;
         match act {
@@ -566,9 +705,26 @@ mod tests {
 
     #[test]
     fn natural_order() {
-        let mut v = vec!["file10.log", "File2.log", "file1.log", "a", "B", "file02.log"];
+        let mut v = vec![
+            "file10.log",
+            "File2.log",
+            "file1.log",
+            "a",
+            "B",
+            "file02.log",
+        ];
         v.sort_by(|a, b| natural(a, b));
-        assert_eq!(v, ["a", "B", "file1.log", "File2.log", "file02.log", "file10.log"]);
+        assert_eq!(
+            v,
+            [
+                "a",
+                "B",
+                "file1.log",
+                "File2.log",
+                "file02.log",
+                "file10.log"
+            ]
+        );
     }
 
     #[test]
@@ -587,7 +743,10 @@ mod tests {
         assert_eq!((top[0].dir, top[3].size), (true, 5));
         assert!(list_dir(&p.join("missing")).is_err());
 
-        let mut f = FolderUi { root: Some(p.to_path_buf()), ..Default::default() };
+        let mut f = FolderUi {
+            root: Some(p.to_path_buf()),
+            ..Default::default()
+        };
         f.expanded.insert(p.to_path_buf());
         assert_eq!(f.rows(), [Row::Loading(0)]);
         f.listings.insert(p.to_path_buf(), Listing::Ready(top));
@@ -597,11 +756,33 @@ mod tests {
         f.expanded.insert(p.join("sub"));
         f.dirty = true;
         assert_eq!(f.rows()[1], Row::Loading(1));
-        f.listings.insert(p.join("sub"), Listing::Ready(list_dir(&p.join("sub")).unwrap()));
+        f.listings.insert(
+            p.join("sub"),
+            Listing::Ready(list_dir(&p.join("sub")).unwrap()),
+        );
         f.dirty = true;
         let rows = f.rows().to_vec();
-        let shown: Vec<(u16, &str)> = rows.iter().filter_map(|r| if let Row::Entry { depth, entry, .. } = r { Some((*depth, entry.name.as_str())) } else { None }).collect();
-        assert_eq!(shown, [(0, "sub"), (1, "deep"), (1, "x.log"), (0, "a9.txt"), (0, "a10.txt"), (0, "b.log")]);
+        let shown: Vec<(u16, &str)> = rows
+            .iter()
+            .filter_map(|r| {
+                if let Row::Entry { depth, entry, .. } = r {
+                    Some((*depth, entry.name.as_str()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                (0, "sub"),
+                (1, "deep"),
+                (1, "x.log"),
+                (0, "a9.txt"),
+                (0, "a10.txt"),
+                (0, "b.log")
+            ]
+        );
         // A filter keeps the matches and the folders leading to them, open or not.
         f.expanded.remove(&p.join("sub"));
         f.filter = "X.L".into();

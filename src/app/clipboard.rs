@@ -37,14 +37,21 @@ impl ClipHistory {
 
 /// An entry as it is listed: its first line, shortened, and its size.
 fn label(text: &str) -> String {
-    let first = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+    let first = text
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim();
     let mut short: String = first.chars().take(80).collect();
     if short.len() < first.len() {
         short.push('…');
     }
     let lines = text.lines().count();
     if lines > 1 {
-        trf("{text}  ({n} lines)", &[("text", &short), ("n", &lines.to_string())])
+        trf(
+            "{text}  ({n} lines)",
+            &[("text", &short), ("n", &lines.to_string())],
+        )
     } else {
         short
     }
@@ -52,7 +59,9 @@ fn label(text: &str) -> String {
 
 /// Escapes a clip into one line of the settings file.
 pub fn escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('\n', "\\n").replace('\r', "\\r")
+    s.replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
 }
 
 pub fn unescape(s: &str) -> String {
@@ -100,14 +109,19 @@ impl BigTextApp {
 
     /// Copies entry `i` again and pastes it into the document when it can be edited.
     pub(crate) fn paste_clip(&mut self, i: usize) {
-        let Some(text) = self.clips.items.get(i).cloned() else { return };
+        let Some(text) = self.clips.items.get(i).cloned() else {
+            return;
+        };
         self.clips.open = None;
         if let Some(ctx) = self.ctx_clone() {
             ctx.copy_text(text.clone());
         }
         match self.docs.get_mut(self.active) {
             Some(d) if d.editable() => crate::view::text_view::paste(d, &text),
-            _ => self.notify(tr("The document is read-only: the text was copied to the clipboard.").into(), None),
+            _ => self.notify(
+                tr("The document is read-only: the text was copied to the clipboard.").into(),
+                None,
+            ),
         }
     }
 
@@ -123,10 +137,22 @@ impl BigTextApp {
                 i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
             )
         });
-        let sel = if up { sel.saturating_sub(1) } else if down { (sel + 1).min(n.saturating_sub(1)) } else { sel };
+        let sel = if up {
+            sel.saturating_sub(1)
+        } else if down {
+            (sel + 1).min(n.saturating_sub(1))
+        } else {
+            sel
+        };
         self.clips.open = Some(sel);
         self.clips.moved = up || down;
-        self.clips.keys = if enter { Some(true) } else if esc { Some(false) } else { None };
+        self.clips.keys = if enter {
+            Some(true)
+        } else if esc {
+            Some(false)
+        } else {
+            None
+        };
     }
 
     pub(super) fn paste_history_window(&mut self, ctx: &egui::Context) {

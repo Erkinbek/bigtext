@@ -20,13 +20,18 @@ pub struct Fold {
 
 /// The fold hiding `off` (folds are sorted and do not overlap).
 pub fn hidden_by(folds: &[Fold], off: u64) -> Option<&Fold> {
-    let i = folds.partition_point(|f| f.hide_from <= off).checked_sub(1)?;
+    let i = folds
+        .partition_point(|f| f.hide_from <= off)
+        .checked_sub(1)?;
     (off < folds[i].end).then_some(&folds[i])
 }
 
 /// The fold whose opening line starts at `start`.
 pub fn starting_at(folds: &[Fold], start: u64) -> Option<&Fold> {
-    folds.binary_search_by_key(&start, |f| f.start).ok().map(|i| &folds[i])
+    folds
+        .binary_search_by_key(&start, |f| f.start)
+        .ok()
+        .map(|i| &folds[i])
 }
 
 /// Adds `f`, dropping the folds inside it; one inside a fold is not added.
@@ -39,7 +44,12 @@ pub fn insert(folds: &mut Vec<Fold>, f: Fold) {
     folds.insert(i, f);
 }
 
-pub fn next_row(buf: &TextBuf, row: &Row, wrap: Option<usize>, folds: &[Fold]) -> Result<Option<Row>, Pending> {
+pub fn next_row(
+    buf: &TextBuf,
+    row: &Row,
+    wrap: Option<usize>,
+    folds: &[Fold],
+) -> Result<Option<Row>, Pending> {
     let mut next = rows::next_row(buf, row, wrap)?;
     while let Some(f) = next.and_then(|r| hidden_by(folds, r.start)).copied() {
         next = Some(rows::row_at(buf, f.end, wrap)?);
@@ -47,23 +57,42 @@ pub fn next_row(buf: &TextBuf, row: &Row, wrap: Option<usize>, folds: &[Fold]) -
     Ok(next)
 }
 
-pub fn prev_row(buf: &TextBuf, row: &Row, wrap: Option<usize>, folds: &[Fold]) -> Result<Option<Row>, Pending> {
+pub fn prev_row(
+    buf: &TextBuf,
+    row: &Row,
+    wrap: Option<usize>,
+    folds: &[Fold],
+) -> Result<Option<Row>, Pending> {
     let mut prev = rows::prev_row(buf, row, wrap)?;
     while let Some(f) = prev.and_then(|r| hidden_by(folds, r.start)).copied() {
         // The last row of the opening line.
-        prev = Some(rows::row_at(buf, f.hide_from.saturating_sub(1).max(f.start), wrap)?);
+        prev = Some(rows::row_at(
+            buf,
+            f.hide_from.saturating_sub(1).max(f.start),
+            wrap,
+        )?);
     }
     Ok(prev)
 }
 
 /// [`rows::step_rows`] over the rows that are shown.
-pub fn step_rows(buf: &TextBuf, row: Row, n: i64, wrap: Option<usize>, folds: &[Fold]) -> Result<Row, Pending> {
+pub fn step_rows(
+    buf: &TextBuf,
+    row: Row,
+    n: i64,
+    wrap: Option<usize>,
+    folds: &[Fold],
+) -> Result<Row, Pending> {
     if folds.is_empty() {
         return rows::step_rows(buf, row, n, wrap);
     }
     let mut r = row;
     for _ in 0..n.unsigned_abs() {
-        let step = if n > 0 { next_row(buf, &r, wrap, folds)? } else { prev_row(buf, &r, wrap, folds)? };
+        let step = if n > 0 {
+            next_row(buf, &r, wrap, folds)?
+        } else {
+            prev_row(buf, &r, wrap, folds)?
+        };
         match step {
             Some(x) => r = x,
             None => break,
@@ -90,7 +119,9 @@ fn line_start(buf: &TextBuf, off: u64) -> Option<u64> {
 fn next_line(buf: &TextBuf, off: u64) -> Option<u64> {
     let to = (off + LINE_LOOK).min(buf.len());
     let b = buf.read(off..to)?;
-    b.iter().position(|&c| c == b'\n').map(|i| off + i as u64 + 1)
+    b.iter()
+        .position(|&c| c == b'\n')
+        .map(|i| off + i as u64 + 1)
 }
 
 /// The fold from the bracket or tag at `open` to the one at `close`, when lines lie between them.
@@ -102,7 +133,12 @@ pub fn fold_between(buf: &TextBuf, open: u64, close: u64) -> Option<Fold> {
         return None;
     }
     let lines = buf.line_of(end).0.saturating_sub(buf.line_of(hide_from).0);
-    Some(Fold { start, hide_from, end, lines: lines.max(1) })
+    Some(Fold {
+        start,
+        hide_from,
+        end,
+        lines: lines.max(1),
+    })
 }
 
 #[cfg(test)]
@@ -110,7 +146,12 @@ mod tests {
     use super::*;
 
     fn f(start: u64, hide_from: u64, end: u64) -> Fold {
-        Fold { start, hide_from, end, lines: 1 }
+        Fold {
+            start,
+            hide_from,
+            end,
+            lines: 1,
+        }
     }
 
     #[test]

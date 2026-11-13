@@ -70,7 +70,9 @@ pub(super) fn css(st: &mut State, t: &[u8], out: &mut Sink) {
                 }
             }
             // SCSS and Less line comments (not `url(http://…)`, which is taken whole below).
-            b'/' if t.get(i + 1) == Some(&b'/') && (i == 0 || matches!(t[i - 1], b' ' | b'\t' | b';' | b'{' | b'}')) => {
+            b'/' if t.get(i + 1) == Some(&b'/')
+                && (i == 0 || matches!(t[i - 1], b' ' | b'\t' | b';' | b'{' | b'}')) =>
+            {
                 out.push(i, t.len(), Kind::Comment);
                 return;
             }
@@ -124,8 +126,17 @@ pub(super) fn css(st: &mut State, t: &[u8], out: &mut Sink) {
             // A colour in a value; an id in a selector.
             b'#' if t.get(i + 1).is_some_and(|&b| is_ident(b) || b == b'-') => {
                 let e = css_word_end(t, i + 1);
-                let hex = t[i + 1..e].iter().all(u8::is_ascii_hexdigit) && matches!(e - i - 1, 3 | 4 | 6 | 8);
-                out.push(i, e, if value && hex { Kind::Number } else { Kind::Attr });
+                let hex = t[i + 1..e].iter().all(u8::is_ascii_hexdigit)
+                    && matches!(e - i - 1, 3 | 4 | 6 | 8);
+                out.push(
+                    i,
+                    e,
+                    if value && hex {
+                        Kind::Number
+                    } else {
+                        Kind::Attr
+                    },
+                );
                 i = e;
             }
             b'.' if !value && t.get(i + 1).is_some_and(|&b| is_ident(b) || b == b'-') => {
@@ -148,9 +159,13 @@ pub(super) fn css(st: &mut State, t: &[u8], out: &mut Sink) {
                 out.push(i, i + 1, Kind::Keyword);
                 i += 1;
             }
-            _ if c.is_ascii_digit() || (c == b'.' && t.get(i + 1).is_some_and(u8::is_ascii_digit)) || (c == b'-' && t.get(i + 1).is_some_and(u8::is_ascii_digit)) => {
+            _ if c.is_ascii_digit()
+                || (c == b'.' && t.get(i + 1).is_some_and(u8::is_ascii_digit))
+                || (c == b'-' && t.get(i + 1).is_some_and(u8::is_ascii_digit)) =>
+            {
                 let mut e = i + 1;
-                while e < t.len() && (t[e].is_ascii_alphanumeric() || t[e] == b'.' || t[e] == b'%') {
+                while e < t.len() && (t[e].is_ascii_alphanumeric() || t[e] == b'.' || t[e] == b'%')
+                {
                     e += 1;
                 }
                 out.push(i, e, Kind::Number);
@@ -161,7 +176,10 @@ pub(super) fn css(st: &mut State, t: &[u8], out: &mut Sink) {
                 let w = &t[i..e];
                 let next = skip_space(t, e);
                 if w.eq_ignore_ascii_case(b"url") && t.get(e) == Some(&b'(') {
-                    let close = t[e..].iter().position(|&b| b == b')').map_or(t.len(), |p| e + p + 1);
+                    let close = t[e..]
+                        .iter()
+                        .position(|&b| b == b')')
+                        .map_or(t.len(), |p| e + p + 1);
                     out.push(i, e, Kind::Function);
                     out.push(e + 1, close.saturating_sub(1).max(e + 1), Kind::Str);
                     i = close;
@@ -171,7 +189,10 @@ pub(super) fn css(st: &mut State, t: &[u8], out: &mut Sink) {
                     out.push(i, e, Kind::Function);
                 } else if value {
                     // Values (`solid`, `auto`) stay plain.
-                } else if (st.depth > 0 || paren > 0) && t.get(next) == Some(&b':') && is_property(t, next) {
+                } else if (st.depth > 0 || paren > 0)
+                    && t.get(next) == Some(&b':')
+                    && is_property(t, next)
+                {
                     out.push(i, e, Kind::Key);
                 } else {
                     out.push(i, e, Kind::Tag);
@@ -233,7 +254,12 @@ pub(super) fn markdown(st: &mut State, t: &[u8], out: &mut Sink) {
             return;
         }
         // A rule or a setext underline: ---, ***, ===.
-        if body.len() >= 3 && body.iter().all(|&b| matches!(b, b'-' | b'*' | b'_' | b'=' | b' ')) && body.iter().filter(|&&b| b != b' ').count() >= 3 {
+        if body.len() >= 3
+            && body
+                .iter()
+                .all(|&b| matches!(b, b'-' | b'*' | b'_' | b'=' | b' '))
+            && body.iter().filter(|&&b| b != b' ').count() >= 3
+        {
             out.push(l, t.len(), Kind::Var);
             return;
         }
@@ -242,9 +268,14 @@ pub(super) fn markdown(st: &mut State, t: &[u8], out: &mut Sink) {
             return;
         }
         let digits = body.iter().take_while(|b| b.is_ascii_digit()).count();
-        let marker = if matches!(body.first(), Some(b'-' | b'*' | b'+')) && matches!(body.get(1), Some(b' ' | b'\t')) {
+        let marker = if matches!(body.first(), Some(b'-' | b'*' | b'+'))
+            && matches!(body.get(1), Some(b' ' | b'\t'))
+        {
             1
-        } else if digits > 0 && matches!(body.get(digits), Some(b'.' | b')')) && matches!(body.get(digits + 1), Some(b' ' | b'\t')) {
+        } else if digits > 0
+            && matches!(body.get(digits), Some(b'.' | b')'))
+            && matches!(body.get(digits + 1), Some(b' ' | b'\t'))
+        {
             digits + 1
         } else {
             0
@@ -280,7 +311,10 @@ fn md_inline(st: &mut State, t: &[u8], mut i: usize, out: &mut Sink) {
             }
             // <https://autolink>
             b'<' if t[i + 1..].starts_with(b"http") => {
-                let e = t[i..].iter().position(|&b| b == b'>').map_or(t.len(), |p| i + p + 1);
+                let e = t[i..]
+                    .iter()
+                    .position(|&b| b == b'>')
+                    .map_or(t.len(), |p| i + p + 1);
                 out.push(i, e, Kind::Decorator);
                 i = e;
             }
@@ -294,7 +328,10 @@ fn md_inline(st: &mut State, t: &[u8], mut i: usize, out: &mut Sink) {
                 out.push(i, close + 1, Kind::Function);
                 i = close + 1;
                 if t.get(i) == Some(&b'(') {
-                    let e = t[i..].iter().position(|&b| b == b')').map_or(t.len(), |p| i + p + 1);
+                    let e = t[i..]
+                        .iter()
+                        .position(|&b| b == b')')
+                        .map_or(t.len(), |p| i + p + 1);
                     out.push(i, e, Kind::Decorator);
                     i = e;
                 }
@@ -307,7 +344,10 @@ fn md_inline(st: &mut State, t: &[u8], mut i: usize, out: &mut Sink) {
                 let mut found = None;
                 while let Some(p) = memchr::memmem::find(&t[j..], marker) {
                     let at = j + p;
-                    if at > i + n && t[at - 1] != b' ' && (c == b'*' || t.get(at + n).is_none_or(|b| !b.is_ascii_alphanumeric())) {
+                    if at > i + n
+                        && t[at - 1] != b' '
+                        && (c == b'*' || t.get(at + n).is_none_or(|b| !b.is_ascii_alphanumeric()))
+                    {
                         found = Some(at);
                         break;
                     }
@@ -374,12 +414,28 @@ pub(super) fn yaml(st: &mut State, t: &[u8], out: &mut Sink) {
             }
             j += 1;
         }
-        found.filter(|&e| e > i && !matches!(t[i], b'[' | b'{' | b'"' | b'\'' | b'&' | b'*' | b'!' | b'|' | b'>'))
+        found.filter(|&e| {
+            e > i
+                && !matches!(
+                    t[i],
+                    b'[' | b'{' | b'"' | b'\'' | b'&' | b'*' | b'!' | b'|' | b'>'
+                )
+        })
     };
     if let Some(e) = key_end {
-        let e = if matches!(t[i], b'"' | b'\'') { e } else { t[..e].iter().rposition(|&b| b != b' ' && b != b'\t').map_or(e, |p| p + 1) };
+        let e = if matches!(t[i], b'"' | b'\'') {
+            e
+        } else {
+            t[..e]
+                .iter()
+                .rposition(|&b| b != b' ' && b != b'\t')
+                .map_or(e, |p| p + 1)
+        };
         out.push(i, e, Kind::Key);
-        let colon = t[e..].iter().position(|&b| b == b':').map_or(e, |p| e + p + 1);
+        let colon = t[e..]
+            .iter()
+            .position(|&b| b == b':')
+            .map_or(e, |p| e + p + 1);
         yaml_value(st, t, colon, l, out);
     } else {
         yaml_value(st, t, i, l, out);
@@ -407,7 +463,10 @@ fn yaml_value(st: &mut State, t: &[u8], from: usize, indent: usize, out: &mut Si
                 i = e;
             }
             b'!' => {
-                let e = t[i..].iter().position(|&b| b == b' ').map_or(t.len(), |p| i + p);
+                let e = t[i..]
+                    .iter()
+                    .position(|&b| b == b' ')
+                    .map_or(t.len(), |p| i + p);
                 out.push(i, e, Kind::Decorator);
                 i = e;
             }
@@ -422,15 +481,48 @@ fn yaml_value(st: &mut State, t: &[u8], from: usize, indent: usize, out: &mut Si
                 // A plain scalar up to ` #`, or `,` / `]` / `}` in a flow collection.
                 let flow = t[from..i].iter().any(|&b| b == b'[' || b == b'{');
                 let mut e = i;
-                while e < t.len() && !(t[e] == b'#' && t[e - 1] == b' ') && !(flow && matches!(t[e], b',' | b']' | b'}')) {
+                while e < t.len()
+                    && !(t[e] == b'#' && t[e - 1] == b' ')
+                    && !(flow && matches!(t[e], b',' | b']' | b'}'))
+                {
                     e += 1;
                 }
-                let end = t[..e].iter().rposition(|&b| b != b' ' && b != b'\t' && b != b'\r').map_or(i, |p| p + 1).max(i);
+                let end = t[..e]
+                    .iter()
+                    .rposition(|&b| b != b' ' && b != b'\t' && b != b'\r')
+                    .map_or(i, |p| p + 1)
+                    .max(i);
                 let w = &t[i..end];
-                let constant = matches!(w, b"true" | b"false" | b"True" | b"False" | b"TRUE" | b"FALSE" | b"yes" | b"no" | b"on" | b"off" | b"null" | b"Null" | b"NULL" | b"~");
-                let number = (w[0].is_ascii_digit() || (w.len() > 1 && matches!(w[0], b'-' | b'+' | b'.'))) && number_end(w, 1) == w.len();
+                let constant = matches!(
+                    w,
+                    b"true"
+                        | b"false"
+                        | b"True"
+                        | b"False"
+                        | b"TRUE"
+                        | b"FALSE"
+                        | b"yes"
+                        | b"no"
+                        | b"on"
+                        | b"off"
+                        | b"null"
+                        | b"Null"
+                        | b"NULL"
+                        | b"~"
+                );
+                let number = (w[0].is_ascii_digit()
+                    || (w.len() > 1 && matches!(w[0], b'-' | b'+' | b'.')))
+                    && number_end(w, 1) == w.len();
                 if end > i {
-                    out.push(i, end, if constant || number { Kind::Number } else { Kind::Str });
+                    out.push(
+                        i,
+                        end,
+                        if constant || number {
+                            Kind::Number
+                        } else {
+                            Kind::Str
+                        },
+                    );
                 }
                 i = e.max(i + 1);
             }
@@ -441,7 +533,26 @@ fn yaml_value(st: &mut State, t: &[u8], from: usize, indent: usize, out: &mut Si
 // ---------------------------------------------------------------------------------------------
 // Dockerfile
 
-const DOCKER: &[&str] = &["add", "arg", "cmd", "copy", "entrypoint", "env", "expose", "from", "healthcheck", "label", "maintainer", "onbuild", "run", "shell", "stopsignal", "user", "volume", "workdir"];
+const DOCKER: &[&str] = &[
+    "add",
+    "arg",
+    "cmd",
+    "copy",
+    "entrypoint",
+    "env",
+    "expose",
+    "from",
+    "healthcheck",
+    "label",
+    "maintainer",
+    "onbuild",
+    "run",
+    "shell",
+    "stopsignal",
+    "user",
+    "volume",
+    "workdir",
+];
 
 /// Instructions as keywords, the rest as shell commands; `State::depth` is 1 on a line that goes
 /// on from a line ending with `\`.
@@ -478,13 +589,20 @@ pub(super) fn dockerfile(st: &mut State, t: &[u8], out: &mut Sink) {
 // ---------------------------------------------------------------------------------------------
 // Makefile
 
-const MAKE: &[&str] = &["-include", "define", "else", "endef", "endif", "export", "ifdef", "ifeq", "ifndef", "ifneq", "include", "override", "sinclude", "undefine", "unexport", "vpath"];
+const MAKE: &[&str] = &[
+    "-include", "define", "else", "endef", "endif", "export", "ifdef", "ifeq", "ifndef", "ifneq",
+    "include", "override", "sinclude", "undefine", "unexport", "vpath",
+];
 
 /// `$(…)`, `${…}` and `$@` from `i`: their end.
 fn make_var(t: &[u8], i: usize) -> Option<usize> {
     match t.get(i + 1)? {
         b'(' | b'{' => {
-            let (open, close) = if t[i + 1] == b'(' { (b'(', b')') } else { (b'{', b'}') };
+            let (open, close) = if t[i + 1] == b'(' {
+                (b'(', b')')
+            } else {
+                (b'{', b'}')
+            };
             let mut depth = 0;
             for (j, &b) in t.iter().enumerate().skip(i + 1) {
                 if b == open {
@@ -521,7 +639,10 @@ pub(super) fn makefile(t: &[u8], out: &mut Sink) {
         out.push(l, t.len(), Kind::Comment);
         return;
     }
-    let e = l + t[l..].iter().take_while(|&&b| !matches!(b, b' ' | b'\t' | b':' | b'=' | b'?' | b'+' | b'!' | b'#')).count();
+    let e = l + t[l..]
+        .iter()
+        .take_while(|&&b| !matches!(b, b' ' | b'\t' | b':' | b'=' | b'?' | b'+' | b'!' | b'#'))
+        .count();
     let word = &t[l..e];
     let mut i = e;
     if MAKE.iter().any(|k| k.as_bytes() == word) {
@@ -529,14 +650,34 @@ pub(super) fn makefile(t: &[u8], out: &mut Sink) {
     } else {
         let after = skip_space(t, e);
         let rest = &t[after..];
-        let assign = rest.starts_with(b"=") || rest.starts_with(b":=") || rest.starts_with(b"::=") || rest.starts_with(b"?=") || rest.starts_with(b"+=") || rest.starts_with(b"!=");
+        let assign = rest.starts_with(b"=")
+            || rest.starts_with(b":=")
+            || rest.starts_with(b"::=")
+            || rest.starts_with(b"?=")
+            || rest.starts_with(b"+=")
+            || rest.starts_with(b"!=");
         if assign && e > l {
             out.push(l, e, Kind::Var);
-        } else if let Some(colon) = t[l..].iter().position(|&b| b == b':').map(|p| l + p).filter(|&c| t.get(c + 1) != Some(&b'=')) {
+        } else if let Some(colon) = t[l..]
+            .iter()
+            .position(|&b| b == b':')
+            .map(|p| l + p)
+            .filter(|&c| t.get(c + 1) != Some(&b'='))
+        {
             // targets: prerequisites
             let targets = &t[l..colon];
-            if !targets.iter().all(|b| b.is_ascii_whitespace()) && memchr::memchr(b'=', targets).is_none() {
-                out.push(l, colon, if targets.starts_with(b".") { Kind::Keyword } else { Kind::Function });
+            if !targets.iter().all(|b| b.is_ascii_whitespace())
+                && memchr::memchr(b'=', targets).is_none()
+            {
+                out.push(
+                    l,
+                    colon,
+                    if targets.starts_with(b".") {
+                        Kind::Keyword
+                    } else {
+                        Kind::Function
+                    },
+                );
                 i = colon + 1;
             }
         }

@@ -163,7 +163,11 @@ impl Walk {
         } else {
             let be = enc == Encoding::Utf16Be;
             for (k, u) in b.chunks_exact(2).enumerate() {
-                let c = if be { u16::from_be_bytes([u[0], u[1]]) } else { u16::from_le_bytes([u[0], u[1]]) };
+                let c = if be {
+                    u16::from_be_bytes([u[0], u[1]])
+                } else {
+                    u16::from_le_bytes([u[0], u[1]])
+                };
                 let at = base + 2 * k as u64;
                 match c {
                     0x0A | 0x0D => self.mark(c, at),
@@ -201,14 +205,28 @@ impl Walk {
 
 /// Walks the whole text once; `partial` gets the figures so far four times a second. `None`
 /// when cancelled or the text could not be read.
-pub fn scan(buf: &TextBuf, cancel: &CancelToken, progress: Option<&Progress>, mut partial: impl FnMut(&Stats)) -> Option<Stats> {
+pub fn scan(
+    buf: &TextBuf,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut partial: impl FnMut(&Stats),
+) -> Option<Stats> {
     let codec = buf.codec;
     let start = (codec.bom_len as u64).min(buf.len());
     let len = buf.len();
     if let Some(p) = progress {
         p.set_total(len);
     }
-    let mut w = Walk { s: Stats::default(), nl: codec.nl, unit: codec.unit() as u64, line_start: start, pending_cr: None, last: 0, carry: Vec::new(), carry_at: 0 };
+    let mut w = Walk {
+        s: Stats::default(),
+        nl: codec.nl,
+        unit: codec.unit() as u64,
+        line_start: start,
+        pending_cr: None,
+        last: 0,
+        carry: Vec::new(),
+        carry_at: 0,
+    };
     let mut throttle = Throttle::new(Duration::from_millis(250));
     let mut stopped = false;
     buf.for_each_chunk(start..len, |base, b| {
@@ -290,7 +308,10 @@ mod tests {
         f.flush().unwrap();
         let s = Arc::new(Source::open(f.path(), OpenMode::Auto).unwrap());
         let det = crate::encoding::detect(data, true);
-        (f, TextBuf::new(s.clone(), LineIndex::new(s.len()), det.codec))
+        (
+            f,
+            TextBuf::new(s.clone(), LineIndex::new(s.len()), det.codec),
+        )
     }
 
     fn stats(data: &[u8]) -> Stats {
@@ -312,9 +333,15 @@ mod tests {
         assert_eq!((s.lines, s.lf, s.crlf, s.cr), (4, 2, 1, 1));
         assert_eq!(s.longest, (15, 2, 9));
         assert_eq!((s.nul, s.first_nul), (1, Some(22)));
-        assert_eq!((s.invalid_utf8, s.first_invalid, s.final_break), (1, Some(25), false));
+        assert_eq!(
+            (s.invalid_utf8, s.first_invalid, s.final_break),
+            (1, Some(25), false)
+        );
         let s = stats_utf8("ü\n€\n".as_bytes());
-        assert_eq!((s.lines, s.invalid_utf8, s.final_break, s.longest.0), (2, 0, true, 3));
+        assert_eq!(
+            (s.lines, s.invalid_utf8, s.final_break, s.longest.0),
+            (2, 0, true, 3)
+        );
         assert_eq!(stats(b"").lines, 0);
     }
 
@@ -332,16 +359,28 @@ mod tests {
         data.extend_from_slice(b"\xE2\x82zz\n");
         let s = stats_utf8(&data);
         assert_eq!((s.lines, s.crlf, s.lf, s.cr), (3, 1, 2, 0));
-        assert_eq!((s.invalid_utf8, s.first_invalid), (2, Some(3 * edge as u64 - 1)));
+        assert_eq!(
+            (s.invalid_utf8, s.first_invalid),
+            (2, Some(3 * edge as u64 - 1))
+        );
         assert_eq!(s.longest, (edge as u64 + 1, 1, edge as u64 + 1));
     }
 
     #[test]
     fn utf16_and_hash() {
-        let text: Vec<u8> = [0xFF, 0xFE].into_iter().chain("a\r\nbc\n\0d".encode_utf16().flat_map(|u| u.to_le_bytes())).collect();
+        let text: Vec<u8> = [0xFF, 0xFE]
+            .into_iter()
+            .chain("a\r\nbc\n\0d".encode_utf16().flat_map(|u| u.to_le_bytes()))
+            .collect();
         let s = stats(&text);
-        assert_eq!((s.lines, s.crlf, s.lf, s.nul, s.longest.0, s.final_break), (3, 1, 1, 1, 4, false));
+        assert_eq!(
+            (s.lines, s.crlf, s.lf, s.nul, s.longest.0, s.final_break),
+            (3, 1, 1, 1, 4, false)
+        );
         let (_f, b) = buf(b"abc");
-        assert_eq!(sha256(&b, &CancelToken::new(), None).unwrap(), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        assert_eq!(
+            sha256(&b, &CancelToken::new(), None).unwrap(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 }

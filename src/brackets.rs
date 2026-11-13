@@ -26,7 +26,9 @@ fn partner_of(b: u8) -> Option<(u8, bool)> {
 }
 
 fn byte_at(buf: &TextBuf, off: u64) -> Option<u8> {
-    (off < buf.len()).then(|| buf.read(off..off + 1).map(|b| b[0])).flatten()
+    (off < buf.len())
+        .then(|| buf.read(off..off + 1).map(|b| b[0]))
+        .flatten()
 }
 
 /// The bracket at `off` or just before it (outside a string).
@@ -34,15 +36,24 @@ pub fn at_caret(buf: &TextBuf, off: u64) -> Option<u64> {
     if buf.codec.unit() != 1 {
         return None;
     }
-    [Some(off), off.checked_sub(1)].into_iter().flatten().find(|&p| byte_at(buf, p).and_then(partner_of).is_some() && !in_string(buf, p))
+    [Some(off), off.checked_sub(1)]
+        .into_iter()
+        .flatten()
+        .find(|&p| byte_at(buf, p).and_then(partner_of).is_some() && !in_string(buf, p))
 }
 
 /// Whether `off` is inside a double-quoted string of its line (lines longer than 64 KB before
 /// `off` are taken as code).
 fn in_string(buf: &TextBuf, off: u64) -> bool {
     let from = off.saturating_sub(64 * 1024);
-    let Some(b) = buf.read(from..off) else { return false };
-    let start = b.iter().rposition(|&c| c == b'\n').map(|i| i + 1).unwrap_or(0);
+    let Some(b) = buf.read(from..off) else {
+        return false;
+    };
+    let start = b
+        .iter()
+        .rposition(|&c| c == b'\n')
+        .map(|i| i + 1)
+        .unwrap_or(0);
     let (mut s, mut esc) = (false, false);
     for &c in &b[start..] {
         if s {
@@ -117,7 +128,13 @@ pub fn enclosing(buf: &TextBuf, off: u64, limit: u64, cancel: &CancelToken) -> O
 }
 
 /// Calls `f` with each byte from `from` on that is outside strings until it returns true.
-fn scan_forward(buf: &TextBuf, from: u64, limit: u64, cancel: &CancelToken, mut f: impl FnMut(u8, &mut u64) -> bool) -> Option<u64> {
+fn scan_forward(
+    buf: &TextBuf,
+    from: u64,
+    limit: u64,
+    cancel: &CancelToken,
+    mut f: impl FnMut(u8, &mut u64) -> bool,
+) -> Option<u64> {
     let end = from.saturating_add(limit).min(buf.len());
     let (mut s, mut esc, mut depth) = (false, false, 0u64);
     let mut pos = from;
@@ -152,7 +169,14 @@ fn scan_forward(buf: &TextBuf, from: u64, limit: u64, cancel: &CancelToken, mut 
 
 /// Calls `f` with each byte before `before`, going backwards, that is outside strings, until
 /// it returns true. `in_str`: `before` is inside a string.
-fn scan_backward(buf: &TextBuf, before: u64, in_str: bool, limit: u64, cancel: &CancelToken, mut f: impl FnMut(u8, &mut u64) -> bool) -> Option<u64> {
+fn scan_backward(
+    buf: &TextBuf,
+    before: u64,
+    in_str: bool,
+    limit: u64,
+    cancel: &CancelToken,
+    mut f: impl FnMut(u8, &mut u64) -> bool,
+) -> Option<u64> {
     let floor = before.saturating_sub(limit);
     let (mut s, mut depth) = (in_str, 0u64);
     let mut hi = before.min(buf.len());
@@ -204,7 +228,10 @@ fn tag_at_lt(buf: &TextBuf, start: u64) -> Option<Tag> {
     }
     let closing = b.get(1) == Some(&b'/');
     let ns = 1 + closing as usize;
-    let name_len = b[ns..].iter().take_while(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b':' | b'.')).count();
+    let name_len = b[ns..]
+        .iter()
+        .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b':' | b'.'))
+        .count();
     if name_len == 0 || !b[ns].is_ascii_alphabetic() && b[ns] != b'_' {
         return None;
     }
@@ -220,7 +247,13 @@ fn tag_at_lt(buf: &TextBuf, start: u64) -> Option<Tag> {
             None if c == b'<' => return None,
             None if c == b'>' => {
                 let self_closing = !closing && b[..i].ends_with(b"/");
-                return Some(Tag { start, end: start + i as u64 + 1, name: (start + ns as u64, start + (ns + name_len) as u64), closing, self_closing });
+                return Some(Tag {
+                    start,
+                    end: start + i as u64 + 1,
+                    name: (start + ns as u64, start + (ns + name_len) as u64),
+                    closing,
+                    self_closing,
+                });
             }
             None => {}
         }
@@ -264,7 +297,9 @@ pub fn tag_partner(buf: &TextBuf, t: &Tag, limit: u64, cancel: &CancelToken) -> 
             let mut next = to;
             for i in memchr::memchr_iter(b'<', &b) {
                 let at = pos + i as u64;
-                let Some(x) = tag_at_lt(buf, at) else { continue };
+                let Some(x) = tag_at_lt(buf, at) else {
+                    continue;
+                };
                 if !same(&x) || x.self_closing {
                     continue;
                 }
@@ -295,7 +330,9 @@ pub fn tag_partner(buf: &TextBuf, t: &Tag, limit: u64, cancel: &CancelToken) -> 
             let lo = hi.saturating_sub(CHUNK).max(floor);
             let b = buf.read(lo..hi)?;
             for i in memchr::memrchr_iter(b'<', &b) {
-                let Some(x) = tag_at_lt(buf, lo + i as u64) else { continue };
+                let Some(x) = tag_at_lt(buf, lo + i as u64) else {
+                    continue;
+                };
                 if !same(&x) || x.self_closing || x.end > t.start {
                     continue;
                 }
@@ -360,11 +397,20 @@ mod tests {
         let close = text.len() as u64 - 1;
         assert_eq!(pair_at(&b, 0, NO, &c), Some(Pair::Brackets(0, close)));
         // Caret right after the last brace.
-        assert_eq!(pair_at(&b, close + 1, NO, &c), Some(Pair::Brackets(0, close)));
+        assert_eq!(
+            pair_at(&b, close + 1, NO, &c),
+            Some(Pair::Brackets(0, close))
+        );
         let open_arr = text.find('[').unwrap() as u64;
         let close_arr = text.rfind(']').unwrap() as u64;
-        assert_eq!(pair_at(&b, open_arr, NO, &c), Some(Pair::Brackets(open_arr, close_arr)));
-        assert_eq!(pair_at(&b, close_arr, NO, &c), Some(Pair::Brackets(open_arr, close_arr)));
+        assert_eq!(
+            pair_at(&b, open_arr, NO, &c),
+            Some(Pair::Brackets(open_arr, close_arr))
+        );
+        assert_eq!(
+            pair_at(&b, close_arr, NO, &c),
+            Some(Pair::Brackets(open_arr, close_arr))
+        );
         // A bracket inside a string is not one.
         let in_str = text.find("x]").unwrap() as u64 + 1;
         assert_eq!(at_caret(&b, in_str + 1).filter(|&p| p == in_str), None);
@@ -391,16 +437,40 @@ mod tests {
         let (_d, b) = buf(text);
         let c = CancelToken::new();
         let outer_close = text.rfind("</a>").unwrap() as u64;
-        assert_eq!(pair_at(&b, 1, NO, &c), Some(Pair::Tags((1, 2), (outer_close + 2, outer_close + 3))));
-        assert_eq!(pair_at(&b, outer_close, NO, &c), Some(Pair::Tags((1, 2), (outer_close + 2, outer_close + 3))));
+        assert_eq!(
+            pair_at(&b, 1, NO, &c),
+            Some(Pair::Tags((1, 2), (outer_close + 2, outer_close + 3)))
+        );
+        assert_eq!(
+            pair_at(&b, outer_close, NO, &c),
+            Some(Pair::Tags((1, 2), (outer_close + 2, outer_close + 3)))
+        );
         let inner_open = text.find("<a>").unwrap() as u64;
         let inner_close = text.find("</a>").unwrap() as u64;
-        assert_eq!(pair_at(&b, inner_open + 1, NO, &c), Some(Pair::Tags((inner_open + 1, inner_open + 2), (inner_close + 2, inner_close + 3))));
-        assert_eq!(pair_at(&b, inner_close + 2, NO, &c), Some(Pair::Tags((inner_open + 1, inner_open + 2), (inner_close + 2, inner_close + 3))));
+        assert_eq!(
+            pair_at(&b, inner_open + 1, NO, &c),
+            Some(Pair::Tags(
+                (inner_open + 1, inner_open + 2),
+                (inner_close + 2, inner_close + 3)
+            ))
+        );
+        assert_eq!(
+            pair_at(&b, inner_close + 2, NO, &c),
+            Some(Pair::Tags(
+                (inner_open + 1, inner_open + 2),
+                (inner_close + 2, inner_close + 3)
+            ))
+        );
         // A self-closing tag has no partner.
-        assert_eq!(pair_at(&b, text.find("<b/>").unwrap() as u64 + 1, NO, &c), None);
+        assert_eq!(
+            pair_at(&b, text.find("<b/>").unwrap() as u64 + 1, NO, &c),
+            None
+        );
         let t = tag_at(&b, 1).unwrap();
-        assert_eq!((t.start, t.end, t.closing), (0, text.find("><b").unwrap() as u64 + 1, false));
+        assert_eq!(
+            (t.start, t.end, t.closing),
+            (0, text.find("><b").unwrap() as u64 + 1, false)
+        );
     }
 
     #[test]
@@ -409,7 +479,13 @@ mod tests {
         let (_d, b) = buf(text);
         let c = CancelToken::new();
         let close = text.rfind("</div>").unwrap() as u64;
-        assert_eq!(pair_at(&b, 1, NO, &c), Some(Pair::Tags((1, 4), (close + 2, close + 5))));
-        assert_eq!(pair_at(&b, close + 3, NO, &c), Some(Pair::Tags((1, 4), (close + 2, close + 5))));
+        assert_eq!(
+            pair_at(&b, 1, NO, &c),
+            Some(Pair::Tags((1, 4), (close + 2, close + 5)))
+        );
+        assert_eq!(
+            pair_at(&b, close + 3, NO, &c),
+            Some(Pair::Tags((1, 4), (close + 2, close + 5)))
+        );
     }
 }

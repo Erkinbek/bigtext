@@ -18,7 +18,12 @@ pub enum Theme {
 }
 
 impl Theme {
-    pub const ALL: [Theme; 4] = [Theme::Dark, Theme::Light, Theme::HighContrastDark, Theme::HighContrastLight];
+    pub const ALL: [Theme; 4] = [
+        Theme::Dark,
+        Theme::Light,
+        Theme::HighContrastDark,
+        Theme::HighContrastLight,
+    ];
 
     /// Stable name in the settings and key bindings.
     pub fn id(self) -> &'static str {
@@ -67,17 +72,41 @@ impl Theme {
         match self {
             Theme::Dark => Visuals::dark(),
             Theme::Light => Visuals::light(),
-            Theme::HighContrastDark => high_contrast(Visuals::dark(), Color32::WHITE, Color32::BLACK, Color32::from_rgb(255, 210, 0), Color32::from_rgb(0, 90, 200)),
-            Theme::HighContrastLight => high_contrast(Visuals::light(), Color32::BLACK, Color32::WHITE, Color32::from_rgb(0, 70, 200), Color32::from_rgb(0, 70, 200)),
+            Theme::HighContrastDark => high_contrast(
+                Visuals::dark(),
+                Color32::WHITE,
+                Color32::BLACK,
+                Color32::from_rgb(255, 210, 0),
+                Color32::from_rgb(0, 90, 200),
+            ),
+            Theme::HighContrastLight => high_contrast(
+                Visuals::light(),
+                Color32::BLACK,
+                Color32::WHITE,
+                Color32::from_rgb(0, 70, 200),
+                Color32::from_rgb(0, 70, 200),
+            ),
         }
     }
 }
 
 /// Pure foreground on pure background, 1.5 px strokes, a bright focus colour and an opaque
 /// selection.
-fn high_contrast(mut v: Visuals, fg: Color32, bg: Color32, focus: Color32, selection: Color32) -> Visuals {
+fn high_contrast(
+    mut v: Visuals,
+    fg: Color32,
+    bg: Color32,
+    focus: Color32,
+    selection: Color32,
+) -> Visuals {
     let dark = v.dark_mode;
-    let near = |x: u8| if dark { Color32::from_gray(x) } else { Color32::from_gray(255 - x) };
+    let near = |x: u8| {
+        if dark {
+            Color32::from_gray(x)
+        } else {
+            Color32::from_gray(255 - x)
+        }
+    };
     v.override_text_color = Some(fg);
     v.weak_text_color = Some(near(200));
     v.panel_fill = bg;
@@ -87,13 +116,31 @@ fn high_contrast(mut v: Visuals, fg: Color32, bg: Color32, focus: Color32, selec
     v.faint_bg_color = near(28);
     v.code_bg_color = near(24);
     v.window_stroke = Stroke::new(1.5, fg);
-    v.hyperlink_color = if dark { Color32::from_rgb(120, 200, 255) } else { Color32::from_rgb(0, 60, 190) };
-    v.warn_fg_color = if dark { Color32::from_rgb(255, 200, 0) } else { Color32::from_rgb(150, 90, 0) };
-    v.error_fg_color = if dark { Color32::from_rgb(255, 120, 90) } else { Color32::from_rgb(190, 0, 0) };
+    v.hyperlink_color = if dark {
+        Color32::from_rgb(120, 200, 255)
+    } else {
+        Color32::from_rgb(0, 60, 190)
+    };
+    v.warn_fg_color = if dark {
+        Color32::from_rgb(255, 200, 0)
+    } else {
+        Color32::from_rgb(150, 90, 0)
+    };
+    v.error_fg_color = if dark {
+        Color32::from_rgb(255, 120, 90)
+    } else {
+        Color32::from_rgb(190, 0, 0)
+    };
     v.selection.bg_fill = selection;
     v.selection.stroke = Stroke::new(1.5, Color32::WHITE);
     let w = &mut v.widgets;
-    for x in [&mut w.noninteractive, &mut w.inactive, &mut w.hovered, &mut w.active, &mut w.open] {
+    for x in [
+        &mut w.noninteractive,
+        &mut w.inactive,
+        &mut w.hovered,
+        &mut w.active,
+        &mut w.open,
+    ] {
         x.fg_stroke = Stroke::new(1.5, fg);
     }
     w.noninteractive.bg_fill = bg;
@@ -135,8 +182,15 @@ pub fn apply(ctx: &egui::Context, theme: Theme, system: bool, cvd: bool) {
         ctx.set_theme(egui::ThemePreference::System);
         return;
     }
-    STATE.store(u8::from(cvd) | (u8::from(theme.high_contrast()) << 1), Ordering::Relaxed);
-    let t = if theme.is_dark() { egui::Theme::Dark } else { egui::Theme::Light };
+    STATE.store(
+        u8::from(cvd) | (u8::from(theme.high_contrast()) << 1),
+        Ordering::Relaxed,
+    );
+    let t = if theme.is_dark() {
+        egui::Theme::Dark
+    } else {
+        egui::Theme::Light
+    };
     ctx.set_visuals_of(t, theme.visuals());
     ctx.set_theme(t);
 }
@@ -202,17 +256,40 @@ fn desktop_prefers_dark(_wait: std::time::Duration) -> Option<bool> {
 #[cfg(target_os = "linux")]
 fn linux_desktop_dark() -> Option<bool> {
     use std::process::{Command, Stdio};
-    if let Some(dark) = std::env::var("GTK_THEME").ok().and_then(|t| gtk_theme_dark(&t)) {
+    if let Some(dark) = std::env::var("GTK_THEME")
+        .ok()
+        .and_then(|t| gtk_theme_dark(&t))
+    {
         return Some(dark);
     }
     let run = |cmd: &str, args: &[&str]| {
-        Command::new(cmd).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        Command::new(cmd)
+            .args(args)
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
     };
-    let portal = ["--session", "--print-reply=literal", "--reply-timeout=300", "--dest=org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.Settings.Read", "string:org.freedesktop.appearance", "string:color-scheme"];
+    let portal = [
+        "--session",
+        "--print-reply=literal",
+        "--reply-timeout=300",
+        "--dest=org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.Settings.Read",
+        "string:org.freedesktop.appearance",
+        "string:color-scheme",
+    ];
     if let Some(dark) = run("dbus-send", &portal).and_then(|out| portal_dark(&out)) {
         return Some(dark);
     }
-    run("gsettings", &["get", "org.gnome.desktop.interface", "color-scheme"]).and_then(|out| gnome_dark(&out))
+    run(
+        "gsettings",
+        &["get", "org.gnome.desktop.interface", "color-scheme"],
+    )
+    .and_then(|out| gnome_dark(&out))
 }
 
 /// `GTK_THEME=Adwaita:dark` (or a `…-dark` theme) asks for dark; other values say nothing.
@@ -225,7 +302,12 @@ fn gtk_theme_dark(value: &str) -> Option<bool> {
 /// The portal's `color-scheme`: 1 prefers dark, 2 prefers light, 0 no preference.
 #[cfg(any(target_os = "linux", test))]
 fn portal_dark(reply: &str) -> Option<bool> {
-    let n: u32 = reply.split_whitespace().skip_while(|w| *w != "uint32").nth(1)?.parse().ok()?;
+    let n: u32 = reply
+        .split_whitespace()
+        .skip_while(|w| *w != "uint32")
+        .nth(1)?
+        .parse()
+        .ok()?;
     match n {
         1 => Some(true),
         2 => Some(false),
@@ -285,7 +367,13 @@ fn cvd_tone(t: Tone, dark: bool) -> (u8, u8, u8) {
 
 /// Further from the background: lighter on dark, darker on light.
 pub fn contrast(c: Color32, dark: bool) -> Color32 {
-    let f = |x: u8| if dark { x + ((255 - x) as u16 * 3 / 10) as u8 } else { (x as u16 * 6 / 10) as u8 };
+    let f = |x: u8| {
+        if dark {
+            x + ((255 - x) as u16 * 3 / 10) as u8
+        } else {
+            (x as u16 * 6 / 10) as u8
+        }
+    };
     Color32::from_rgb(f(c.r()), f(c.g()), f(c.b()))
 }
 
@@ -315,22 +403,43 @@ pub fn role(normal: Color32, t: Tone, dark: bool) -> Color32 {
 
 /// Text that warns ("stale", READ-ONLY).
 pub fn warn_text(ui: &egui::Ui) -> Color32 {
-    role(Color32::from_rgb(220, 150, 60), Tone::Warn, ui.visuals().dark_mode)
+    role(
+        Color32::from_rgb(220, 150, 60),
+        Tone::Warn,
+        ui.visuals().dark_mode,
+    )
 }
 
 /// Text that says all is well (valid, same, a finished task).
 pub fn ok_text(ui: &egui::Ui) -> Color32 {
-    role(Color32::from_rgb(90, 180, 90), Tone::Ok, ui.visuals().dark_mode)
+    role(
+        Color32::from_rgb(90, 180, 90),
+        Tone::Ok,
+        ui.visuals().dark_mode,
+    )
 }
 
 /// Text that points somewhere (a column, a file, TABLE).
 pub fn info_text(ui: &egui::Ui) -> Color32 {
-    role(Color32::from_rgb(90, 160, 220), Tone::Info, ui.visuals().dark_mode)
+    role(
+        Color32::from_rgb(90, 160, 220),
+        Tone::Info,
+        ui.visuals().dark_mode,
+    )
 }
 
 /// The colours of highlight marks and merged logs: Okabe-Ito with colour-blind-safe colours.
 pub fn mark_rgb(i: usize, normal: &[(u8, u8, u8); 8]) -> (u8, u8, u8) {
-    const CVD: [(u8, u8, u8); 8] = [(230, 159, 0), (86, 180, 233), (0, 158, 115), (240, 228, 66), (0, 114, 178), (213, 94, 0), (204, 121, 167), (150, 150, 150)];
+    const CVD: [(u8, u8, u8); 8] = [
+        (230, 159, 0),
+        (86, 180, 233),
+        (0, 158, 115),
+        (240, 228, 66),
+        (0, 114, 178),
+        (213, 94, 0),
+        (204, 121, 167),
+        (150, 150, 150),
+    ];
     if cvd() {
         CVD[i % 8]
     } else {
@@ -359,7 +468,16 @@ pub enum CodeTheme {
 }
 
 impl CodeTheme {
-    pub const ALL: [CodeTheme; 8] = [CodeTheme::Auto, CodeTheme::OneDark, CodeTheme::OneLight, CodeTheme::Monokai, CodeTheme::GitHubDark, CodeTheme::GitHubLight, CodeTheme::SolarizedDark, CodeTheme::SolarizedLight];
+    pub const ALL: [CodeTheme; 8] = [
+        CodeTheme::Auto,
+        CodeTheme::OneDark,
+        CodeTheme::OneLight,
+        CodeTheme::Monokai,
+        CodeTheme::GitHubDark,
+        CodeTheme::GitHubLight,
+        CodeTheme::SolarizedDark,
+        CodeTheme::SolarizedLight,
+    ];
 
     /// Stable name in the settings and key bindings.
     pub fn id(self) -> &'static str {
@@ -403,7 +521,13 @@ impl CodeTheme {
     }
 
     pub fn is_dark(self) -> bool {
-        matches!(self, CodeTheme::OneDark | CodeTheme::Monokai | CodeTheme::GitHubDark | CodeTheme::SolarizedDark)
+        matches!(
+            self,
+            CodeTheme::OneDark
+                | CodeTheme::Monokai
+                | CodeTheme::GitHubDark
+                | CodeTheme::SolarizedDark
+        )
     }
 }
 
@@ -415,7 +539,10 @@ pub fn set_code_theme(t: CodeTheme) {
 }
 
 pub fn code_theme() -> CodeTheme {
-    CodeTheme::ALL.get(CODE_THEME.load(Ordering::Relaxed) as usize).copied().unwrap_or_default()
+    CodeTheme::ALL
+        .get(CODE_THEME.load(Ordering::Relaxed) as usize)
+        .copied()
+        .unwrap_or_default()
 }
 
 /// The text area of a code file, like a code editor's.
@@ -443,15 +570,38 @@ pub fn code_colors(dark: bool) -> CodeColors {
     let t = code_theme().resolve(dark);
     // bg, fg, line numbers, the caret's line number, its line, guides, caret
     let [bg, fg, line_no, active, cur, guide, caret] = match t {
-        CodeTheme::OneDark | CodeTheme::Auto => [0x23272e, 0xabb2bf, 0x5f687a, 0xc8cdd7, 0x2c313c, 0x404650, 0xc8cdd7],
-        CodeTheme::OneLight => [0xfafafa, 0x383a42, 0x9d9d9f, 0x383a42, 0xf0f0f2, 0xdedee0, 0x526fff],
-        CodeTheme::Monokai => [0x272822, 0xf8f8f2, 0x90908a, 0xf8f8f2, 0x3e3d32, 0x464741, 0xf8f8f0],
-        CodeTheme::GitHubDark => [0x0d1117, 0xe6edf3, 0x6e7681, 0xe6edf3, 0x161b22, 0x21262d, 0xe6edf3],
-        CodeTheme::GitHubLight => [0xffffff, 0x1f2328, 0x8c959f, 0x1f2328, 0xf6f8fa, 0xd0d7de, 0x1f2328],
-        CodeTheme::SolarizedDark => [0x002b36, 0x839496, 0x586e75, 0x93a1a1, 0x073642, 0x0e4250, 0x93a1a1],
-        CodeTheme::SolarizedLight => [0xfdf6e3, 0x657b83, 0x93a1a1, 0x586e75, 0xeee8d5, 0xe4ddc8, 0x586e75],
+        CodeTheme::OneDark | CodeTheme::Auto => [
+            0x23272e, 0xabb2bf, 0x5f687a, 0xc8cdd7, 0x2c313c, 0x404650, 0xc8cdd7,
+        ],
+        CodeTheme::OneLight => [
+            0xfafafa, 0x383a42, 0x9d9d9f, 0x383a42, 0xf0f0f2, 0xdedee0, 0x526fff,
+        ],
+        CodeTheme::Monokai => [
+            0x272822, 0xf8f8f2, 0x90908a, 0xf8f8f2, 0x3e3d32, 0x464741, 0xf8f8f0,
+        ],
+        CodeTheme::GitHubDark => [
+            0x0d1117, 0xe6edf3, 0x6e7681, 0xe6edf3, 0x161b22, 0x21262d, 0xe6edf3,
+        ],
+        CodeTheme::GitHubLight => [
+            0xffffff, 0x1f2328, 0x8c959f, 0x1f2328, 0xf6f8fa, 0xd0d7de, 0x1f2328,
+        ],
+        CodeTheme::SolarizedDark => [
+            0x002b36, 0x839496, 0x586e75, 0x93a1a1, 0x073642, 0x0e4250, 0x93a1a1,
+        ],
+        CodeTheme::SolarizedLight => [
+            0xfdf6e3, 0x657b83, 0x93a1a1, 0x586e75, 0xeee8d5, 0xe4ddc8, 0x586e75,
+        ],
     };
-    CodeColors { bg: hex(bg), fg: hex(fg), line_no: hex(line_no), line_no_active: hex(active), cur_line: hex(cur), guide: hex(guide), caret: hex(caret), dark: t.is_dark() }
+    CodeColors {
+        bg: hex(bg),
+        fg: hex(fg),
+        line_no: hex(line_no),
+        line_no_active: hex(active),
+        cur_line: hex(cur),
+        guide: hex(guide),
+        caret: hex(caret),
+        dark: t.is_dark(),
+    }
 }
 
 /// A token's colour with the chosen code colours (`None`: a kind code does not use, such as a
@@ -461,13 +611,31 @@ pub fn code_token(kind: crate::view::highlight::Kind, dark: bool) -> Option<Colo
     let t = code_theme().resolve(dark);
     // keyword, string, number, comment, type, function, variable, decorator, tag, attribute, key
     let p: [u32; 11] = match t {
-        CodeTheme::OneDark | CodeTheme::Auto => [0xc678dd, 0x98c379, 0xd19a66, 0x7f848e, 0xe5c07b, 0x61afef, 0xe06c75, 0x56b6c2, 0xe06c75, 0xd19a66, 0xe06c75],
+        CodeTheme::OneDark | CodeTheme::Auto => [
+            0xc678dd, 0x98c379, 0xd19a66, 0x7f848e, 0xe5c07b, 0x61afef, 0xe06c75, 0x56b6c2,
+            0xe06c75, 0xd19a66, 0xe06c75,
+        ],
         // One Light, darkened to read well on white.
-        CodeTheme::OneLight => [0x9818a0, 0x28781e, 0xaa5a00, 0x787878, 0x966400, 0x285fd2, 0xc83228, 0x0078a0, 0xc83228, 0xaa5a00, 0xc83228],
-        CodeTheme::Monokai => [0xf92672, 0xe6db74, 0xae81ff, 0x88846f, 0x66d9ef, 0xa6e22e, 0xfd971f, 0xa6e22e, 0xf92672, 0xa6e22e, 0xf92672],
-        CodeTheme::GitHubDark => [0xff7b72, 0xa5d6ff, 0x79c0ff, 0x8b949e, 0xffa657, 0xd2a8ff, 0xffa657, 0xd2a8ff, 0x7ee787, 0x79c0ff, 0x7ee787],
-        CodeTheme::GitHubLight => [0xcf222e, 0x0a3069, 0x0550ae, 0x59636e, 0x953800, 0x8250df, 0x953800, 0x8250df, 0x116329, 0x0550ae, 0x116329],
-        CodeTheme::SolarizedDark | CodeTheme::SolarizedLight => [0x859900, 0x2aa198, 0xd33682, 0x6c8a91, 0xb58900, 0x268bd2, 0xcb4b16, 0x6c71c4, 0x268bd2, 0xb58900, 0x268bd2],
+        CodeTheme::OneLight => [
+            0x9818a0, 0x28781e, 0xaa5a00, 0x787878, 0x966400, 0x285fd2, 0xc83228, 0x0078a0,
+            0xc83228, 0xaa5a00, 0xc83228,
+        ],
+        CodeTheme::Monokai => [
+            0xf92672, 0xe6db74, 0xae81ff, 0x88846f, 0x66d9ef, 0xa6e22e, 0xfd971f, 0xa6e22e,
+            0xf92672, 0xa6e22e, 0xf92672,
+        ],
+        CodeTheme::GitHubDark => [
+            0xff7b72, 0xa5d6ff, 0x79c0ff, 0x8b949e, 0xffa657, 0xd2a8ff, 0xffa657, 0xd2a8ff,
+            0x7ee787, 0x79c0ff, 0x7ee787,
+        ],
+        CodeTheme::GitHubLight => [
+            0xcf222e, 0x0a3069, 0x0550ae, 0x59636e, 0x953800, 0x8250df, 0x953800, 0x8250df,
+            0x116329, 0x0550ae, 0x116329,
+        ],
+        CodeTheme::SolarizedDark | CodeTheme::SolarizedLight => [
+            0x859900, 0x2aa198, 0xd33682, 0x6c8a91, 0xb58900, 0x268bd2, 0xcb4b16, 0x6c71c4,
+            0x268bd2, 0xb58900, 0x268bd2,
+        ],
     };
     let i = match kind {
         Kind::Keyword => 0,
@@ -509,8 +677,22 @@ pub fn cvd_syntax(kind: crate::view::highlight::Kind, dark: bool) -> (u8, u8, u8
         Kind::Var => ((230, 110, 30), (200, 80, 0)),
         Kind::Decorator => ((204, 121, 167), (160, 60, 120)),
         Kind::Col(i) => {
-            const DARK: [(u8, u8, u8); 6] = [(230, 159, 0), (86, 180, 233), (0, 158, 115), (204, 121, 167), (240, 228, 66), (230, 110, 30)];
-            const LIGHT: [(u8, u8, u8); 6] = [(170, 100, 0), (0, 100, 170), (0, 115, 80), (160, 60, 120), (130, 110, 0), (200, 80, 0)];
+            const DARK: [(u8, u8, u8); 6] = [
+                (230, 159, 0),
+                (86, 180, 233),
+                (0, 158, 115),
+                (204, 121, 167),
+                (240, 228, 66),
+                (230, 110, 30),
+            ];
+            const LIGHT: [(u8, u8, u8); 6] = [
+                (170, 100, 0),
+                (0, 100, 170),
+                (0, 115, 80),
+                (160, 60, 120),
+                (130, 110, 0),
+                (200, 80, 0),
+            ];
             (DARK[i as usize % 6], LIGHT[i as usize % 6])
         }
     };
@@ -534,7 +716,10 @@ mod tests {
             assert_eq!(t.visuals().dark_mode, t.is_dark());
         }
         let v = Theme::HighContrastLight.visuals();
-        assert_eq!((v.panel_fill, v.override_text_color), (Color32::WHITE, Some(Color32::BLACK)));
+        assert_eq!(
+            (v.panel_fill, v.override_text_color),
+            (Color32::WHITE, Some(Color32::BLACK))
+        );
     }
 
     #[test]
@@ -549,9 +734,15 @@ mod tests {
 
     #[test]
     fn desktop_answers_are_read() {
-        assert_eq!(portal_dark("   variant       variant          uint32 1\n"), Some(true));
+        assert_eq!(
+            portal_dark("   variant       variant          uint32 1\n"),
+            Some(true)
+        );
         assert_eq!(portal_dark("   variant       uint32 2\n"), Some(false));
-        assert_eq!(portal_dark("   variant       variant          uint32 0\n"), None);
+        assert_eq!(
+            portal_dark("   variant       variant          uint32 0\n"),
+            None
+        );
         assert_eq!(portal_dark(""), None);
         assert_eq!(gnome_dark("'prefer-dark'\n"), Some(true));
         assert_eq!(gnome_dark("'default'\n"), Some(false));
@@ -565,7 +756,10 @@ mod tests {
     fn following_the_system_without_an_answer_is_light() {
         let ctx = egui::Context::default();
         apply(&ctx, Theme::HighContrastDark, true, false);
-        assert_eq!(ctx.options(|o| o.theme_preference), egui::ThemePreference::System);
+        assert_eq!(
+            ctx.options(|o| o.theme_preference),
+            egui::ThemePreference::System
+        );
         assert_eq!(shown(&ctx), Theme::Light);
         assert!(!high_contrast_on());
         apply(&ctx, Theme::Dark, false, false);

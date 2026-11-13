@@ -32,21 +32,51 @@ pub struct StatusFields {
 
 impl Default for StatusFields {
     fn default() -> Self {
-        StatusFields { offset: true, sel: true, dt: true, legend: true, kind: false, index_time: false, path: false }
+        StatusFields {
+            offset: true,
+            sel: true,
+            dt: true,
+            legend: true,
+            kind: false,
+            index_time: false,
+            path: false,
+        }
     }
 }
 
 impl StatusFields {
     /// Names in a `status=` line.
-    const NAMES: [&'static str; 7] = ["offset", "selection", "time", "legend", "access", "index-time", "path"];
+    const NAMES: [&'static str; 7] = [
+        "offset",
+        "selection",
+        "time",
+        "legend",
+        "access",
+        "index-time",
+        "path",
+    ];
 
     fn flags(&mut self) -> [&mut bool; 7] {
-        [&mut self.offset, &mut self.sel, &mut self.dt, &mut self.legend, &mut self.kind, &mut self.index_time, &mut self.path]
+        [
+            &mut self.offset,
+            &mut self.sel,
+            &mut self.dt,
+            &mut self.legend,
+            &mut self.kind,
+            &mut self.index_time,
+            &mut self.path,
+        ]
     }
 
     /// The fields shown, "offset,selection,…".
     pub fn to_line(mut self) -> String {
-        Self::NAMES.iter().zip(self.flags()).filter(|(_, on)| **on).map(|(n, _)| *n).collect::<Vec<_>>().join(",")
+        Self::NAMES
+            .iter()
+            .zip(self.flags())
+            .filter(|(_, on)| **on)
+            .map(|(n, _)| *n)
+            .collect::<Vec<_>>()
+            .join(",")
     }
 
     pub fn from_line(v: &str) -> StatusFields {
@@ -91,28 +121,58 @@ pub(crate) enum StatusAct {
     /// The skew of a link by time, in milliseconds.
     Skew(i64),
     /// A part of the JSON path: go to it (when the text is still that version).
-    JsonGoto { version: u64, off: u64 },
+    JsonGoto {
+        version: u64,
+        off: u64,
+    },
     CopyText(String),
     Alerts,
 }
 
 /// The JSON path, `$ › items › [3] › city` (the last four parts): a click goes to that part, a
 /// right-click copies the whole path. Greyed while it is for an older caret or version.
-fn crumb(ui: &mut egui::Ui, c: &super::json_crumb::JsonCrumb, stale: bool, acts: &mut Vec<StatusAct>) {
+fn crumb(
+    ui: &mut egui::Ui,
+    c: &super::json_crumb::JsonCrumb,
+    stale: bool,
+    acts: &mut Vec<StatusAct>,
+) {
     let path = c.path();
-    let tip = format!("{path}\n{}", tr("Click a part to go to it; right-click copies the path"));
-    let short = |s: String| if s.chars().count() > 24 { s.chars().take(23).chain(['…']).collect() } else { s };
-    let parts: Vec<String> = c.steps.iter().map(|(s, _)| short(match s {
-        bigtext::json::Step::Key(k) => k.clone(),
-        bigtext::json::Step::Index(i) => format!("[{i}]"),
-    })).collect();
+    let tip = format!(
+        "{path}\n{}",
+        tr("Click a part to go to it; right-click copies the path")
+    );
+    let short = |s: String| {
+        if s.chars().count() > 24 {
+            s.chars().take(23).chain(['…']).collect()
+        } else {
+            s
+        }
+    };
+    let parts: Vec<String> = c
+        .steps
+        .iter()
+        .map(|(s, _)| {
+            short(match s {
+                bigtext::json::Step::Key(k) => k.clone(),
+                bigtext::json::Step::Index(i) => format!("[{i}]"),
+            })
+        })
+        .collect();
     let skip = parts.len().saturating_sub(4);
     ui.spacing_mut().item_spacing.x = 3.0;
     let mut part = |ui: &mut egui::Ui, text: String, off: u64| {
-        let text = if stale { RichText::new(text).weak() } else { RichText::new(text) };
+        let text = if stale {
+            RichText::new(text).weak()
+        } else {
+            RichText::new(text)
+        };
         let r = ui.add(egui::Link::new(text)).on_hover_text(&tip);
         if r.clicked() {
-            acts.push(StatusAct::JsonGoto { version: c.version, off });
+            acts.push(StatusAct::JsonGoto {
+                version: c.version,
+                off,
+            });
         }
         if r.secondary_clicked() {
             acts.push(StatusAct::CopyText(path.clone()));
@@ -127,19 +187,30 @@ fn crumb(ui: &mut egui::Ui, c: &super::json_crumb::JsonCrumb, stale: bool, acts:
         part(ui, p, c.steps[i].1);
     }
     if let Some((_, _, p)) = &c.building {
-        ui.add(egui::ProgressBar::new(p.fraction()).desired_width(60.0)).on_hover_text(tr("Reading the JSON's structure"));
+        ui.add(egui::ProgressBar::new(p.fraction()).desired_width(60.0))
+            .on_hover_text(tr("Reading the JSON's structure"));
     }
 }
 
 /// A field that does something when clicked.
 fn field(ui: &mut egui::Ui, text: impl Into<egui::WidgetText>, tip: &str) -> egui::Response {
-    ui.add(egui::Button::new(text).frame(false)).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip)
+    ui.add(egui::Button::new(text).frame(false))
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text(tip)
 }
 
 /// A field that opens a menu.
-fn field_menu(ui: &mut egui::Ui, text: impl Into<egui::WidgetText>, tip: &str, content: impl FnOnce(&mut egui::Ui)) {
-    let (r, _) = egui::containers::menu::MenuButton::from_button(egui::Button::new(text).frame(false)).ui(ui, content);
-    r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(tip);
+fn field_menu(
+    ui: &mut egui::Ui,
+    text: impl Into<egui::WidgetText>,
+    tip: &str,
+    content: impl FnOnce(&mut egui::Ui),
+) {
+    let (r, _) =
+        egui::containers::menu::MenuButton::from_button(egui::Button::new(text).frame(false))
+            .ui(ui, content);
+    r.on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text(tip);
 }
 
 impl BigTextApp {
@@ -382,29 +453,47 @@ impl BigTextApp {
         let id = egui::Id::new("zen-menu");
         let near_top = ctx.input(|i| i.pointer.hover_pos().is_some_and(|p| p.y <= 4.0));
         let was_shown = ctx.data(|d| d.get_temp::<bool>(id).unwrap_or(false));
-        let hovered = was_shown && ctx.input(|i| i.pointer.hover_pos()).is_some_and(|p| ctx.layer_id_at(p).is_some_and(|l| l.id == id || l.order == egui::Order::Foreground));
+        let hovered = was_shown
+            && ctx.input(|i| i.pointer.hover_pos()).is_some_and(|p| {
+                ctx.layer_id_at(p)
+                    .is_some_and(|l| l.id == id || l.order == egui::Order::Foreground)
+            });
         let show = near_top || hovered || egui::Popup::is_any_open(ctx);
         ctx.data_mut(|d| d.insert_temp(id, show));
         // How to get out, for a few seconds after going in.
         let since = ctx.data(|d| d.get_temp::<std::time::Instant>(egui::Id::new("zen-hint")));
         if let Some(t) = since.filter(|t| t.elapsed() < Duration::from_secs(4)) {
-            let key = self.keymap.get(Cmd::Zen).map(super::commands::key_text).unwrap_or_else(|| tr(Cmd::Zen.label()).to_string());
-            let hint = trf("Zen mode: Esc or {key} leaves it; move the pointer to the top edge for the menu.", &[("key", &key)]);
-            egui::Area::new(egui::Id::new("zen-hint-area")).order(egui::Order::Tooltip).anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 12.0)).interactable(false).show(ctx, |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| ui.label(hint));
-            });
+            let key = self
+                .keymap
+                .get(Cmd::Zen)
+                .map(super::commands::key_text)
+                .unwrap_or_else(|| tr(Cmd::Zen.label()).to_string());
+            let hint = trf(
+                "Zen mode: Esc or {key} leaves it; move the pointer to the top edge for the menu.",
+                &[("key", &key)],
+            );
+            egui::Area::new(egui::Id::new("zen-hint-area"))
+                .order(egui::Order::Tooltip)
+                .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 12.0))
+                .interactable(false)
+                .show(ctx, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| ui.label(hint));
+                });
             ctx.request_repaint_after(Duration::from_secs(4).saturating_sub(t.elapsed()));
         }
         if !show {
             return;
         }
         let width = ctx.content_rect().width();
-        egui::Area::new(id).order(egui::Order::Foreground).fixed_pos(egui::pos2(0.0, 0.0)).show(ctx, |ui| {
-            egui::Frame::side_top_panel(ui.style()).show(ui, |ui| {
-                ui.set_width(width);
-                self.menu_bar(ui);
+        egui::Area::new(id)
+            .order(egui::Order::Foreground)
+            .fixed_pos(egui::pos2(0.0, 0.0))
+            .show(ctx, |ui| {
+                egui::Frame::side_top_panel(ui.style()).show(ui, |ui| {
+                    ui.set_width(width);
+                    self.menu_bar(ui);
+                });
             });
-        });
     }
 
     /// Says `text` to screen readers.
@@ -414,12 +503,18 @@ impl BigTextApp {
 
     /// Announces how many matches a Find All found once it is done.
     pub(super) fn announce_results(&mut self) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let running = d.results.as_ref().is_some_and(|r| r.is_running());
         if !std::mem::replace(&mut self.results_running, running) || running {
             return;
         }
-        if let Some(n) = d.results.as_ref().map(|r| r.data.lock().unwrap().matches.len()) {
+        if let Some(n) = d
+            .results
+            .as_ref()
+            .map(|r| r.data.lock().unwrap().matches.len())
+        {
             self.announce(trf("{n} matches", &[("n", &n.to_string())]));
         }
     }
@@ -437,12 +532,20 @@ impl BigTextApp {
             }
             StatusAct::ToggleReadOnly => self.run(ctx, Cmd::ReadOnly),
             StatusAct::CopyPath => {
-                if let Some(p) = self.docs.get(self.active).and_then(|d| d.unpacked_from.as_deref().or(d.path.as_deref())) {
+                if let Some(p) = self
+                    .docs
+                    .get(self.active)
+                    .and_then(|d| d.unpacked_from.as_deref().or(d.path.as_deref()))
+                {
                     ctx.copy_text(file::display_path(p));
                 }
             }
             StatusAct::JsonGoto { version, off } => {
-                if let Some(d) = self.docs.get_mut(self.active).filter(|d| d.version == version) {
+                if let Some(d) = self
+                    .docs
+                    .get_mut(self.active)
+                    .filter(|d| d.version == version)
+                {
                     d.goto_offset(off);
                 }
             }
@@ -473,8 +576,24 @@ mod tests {
         let d = StatusFields::default();
         assert_eq!(d.to_line(), "offset,selection,time,legend");
         assert_eq!(StatusFields::from_line(&d.to_line()), d);
-        let f = StatusFields { offset: false, path: true, index_time: true, ..d };
+        let f = StatusFields {
+            offset: false,
+            path: true,
+            index_time: true,
+            ..d
+        };
         assert_eq!(StatusFields::from_line(&f.to_line()), f);
-        assert_eq!(StatusFields::from_line(""), StatusFields { offset: false, sel: false, dt: false, legend: false, kind: false, index_time: false, path: false });
+        assert_eq!(
+            StatusFields::from_line(""),
+            StatusFields {
+                offset: false,
+                sel: false,
+                dt: false,
+                legend: false,
+                kind: false,
+                index_time: false,
+                path: false
+            }
+        );
     }
 }

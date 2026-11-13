@@ -15,7 +15,12 @@ const STEP: u64 = 16 << 20;
 
 /// Exact start of 0-based `line`: from the line index when it already covers it, otherwise by
 /// counting line breaks from the start. `None` when the line does not exist or on cancel.
-pub fn exact_line_start(buf: &TextBuf, line: u64, cancel: &CancelToken, progress: Option<&Progress>) -> Option<u64> {
+pub fn exact_line_start(
+    buf: &TextBuf,
+    line: u64,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> Option<u64> {
     if line == 0 {
         return Some(0);
     }
@@ -49,7 +54,13 @@ pub fn exact_line_start(buf: &TextBuf, line: u64, cancel: &CancelToken, progress
 
 /// Byte range of the 1-based, inclusive line range `from..=to` (including the last line's
 /// break). `None` when `from` is past the end or on cancel.
-pub fn line_range(buf: &TextBuf, from: u64, to: u64, cancel: &CancelToken, progress: Option<&Progress>) -> Option<Range<u64>> {
+pub fn line_range(
+    buf: &TextBuf,
+    from: u64,
+    to: u64,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> Option<Range<u64>> {
     if let Some(p) = progress {
         p.set_total(buf.len());
     }
@@ -72,7 +83,10 @@ pub enum SplitBy {
 /// `app.log` → `app.part001.log` in `dir`.
 pub fn part_path(dir: &Path, name: &str, n: usize) -> PathBuf {
     let p = Path::new(name);
-    let stem = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| name.to_string());
+    let stem = p
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| name.to_string());
     match p.extension() {
         Some(ext) => dir.join(format!("{stem}.part{n:03}.{}", ext.to_string_lossy())),
         None => dir.join(format!("{stem}.part{n:03}")),
@@ -138,13 +152,30 @@ impl Parts<'_> {
 /// order mark get it at the start of every part. Returns the files written, or `None` when
 /// cancelled (the parts are then removed, as they are on an error).
 #[allow(clippy::too_many_arguments)]
-pub fn split_to_files(buf: &TextBuf, by: SplitBy, dir: &Path, name: &str, pack: Option<Kind>, cancel: &CancelToken, progress: &Progress) -> io::Result<Option<Vec<PathBuf>>> {
+pub fn split_to_files(
+    buf: &TextBuf,
+    by: SplitBy,
+    dir: &Path,
+    name: &str,
+    pack: Option<Kind>,
+    cancel: &CancelToken,
+    progress: &Progress,
+) -> io::Result<Option<Vec<PathBuf>>> {
     let codec = buf.codec;
     let unit = codec.unit() as u64;
     let bom = codec.bom_len as u64;
     let len = buf.len();
     progress.set_total(len);
-    let mut parts = Parts { dir, name, pack, bom: buf.read(0..bom).map(|b| b.into_owned()).unwrap_or_default(), cur: None, made: Vec::new(), bytes: 0, lines: 0 };
+    let mut parts = Parts {
+        dir,
+        name,
+        pack,
+        bom: buf.read(0..bom).map(|b| b.into_owned()).unwrap_or_default(),
+        cur: None,
+        made: Vec::new(),
+        bytes: 0,
+        lines: 0,
+    };
     let r = (|| -> io::Result<bool> {
         let mut pos = bom;
         while pos < len {
@@ -152,7 +183,9 @@ pub fn split_to_files(buf: &TextBuf, by: SplitBy, dir: &Path, name: &str, pack: 
                 return Ok(false);
             }
             let end = (pos + STEP).min(len);
-            let b = buf.read(pos..end).ok_or_else(|| io::Error::other("Could not read the document"))?;
+            let b = buf
+                .read(pos..end)
+                .ok_or_else(|| io::Error::other("Could not read the document"))?;
             let mut i = 0usize;
             while i < b.len() {
                 let base = pos + i as u64;
@@ -170,9 +203,14 @@ pub fn split_to_files(buf: &TextBuf, by: SplitBy, dir: &Path, name: &str, pack: 
                         }
                     }
                     SplitBy::Bytes(n) => {
-                        let from = n.saturating_sub(parts.bytes).saturating_sub(1).min(rest.len() as u64) as usize;
+                        let from = n
+                            .saturating_sub(parts.bytes)
+                            .saturating_sub(1)
+                            .min(rest.len() as u64) as usize;
                         let from = from - (base as usize + from) % unit as usize;
-                        codec.find_nl(&rest[from..], base + from as u64).map(|k| from + k + unit as usize)
+                        codec
+                            .find_nl(&rest[from..], base + from as u64)
+                            .map(|k| from + k + unit as usize)
                     }
                 };
                 match cut {
@@ -239,31 +277,91 @@ mod tests {
     fn split(data: &[u8], codec: Codec, by: SplitBy) -> Vec<Vec<u8>> {
         let (_f, t) = buf_with(data, codec);
         let dir = tempfile::tempdir().unwrap();
-        let files = split_to_files(&t, by, dir.path(), "app.log", None, &CancelToken::new(), &Progress::default()).unwrap().unwrap();
+        let files = split_to_files(
+            &t,
+            by,
+            dir.path(),
+            "app.log",
+            None,
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap()
+        .unwrap();
         files.iter().map(|p| fs::read(p).unwrap()).collect()
     }
 
     #[test]
     fn split_by_lines_and_size() {
         let data = b"a\nbb\nccc\ndddd\ne";
-        assert_eq!(split(data, Codec::utf8(), SplitBy::Lines(2)), vec![b"a\nbb\n".to_vec(), b"ccc\ndddd\n".to_vec(), b"e".to_vec()]);
-        assert_eq!(split(data, Codec::utf8(), SplitBy::Lines(5)), vec![data.to_vec()]);
+        assert_eq!(
+            split(data, Codec::utf8(), SplitBy::Lines(2)),
+            vec![b"a\nbb\n".to_vec(), b"ccc\ndddd\n".to_vec(), b"e".to_vec()]
+        );
+        assert_eq!(
+            split(data, Codec::utf8(), SplitBy::Lines(5)),
+            vec![data.to_vec()]
+        );
         // At least 4 bytes per part, ending at the next line break.
-        assert_eq!(split(data, Codec::utf8(), SplitBy::Bytes(4)), vec![b"a\nbb\n".to_vec(), b"ccc\n".to_vec(), b"dddd\n".to_vec(), b"e".to_vec()]);
-        assert_eq!(split(b"a\nb\n", Codec::utf8(), SplitBy::Lines(1)), vec![b"a\n".to_vec(), b"b\n".to_vec()]);
-        assert_eq!(part_path(Path::new("d"), "app.log", 7), Path::new("d").join("app.part007.log"));
+        assert_eq!(
+            split(data, Codec::utf8(), SplitBy::Bytes(4)),
+            vec![
+                b"a\nbb\n".to_vec(),
+                b"ccc\n".to_vec(),
+                b"dddd\n".to_vec(),
+                b"e".to_vec()
+            ]
+        );
+        assert_eq!(
+            split(b"a\nb\n", Codec::utf8(), SplitBy::Lines(1)),
+            vec![b"a\n".to_vec(), b"b\n".to_vec()]
+        );
+        assert_eq!(
+            part_path(Path::new("d"), "app.log", 7),
+            Path::new("d").join("app.part007.log")
+        );
     }
 
     #[test]
     fn compressed_parts() {
-        let data: Vec<u8> = (0..20_000).flat_map(|i: u32| format!("line {i}\n").into_bytes()).collect();
+        let data: Vec<u8> = (0..20_000)
+            .flat_map(|i: u32| format!("line {i}\n").into_bytes())
+            .collect();
         let (_f, t) = buf_with(&data, Codec::utf8());
         let dir = tempfile::tempdir().unwrap();
-        let files = split_to_files(&t, SplitBy::Lines(7000), dir.path(), "app.log", Some(Kind::Zstd), &CancelToken::new(), &Progress::default()).unwrap().unwrap();
-        assert_eq!(files.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect::<Vec<_>>(), ["app.part001.log.zst", "app.part002.log.zst", "app.part003.log.zst"]);
+        let files = split_to_files(
+            &t,
+            SplitBy::Lines(7000),
+            dir.path(),
+            "app.log",
+            Some(Kind::Zstd),
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            files
+                .iter()
+                .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            [
+                "app.part001.log.zst",
+                "app.part002.log.zst",
+                "app.part003.log.zst"
+            ]
+        );
         let mut all = Vec::new();
         for p in &files {
-            crate::decompress::unpack_to(p, Kind::Zstd, &mut all, &CancelToken::new(), &Progress::default()).unwrap().unwrap();
+            crate::decompress::unpack_to(
+                p,
+                Kind::Zstd,
+                &mut all,
+                &CancelToken::new(),
+                &Progress::default(),
+            )
+            .unwrap()
+            .unwrap();
         }
         assert!(all == data);
     }
@@ -286,9 +384,23 @@ mod tests {
         let (_f, t) = buf_with(b"a\nb\nc\n", Codec::utf8());
         let dir = tempfile::tempdir().unwrap();
         fs::write(part_path(dir.path(), "x.txt", 2), b"keep").unwrap();
-        let r = split_to_files(&t, SplitBy::Lines(1), dir.path(), "x.txt", None, &CancelToken::new(), &Progress::default());
+        let r = split_to_files(
+            &t,
+            SplitBy::Lines(1),
+            dir.path(),
+            "x.txt",
+            None,
+            &CancelToken::new(),
+            &Progress::default(),
+        );
         assert!(r.is_err());
-        assert!(!part_path(dir.path(), "x.txt", 1).exists(), "partial output removed");
-        assert_eq!(fs::read(part_path(dir.path(), "x.txt", 2)).unwrap(), b"keep");
+        assert!(
+            !part_path(dir.path(), "x.txt", 1).exists(),
+            "partial output removed"
+        );
+        assert_eq!(
+            fs::read(part_path(dir.path(), "x.txt", 2)).unwrap(),
+            b"keep"
+        );
     }
 }

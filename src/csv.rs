@@ -28,7 +28,11 @@ pub struct Dialect {
 
 impl Dialect {
     pub fn new(delim: u8) -> Dialect {
-        Dialect { delim, quote: b'"', start: 0 }
+        Dialect {
+            delim,
+            quote: b'"',
+            start: 0,
+        }
     }
 
     /// Where the records start in `buf` (after the byte order mark and the preamble).
@@ -134,7 +138,9 @@ pub fn split_fields(codec: &Codec, d: Dialect, b: &[u8], out: &mut Vec<Range<usi
 pub fn field_value(codec: &Codec, d: Dialect, raw: &[u8]) -> String {
     let s = codec.decode_lossy(raw);
     let q = d.quote as char;
-    let Some(inner) = s.strip_prefix(q) else { return s };
+    let Some(inner) = s.strip_prefix(q) else {
+        return s;
+    };
     let mut out = String::with_capacity(inner.len());
     let mut it = inner.chars().peekable();
     while let Some(c) = it.next() {
@@ -213,7 +219,13 @@ const PREAMBLE_MAX: usize = 20;
 /// `#` lines, a title — and whether the first row holds column names: it does unless its cells
 /// are numbers where the rows below hold numbers too. `sample` starts at offset `base` (after
 /// the byte order mark).
-pub fn detect_table(codec: &Codec, sample: &[u8], whole: bool, preferred: u8, base: u64) -> TableGuess {
+pub fn detect_table(
+    codec: &Codec,
+    sample: &[u8],
+    whole: bool,
+    preferred: u8,
+    base: u64,
+) -> TableGuess {
     let unit = codec.unit();
     // (start, content) of each line of the sample, and where the next one starts.
     let mut lines: Vec<(usize, &[u8], usize)> = Vec::new();
@@ -234,7 +246,12 @@ pub fn detect_table(codec: &Codec, sample: &[u8], whole: bool, preferred: u8, ba
     let text = |b: &[u8]| codec.decode_lossy(b);
     let mut skip = 0;
     let mut d = match lines.first().map(|l| text(l.1)) {
-        Some(t) if t.trim().len() == 5 && t.trim().to_ascii_lowercase().starts_with("sep=") && t.trim().is_char_boundary(4) && t.trim().as_bytes()[4].is_ascii() => {
+        Some(t)
+            if t.trim().len() == 5
+                && t.trim().to_ascii_lowercase().starts_with("sep=")
+                && t.trim().is_char_boundary(4)
+                && t.trim().as_bytes()[4].is_ascii() =>
+        {
             skip = 1;
             Dialect::new(t.trim().as_bytes()[4])
         }
@@ -252,14 +269,20 @@ pub fn detect_table(codec: &Codec, sample: &[u8], whole: bool, preferred: u8, ba
     for &c in &counts[skip.min(counts.len())..] {
         *tally.entry(c).or_default() += 1;
     }
-    let modal = tally.into_iter().max_by_key(|&(c, n)| (n, c)).map(|(c, _)| c).unwrap_or(1);
+    let modal = tally
+        .into_iter()
+        .max_by_key(|&(c, n)| (n, c))
+        .map(|(c, _)| c)
+        .unwrap_or(1);
     if modal > 1 {
         let from = skip;
         let preamble = |i: usize| {
             let t = text(lines[i].1);
             t.trim().is_empty() || t.trim_start().starts_with('#') || counts[i] != modal
         };
-        if let Some(k) = (from..lines.len().min(from + PREAMBLE_MAX)).find(|&k| counts[k] == modal && counts.get(k + 1) == Some(&modal)) {
+        if let Some(k) = (from..lines.len().min(from + PREAMBLE_MAX))
+            .find(|&k| counts[k] == modal && counts.get(k + 1) == Some(&modal))
+        {
             if (from..k).all(preamble) {
                 skip = k;
             }
@@ -271,20 +294,34 @@ pub fn detect_table(codec: &Codec, sample: &[u8], whole: bool, preferred: u8, ba
     // Header: numbers in the first row where the rows below have numbers mean it is data.
     let cells = |l: &[u8], fields: &mut Vec<Range<usize>>| -> Vec<bool> {
         split_fields(codec, d, l, fields);
-        fields.iter().map(|f| parse_number(&field_value(codec, d, &l[f.clone()])).is_some()).collect()
+        fields
+            .iter()
+            .map(|f| parse_number(&field_value(codec, d, &l[f.clone()])).is_some())
+            .collect()
     };
     let mut header = true;
     if let Some(first) = lines.get(skip) {
         let head = cells(first.1, &mut fields);
-        let rows: Vec<Vec<bool>> = lines.iter().skip(skip + 1).take(200).map(|l| cells(l.1, &mut fields)).collect();
+        let rows: Vec<Vec<bool>> = lines
+            .iter()
+            .skip(skip + 1)
+            .take(200)
+            .map(|l| cells(l.1, &mut fields))
+            .collect();
         if rows.len() >= 2 {
-            let numeric = |c: usize| rows.iter().filter(|r| r.get(c) == Some(&true)).count() * 10 >= rows.len() * 8;
+            let numeric = |c: usize| {
+                rows.iter().filter(|r| r.get(c) == Some(&true)).count() * 10 >= rows.len() * 8
+            };
             let cols: Vec<usize> = (0..head.len()).filter(|&c| numeric(c)).collect();
             let data_like = cols.iter().filter(|&&c| head[c]).count();
             header = cols.is_empty() || data_like < cols.len();
         }
     }
-    TableGuess { dialect: d, header, skip }
+    TableGuess {
+        dialect: d,
+        header,
+        skip,
+    }
 }
 
 /// How a scan over the document ended.
@@ -363,7 +400,8 @@ impl Removal<'_> {
                     return false;
                 }
                 // Deleted fields after the last kept one go with the delimiter before them.
-                last + 1 >= n || self.remove(self.starts[last + 1] - self.unit..end, chunk, base, out)
+                last + 1 >= n
+                    || self.remove(self.starts[last + 1] - self.unit..end, chunk, base, out)
             }
         }
     }
@@ -374,14 +412,30 @@ impl Removal<'_> {
 /// order, plus the chunk being scanned when it was found (`chunk` starts at offset `base`) for
 /// callers that copy the bytes in between. A record that loses all its fields becomes an empty
 /// line. Returns the number of records and how the scan ended.
-pub fn scan_removals(buf: &TextBuf, d: Dialect, cols: &[usize], cancel: &CancelToken, progress: Option<&Progress>, out: &mut Sink) -> (u64, ScanEnd) {
+pub fn scan_removals(
+    buf: &TextBuf,
+    d: Dialect,
+    cols: &[usize],
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    out: &mut Sink,
+) -> (u64, ScanEnd) {
     let codec = buf.codec;
     let unit = codec.unit();
     let (nl, cr, lf_mode) = (nl_value(&codec), b'\r' as u16, codec.nl == NlByte::Lf);
     let len = buf.len();
     let start = d.first(buf);
-    let Some(&max) = cols.last() else { return (0, ScanEnd::Done) };
-    let mut rm = Removal { cols, unit: unit as u64, starts: vec![start], field: 0, decided: false, pending: None };
+    let Some(&max) = cols.last() else {
+        return (0, ScanEnd::Done);
+    };
+    let mut rm = Removal {
+        cols,
+        unit: unit as u64,
+        starts: vec![start],
+        field: 0,
+        decided: false,
+        pending: None,
+    };
     let mut st = State::FieldStart;
     let (mut records, mut empty, mut prev_cr) = (0u64, true, false);
     let mut end = ScanEnd::Done;
@@ -416,7 +470,11 @@ pub fn scan_removals(buf: &TextBuf, d: Dialect, cols: &[usize], cancel: &CancelT
                 }
                 Step::RecordEnd => {
                     records += 1;
-                    let content_end = if lf_mode && prev_cr { p - unit as u64 } else { p };
+                    let content_end = if lf_mode && prev_cr {
+                        p - unit as u64
+                    } else {
+                        p
+                    };
                     let ok = rm.decided || rm.finish(rm.field + 1, content_end, chunk, base, out);
                     rm.starts.clear();
                     rm.starts.push(p + unit as u64);
@@ -457,7 +515,14 @@ pub fn scan_removals(buf: &TextBuf, d: Dialect, cols: &[usize], cancel: &CancelT
 
 /// Writes `range` of the document to `out`, from `chunk` (at offset `base`) where it holds the
 /// bytes and from the document otherwise. Returns the byte count.
-fn copy_range<W: Write>(buf: &TextBuf, range: Range<u64>, chunk: &[u8], base: u64, out: &mut W, scratch: &mut Vec<u8>) -> io::Result<u64> {
+fn copy_range<W: Write>(
+    buf: &TextBuf,
+    range: Range<u64>,
+    chunk: &[u8],
+    base: u64,
+    out: &mut W,
+    scratch: &mut Vec<u8>,
+) -> io::Result<u64> {
     let (mut p, to) = (range.start, range.end);
     let n = to.saturating_sub(p);
     let chunk_end = base + chunk.len() as u64;
@@ -470,7 +535,9 @@ fn copy_range<W: Write>(buf: &TextBuf, range: Range<u64>, chunk: &[u8], base: u6
             const STEP: u64 = 4 * 1024 * 1024;
             let e = (p + STEP).min(to);
             let e = if p < base { e.min(base) } else { e };
-            let got = buf.read_to(p..e, scratch).ok_or_else(|| io::Error::other("could not read the document"))?;
+            let got = buf
+                .read_to(p..e, scratch)
+                .ok_or_else(|| io::Error::other("could not read the document"))?;
             out.write_all(&scratch[..got])?;
             p = e;
         }
@@ -480,28 +547,55 @@ fn copy_range<W: Write>(buf: &TextBuf, range: Range<u64>, chunk: &[u8], base: u6
 
 /// Streams the document to `out` without the columns `cols` (sorted, distinct). `count` in the
 /// result is the number of records. Returns `Ok(None)` if cancelled.
-pub fn delete_columns_to<W: Write>(buf: &TextBuf, d: Dialect, cols: &[usize], out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<ReplaceStats>> {
-    let mut stats = ReplaceStats { bytes_in: buf.len(), ..Default::default() };
+pub fn delete_columns_to<W: Write>(
+    buf: &TextBuf,
+    d: Dialect,
+    cols: &[usize],
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<ReplaceStats>> {
+    let mut stats = ReplaceStats {
+        bytes_in: buf.len(),
+        ..Default::default()
+    };
     let mut pos = 0u64;
     let mut err = None;
     let mut scratch = Vec::new();
-    let (records, end) = scan_removals(buf, d, cols, cancel, progress, &mut |r, chunk, base| match copy_range(buf, pos..r.start, chunk, base, out, &mut scratch) {
-        Ok(n) => {
-            stats.bytes_out += n;
-            pos = r.end;
-            true
-        }
-        Err(e) => {
-            err = Some(e);
-            false
-        }
-    });
+    let (records, end) =
+        scan_removals(
+            buf,
+            d,
+            cols,
+            cancel,
+            progress,
+            &mut |r, chunk, base| match copy_range(
+                buf,
+                pos..r.start,
+                chunk,
+                base,
+                out,
+                &mut scratch,
+            ) {
+                Ok(n) => {
+                    stats.bytes_out += n;
+                    pos = r.end;
+                    true
+                }
+                Err(e) => {
+                    err = Some(e);
+                    false
+                }
+            },
+        );
     if let Some(e) = err {
         return Err(e);
     }
     match end {
         ScanEnd::Cancelled => return Ok(None),
-        ScanEnd::Failed | ScanEnd::Stopped => return Err(io::Error::other("could not read the document")),
+        ScanEnd::Failed | ScanEnd::Stopped => {
+            return Err(io::Error::other("could not read the document"))
+        }
         ScanEnd::Done => {}
     }
     stats.bytes_out += copy_range(buf, pos..buf.len(), &[], 0, out, &mut scratch)?;
@@ -520,7 +614,13 @@ pub struct Record<'a> {
 
 /// Calls `f` for every record in order, until it returns false. Streams over the document, so
 /// memory stays bounded by the widest record.
-pub fn for_each_record(buf: &TextBuf, d: Dialect, cancel: &CancelToken, progress: Option<&Progress>, mut f: impl FnMut(&Record) -> bool) -> ScanEnd {
+pub fn for_each_record(
+    buf: &TextBuf,
+    d: Dialect,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut f: impl FnMut(&Record) -> bool,
+) -> ScanEnd {
     let codec = buf.codec;
     let unit = codec.unit();
     let (nl, cr, lf_mode) = (nl_value(&codec), b'\r' as u16, codec.nl == NlByte::Lf);
@@ -552,9 +652,18 @@ pub fn for_each_record(buf: &TextBuf, d: Dialect, cancel: &CancelToken, progress
                     field_start = p + unit as u64;
                 }
                 Step::RecordEnd => {
-                    let content_end = if lf_mode && prev_cr { p - unit as u64 } else { p }.max(field_start);
+                    let content_end = if lf_mode && prev_cr {
+                        p - unit as u64
+                    } else {
+                        p
+                    }
+                    .max(field_start);
                     fields.push(field_start..content_end);
-                    if !f(&Record { content: rec_start..content_end, next: p + unit as u64, fields: &fields }) {
+                    if !f(&Record {
+                        content: rec_start..content_end,
+                        next: p + unit as u64,
+                        fields: &fields,
+                    }) {
                         end = ScanEnd::Stopped;
                         return false;
                     }
@@ -579,7 +688,11 @@ pub fn for_each_record(buf: &TextBuf, d: Dialect, cancel: &CancelToken, progress
     }
     if !empty {
         fields.push(field_start..len);
-        if !f(&Record { content: rec_start..len, next: len, fields: &fields }) {
+        if !f(&Record {
+            content: rec_start..len,
+            next: len,
+            fields: &fields,
+        }) {
             return ScanEnd::Stopped;
         }
     }
@@ -589,10 +702,19 @@ pub fn for_each_record(buf: &TextBuf, d: Dialect, cancel: &CancelToken, progress
 /// A number as spreadsheets read it: `12`, `-3.5`, `1e6`, and `3,5` (decimal comma).
 pub fn parse_number(s: &str) -> Option<f64> {
     let t = s.trim();
-    if t.is_empty() || !t.bytes().any(|b| b.is_ascii_digit()) || !t.bytes().all(|b| b.is_ascii_digit() || b"+-.,eE".contains(&b)) {
+    if t.is_empty()
+        || !t.bytes().any(|b| b.is_ascii_digit())
+        || !t
+            .bytes()
+            .all(|b| b.is_ascii_digit() || b"+-.,eE".contains(&b))
+    {
         return None;
     }
-    t.parse().ok().or_else(|| (t.matches(',').count() == 1 && !t.contains('.')).then(|| t.replace(',', ".").parse().ok()).flatten())
+    t.parse().ok().or_else(|| {
+        (t.matches(',').count() == 1 && !t.contains('.'))
+            .then(|| t.replace(',', ".").parse().ok())
+            .flatten()
+    })
 }
 
 /// Distinct values counted by [`column_stats`] before it stops tracking new ones.
@@ -626,9 +748,19 @@ impl ColumnStats {
 
 /// Counts, numeric summary, distinct values and the most frequent values of column `col`,
 /// in one pass. With `header`, the first record names the column and is not counted.
-pub fn column_stats(buf: &TextBuf, d: Dialect, col: usize, header: bool, cancel: &CancelToken, progress: Option<&Progress>) -> Result<ColumnStats, ScanEnd> {
+pub fn column_stats(
+    buf: &TextBuf,
+    d: Dialect,
+    col: usize,
+    header: bool,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> Result<ColumnStats, ScanEnd> {
     let codec = buf.codec;
-    let mut s = ColumnStats { col, ..Default::default() };
+    let mut s = ColumnStats {
+        col,
+        ..Default::default()
+    };
     let mut counts: HashMap<String, u64> = HashMap::new();
     let mut first = header;
     let mut failed = false;
@@ -722,7 +854,15 @@ pub struct Groups {
 
 /// Counts the rows per value of column `key` and, with `value`, sums that column per group
 /// (GROUP BY). With `header`, the first record names the columns.
-pub fn group_by(buf: &TextBuf, d: Dialect, key: usize, value: Option<usize>, header: bool, cancel: &CancelToken, progress: Option<&Progress>) -> Result<Groups, ScanEnd> {
+pub fn group_by(
+    buf: &TextBuf,
+    d: Dialect,
+    key: usize,
+    value: Option<usize>,
+    header: bool,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> Result<Groups, ScanEnd> {
     let codec = buf.codec;
     let mut g = Groups::default();
     let mut map: HashMap<String, Group> = HashMap::new();
@@ -761,7 +901,10 @@ pub fn group_by(buf: &TextBuf, d: Dialect, key: usize, value: Option<usize>, hea
             std::collections::hash_map::Entry::Occupied(o) => o.into_mut(),
             std::collections::hash_map::Entry::Vacant(v) if !full => {
                 let key = v.key().clone();
-                v.insert(Group { key, ..Default::default() })
+                v.insert(Group {
+                    key,
+                    ..Default::default()
+                })
             }
             std::collections::hash_map::Entry::Vacant(_) => {
                 g.capped = true;
@@ -784,22 +927,58 @@ pub fn group_by(buf: &TextBuf, d: Dialect, key: usize, value: Option<usize>, hea
         return Err(end);
     }
     g.groups = map.into_values().collect();
-    g.groups.sort_by(|a, b| b.rows.cmp(&a.rows).then_with(|| a.key.cmp(&b.key)));
+    g.groups
+        .sort_by(|a, b| b.rows.cmp(&a.rows).then_with(|| a.key.cmp(&b.key)));
     Ok(g)
 }
 
 /// Writes groups as CSV: the value, the row count, and with a summed column its sum, mean,
 /// minimum and maximum.
 pub fn groups_to_csv<W: Write>(g: &Groups, out: &mut W) -> io::Result<()> {
-    let q = |s: &str| if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() };
+    let q = |s: &str| {
+        if s.contains([',', '"', '\n', '\r']) {
+            format!("\"{}\"", s.replace('"', "\"\""))
+        } else {
+            s.to_string()
+        }
+    };
     let num = |x: Option<f64>| x.map(|x| x.to_string()).unwrap_or_default();
-    let key = if g.key_name.is_empty() { "value".to_string() } else { g.key_name.clone() };
+    let key = if g.key_name.is_empty() {
+        "value".to_string()
+    } else {
+        g.key_name.clone()
+    };
     match &g.value_name {
         Some(v) => {
-            let v = if v.is_empty() { "value".to_string() } else { v.clone() };
-            writeln!(out, "{},rows,{},{},{},{}", q(&key), q(&format!("sum of {v}")), q(&format!("mean of {v}")), q(&format!("min of {v}")), q(&format!("max of {v}")))?;
+            let v = if v.is_empty() {
+                "value".to_string()
+            } else {
+                v.clone()
+            };
+            writeln!(
+                out,
+                "{},rows,{},{},{},{}",
+                q(&key),
+                q(&format!("sum of {v}")),
+                q(&format!("mean of {v}")),
+                q(&format!("min of {v}")),
+                q(&format!("max of {v}"))
+            )?;
             for x in &g.groups {
-                writeln!(out, "{},{},{},{},{},{}", q(&x.key), x.rows, if x.numeric > 0 { x.sum.to_string() } else { String::new() }, num(x.mean()), num(x.min), num(x.max))?;
+                writeln!(
+                    out,
+                    "{},{},{},{},{},{}",
+                    q(&x.key),
+                    x.rows,
+                    if x.numeric > 0 {
+                        x.sum.to_string()
+                    } else {
+                        String::new()
+                    },
+                    num(x.mean()),
+                    num(x.min),
+                    num(x.max)
+                )?;
             }
         }
         None => {
@@ -826,7 +1005,16 @@ pub enum CondOp {
 }
 
 impl CondOp {
-    pub const ALL: [CondOp; 8] = [CondOp::Contains, CondOp::NotContains, CondOp::Equals, CondOp::NotEquals, CondOp::Greater, CondOp::Less, CondOp::Empty, CondOp::NotEmpty];
+    pub const ALL: [CondOp; 8] = [
+        CondOp::Contains,
+        CondOp::NotContains,
+        CondOp::Equals,
+        CondOp::NotEquals,
+        CondOp::Greater,
+        CondOp::Less,
+        CondOp::Empty,
+        CondOp::NotEmpty,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -862,10 +1050,18 @@ impl Cond {
             CondOp::NotContains => !f.contains(&v),
             CondOp::Equals => f.trim() == v.trim(),
             CondOp::NotEquals => f.trim() != v.trim(),
-            CondOp::Greater | CondOp::Less => match (parse_number(field), parse_number(&self.value)) {
-                (Some(a), Some(b)) => if self.op == CondOp::Greater { a > b } else { a < b },
-                _ => false,
-            },
+            CondOp::Greater | CondOp::Less => {
+                match (parse_number(field), parse_number(&self.value)) {
+                    (Some(a), Some(b)) => {
+                        if self.op == CondOp::Greater {
+                            a > b
+                        } else {
+                            a < b
+                        }
+                    }
+                    _ => false,
+                }
+            }
             CondOp::Empty => field.trim().is_empty(),
             CondOp::NotEmpty => !field.trim().is_empty(),
         }
@@ -874,10 +1070,21 @@ impl Cond {
 
 /// Writes the rows that meet every condition to `out` as they are (with the header when
 /// `header`, and the byte order mark). Returns (rows kept, rows), or `None` if cancelled.
-pub fn filter_rows_to<W: Write>(buf: &TextBuf, d: Dialect, conds: &[Cond], header: bool, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<(u64, u64)>> {
+pub fn filter_rows_to<W: Write>(
+    buf: &TextBuf,
+    d: Dialect,
+    conds: &[Cond],
+    header: bool,
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<(u64, u64)>> {
     let codec = buf.codec;
     let read_err = || io::Error::other("could not read the document");
-    out.write_all(&buf.read(0..(codec.bom_len as u64).min(buf.len())).ok_or_else(read_err)?)?;
+    out.write_all(
+        &buf.read(0..(codec.bom_len as u64).min(buf.len()))
+            .ok_or_else(read_err)?,
+    )?;
     let (mut kept, mut rows) = (0u64, 0u64);
     let mut first = header;
     let mut err: Option<io::Error> = None;
@@ -890,14 +1097,22 @@ pub fn filter_rows_to<W: Write>(buf: &TextBuf, d: Dialect, conds: &[Cond], heade
         } else {
             rows += 1;
             let ok = conds.iter().all(|c| {
-                let v = r.fields.get(c.col).and_then(|f| buf.read(f.clone())).map(|b| field_value(&codec, d, &b)).unwrap_or_default();
+                let v = r
+                    .fields
+                    .get(c.col)
+                    .and_then(|f| buf.read(f.clone()))
+                    .map(|b| field_value(&codec, d, &b))
+                    .unwrap_or_default();
                 c.test(&v)
             });
             kept += ok as u64;
             ok
         };
         if keep {
-            let r2 = buf.read(r.content.start..r.next).ok_or_else(read_err).and_then(|b| out.write_all(&b));
+            let r2 = buf
+                .read(r.content.start..r.next)
+                .ok_or_else(read_err)
+                .and_then(|b| out.write_all(&b));
             if let Err(e) = r2 {
                 err = Some(e);
                 return false;
@@ -931,14 +1146,23 @@ pub enum Rewrite {
     /// Rows ordered by the value of column `col` (numbers numerically when every non-empty
     /// value is a number, otherwise text, ignoring case); empty values last. The header stays
     /// first. The sort is stable.
-    Sort { col: usize, desc: bool, header: bool },
+    Sort {
+        col: usize,
+        desc: bool,
+        header: bool,
+    },
     /// Exchange two columns in every record that has both.
     Swap(usize, usize),
     /// Keep only these columns, in this order.
     Select(Vec<usize>),
     /// Add a last column `name` computed by an expression ([`crate::csv_expr`]) over each row;
     /// `names` are the header's column names the expression may use.
-    Derive { name: String, expr: String, names: Vec<String>, header: bool },
+    Derive {
+        name: String,
+        expr: String,
+        names: Vec<String>,
+        header: bool,
+    },
 }
 
 /// A field value written so it reads back as `v`: quoted when it holds the delimiter, a
@@ -955,24 +1179,48 @@ pub fn quote_field(v: &str, d: Dialect) -> String {
 /// Streams the document rewritten by `rw` to `out` (with its byte order mark). `count` in the
 /// result is the number of records. Sorting holds every row's key in memory. Returns
 /// `Ok(None)` if cancelled.
-pub fn rewrite_to<W: Write>(buf: &TextBuf, d: Dialect, rw: &Rewrite, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<ReplaceStats>> {
+pub fn rewrite_to<W: Write>(
+    buf: &TextBuf,
+    d: Dialect,
+    rw: &Rewrite,
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<ReplaceStats>> {
     let codec = buf.codec;
     let read_err = || io::Error::other("could not read the document");
-    let mut stats = ReplaceStats { bytes_in: buf.len(), ..Default::default() };
+    let mut stats = ReplaceStats {
+        bytes_in: buf.len(),
+        ..Default::default()
+    };
     let bom = codec.bom_len as u64;
     let mut emit = |b: &[u8], stats: &mut ReplaceStats| -> io::Result<()> {
         stats.bytes_out += b.len() as u64;
         out.write_all(b)
     };
     // The byte order mark and the lines before the table, as they are.
-    emit(&buf.read(0..d.first(buf).max(bom.min(buf.len()))).ok_or_else(read_err)?, &mut stats)?;
+    emit(
+        &buf.read(0..d.first(buf).max(bom.min(buf.len())))
+            .ok_or_else(read_err)?,
+        &mut stats,
+    )?;
     let delim = codec.encode(&(d.delim as char).to_string());
     let mut err: Option<io::Error> = None;
     let end = match rw {
         Rewrite::Swap(..) | Rewrite::Select(_) => for_each_record(buf, d, cancel, progress, |r| {
             let res = (|| -> io::Result<()> {
                 let order: Vec<usize> = match rw {
-                    Rewrite::Swap(a, b) if r.fields.len() > *a.max(b) => (0..r.fields.len()).map(|i| if i == *a { *b } else if i == *b { *a } else { i }).collect(),
+                    Rewrite::Swap(a, b) if r.fields.len() > *a.max(b) => (0..r.fields.len())
+                        .map(|i| {
+                            if i == *a {
+                                *b
+                            } else if i == *b {
+                                *a
+                            } else {
+                                i
+                            }
+                        })
+                        .collect(),
                     Rewrite::Swap(..) => (0..r.fields.len()).collect(),
                     Rewrite::Select(cols) => cols.clone(),
                     Rewrite::Sort { .. } | Rewrite::Derive { .. } => unreachable!(),
@@ -988,7 +1236,10 @@ pub fn rewrite_to<W: Write>(buf: &TextBuf, d: Dialect, rw: &Rewrite, out: &mut W
                         }
                     }
                 }
-                emit(&buf.read(r.content.end..r.next).ok_or_else(read_err)?, &mut stats)?;
+                emit(
+                    &buf.read(r.content.end..r.next).ok_or_else(read_err)?,
+                    &mut stats,
+                )?;
                 Ok(())
             })();
             stats.count += 1;
@@ -1000,25 +1251,41 @@ pub fn rewrite_to<W: Write>(buf: &TextBuf, d: Dialect, rw: &Rewrite, out: &mut W
                 }
             }
         }),
-        Rewrite::Derive { name, expr, names, header } => {
+        Rewrite::Derive {
+            name,
+            expr,
+            names,
+            header,
+        } => {
             let e = crate::csv_expr::Expr::compile(expr, names).map_err(io::Error::other)?;
             let mut first = *header;
             for_each_record(buf, d, cancel, progress, |r| {
                 let res = (|| -> io::Result<()> {
-                    emit(&buf.read(r.content.clone()).ok_or_else(read_err)?, &mut stats)?;
+                    emit(
+                        &buf.read(r.content.clone()).ok_or_else(read_err)?,
+                        &mut stats,
+                    )?;
                     // Blank lines stay blank.
                     if !(r.content.is_empty() && r.fields.len() == 1) {
                         let value = if first {
                             name.clone()
                         } else {
-                            let fields: Vec<String> = r.fields.iter().map(|f| buf.read(f.clone()).map(|b| field_value(&codec, d, &b))).collect::<Option<_>>().ok_or_else(read_err)?;
+                            let fields: Vec<String> = r
+                                .fields
+                                .iter()
+                                .map(|f| buf.read(f.clone()).map(|b| field_value(&codec, d, &b)))
+                                .collect::<Option<_>>()
+                                .ok_or_else(read_err)?;
                             e.eval(&fields)
                         };
                         first = false;
                         emit(&delim, &mut stats)?;
                         emit(&codec.encode(&quote_field(&value, d)), &mut stats)?;
                     }
-                    emit(&buf.read(r.content.end..r.next).ok_or_else(read_err)?, &mut stats)?;
+                    emit(
+                        &buf.read(r.content.end..r.next).ok_or_else(read_err)?,
+                        &mut stats,
+                    )?;
                     Ok(())
                 })();
                 stats.count += 1;
@@ -1054,7 +1321,13 @@ pub fn rewrite_to<W: Write>(buf: &TextBuf, d: Dialect, rw: &Rewrite, out: &mut W
                 if num.is_none() && !value.trim().is_empty() {
                     all_numeric = false;
                 }
-                rows.push((num, value.to_lowercase().chars().take(256).collect(), start, r.content.end, r.next));
+                rows.push((
+                    num,
+                    value.to_lowercase().chars().take(256).collect(),
+                    start,
+                    r.content.end,
+                    r.next,
+                ));
                 true
             });
             if end == ScanEnd::Done && err.is_none() {
@@ -1065,7 +1338,11 @@ pub fn rewrite_to<W: Write>(buf: &TextBuf, d: Dialect, rw: &Rewrite, out: &mut W
                     if ea != eb {
                         return ea.cmp(&eb);
                     }
-                    let o = if numeric { a.0.unwrap_or(0.0).total_cmp(&b.0.unwrap_or(0.0)) } else { a.1.cmp(&b.1) };
+                    let o = if numeric {
+                        a.0.unwrap_or(0.0).total_cmp(&b.0.unwrap_or(0.0))
+                    } else {
+                        a.1.cmp(&b.1)
+                    };
                     if *desc {
                         o.reverse()
                     } else {
@@ -1141,7 +1418,16 @@ mod tests {
     fn delete_bytes(data: &[u8], codec: Codec, delim: u8, cols: &[usize]) -> Vec<u8> {
         let (_f, t) = buf_with(data, codec);
         let mut out = Vec::new();
-        delete_columns_to(&t, Dialect::new(delim), cols, &mut out, &CancelToken::new(), None).unwrap().unwrap();
+        delete_columns_to(
+            &t,
+            Dialect::new(delim),
+            cols,
+            &mut out,
+            &CancelToken::new(),
+            None,
+        )
+        .unwrap()
+        .unwrap();
         out
     }
 
@@ -1198,7 +1484,12 @@ mod tests {
                 fields.last_mut().unwrap().pop();
                 cr = "\r";
             }
-            let kept: Vec<&str> = fields.iter().enumerate().filter(|(k, _)| !cols.contains(k)).map(|(_, f)| f.as_str()).collect();
+            let kept: Vec<&str> = fields
+                .iter()
+                .enumerate()
+                .filter(|(k, _)| !cols.contains(k))
+                .map(|(_, f)| f.as_str())
+                .collect();
             out.push_str(&kept.join(&delim.to_string()));
             out.push_str(cr);
             out.push_str(term);
@@ -1221,12 +1512,21 @@ mod tests {
 
     #[test]
     fn ragged_quoted_and_line_ends() {
-        assert_eq!(delete("a,b,c\n1\n1,2\n1,2,3,4\n", &[1]), "a,c\n1\n1\n1,3,4\n");
+        assert_eq!(
+            delete("a,b,c\n1\n1,2\n1,2,3,4\n", &[1]),
+            "a,c\n1\n1\n1,3,4\n"
+        );
         assert_eq!(delete("\"x,y\",b\n\"multi\nline\",2\n", &[0]), "b\n2\n");
-        assert_eq!(delete("\"he said \"\"hi\"\"\",z\n", &[1]), "\"he said \"\"hi\"\"\"\n");
+        assert_eq!(
+            delete("\"he said \"\"hi\"\"\",z\n", &[1]),
+            "\"he said \"\"hi\"\"\"\n"
+        );
         assert_eq!(delete("a,b\r\n1,2\r\n", &[1]), "a\r\n1\r\n");
         let bom = Codec::new(Encoding::Utf8, NlByte::Lf, 3);
-        assert_eq!(delete_bytes("\u{feff}a,b\n1,2".as_bytes(), bom, b',', &[0]), "\u{feff}b\n2".as_bytes());
+        assert_eq!(
+            delete_bytes("\u{feff}a,b\n1,2".as_bytes(), bom, b',', &[0]),
+            "\u{feff}b\n2".as_bytes()
+        );
         assert_eq!(delete("a,b\n\n1,2\n", &[0]), "b\n\n2\n");
         assert_eq!(delete("a,b,c", &[1]), "a,c");
         assert_eq!(delete("", &[0]), "");
@@ -1238,9 +1538,17 @@ mod tests {
         assert_eq!(out, b"b;c\n2;3\n");
         let out = delete_bytes(b"a\tb\n1\t2\n", Codec::utf8(), b'\t', &[1]);
         assert_eq!(out, b"a\n1\n");
-        let utf16 = |s: &str| -> Vec<u8> { [0xFF, 0xFE].into_iter().chain(s.encode_utf16().flat_map(|u| u.to_le_bytes())).collect() };
+        let utf16 = |s: &str| -> Vec<u8> {
+            [0xFF, 0xFE]
+                .into_iter()
+                .chain(s.encode_utf16().flat_map(|u| u.to_le_bytes()))
+                .collect()
+        };
         let codec = Codec::new(Encoding::Utf16Le, NlByte::Lf, 2);
-        assert_eq!(delete_bytes(&utf16("ä,b,\"c,d\"\r\n1,2,3\r\n"), codec, b',', &[1]), utf16("ä,\"c,d\"\r\n1,3\r\n"));
+        assert_eq!(
+            delete_bytes(&utf16("ä,b,\"c,d\"\r\n1,2,3\r\n"), codec, b',', &[1]),
+            utf16("ä,\"c,d\"\r\n1,3\r\n")
+        );
     }
 
     #[test]
@@ -1249,7 +1557,9 @@ mod tests {
         // CRLF, empty and ragged lines.
         let mut seed = 12345u64;
         let mut rnd = |n: u64| {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (seed >> 33) % n
         };
         let mut s = String::new();
@@ -1269,7 +1579,10 @@ mod tests {
             s.push_str(if rnd(4) == 0 { "\r\n" } else { "\n" });
         }
         for cols in [&[0][..], &[1, 2], &[0, 3, 5], &[4]] {
-            assert!(delete(&s, cols) == reference(&s, ',', cols), "columns {cols:?}");
+            assert!(
+                delete(&s, cols) == reference(&s, ',', cols),
+                "columns {cols:?}"
+            );
         }
     }
 
@@ -1279,7 +1592,11 @@ mod tests {
         let c = CancelToken::new();
         c.cancel();
         let mut out = Vec::new();
-        assert!(delete_columns_to(&t, Dialect::new(b','), &[0], &mut out, &c, None).unwrap().is_none());
+        assert!(
+            delete_columns_to(&t, Dialect::new(b','), &[0], &mut out, &c, None)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -1289,7 +1606,10 @@ mod tests {
         let line = br#"a,"b,""c""",,d"e"#;
         let mut f = Vec::new();
         split_fields(&c, d, line, &mut f);
-        let vals: Vec<String> = f.iter().map(|r| field_value(&c, d, &line[r.clone()])).collect();
+        let vals: Vec<String> = f
+            .iter()
+            .map(|r| field_value(&c, d, &line[r.clone()]))
+            .collect();
         assert_eq!(vals, ["a", "b,\"c\"", "", "d\"e"]);
         split_fields(&c, d, b"", &mut f);
         assert_eq!((f.len(), f[0].clone()), (1, 0..0));
@@ -1302,11 +1622,19 @@ mod tests {
         let g = |s: &str| detect_table(&c, s.as_bytes(), true, b',', 3);
         // Excel's sep= line.
         let t = g("sep=;\nname;qty\nann;1\nbob;2\n");
-        assert_eq!((t.dialect.delim, t.skip, t.dialect.start, t.header), (b';', 1, 3 + 6, true));
+        assert_eq!(
+            (t.dialect.delim, t.skip, t.dialect.start, t.header),
+            (b';', 1, 3 + 6, true)
+        );
         // Comments and a title before the header.
-        let t = g("# exported 2024-05-01\nSales report\n\nid,city,qty\n1,Paris,3\n2,Rome,4\n3,Oslo,5\n");
+        let t = g(
+            "# exported 2024-05-01\nSales report\n\nid,city,qty\n1,Paris,3\n2,Rome,4\n3,Oslo,5\n",
+        );
         assert_eq!((t.skip, t.header), (3, true));
-        assert_eq!(t.dialect.start, 3 + "# exported 2024-05-01\nSales report\n\n".len() as u64);
+        assert_eq!(
+            t.dialect.start,
+            3 + "# exported 2024-05-01\nSales report\n\n".len() as u64
+        );
         // No header: numbers where the rows below have numbers.
         let t = g("1,2.5,x\n3,4,y\n5,6,z\n");
         assert_eq!((t.skip, t.header, t.dialect.start), (0, false, 0));
@@ -1323,14 +1651,28 @@ mod tests {
         let mut f = tempfile::NamedTempFile::new().unwrap();
         f.write_all(data).unwrap();
         f.flush().unwrap();
-        let src = std::sync::Arc::new(crate::file::Source::open(f.path(), crate::file::OpenMode::Auto).unwrap());
+        let src = std::sync::Arc::new(
+            crate::file::Source::open(f.path(), crate::file::OpenMode::Auto).unwrap(),
+        );
         let idx = crate::index::build_blocking(&src, Codec::utf8());
         let mut t = TextBuf::new(src, idx, Codec::utf8());
         t.blocking = true;
         let d = detect_table(&t.codec, data, true, b',', 0).dialect;
         assert_eq!(d.start, 6);
         let mut out = Vec::new();
-        rewrite_to(&t, d, &Rewrite::Sort { col: 0, desc: false, header: true }, &mut out, &CancelToken::new(), None).unwrap();
+        rewrite_to(
+            &t,
+            d,
+            &Rewrite::Sort {
+                col: 0,
+                desc: false,
+                header: true,
+            },
+            &mut out,
+            &CancelToken::new(),
+            None,
+        )
+        .unwrap();
         assert_eq!(out, b"sep=,\nk,v\na,1\nb,2\n");
         let mut n = 0;
         for_each_record(&t, d, &CancelToken::new(), None, |_| {
@@ -1351,7 +1693,10 @@ mod tests {
         assert_eq!(det("a,b;c\n1,2;3\n", b';'), Some(b';'));
         assert_eq!(det("single\ncolumn\n", b','), None);
         // A cut-off last line does not count.
-        assert_eq!(detect(&c, b"a;b\n1;2\n3,4,5,6", false, b',').map(|d| d.delim), Some(b';'));
+        assert_eq!(
+            detect(&c, b"a;b\n1;2\n3,4,5,6", false, b',').map(|d| d.delim),
+            Some(b';')
+        );
     }
 }
 
@@ -1371,34 +1716,111 @@ mod group_tests {
         (dir, TextBuf::new(src, LineIndex::new(len), Codec::utf8()))
     }
 
-    const T: &str = "city,qty,note\r\nTashkent,3,a\r\nBukhara,5,\"b, c\"\r\nTashkent,x,d\r\nTashkent,7,e\r\n";
+    const T: &str =
+        "city,qty,note\r\nTashkent,3,a\r\nBukhara,5,\"b, c\"\r\nTashkent,x,d\r\nTashkent,7,e\r\n";
 
     #[test]
     fn groups_count_and_sum() {
         let (_d, b) = buf(T);
-        let g = group_by(&b, Dialect::new(b','), 0, Some(1), true, &CancelToken::new(), None).unwrap();
-        assert_eq!((g.key_name.as_str(), g.value_name.as_deref(), g.rows, g.capped), ("city", Some("qty"), 4, false));
-        assert_eq!(g.groups[0], Group { key: "Tashkent".into(), rows: 3, numeric: 2, sum: 10.0, min: Some(3.0), max: Some(7.0) });
+        let g = group_by(
+            &b,
+            Dialect::new(b','),
+            0,
+            Some(1),
+            true,
+            &CancelToken::new(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                g.key_name.as_str(),
+                g.value_name.as_deref(),
+                g.rows,
+                g.capped
+            ),
+            ("city", Some("qty"), 4, false)
+        );
+        assert_eq!(
+            g.groups[0],
+            Group {
+                key: "Tashkent".into(),
+                rows: 3,
+                numeric: 2,
+                sum: 10.0,
+                min: Some(3.0),
+                max: Some(7.0)
+            }
+        );
         assert_eq!((g.groups[1].key.as_str(), g.groups[1].rows), ("Bukhara", 1));
         let mut out = Vec::new();
         groups_to_csv(&g, &mut out).unwrap();
         assert_eq!(String::from_utf8(out).unwrap(), "city,rows,sum of qty,mean of qty,min of qty,max of qty\nTashkent,3,10,5,3,7\nBukhara,1,5,5,5,5\n");
-        let g = group_by(&b, Dialect::new(b','), 2, None, true, &CancelToken::new(), None).unwrap();
-        assert_eq!(g.groups.iter().map(|x| x.key.as_str()).collect::<Vec<_>>(), vec!["a", "b, c", "d", "e"]);
+        let g = group_by(
+            &b,
+            Dialect::new(b','),
+            2,
+            None,
+            true,
+            &CancelToken::new(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            g.groups.iter().map(|x| x.key.as_str()).collect::<Vec<_>>(),
+            vec!["a", "b, c", "d", "e"]
+        );
     }
 
     #[test]
     fn rows_meeting_every_condition() {
         let (_d, b) = buf(T);
-        let conds = [Cond { col: 0, op: CondOp::Equals, value: "tashkent".into() }, Cond { col: 1, op: CondOp::Greater, value: "4".into() }];
+        let conds = [
+            Cond {
+                col: 0,
+                op: CondOp::Equals,
+                value: "tashkent".into(),
+            },
+            Cond {
+                col: 1,
+                op: CondOp::Greater,
+                value: "4".into(),
+            },
+        ];
         let mut out = Vec::new();
-        let r = filter_rows_to(&b, Dialect::new(b','), &conds, true, &mut out, &CancelToken::new(), None).unwrap();
+        let r = filter_rows_to(
+            &b,
+            Dialect::new(b','),
+            &conds,
+            true,
+            &mut out,
+            &CancelToken::new(),
+            None,
+        )
+        .unwrap();
         assert_eq!(r, Some((1, 4)));
-        assert_eq!(String::from_utf8(out).unwrap(), "city,qty,note\r\nTashkent,7,e\r\n");
-        let c = Cond { col: 2, op: CondOp::Contains, value: ", C".into() };
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "city,qty,note\r\nTashkent,7,e\r\n"
+        );
+        let c = Cond {
+            col: 2,
+            op: CondOp::Contains,
+            value: ", C".into(),
+        };
         assert!(c.test("b, c") && !c.test("d"));
-        assert!(Cond { col: 0, op: CondOp::Empty, value: String::new() }.test("  "));
-        assert!(!Cond { col: 0, op: CondOp::Less, value: "x".into() }.test("1"));
+        assert!(Cond {
+            col: 0,
+            op: CondOp::Empty,
+            value: String::new()
+        }
+        .test("  "));
+        assert!(!Cond {
+            col: 0,
+            op: CondOp::Less,
+            value: "x".into()
+        }
+        .test("1"));
     }
 }
 
@@ -1423,7 +1845,16 @@ mod rewrite_tests {
     fn rewrite(data: &str, rw: Rewrite) -> String {
         let (_f, t) = buf_with(data.as_bytes());
         let mut out = Vec::new();
-        rewrite_to(&t, Dialect::new(b','), &rw, &mut out, &CancelToken::new(), None).unwrap().unwrap();
+        rewrite_to(
+            &t,
+            Dialect::new(b','),
+            &rw,
+            &mut out,
+            &CancelToken::new(),
+            None,
+        )
+        .unwrap()
+        .unwrap();
         String::from_utf8(out).unwrap()
     }
 
@@ -1442,26 +1873,59 @@ mod rewrite_tests {
 
     #[test]
     fn sort_numeric_text_and_descending() {
-        let by_qty = rewrite(DATA, Rewrite::Sort { col: 1, desc: false, header: true });
-        assert_eq!(by_qty, "name,qty,note\r\na,9,\r\nb,10,\"x\r\ny\"\r\nd,100,last\r\nC,,z\r\n");
-        let by_name_desc = rewrite(DATA, Rewrite::Sort { col: 0, desc: true, header: true });
-        assert_eq!(by_name_desc, "name,qty,note\r\nd,100,last\r\nC,,z\r\nb,10,\"x\r\ny\"\r\na,9,\r\n");
+        let by_qty = rewrite(
+            DATA,
+            Rewrite::Sort {
+                col: 1,
+                desc: false,
+                header: true,
+            },
+        );
+        assert_eq!(
+            by_qty,
+            "name,qty,note\r\na,9,\r\nb,10,\"x\r\ny\"\r\nd,100,last\r\nC,,z\r\n"
+        );
+        let by_name_desc = rewrite(
+            DATA,
+            Rewrite::Sort {
+                col: 0,
+                desc: true,
+                header: true,
+            },
+        );
+        assert_eq!(
+            by_name_desc,
+            "name,qty,note\r\nd,100,last\r\nC,,z\r\nb,10,\"x\r\ny\"\r\na,9,\r\n"
+        );
     }
 
     #[test]
     fn swap_and_select_columns() {
-        assert_eq!(rewrite("a,b,c\n1,2,3\n\n4,5\n", Rewrite::Swap(0, 2)), "c,b,a\n3,2,1\n\n4,5\n");
-        assert_eq!(rewrite("a,b,c\n1,\"2,x\",3\n", Rewrite::Select(vec![2, 1])), "c,b\n3,\"2,x\"\n");
+        assert_eq!(
+            rewrite("a,b,c\n1,2,3\n\n4,5\n", Rewrite::Swap(0, 2)),
+            "c,b,a\n3,2,1\n\n4,5\n"
+        );
+        assert_eq!(
+            rewrite("a,b,c\n1,\"2,x\",3\n", Rewrite::Select(vec![2, 1])),
+            "c,b\n3,\"2,x\"\n"
+        );
     }
 
     #[test]
     fn stats() {
-        let (_f, t) = buf_with(b"id,amount,city\n1,10.5,Paris\n2,\"3,5\",Rome\n3,,Paris\n4,x,Oslo\n");
+        let (_f, t) =
+            buf_with(b"id,amount,city\n1,10.5,Paris\n2,\"3,5\",Rome\n3,,Paris\n4,x,Oslo\n");
         let s = column_stats(&t, Dialect::new(b','), 1, true, &CancelToken::new(), None).unwrap();
-        assert_eq!((s.name.as_str(), s.rows, s.empty, s.numeric), ("amount", 4, 1, 2));
+        assert_eq!(
+            (s.name.as_str(), s.rows, s.empty, s.numeric),
+            ("amount", 4, 1, 2)
+        );
         assert_eq!((s.min, s.max, s.mean()), (Some(3.5), Some(10.5), Some(7.0)));
         let c = column_stats(&t, Dialect::new(b','), 2, true, &CancelToken::new(), None).unwrap();
-        assert_eq!((c.distinct, c.top[0].clone()), (3, ("Paris".to_string(), 2)));
+        assert_eq!(
+            (c.distinct, c.top[0].clone()),
+            (3, ("Paris".to_string(), 2))
+        );
         assert_eq!(parse_number(" -1e3 "), Some(-1000.0));
         assert_eq!(parse_number("1.2.3"), None);
         assert_eq!(parse_number("inf"), None);

@@ -48,21 +48,44 @@ pub fn sessions_dir() -> Option<PathBuf> {
 
 /// A file name for a session name (letters, digits, spaces, `-`, `_` and `.` kept).
 fn file_for(name: &str) -> Option<PathBuf> {
-    let safe: String = name.trim().chars().map(|c| if c.is_alphanumeric() || " -_.".contains(c) { c } else { '_' }).collect();
+    let safe: String = name
+        .trim()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || " -_.".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
     let safe = safe.trim_matches(['.', ' ']).to_string();
-    (!safe.is_empty()).then(|| sessions_dir().map(|d| d.join(format!("{safe}.session")))).flatten()
+    (!safe.is_empty())
+        .then(|| sessions_dir().map(|d| d.join(format!("{safe}.session"))))
+        .flatten()
 }
 
 /// Saved sessions by name, newest first.
 pub fn list() -> Vec<String> {
-    let Some(dir) = sessions_dir() else { return Vec::new() };
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Some(dir) = sessions_dir() else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
     let mut v: Vec<(std::time::SystemTime, String)> = entries
         .flatten()
         .filter_map(|e| {
             let p = e.path();
             let name = p.file_stem()?.to_string_lossy().into_owned();
-            (p.extension()? == "session").then(|| (e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH), name))
+            (p.extension()? == "session").then(|| {
+                (
+                    e.metadata()
+                        .and_then(|m| m.modified())
+                        .unwrap_or(std::time::UNIX_EPOCH),
+                    name,
+                )
+            })
         })
         .collect();
     v.sort_by_key(|x| std::cmp::Reverse(x.0));
@@ -76,11 +99,28 @@ pub fn serialize(s: &Session) -> String {
         if *pinned {
             out.push_str(&format!("pinned={i}\n"));
         }
-        if let Some(f) = filter.as_ref().filter(|f| !f.query.pattern.contains(['\n', '\r'])) {
+        if let Some(f) = filter
+            .as_ref()
+            .filter(|f| !f.query.pattern.contains(['\n', '\r']))
+        {
             let levels = f.levels.map(|l| l.bits().to_string()).unwrap_or_default();
-            out.push_str(&format!("filter={i}|{levels}|{}|{}|{}\n", u8::from(f.invert), extras::query_flags(&f.query), f.query.pattern));
-            for (q, negated) in f.terms.iter().filter(|t| !t.0.pattern.contains(['\n', '\r'])) {
-                out.push_str(&format!("filterterm={i}|{}|{}|{}\n", u8::from(*negated), extras::query_flags(q), q.pattern));
+            out.push_str(&format!(
+                "filter={i}|{levels}|{}|{}|{}\n",
+                u8::from(f.invert),
+                extras::query_flags(&f.query),
+                f.query.pattern
+            ));
+            for (q, negated) in f
+                .terms
+                .iter()
+                .filter(|t| !t.0.pattern.contains(['\n', '\r']))
+            {
+                out.push_str(&format!(
+                    "filterterm={i}|{}|{}|{}\n",
+                    u8::from(*negated),
+                    extras::query_flags(q),
+                    q.pattern
+                ));
             }
         }
     }
@@ -97,9 +137,13 @@ pub fn serialize(s: &Session) -> String {
 pub fn parse(text: &str) -> Session {
     let mut s = Session::default();
     for line in text.lines() {
-        let Some((k, v)) = line.split_once('=') else { continue };
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
         match k {
-            "tab" => s.tabs.extend(extras::parse_tab(v).map(|t| (t, false, None))),
+            "tab" => s
+                .tabs
+                .extend(extras::parse_tab(v).map(|t| (t, false, None))),
             "pinned" => {
                 if let Some(t) = v.parse::<usize>().ok().and_then(|i| s.tabs.get_mut(i)) {
                     t.1 = true;
@@ -107,17 +151,38 @@ pub fn parse(text: &str) -> Session {
             }
             "filter" => {
                 let mut it = v.splitn(5, '|');
-                let (Some(i), Some(levels), Some(invert), Some(flags), Some(pattern)) = (it.next(), it.next(), it.next(), it.next(), it.next()) else { continue };
-                let f = SavedFilter { query: extras::query_from(pattern.to_string(), flags), invert: invert == "1", levels: levels.parse().ok().map(Levels::from_bits), terms: Vec::new() };
+                let (Some(i), Some(levels), Some(invert), Some(flags), Some(pattern)) =
+                    (it.next(), it.next(), it.next(), it.next(), it.next())
+                else {
+                    continue;
+                };
+                let f = SavedFilter {
+                    query: extras::query_from(pattern.to_string(), flags),
+                    invert: invert == "1",
+                    levels: levels.parse().ok().map(Levels::from_bits),
+                    terms: Vec::new(),
+                };
                 if let Some(t) = i.parse::<usize>().ok().and_then(|i| s.tabs.get_mut(i)) {
                     t.2 = Some(f);
                 }
             }
             "filterterm" => {
                 let mut it = v.splitn(4, '|');
-                let (Some(i), Some(negated), Some(flags), Some(pattern)) = (it.next(), it.next(), it.next(), it.next()) else { continue };
-                if let Some(f) = i.parse::<usize>().ok().and_then(|i| s.tabs.get_mut(i)).and_then(|t| t.2.as_mut()) {
-                    f.terms.push((extras::query_from(pattern.to_string(), flags), negated == "1"));
+                let (Some(i), Some(negated), Some(flags), Some(pattern)) =
+                    (it.next(), it.next(), it.next(), it.next())
+                else {
+                    continue;
+                };
+                if let Some(f) = i
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|i| s.tabs.get_mut(i))
+                    .and_then(|t| t.2.as_mut())
+                {
+                    f.terms.push((
+                        extras::query_from(pattern.to_string(), flags),
+                        negated == "1",
+                    ));
                 }
             }
             "mark" => s.marks.extend(extras::parse_mark(v)),
@@ -132,19 +197,41 @@ pub fn parse(text: &str) -> Session {
 impl BigTextApp {
     /// The open files (not temporary ones), their state, and the highlights.
     pub(crate) fn current_session(&self) -> Session {
-        let mut s = Session { marks: self.settings.marks.clone(), ..Default::default() };
+        let mut s = Session {
+            marks: self.settings.marks.clone(),
+            ..Default::default()
+        };
         for (i, d) in self.docs.iter().enumerate() {
             if d.temporary && d.unpacked_from.is_none() {
                 continue;
             }
-            let Some(path) = d.unpacked_from.as_deref().or(d.path.as_deref()) else { continue };
+            let Some(path) = d.unpacked_from.as_deref().or(d.path.as_deref()) else {
+                continue;
+            };
             if i == self.active {
                 s.active = s.tabs.len();
             }
-            let tab = TabState { path: PathBuf::from(file::display_path(path)), member: d.member.clone(), caret: d.view.caret, top: d.view.top, wrap: d.view.wrap, bookmarks: d.bookmarks.clone() };
-            let filter = d.filter.as_ref().map(|f| SavedFilter { query: f.query.clone(), invert: f.spec.invert, levels: f.levels, terms: f.terms.iter().map(|t| (t.query.clone(), t.negated)).collect() });
+            let tab = TabState {
+                path: PathBuf::from(file::display_path(path)),
+                member: d.member.clone(),
+                caret: d.view.caret,
+                top: d.view.top,
+                wrap: d.view.wrap,
+                bookmarks: d.bookmarks.clone(),
+            };
+            let filter = d.filter.as_ref().map(|f| SavedFilter {
+                query: f.query.clone(),
+                invert: f.spec.invert,
+                levels: f.levels,
+                terms: f
+                    .terms
+                    .iter()
+                    .map(|t| (t.query.clone(), t.negated))
+                    .collect(),
+            });
             s.tabs.push((tab, d.pinned, filter));
-            s.opts.extend(extras::doc_opts(d).filter(|o| o.worth_keeping()));
+            s.opts
+                .extend(extras::doc_opts(d).filter(|o| o.worth_keeping()));
         }
         s
     }
@@ -155,7 +242,8 @@ impl BigTextApp {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        std::fs::write(&path, serialize(&self.current_session())).map_err(|e| super::friendly_io(&e, &path))?;
+        std::fs::write(&path, serialize(&self.current_session()))
+            .map_err(|e| super::friendly_io(&e, &path))?;
         Ok(path)
     }
 
@@ -186,7 +274,9 @@ impl BigTextApp {
         let mut active = None;
         for (i, (t, pinned, filter)) in s.tabs.into_iter().enumerate() {
             self.open_path_member(t.path.clone(), t.member.clone());
-            let Some(d) = self.docs.get_mut(self.active) else { continue };
+            let Some(d) = self.docs.get_mut(self.active) else {
+                continue;
+            };
             d.pinned |= pinned;
             if i == s.active {
                 active = Some(d.id);
@@ -199,12 +289,22 @@ impl BigTextApp {
                 d.bookmarks = t.bookmarks.into_iter().filter(|&b| b <= len).collect();
                 d.pending_filter = filter;
             } else {
-                d.restore = Some(Restore { caret: t.caret, top: t.top, wrap: t.wrap, bookmarks: t.bookmarks, filter, ..Default::default() });
+                d.restore = Some(Restore {
+                    caret: t.caret,
+                    top: t.top,
+                    wrap: t.wrap,
+                    bookmarks: t.bookmarks,
+                    filter,
+                    ..Default::default()
+                });
             }
         }
         let current = self.docs.get(self.active).map(|d| d.id);
         self.docs.sort_by_key(|d| !d.pinned);
-        if let Some(i) = active.or(current).and_then(|id| self.docs.iter().position(|d| d.id == id)) {
+        if let Some(i) = active
+            .or(current)
+            .and_then(|id| self.docs.iter().position(|d| d.id == id))
+        {
             self.active = i;
         }
         self.persist_state();
@@ -212,15 +312,31 @@ impl BigTextApp {
 
     /// Runs the filters of tabs restored from a session once they have opened.
     pub(super) fn run_pending_filters(&mut self) {
-        let Some(i) = self.docs.iter().position(|d| d.pending_filter.is_some() && d.is_ready()) else { return };
-        let Some(f) = self.docs[i].pending_filter.take() else { return };
+        let Some(i) = self
+            .docs
+            .iter()
+            .position(|d| d.pending_filter.is_some() && d.is_ready())
+        else {
+            return;
+        };
+        let Some(f) = self.docs[i].pending_filter.take() else {
+            return;
+        };
         let active = self.active;
         self.active = i;
         let codec = self.docs[i].buf.codec;
         let terms: Vec<_> = f
             .terms
             .iter()
-            .filter_map(|(q, negated)| bigtext::search::Matcher::new(q, codec).ok().map(|m| super::filter_panel::FilterTerm { query: q.clone(), negated: *negated, matcher: std::sync::Arc::new(m) }))
+            .filter_map(|(q, negated)| {
+                bigtext::search::Matcher::new(q, codec).ok().map(|m| {
+                    super::filter_panel::FilterTerm {
+                        query: q.clone(),
+                        negated: *negated,
+                        matcher: std::sync::Arc::new(m),
+                    }
+                })
+            })
             .collect();
         let query = match f.levels {
             Some(lv) => bigtext::loglevel::query(lv),
@@ -228,8 +344,22 @@ impl BigTextApp {
         };
         if let Some(query) = query {
             if let Ok(m) = bigtext::search::Matcher::new(&query, codec) {
-                let spec = self.with_context(bigtext::filter::FilterSpec { invert: f.invert && f.levels.is_none(), ..Default::default() });
-                self.run_filter_req(super::filter_panel::FilterRequest { query, m: std::sync::Arc::new(m), spec, levels: f.levels, follow: None, terms, json: None }, None);
+                let spec = self.with_context(bigtext::filter::FilterSpec {
+                    invert: f.invert && f.levels.is_none(),
+                    ..Default::default()
+                });
+                self.run_filter_req(
+                    super::filter_panel::FilterRequest {
+                        query,
+                        m: std::sync::Arc::new(m),
+                        spec,
+                        levels: f.levels,
+                        follow: None,
+                        terms,
+                        json: None,
+                    },
+                    None,
+                );
             }
         }
         self.active = active;
@@ -280,15 +410,29 @@ impl BigTextApp {
 
     /// Edit → Copy file:line: "C:\logs\app.log:1234" for the caret's line.
     pub(crate) fn copy_file_line(&mut self, ctx: &egui::Context) {
-        let Some(d) = self.docs.get(self.active) else { return };
-        let Some(p) = d.unpacked_from.as_deref().or(d.path.as_deref()).filter(|_| !d.temporary || d.unpacked_from.is_some()) else {
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
+        let Some(p) = d
+            .unpacked_from
+            .as_deref()
+            .or(d.path.as_deref())
+            .filter(|_| !d.temporary || d.unpacked_from.is_some())
+        else {
             self.notify(tr("Save the document first: it has no file.").into(), None);
             return;
         };
         let (line, exact) = d.buf.line_of(d.view.caret);
         let text = format!("{}:{}", file::display_path(p), line + 1);
         ctx.copy_text(text.clone());
-        let note = if exact { trf("Copied {text}", &[("text", &text)]) } else { trf("Copied {text} (the line number is an estimate until indexing ends)", &[("text", &text)]) };
+        let note = if exact {
+            trf("Copied {text}", &[("text", &text)])
+        } else {
+            trf(
+                "Copied {text} (the line number is an estimate until indexing ends)",
+                &[("text", &text)],
+            )
+        };
         self.notify(note, None);
     }
 }
@@ -308,27 +452,104 @@ mod tests {
     fn round_trip() {
         let s = Session {
             tabs: vec![
-                (TabState { path: PathBuf::from(r"C:\logs\a|b.log"), member: None, caret: 10, top: 5, wrap: true, bookmarks: vec![1, 2] }, true, Some(SavedFilter { query: Query { pattern: "ERROR|WARN".into(), regex: true, case_sensitive: true, whole_word: false, dot_all: false }, invert: true, levels: None, terms: vec![(Query { pattern: "db|x".into(), regex: false, case_sensitive: true, whole_word: true, dot_all: false }, true), (Query { pattern: "user=1".into(), ..Query::default() }, false)] })),
-                (TabState { path: PathBuf::from("/var/log/x.log"), member: Some("x/y.log".into()), caret: 0, top: 0, wrap: false, bookmarks: vec![] }, false, Some(SavedFilter { query: Query::default(), invert: false, levels: Some(Levels::only(Level::Error).toggled(Level::Warn)), terms: Vec::new() })),
+                (
+                    TabState {
+                        path: PathBuf::from(r"C:\logs\a|b.log"),
+                        member: None,
+                        caret: 10,
+                        top: 5,
+                        wrap: true,
+                        bookmarks: vec![1, 2],
+                    },
+                    true,
+                    Some(SavedFilter {
+                        query: Query {
+                            pattern: "ERROR|WARN".into(),
+                            regex: true,
+                            case_sensitive: true,
+                            whole_word: false,
+                            dot_all: false,
+                        },
+                        invert: true,
+                        levels: None,
+                        terms: vec![
+                            (
+                                Query {
+                                    pattern: "db|x".into(),
+                                    regex: false,
+                                    case_sensitive: true,
+                                    whole_word: true,
+                                    dot_all: false,
+                                },
+                                true,
+                            ),
+                            (
+                                Query {
+                                    pattern: "user=1".into(),
+                                    ..Query::default()
+                                },
+                                false,
+                            ),
+                        ],
+                    }),
+                ),
+                (
+                    TabState {
+                        path: PathBuf::from("/var/log/x.log"),
+                        member: Some("x/y.log".into()),
+                        caret: 0,
+                        top: 0,
+                        wrap: false,
+                        bookmarks: vec![],
+                    },
+                    false,
+                    Some(SavedFilter {
+                        query: Query::default(),
+                        invert: false,
+                        levels: Some(Levels::only(Level::Error).toggled(Level::Warn)),
+                        terms: Vec::new(),
+                    }),
+                ),
             ],
             active: 1,
-            opts: vec![extras::FileOpts { path: PathBuf::from(r"C:\logs\a|b.log"), enc: Some(bigtext::encoding::Encoding::Utf16Be), wrap: true, ..Default::default() }],
-            marks: vec![Mark { query: Query { pattern: "id=\\d+".into(), regex: true, ..Default::default() }, color: 2, enabled: true }],
+            opts: vec![extras::FileOpts {
+                path: PathBuf::from(r"C:\logs\a|b.log"),
+                enc: Some(bigtext::encoding::Encoding::Utf16Be),
+                wrap: true,
+                ..Default::default()
+            }],
+            marks: vec![Mark {
+                query: Query {
+                    pattern: "id=\\d+".into(),
+                    regex: true,
+                    ..Default::default()
+                },
+                color: 2,
+                enabled: true,
+            }],
         };
         let back = parse(&serialize(&s));
         assert_eq!(back.tabs.len(), 2);
         assert_eq!(back.tabs[0].0.path, s.tabs[0].0.path);
         assert_eq!((back.tabs[0].1, back.tabs[1].1), (true, false));
         assert_eq!(back.tabs[0].2, s.tabs[0].2);
-        assert_eq!(back.tabs[1].2.as_ref().and_then(|f| f.levels), Some(Levels::only(Level::Error).toggled(Level::Warn)));
+        assert_eq!(
+            back.tabs[1].2.as_ref().and_then(|f| f.levels),
+            Some(Levels::only(Level::Error).toggled(Level::Warn))
+        );
         assert_eq!((back.active, back.marks.clone()), (1, s.marks.clone()));
         assert_eq!(back.opts, s.opts);
     }
 
     #[test]
     fn names_become_safe_file_names() {
-        let Some(p) = file_for("Incident: 2026/10/28") else { return };
-        assert_eq!(p.file_name().unwrap().to_string_lossy(), "Incident_ 2026_10_28.session");
+        let Some(p) = file_for("Incident: 2026/10/28") else {
+            return;
+        };
+        assert_eq!(
+            p.file_name().unwrap().to_string_lossy(),
+            "Incident_ 2026_10_28.session"
+        );
         assert!(file_for(" .. ").is_none());
         assert!(in_sessions_dir(&p));
     }

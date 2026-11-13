@@ -44,12 +44,25 @@ fn quote(v: &str) -> String {
 
 /// The values of a record's fields.
 fn values(buf: &TextBuf, d: Dialect, r: &csv::Record) -> Option<Vec<String>> {
-    r.fields.iter().map(|f| buf.read(f.clone()).map(|b| csv::field_value(&buf.codec, d, &b))).collect()
+    r.fields
+        .iter()
+        .map(|f| {
+            buf.read(f.clone())
+                .map(|b| csv::field_value(&buf.codec, d, &b))
+        })
+        .collect()
 }
 
 /// Writes the joined table to `out`. Returns `None` when cancelled; an error when the right
 /// table does not fit in memory.
-pub fn join_to<W: Write>((left, ld): (&TextBuf, Dialect), (right, rd): (&TextBuf, Dialect), spec: JoinSpec, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<JoinStats>> {
+pub fn join_to<W: Write>(
+    (left, ld): (&TextBuf, Dialect),
+    (right, rd): (&TextBuf, Dialect),
+    spec: JoinSpec,
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<JoinStats>> {
     let read_err = || io::Error::other("Could not read the document");
     let mut stats = JoinStats::default();
     // Pass 1: the right table's other columns, rendered once, by key.
@@ -72,8 +85,16 @@ pub fn join_to<W: Write>((left, ld): (&TextBuf, Dialect), (right, rd): (&TextBuf
         }
         stats.right_rows += 1;
         right_cols = right_cols.max(v.len());
-        let key = v.get(spec.right_key).map(|k| k.trim().to_string()).unwrap_or_default();
-        let suffix: String = v.iter().enumerate().filter(|&(i, _)| i != spec.right_key).map(|(_, x)| format!(",{}", quote(x))).collect();
+        let key = v
+            .get(spec.right_key)
+            .map(|k| k.trim().to_string())
+            .unwrap_or_default();
+        let suffix: String = v
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| i != spec.right_key)
+            .map(|(_, x)| format!(",{}", quote(x)))
+            .collect();
         bytes += (key.len() + suffix.len() + 32) as u64;
         if bytes > JOIN_MAX || stats.right_rows as usize > JOIN_ROWS_MAX {
             too_big = true;
@@ -104,7 +125,13 @@ pub fn join_to<W: Write>((left, ld): (&TextBuf, Dialect), (right, rd): (&TextBuf
             let row = v.iter().map(|x| quote(x)).collect::<Vec<_>>().join(",");
             if left_head {
                 left_head = false;
-                let names: String = right_head.iter().flatten().enumerate().filter(|&(i, _)| i != spec.right_key).map(|(_, x)| format!(",{}", quote(x))).collect();
+                let names: String = right_head
+                    .iter()
+                    .flatten()
+                    .enumerate()
+                    .filter(|&(i, _)| i != spec.right_key)
+                    .map(|(_, x)| format!(",{}", quote(x)))
+                    .collect();
                 return writeln!(out, "{row}{names}");
             }
             stats.left_rows += 1;
@@ -161,21 +188,63 @@ mod tests {
         (f, t)
     }
 
-    fn join(l: &TextBuf, r: &TextBuf, ld: Dialect, rd: Dialect, spec: JoinSpec) -> (String, JoinStats) {
+    fn join(
+        l: &TextBuf,
+        r: &TextBuf,
+        ld: Dialect,
+        rd: Dialect,
+        spec: JoinSpec,
+    ) -> (String, JoinStats) {
         let mut out = Vec::new();
-        let st = join_to((l, ld), (r, rd), spec, &mut out, &CancelToken::new(), None).unwrap().unwrap();
+        let st = join_to((l, ld), (r, rd), spec, &mut out, &CancelToken::new(), None)
+            .unwrap()
+            .unwrap();
         (String::from_utf8(out).unwrap(), st)
     }
 
     #[test]
     fn left_and_inner() {
-        let (_a, orders) = buf(b"order,user,total\r\n1,u1,10\r\n2,u2,5\r\n3,u9,7\r\n4,u1,\"1,5\"\r\n", Codec::utf8());
-        let (_b, users) = buf(b"id;name;city\nu1;Ann;Paris\nu2;\"Bob; Jr\";Rome\nu1;Ann2;Oslo\n", Codec::utf8());
-        let spec = JoinSpec { left_key: 1, right_key: 0, inner: false, header: true };
-        let (out, st) = join(&orders, &users, Dialect::new(b','), Dialect::new(b';'), spec);
+        let (_a, orders) = buf(
+            b"order,user,total\r\n1,u1,10\r\n2,u2,5\r\n3,u9,7\r\n4,u1,\"1,5\"\r\n",
+            Codec::utf8(),
+        );
+        let (_b, users) = buf(
+            b"id;name;city\nu1;Ann;Paris\nu2;\"Bob; Jr\";Rome\nu1;Ann2;Oslo\n",
+            Codec::utf8(),
+        );
+        let spec = JoinSpec {
+            left_key: 1,
+            right_key: 0,
+            inner: false,
+            header: true,
+        };
+        let (out, st) = join(
+            &orders,
+            &users,
+            Dialect::new(b','),
+            Dialect::new(b';'),
+            spec,
+        );
         assert_eq!(out, "order,user,total,name,city\n1,u1,10,Ann,Paris\n1,u1,10,Ann2,Oslo\n2,u2,5,Bob; Jr,Rome\n3,u9,7,,\n4,u1,\"1,5\",Ann,Paris\n4,u1,\"1,5\",Ann2,Oslo\n");
-        assert_eq!(st, JoinStats { left_rows: 4, right_rows: 3, matched: 3, out_rows: 6 });
-        let (out, st) = join(&orders, &users, Dialect::new(b','), Dialect::new(b';'), JoinSpec { inner: true, ..spec });
+        assert_eq!(
+            st,
+            JoinStats {
+                left_rows: 4,
+                right_rows: 3,
+                matched: 3,
+                out_rows: 6
+            }
+        );
+        let (out, st) = join(
+            &orders,
+            &users,
+            Dialect::new(b','),
+            Dialect::new(b';'),
+            JoinSpec {
+                inner: true,
+                ..spec
+            },
+        );
         assert_eq!(out.lines().count(), 6);
         assert_eq!(st.out_rows, 5);
     }
@@ -187,7 +256,12 @@ mod tests {
         data.extend(codec.encode("k,ä\nb,β\n"));
         let (_a, right) = buf(&data, codec);
         let (_b, left) = buf(b"a,1\nb,2\n", Codec::utf8());
-        let spec = JoinSpec { left_key: 0, right_key: 0, inner: false, header: false };
+        let spec = JoinSpec {
+            left_key: 0,
+            right_key: 0,
+            inner: false,
+            header: false,
+        };
         let (out, _) = join(&left, &right, Dialect::new(b','), Dialect::new(b','), spec);
         assert_eq!(out, "a,1,\nb,2,β\n");
     }

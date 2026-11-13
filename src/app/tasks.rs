@@ -21,7 +21,10 @@ pub struct Task {
 
 pub enum TaskOutcome {
     /// Finished; the message is shown as a notice, with an "Open" link when a file was written.
-    Done { message: String, open: Option<PathBuf> },
+    Done {
+        message: String,
+        open: Option<PathBuf>,
+    },
     Cancelled,
     Failed(String),
     /// Column statistics (document title, figures) for the stats window.
@@ -60,7 +63,10 @@ pub const NOTICE_TIME: Duration = Duration::from_secs(12);
 /// Streams into a temp file next to `target` and moves it into place when `write` succeeds;
 /// a `.gz`, `.zst`, `.xz` or `.bz2` target is compressed on the way. `write` returns the notice
 /// text, or `None` when it was cancelled.
-pub fn write_via_temp(target: &Path, write: impl FnOnce(&mut Packer<BufWriter<&File>>) -> io::Result<Option<String>>) -> TaskOutcome {
+pub fn write_via_temp(
+    target: &Path,
+    write: impl FnOnce(&mut Packer<BufWriter<&File>>) -> io::Result<Option<String>>,
+) -> TaskOutcome {
     let temp = save::temp_path_for(target);
     let file = match File::options().write(true).create_new(true).open(&temp) {
         Ok(f) => f,
@@ -83,9 +89,15 @@ pub fn write_via_temp(target: &Path, write: impl FnOnce(&mut Packer<BufWriter<&F
             Ok(()) => {
                 if let (Some(_), Ok(m)) = (kind, std::fs::metadata(target)) {
                     message.push(' ');
-                    message.push_str(&super::i18n::trf("Compressed to {size}.", &[("size", &bigtext::jobs::human_bytes(m.len()))]));
+                    message.push_str(&super::i18n::trf(
+                        "Compressed to {size}.",
+                        &[("size", &bigtext::jobs::human_bytes(m.len()))],
+                    ));
                 }
-                TaskOutcome::Done { message, open: Some(target.to_path_buf()) }
+                TaskOutcome::Done {
+                    message,
+                    open: Some(target.to_path_buf()),
+                }
             }
             Err(e) => TaskOutcome::Failed(e),
         },
@@ -102,12 +114,21 @@ pub fn write_via_temp(target: &Path, write: impl FnOnce(&mut Packer<BufWriter<&F
 
 impl BigTextApp {
     /// Runs `f` on a worker with its own progress and cancel button in the status bar.
-    pub(crate) fn spawn_task(&mut self, label: String, f: impl FnOnce(&Progress, &CancelToken) -> TaskOutcome + Send + 'static) {
+    pub(crate) fn spawn_task(
+        &mut self,
+        label: String,
+        f: impl FnOnce(&Progress, &CancelToken) -> TaskOutcome + Send + 'static,
+    ) {
         self.next_task += 1;
         let id = self.next_task;
         let progress = Progress::default();
         let cancel = CancelToken::new();
-        self.tasks.push(Task { id, label, progress: progress.clone(), cancel: cancel.clone() });
+        self.tasks.push(Task {
+            id,
+            label,
+            progress: progress.clone(),
+            cancel: cancel.clone(),
+        });
         let tx = self.tx.clone();
         let waker = self.waker.clone();
         jobs::spawn("task", move || {
@@ -118,11 +139,19 @@ impl BigTextApp {
     }
 
     pub(super) fn on_task_done(&mut self, id: u64, outcome: TaskOutcome) {
-        let label = self.tasks.iter().find(|t| t.id == id).map(|t| t.label.clone()).unwrap_or_default();
+        let label = self
+            .tasks
+            .iter()
+            .find(|t| t.id == id)
+            .map(|t| t.label.clone())
+            .unwrap_or_default();
         self.tasks.retain(|t| t.id != id);
         match outcome {
             TaskOutcome::Done { message, open } => self.notify(message, open),
-            TaskOutcome::Cancelled => self.notify(super::i18n::trf("{task}: cancelled.", &[("task", &label)]), None),
+            TaskOutcome::Cancelled => self.notify(
+                super::i18n::trf("{task}: cancelled.", &[("task", &label)]),
+                None,
+            ),
             TaskOutcome::Failed(e) => self.error = Some(e),
             TaskOutcome::Stats(s) => self.csv.stats = Some(*s),
             TaskOutcome::Merged(m) => self.on_merged(*m),
@@ -149,7 +178,11 @@ impl BigTextApp {
 
     pub(crate) fn notify(&mut self, text: String, open: Option<PathBuf>) {
         self.announcement = Some(text.clone());
-        self.notice = Some(Notice { text, open, at: Instant::now() });
+        self.notice = Some(Notice {
+            text,
+            open,
+            at: Instant::now(),
+        });
     }
 
     /// Progress bars of running tasks and the latest notice (right-to-left status bar layout).
@@ -159,7 +192,11 @@ impl BigTextApp {
                 t.cancel.cancel();
             }
             let f = t.progress.fraction();
-            ui.add(egui::ProgressBar::new(f).desired_width(160.0).text(format!("{} {:.0}%", t.label, f * 100.0)));
+            ui.add(egui::ProgressBar::new(f).desired_width(160.0).text(format!(
+                "{} {:.0}%",
+                t.label,
+                f * 100.0
+            )));
             ui.separator();
         }
         let mut open = None;
@@ -194,7 +231,9 @@ impl BigTextApp {
         }
         // A spreadsheet opens in the spreadsheet app.
         if let Some(p) = open {
-            if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("xlsx")) {
+            if p.extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("xlsx"))
+            {
                 self.shell_file(&p, super::shell::ShellAction::Default);
             } else {
                 self.open_path(p);

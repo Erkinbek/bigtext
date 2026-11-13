@@ -57,12 +57,21 @@ pub fn wildcard(pattern: &str, name: &str) -> bool {
 
 /// Patterns from text like `*.log; *.txt` (an empty text matches every file).
 pub fn patterns(text: &str) -> Vec<String> {
-    text.split([';', ',', ' ']).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect()
+    text.split([';', ',', ' '])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// The files under `dir` (in sub-folders too with `recursive`, skipping hidden ones like `.git`)
 /// whose names fit one of `patterns`, sorted by path.
-pub fn list_files(dir: &Path, patterns: &[String], recursive: bool, cancel: &CancelToken) -> io::Result<Vec<PathBuf>> {
+pub fn list_files(
+    dir: &Path,
+    patterns: &[String],
+    recursive: bool,
+    cancel: &CancelToken,
+) -> io::Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     let mut dirs = vec![dir.to_path_buf()];
     let mut first = true;
@@ -84,7 +93,9 @@ pub fn list_files(dir: &Path, patterns: &[String], recursive: bool, cancel: &Can
                 if recursive && !name.starts_with('.') {
                     dirs.push(e.path());
                 }
-            } else if t.is_file() && (patterns.is_empty() || patterns.iter().any(|p| wildcard(p, &name))) {
+            } else if t.is_file()
+                && (patterns.is_empty() || patterns.iter().any(|p| wildcard(p, &name)))
+            {
                 out.push(e.path());
                 if out.len() >= MAX_FILES {
                     break;
@@ -105,11 +116,18 @@ pub fn open_text(path: &Path) -> io::Result<Option<TextBuf>> {
         return Ok(None);
     }
     let len = src.len();
-    Ok(Some(TextBuf::new(Arc::new(src), LineIndex::new(len), det.codec).snapshot()))
+    Ok(Some(
+        TextBuf::new(Arc::new(src), LineIndex::new(len), det.codec).snapshot(),
+    ))
 }
 
 /// Calls `on_hit` for every match of `m` in `buf`, in order, until it breaks.
-pub fn search_text(buf: &TextBuf, m: &Matcher, cancel: &CancelToken, mut on_hit: impl FnMut(Hit) -> ControlFlow<()>) -> SearchEnd {
+pub fn search_text(
+    buf: &TextBuf,
+    m: &Matcher,
+    cancel: &CancelToken,
+    mut on_hit: impl FnMut(Hit) -> ControlFlow<()>,
+) -> SearchEnd {
     let codec = buf.codec;
     let mut line = 1u64;
     let mut counted = 0u64;
@@ -125,8 +143,21 @@ pub fn search_text(buf: &TextBuf, m: &Matcher, cancel: &CancelToken, mut on_hit:
         let from = buf.snap_char(s.saturating_sub(CONTEXT * codec.unit() as u64).max(ls));
         let to = buf.snap_char((e + CONTEXT * codec.unit() as u64).min(le));
         let decode = |a: u64, b: u64| -> String {
-            let raw = buf.read(a..b.max(a)).map(|b| codec.decode_lossy(&b)).unwrap_or_default();
-            raw.chars().map(|c| if c == '\t' { ' ' } else if c.is_control() { '·' } else { c }).collect()
+            let raw = buf
+                .read(a..b.max(a))
+                .map(|b| codec.decode_lossy(&b))
+                .unwrap_or_default();
+            raw.chars()
+                .map(|c| {
+                    if c == '\t' {
+                        ' '
+                    } else if c.is_control() {
+                        '·'
+                    } else {
+                        c
+                    }
+                })
+                .collect()
         };
         let mut text = String::new();
         if from > ls {
@@ -141,7 +172,14 @@ pub fn search_text(buf: &TextBuf, m: &Matcher, cancel: &CancelToken, mut on_hit:
         if to < le && !tail.is_empty() {
             text.push('…');
         }
-        on_hit(Hit { line, start: s, end: e, text, mark: (ms, me) }).is_continue()
+        on_hit(Hit {
+            line,
+            start: s,
+            end: e,
+            text,
+            mark: (ms, me),
+        })
+        .is_continue()
     })
 }
 
@@ -168,7 +206,11 @@ mod tests {
     fn lists_and_searches_a_folder() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        std::fs::write(root.join("a.log"), "one\ntwo ERROR here\nthree\n\tERROR again\n").unwrap();
+        std::fs::write(
+            root.join("a.log"),
+            "one\ntwo ERROR here\nthree\n\tERROR again\n",
+        )
+        .unwrap();
         std::fs::write(root.join("b.txt"), "ERROR in txt\n").unwrap();
         std::fs::create_dir_all(root.join("sub")).unwrap();
         std::fs::write(root.join("sub").join("c.log"), "x\ny\nz ERROR\n").unwrap();
@@ -177,20 +219,41 @@ mod tests {
         std::fs::write(root.join("bin.log"), b"ERROR\0\0\0\x01\x02binary").unwrap();
         let c = CancelToken::new();
         let flat = list_files(root, &patterns("*.log"), false, &c).unwrap();
-        assert_eq!(flat.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect::<Vec<_>>(), vec!["a.log", "bin.log"]);
+        assert_eq!(
+            flat.iter()
+                .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec!["a.log", "bin.log"]
+        );
         let deep = list_files(root, &patterns("*.log"), true, &c).unwrap();
         assert_eq!(deep.len(), 3);
         assert!(open_text(&root.join("bin.log")).unwrap().is_none());
 
         let buf = open_text(&root.join("a.log")).unwrap().unwrap();
-        let m = Matcher::new(&Query { pattern: "ERROR".into(), case_sensitive: true, ..Default::default() }, buf.codec).unwrap();
+        let m = Matcher::new(
+            &Query {
+                pattern: "ERROR".into(),
+                case_sensitive: true,
+                ..Default::default()
+            },
+            buf.codec,
+        )
+        .unwrap();
         let mut hits = Vec::new();
         search_text(&buf, &m, &c, |h| {
             hits.push(h);
             ControlFlow::Continue(())
         });
         assert_eq!(hits.len(), 2);
-        assert_eq!((hits[0].line, hits[0].start, hits[0].end, hits[0].text.as_str()), (2, 8, 13, "two ERROR here"));
+        assert_eq!(
+            (
+                hits[0].line,
+                hits[0].start,
+                hits[0].end,
+                hits[0].text.as_str()
+            ),
+            (2, 8, 13, "two ERROR here")
+        );
         assert_eq!(&hits[0].text[hits[0].mark.0..hits[0].mark.1], "ERROR");
         assert_eq!((hits[1].line, hits[1].text.as_str()), (4, " ERROR again"));
         assert!(list_files(&root.join("missing"), &[], false, &c).is_err());
@@ -200,9 +263,21 @@ mod tests {
     fn long_lines_are_cut_around_the_match() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("long.txt");
-        std::fs::write(&path, format!("{}NEEDLE{}\nnext", "a".repeat(1000), "b".repeat(1000))).unwrap();
+        std::fs::write(
+            &path,
+            format!("{}NEEDLE{}\nnext", "a".repeat(1000), "b".repeat(1000)),
+        )
+        .unwrap();
         let buf = open_text(&path).unwrap().unwrap();
-        let m = Matcher::new(&Query { pattern: "NEEDLE".into(), case_sensitive: true, ..Default::default() }, buf.codec).unwrap();
+        let m = Matcher::new(
+            &Query {
+                pattern: "NEEDLE".into(),
+                case_sensitive: true,
+                ..Default::default()
+            },
+            buf.codec,
+        )
+        .unwrap();
         let mut hits = Vec::new();
         search_text(&buf, &m, &CancelToken::new(), |h| {
             hits.push(h);

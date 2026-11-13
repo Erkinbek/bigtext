@@ -55,15 +55,21 @@ fn parse(t: &str) -> Result<Option<Stamp>, String> {
     if t.is_empty() {
         return Ok(None);
     }
-    timestamp::parse(t).map(Some).ok_or_else(|| trf("Not a time: {text}", &[("text", t)]))
+    timestamp::parse(t)
+        .map(Some)
+        .ok_or_else(|| trf("Not a time: {text}", &[("text", t)]))
 }
 
 impl BigTextApp {
     /// The bytes of the time range for the active document; when they are not known yet, starts
     /// finding them and runs `after` then.
     pub(crate) fn time_window(&mut self, after: After) -> Window {
-        let Some(r) = self.range.active.as_mut() else { return Window::All };
-        let Some(d) = self.docs.get(self.active) else { return Window::All };
+        let Some(r) = self.range.active.as_mut() else {
+            return Window::All;
+        };
+        let Some(d) = self.docs.get(self.active) else {
+            return Window::All;
+        };
         if let Some((doc, version, a, b)) = r.found {
             if doc == d.id && version == d.version {
                 return Window::Bytes(a, b);
@@ -85,18 +91,28 @@ impl BigTextApp {
         let (tx, waker) = (self.tx.clone(), self.waker.clone());
         jobs::spawn("time-range", move || {
             let result = timestamp::time_range(&snap, from, to, &cancel).map_err(|e| match e {
-                timestamp::TimeError::NoTimestamps => tr("No timestamps found at the start of the file's lines.").to_string(),
+                timestamp::TimeError::NoTimestamps => {
+                    tr("No timestamps found at the start of the file's lines.").to_string()
+                }
                 timestamp::TimeError::Cancelled => String::new(),
             });
-            let _ = tx.send(Msg::TimeRange(Box::new(RangeDone { doc, version, result })));
+            let _ = tx.send(Msg::TimeRange(Box::new(RangeDone {
+                doc,
+                version,
+                result,
+            })));
             waker();
         });
         Window::Wait
     }
 
     pub(super) fn on_time_range(&mut self, done: RangeDone) {
-        let Some(r) = self.range.active.as_mut() else { return };
-        let Some((doc, after, _)) = r.pending.take_if(|p| p.0 == done.doc) else { return };
+        let Some(r) = self.range.active.as_mut() else {
+            return;
+        };
+        let Some((doc, after, _)) = r.pending.take_if(|p| p.0 == done.doc) else {
+            return;
+        };
         match done.result {
             Ok((a, b)) => r.found = Some((doc, done.version, a, b)),
             Err(e) => {
@@ -139,9 +155,18 @@ impl BigTextApp {
                     return;
                 }
             }
-            self.range.active = Some(ActiveRange { from, to, found: None, pending: None });
+            self.range.active = Some(ActiveRange {
+                from,
+                to,
+                found: None,
+                pending: None,
+            });
         }
-        if self.docs.get(self.active).is_some_and(|d| d.filter.is_some()) {
+        if self
+            .docs
+            .get(self.active)
+            .is_some_and(|d| d.filter.is_some())
+        {
             self.rerun_filter();
         }
     }
@@ -178,7 +203,10 @@ impl BigTextApp {
             });
         });
         if let Some(ms) = around {
-            let st = self.docs.get(self.active).and_then(|d| d.line_bounds(d.view.caret, 64 * 1024).and_then(|b| timestamp::stamp_at(&d.buf, b.0)));
+            let st = self.docs.get(self.active).and_then(|d| {
+                d.line_bounds(d.view.caret, 64 * 1024)
+                    .and_then(|b| timestamp::stamp_at(&d.buf, b.0))
+            });
             match st {
                 Some(st) => {
                     self.range.from = timestamp::format_key(st.ms - ms, st.has_date, true);

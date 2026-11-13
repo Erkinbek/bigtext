@@ -189,7 +189,41 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 33] = ["filter", "levels", "count", "split", "stats", "merge", "convert", "report", "sqldump", "values", "gaps", "patterns", "extract", "validate", "join", "pivot", "derive", "jsonl", "jsondiff", "diff", "only-in", "diff-table", "transform", "format", "sort", "uniq", "head", "tail", "slice", "grep", "replace", "saved", "csv"];
+const COMMANDS: [&str; 33] = [
+    "filter",
+    "levels",
+    "count",
+    "split",
+    "stats",
+    "merge",
+    "convert",
+    "report",
+    "sqldump",
+    "values",
+    "gaps",
+    "patterns",
+    "extract",
+    "validate",
+    "join",
+    "pivot",
+    "derive",
+    "jsonl",
+    "jsondiff",
+    "diff",
+    "only-in",
+    "diff-table",
+    "transform",
+    "format",
+    "sort",
+    "uniq",
+    "head",
+    "tail",
+    "slice",
+    "grep",
+    "replace",
+    "saved",
+    "csv",
+];
 
 /// Whether `arg` starts a command (`filter` or `--filter`).
 pub fn is_command(arg: &str) -> bool {
@@ -219,13 +253,19 @@ struct Args {
 
 impl Args {
     fn parse(args: &[String], flags: &[&str], opts: &[&str]) -> Res<Args> {
-        let mut a = Args { flags: Vec::new(), opts: Vec::new(), rest: Vec::new() };
+        let mut a = Args {
+            flags: Vec::new(),
+            opts: Vec::new(),
+            rest: Vec::new(),
+        };
         let mut it = args.iter();
         while let Some(x) = it.next() {
             if flags.contains(&x.as_str()) {
                 a.flags.push(x.clone());
             } else if opts.contains(&x.as_str()) {
-                let v = it.next().ok_or_else(|| Fail(format!("{x} needs a value")))?;
+                let v = it
+                    .next()
+                    .ok_or_else(|| Fail(format!("{x} needs a value")))?;
                 a.opts.push((x.clone(), v.clone()));
             } else if x.starts_with('-') && x.len() > 1 {
                 return fail(format!("unknown option {x}"));
@@ -241,12 +281,20 @@ impl Args {
     }
 
     fn opt(&self, names: &[&str]) -> Option<&str> {
-        self.opts.iter().rev().find(|(k, _)| names.contains(&k.as_str())).map(|(_, v)| v.as_str())
+        self.opts
+            .iter()
+            .rev()
+            .find(|(k, _)| names.contains(&k.as_str()))
+            .map(|(_, v)| v.as_str())
     }
 
     /// Every value of a repeated option, in order.
     fn all(&self, names: &[&str]) -> Vec<&str> {
-        self.opts.iter().filter(|(k, _)| names.contains(&k.as_str())).map(|(_, v)| v.as_str()).collect()
+        self.opts
+            .iter()
+            .filter(|(k, _)| names.contains(&k.as_str()))
+            .map(|(_, v)| v.as_str())
+            .collect()
     }
 }
 
@@ -269,16 +317,18 @@ fn open(path: &Path) -> Res<(TextBuf, Detected)> {
     let unpacked;
     let path = match crate::decompress::detect(path) {
         Some(kind) => {
-            let t = crate::decompress::unpack(path, kind, &CancelToken::new(), &Progress::default())
-                .map_err(|e| Fail(format!("{}: {e}", display_path(path))))?
-                .ok_or_else(|| Fail("cancelled".into()))?;
+            let t =
+                crate::decompress::unpack(path, kind, &CancelToken::new(), &Progress::default())
+                    .map_err(|e| Fail(format!("{}: {e}", display_path(path))))?
+                    .ok_or_else(|| Fail("cancelled".into()))?;
             TEMPS.with(|v| v.borrow_mut().push(t.clone()));
             unpacked = t;
             unpacked.as_path()
         }
         None => path,
     };
-    let src = Source::open(path, OpenMode::Auto).map_err(|e| Fail(format!("{}: {e}", display_path(path))))?;
+    let src = Source::open(path, OpenMode::Auto)
+        .map_err(|e| Fail(format!("{}: {e}", display_path(path))))?;
     let n = src.len().min(1 << 20);
     let det = encoding::detect(&src.read(0..n)?, n == src.len());
     let len = src.len();
@@ -306,15 +356,26 @@ impl<W> Seek for NoSeek<W> {
 }
 
 /// Writes to `-o FILE` (via a temporary file, moved into place when done) or to `out`.
-fn with_output(target: Option<&str>, out: &mut dyn Write, f: impl FnOnce(&mut dyn WriteSeek) -> Res<()>) -> Res<()> {
+fn with_output(
+    target: Option<&str>,
+    out: &mut dyn Write,
+    f: impl FnOnce(&mut dyn WriteSeek) -> Res<()>,
+) -> Res<()> {
     match target {
         Some(t) => {
             let path = PathBuf::from(t);
             let temp = crate::save::temp_path_for(&path);
-            let file = std::fs::File::options().write(true).create_new(true).open(&temp).map_err(|e| Fail(format!("{}: {e}", display_path(&temp))))?;
+            let file = std::fs::File::options()
+                .write(true)
+                .create_new(true)
+                .open(&temp)
+                .map_err(|e| Fail(format!("{}: {e}", display_path(&temp))))?;
             let r = (|| {
                 // -o out.gz (.zst, .xz, .bz2) is compressed on the way.
-                let mut w = crate::decompress::Packer::new(io::BufWriter::with_capacity(8 << 20, &file), crate::decompress::target_kind(&path))?;
+                let mut w = crate::decompress::Packer::new(
+                    io::BufWriter::with_capacity(8 << 20, &file),
+                    crate::decompress::target_kind(&path),
+                )?;
                 f(&mut w)?;
                 let mut w = w.finish()?;
                 w.flush()?;
@@ -344,13 +405,28 @@ trait WriteSeek: Write + Seek {}
 impl<T: Write + Seek> WriteSeek for T {}
 
 fn query(a: &Args, pattern: &str) -> Query {
-    Query { pattern: pattern.to_string(), regex: a.flag(&["-E", "--regex"]), case_sensitive: !a.flag(&["-i", "--ignore-case"]), whole_word: a.flag(&["-w", "--word"]), dot_all: false }
+    Query {
+        pattern: pattern.to_string(),
+        regex: a.flag(&["-E", "--regex"]),
+        case_sensitive: !a.flag(&["-i", "--ignore-case"]),
+        whole_word: a.flag(&["-w", "--word"]),
+        dot_all: false,
+    }
 }
 
 /// Writes the kept lines: in the file's encoding to a file, as UTF-8 to the console. With
 /// `numbers`, each line starts with its line number ("12:" a match, "13-" context, like grep).
 #[allow(clippy::too_many_arguments)]
-fn write_kept(buf: &TextBuf, file: &str, m: &Matcher, spec: FilterSpec, terms: &[filter::Term], numbers: bool, target: Option<&str>, out: &mut dyn Write) -> Res<u64> {
+fn write_kept(
+    buf: &TextBuf,
+    file: &str,
+    m: &Matcher,
+    spec: FilterSpec,
+    terms: &[filter::Term],
+    numbers: bool,
+    target: Option<&str>,
+    out: &mut dyn Write,
+) -> Res<u64> {
     let cancel = CancelToken::new();
     let mut kept = 0;
     let json = json();
@@ -358,13 +434,18 @@ fn write_kept(buf: &TextBuf, file: &str, m: &Matcher, spec: FilterSpec, terms: &
     with_output(target, out, |w| {
         let to_file = target.is_some() && !json;
         if to_file && !numbers {
-            kept = filter::write_lines_to(buf, m, spec, terms, &mut &mut *w, &cancel, None)?.map(|n| n.lines).unwrap_or(0);
+            kept = filter::write_lines_to(buf, m, spec, terms, &mut &mut *w, &cancel, None)?
+                .map(|n| n.lines)
+                .unwrap_or(0);
             return Ok(());
         }
         let codec = buf.codec;
         let bom = codec.bom_len as u64;
         if to_file && bom > 0 {
-            w.write_all(&buf.read(0..bom).ok_or_else(|| Fail("could not read the file".into()))?)?;
+            w.write_all(
+                &buf.read(0..bom)
+                    .ok_or_else(|| Fail("could not read the file".into()))?,
+            )?;
         }
         let mut err: Option<io::Error> = None;
         let mut prev: Option<u64> = None;
@@ -390,9 +471,19 @@ fn write_kept(buf: &TextBuf, file: &str, m: &Matcher, spec: FilterSpec, terms: &
                     })
                     .ok_or_else(|| io::Error::other("could not read the file"))?;
                     counted = (ls, n);
-                    prefix = format!("{}{}", n + 1, if kind == filter::LineKind::Hit { ':' } else { '-' });
+                    prefix = format!(
+                        "{}{}",
+                        n + 1,
+                        if kind == filter::LineKind::Hit {
+                            ':'
+                        } else {
+                            '-'
+                        }
+                    );
                 }
-                let bytes = buf.read(ls.max(bom)..le).ok_or_else(|| io::Error::other("could not read the file"))?;
+                let bytes = buf
+                    .read(ls.max(bom)..le)
+                    .ok_or_else(|| io::Error::other("could not read the file"))?;
                 if json {
                     let text = codec.decode_lossy(&bytes);
                     let line: u64 = prefix.trim_end_matches([':', '-']).parse().unwrap_or(0);
@@ -425,19 +516,42 @@ fn write_kept(buf: &TextBuf, file: &str, m: &Matcher, spec: FilterSpec, terms: &
 
 /// Flags of the context options (-A/-B/-C take a value).
 const CONTEXT_FLAGS: [&str; 3] = ["--entries", "-n", "--line-numbers"];
-const CONTEXT_OPTS: [&str; 8] = ["-A", "--after", "-B", "--before", "-C", "--context", "--from", "--to"];
+const CONTEXT_OPTS: [&str; 8] = [
+    "-A",
+    "--after",
+    "-B",
+    "--before",
+    "-C",
+    "--context",
+    "--from",
+    "--to",
+];
 
 /// The filter with the context options.
 fn spec_from(a: &Args, invert: bool) -> Res<FilterSpec> {
     let num = |names: &[&str]| -> Res<Option<u32>> {
         a.opt(names)
-            .map(|v| v.parse::<u32>().ok().filter(|&n| n <= filter::CONTEXT_MAX).ok_or_else(|| Fail(format!("not a line count (0-{}): {v}", filter::CONTEXT_MAX))))
+            .map(|v| {
+                v.parse::<u32>()
+                    .ok()
+                    .filter(|&n| n <= filter::CONTEXT_MAX)
+                    .ok_or_else(|| {
+                        Fail(format!("not a line count (0-{}): {v}", filter::CONTEXT_MAX))
+                    })
+            })
             .transpose()
     };
     let around = num(&["-C", "--context"])?;
     let before = num(&["-B", "--before"])?.or(around).unwrap_or(0);
     let after = num(&["-A", "--after"])?.or(around).unwrap_or(0);
-    Ok(FilterSpec { invert, column: None, before, after, entries: a.flag(&["--entries"]), range: None })
+    Ok(FilterSpec {
+        invert,
+        column: None,
+        before,
+        after,
+        entries: a.flag(&["--entries"]),
+        range: None,
+    })
 }
 
 /// The lines between `--from TIME` and `--to TIME` (up to and including that second).
@@ -446,7 +560,10 @@ fn time_range(a: &Args, buf: &TextBuf) -> Res<Option<(u64, u64)>> {
     if from.is_none() && to.is_none() {
         return Ok(None);
     }
-    let parse = |t: Option<&str>| t.map(|t| timestamp::parse(t).ok_or_else(|| Fail(format!("not a time: {t}")))).transpose();
+    let parse = |t: Option<&str>| {
+        t.map(|t| timestamp::parse(t).ok_or_else(|| Fail(format!("not a time: {t}"))))
+            .transpose()
+    };
     match timestamp::time_range(buf, parse(from)?, parse(to)?, &CancelToken::new()) {
         Ok(r) => Ok(Some(r)),
         Err(_) => fail("the file has no timestamps"),
@@ -454,9 +571,35 @@ fn time_range(a: &Args, buf: &TextBuf) -> Res<Option<(u64, u64)>> {
 }
 
 fn cmd_filter(args: &[String], out: &mut dyn Write, count_only: bool) -> Res<i32> {
-    let flags = [&["-v", "--invert", "-i", "--ignore-case", "-w", "--word", "-E", "--regex", "--any"][..], &CONTEXT_FLAGS].concat();
-    let a = Args::parse(args, &flags, &[&["-o", "--output", "-e", "--pattern", "--not"][..], &CONTEXT_OPTS].concat())?;
-    let mut pats: Vec<String> = a.all(&["-e", "--pattern"]).into_iter().map(String::from).collect();
+    let flags = [
+        &[
+            "-v",
+            "--invert",
+            "-i",
+            "--ignore-case",
+            "-w",
+            "--word",
+            "-E",
+            "--regex",
+            "--any",
+        ][..],
+        &CONTEXT_FLAGS,
+    ]
+    .concat();
+    let a = Args::parse(
+        args,
+        &flags,
+        &[
+            &["-o", "--output", "-e", "--pattern", "--not"][..],
+            &CONTEXT_OPTS,
+        ]
+        .concat(),
+    )?;
+    let mut pats: Vec<String> = a
+        .all(&["-e", "--pattern"])
+        .into_iter()
+        .map(String::from)
+        .collect();
     let file = match &a.rest[..] {
         [pattern, file] => {
             pats.insert(0, pattern.clone());
@@ -470,8 +613,24 @@ fn cmd_filter(args: &[String], out: &mut dyn Write, count_only: bool) -> Res<i32
     let any = a.flag(&["--any"]) && pats.len() > 1;
     let driver = if any {
         let regex = a.flag(&["-E", "--regex"]);
-        let alt: Vec<String> = pats.iter().map(|p| format!("(?:{})", if regex { p.clone() } else { regex_syntax::escape(p) })).collect();
-        Query { pattern: alt.join("|"), regex: true, ..query(&a, "") }
+        let alt: Vec<String> = pats
+            .iter()
+            .map(|p| {
+                format!(
+                    "(?:{})",
+                    if regex {
+                        p.clone()
+                    } else {
+                        regex_syntax::escape(p)
+                    }
+                )
+            })
+            .collect();
+        Query {
+            pattern: alt.join("|"),
+            regex: true,
+            ..query(&a, "")
+        }
     } else {
         query(&a, &pats[0])
     };
@@ -483,15 +642,33 @@ fn cmd_filter(args: &[String], out: &mut dyn Write, count_only: bool) -> Res<i32
     for p in a.all(&["--not"]) {
         owned.push((Matcher::new(&query(&a, p), buf.codec).map_err(Fail)?, true));
     }
-    let terms: Vec<filter::Term> = owned.iter().map(|(m, negated)| filter::Term { m, negated: *negated }).collect();
+    let terms: Vec<filter::Term> = owned
+        .iter()
+        .map(|(m, negated)| filter::Term {
+            m,
+            negated: *negated,
+        })
+        .collect();
     let mut spec = spec_from(&a, a.flag(&["-v", "--invert"]))?;
     spec.range = time_range(&a, &buf)?;
     let n = if count_only {
         let mut n = 0u64;
-        filter::filter_lines_with(&buf, &m, FilterSpec { invert: spec.invert, range: spec.range, ..Default::default() }, &terms, &CancelToken::new(), None, |_, _, _| {
-            n += 1;
-            true
-        });
+        filter::filter_lines_with(
+            &buf,
+            &m,
+            FilterSpec {
+                invert: spec.invert,
+                range: spec.range,
+                ..Default::default()
+            },
+            &terms,
+            &CancelToken::new(),
+            None,
+            |_, _, _| {
+                n += 1;
+                true
+            },
+        );
         if json() {
             writeln!(out, "{}", serde_json::json!({"file": file, "count": n}))?;
         } else {
@@ -499,17 +676,35 @@ fn cmd_filter(args: &[String], out: &mut dyn Write, count_only: bool) -> Res<i32
         }
         n
     } else {
-        write_kept(&buf, file, &m, spec, &terms, a.flag(&["-n", "--line-numbers"]), a.opt(&["-o", "--output"]), out)?
+        write_kept(
+            &buf,
+            file,
+            &m,
+            spec,
+            &terms,
+            a.flag(&["-n", "--line-numbers"]),
+            a.opt(&["-o", "--output"]),
+            out,
+        )?
     };
     Ok(if n > 0 { 0 } else { 1 })
 }
 
 fn cmd_levels(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &CONTEXT_FLAGS, &[&["-o", "--output"][..], &CONTEXT_OPTS].concat())?;
-    let [names, file] = &a.rest[..] else { return fail("needs LEVELS and FILE") };
+    let a = Args::parse(
+        args,
+        &CONTEXT_FLAGS,
+        &[&["-o", "--output"][..], &CONTEXT_OPTS].concat(),
+    )?;
+    let [names, file] = &a.rest[..] else {
+        return fail("needs LEVELS and FILE");
+    };
     let mut levels = Levels::default();
     for n in names.split(',').map(str::trim).filter(|n| !n.is_empty()) {
-        let l = Level::ALL.into_iter().find(|l| l.name().eq_ignore_ascii_case(n) || (n.eq_ignore_ascii_case("warning") && *l == Level::Warn));
+        let l = Level::ALL.into_iter().find(|l| {
+            l.name().eq_ignore_ascii_case(n)
+                || (n.eq_ignore_ascii_case("warning") && *l == Level::Warn)
+        });
         match l {
             Some(l) if !levels.contains(l) => levels = levels.toggled(l),
             Some(_) => {}
@@ -519,8 +714,20 @@ fn cmd_levels(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let q = loglevel::query(levels).ok_or_else(|| Fail("no levels".into()))?;
     let (buf, _) = open(Path::new(file))?;
     let m = Matcher::new(&q, buf.codec).map_err(Fail)?;
-    let spec = FilterSpec { range: time_range(&a, &buf)?, ..spec_from(&a, false)? };
-    let n = write_kept(&buf, file, &m, spec, &[], a.flag(&["-n", "--line-numbers"]), a.opt(&["-o", "--output"]), out)?;
+    let spec = FilterSpec {
+        range: time_range(&a, &buf)?,
+        ..spec_from(&a, false)?
+    };
+    let n = write_kept(
+        &buf,
+        file,
+        &m,
+        spec,
+        &[],
+        a.flag(&["-n", "--line-numbers"]),
+        a.opt(&["-o", "--output"]),
+        out,
+    )?;
     Ok(if n > 0 { 0 } else { 1 })
 }
 
@@ -540,19 +747,50 @@ fn parse_size(s: &str) -> Option<u64> {
 }
 
 fn cmd_split(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["--gz", "--zst", "--xz", "--bz2"], &["--size", "--lines", "--out-dir"])?;
-    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let a = Args::parse(
+        args,
+        &["--gz", "--zst", "--xz", "--bz2"],
+        &["--size", "--lines", "--out-dir"],
+    )?;
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
     let by = match (a.opt(&["--size"]), a.opt(&["--lines"])) {
-        (Some(s), None) => SplitBy::Bytes(parse_size(s).ok_or_else(|| Fail(format!("not a size: {s}")))?),
-        (None, Some(n)) => SplitBy::Lines(n.parse().ok().filter(|&n| n > 0).ok_or_else(|| Fail(format!("not a line count: {n}")))?),
+        (Some(s), None) => {
+            SplitBy::Bytes(parse_size(s).ok_or_else(|| Fail(format!("not a size: {s}")))?)
+        }
+        (None, Some(n)) => SplitBy::Lines(
+            n.parse()
+                .ok()
+                .filter(|&n| n > 0)
+                .ok_or_else(|| Fail(format!("not a line count: {n}")))?,
+        ),
         _ => return fail("give --size or --lines"),
     };
     let path = Path::new(file);
-    let dir = a.opt(&["--out-dir"]).map(PathBuf::from).or_else(|| path.parent().map(Path::to_path_buf)).unwrap_or_default();
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "part".into());
+    let dir = a
+        .opt(&["--out-dir"])
+        .map(PathBuf::from)
+        .or_else(|| path.parent().map(Path::to_path_buf))
+        .unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "part".into());
     let (buf, _) = open(path)?;
-    let pack = crate::decompress::Kind::ALL.into_iter().find(|k| a.flag(&[&format!("--{}", k.extension())]));
-    let parts = split::split_to_files(&buf, by, &dir, &name, pack, &CancelToken::new(), &Progress::default())?.unwrap_or_default();
+    let pack = crate::decompress::Kind::ALL
+        .into_iter()
+        .find(|k| a.flag(&[&format!("--{}", k.extension())]));
+    let parts = split::split_to_files(
+        &buf,
+        by,
+        &dir,
+        &name,
+        pack,
+        &CancelToken::new(),
+        &Progress::default(),
+    )?
+    .unwrap_or_default();
     for p in parts {
         writeln!(out, "{}", display_path(&p))?;
     }
@@ -567,7 +805,9 @@ fn cmd_stats(args: &[String], out: &mut dyn Write) -> Res<i32> {
     if a.flag(&["--fields"]) {
         for file in &a.rest {
             let (buf, _) = open(Path::new(file))?;
-            let f = crate::json_fields::field_stats(&buf, &CancelToken::new(), None).map_err(Fail)?.unwrap_or_default();
+            let f = crate::json_fields::field_stats(&buf, &CancelToken::new(), None)
+                .map_err(Fail)?
+                .unwrap_or_default();
             crate::json_fields::fields_to_csv(&f, &mut &mut *out)?;
         }
         return Ok(0);
@@ -576,7 +816,8 @@ fn cmd_stats(args: &[String], out: &mut dyn Write) -> Res<i32> {
         let path = Path::new(file);
         let (buf, det) = open(path)?;
         let codec = buf.codec;
-        let Some(st) = crate::stats::scan(&buf.snapshot(), &CancelToken::new(), None, |_| {}) else {
+        let Some(st) = crate::stats::scan(&buf.snapshot(), &CancelToken::new(), None, |_| {})
+        else {
             return fail(format!("{}: could not read the file", display_path(path)));
         };
         if json() {
@@ -594,24 +835,59 @@ fn cmd_stats(args: &[String], out: &mut dyn Write) -> Res<i32> {
             continue;
         }
         writeln!(out, "file: {}", display_path(path))?;
-        writeln!(out, "size: {} ({} bytes)", human_bytes(buf.len()), buf.len())?;
+        writeln!(
+            out,
+            "size: {} ({} bytes)",
+            human_bytes(buf.len()),
+            buf.len()
+        )?;
         writeln!(out, "lines: {}", st.lines)?;
         writeln!(out, "encoding: {}", codec.enc.name())?;
-        writeln!(out, "line endings: {} (LF {}, CRLF {}, CR {})", det.line_ending.name(), st.lf, st.crlf, st.cr)?;
-        writeln!(out, "final line break: {}", if st.final_break { "yes" } else { "no" })?;
-        writeln!(out, "longest line: {} bytes (line {})", st.longest.0, st.longest.1 + 1)?;
+        writeln!(
+            out,
+            "line endings: {} (LF {}, CRLF {}, CR {})",
+            det.line_ending.name(),
+            st.lf,
+            st.crlf,
+            st.cr
+        )?;
+        writeln!(
+            out,
+            "final line break: {}",
+            if st.final_break { "yes" } else { "no" }
+        )?;
+        writeln!(
+            out,
+            "longest line: {} bytes (line {})",
+            st.longest.0,
+            st.longest.1 + 1
+        )?;
         if st.nul > 0 {
-            writeln!(out, "NUL bytes: {} (first at byte {})", st.nul, st.first_nul.unwrap_or(0))?;
+            writeln!(
+                out,
+                "NUL bytes: {} (first at byte {})",
+                st.nul,
+                st.first_nul.unwrap_or(0)
+            )?;
         }
         if st.invalid_utf8 > 0 {
-            writeln!(out, "bytes that are not UTF-8: {} (first at byte {})", st.invalid_utf8, st.first_invalid.unwrap_or(0))?;
+            writeln!(
+                out,
+                "bytes that are not UTF-8: {} (first at byte {})",
+                st.invalid_utf8,
+                st.first_invalid.unwrap_or(0)
+            )?;
         }
         if let Some((f, l)) = crate::stats::time_span(&buf) {
             let key = |s: timestamp::Stamp| timestamp::format_key(s.ms, s.has_date, true);
             writeln!(out, "first time: {}", key(f))?;
             writeln!(out, "last time: {}", key(l))?;
             if f.has_date && l.has_date {
-                writeln!(out, "span: {}", timestamp::format_delta(l.ms - f.ms).trim_start_matches('+'))?;
+                writeln!(
+                    out,
+                    "span: {}",
+                    timestamp::format_delta(l.ms - f.ms).trim_start_matches('+')
+                )?;
             }
         }
         if a.rest.len() > 1 {
@@ -630,7 +906,10 @@ fn cmd_merge(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let mut names: Vec<String> = Vec::new();
     for f in &a.rest {
         let p = Path::new(f);
-        let mut label = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| f.clone());
+        let mut label = p
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| f.clone());
         let base = label.clone();
         let mut k = 1;
         while names.contains(&label) {
@@ -638,7 +917,10 @@ fn cmd_merge(args: &[String], out: &mut dyn Write) -> Res<i32> {
             label = format!("{base} ({k})");
         }
         names.push(label.clone());
-        inputs.push(Input { buf: open(p)?.0, label });
+        inputs.push(Input {
+            buf: open(p)?.0,
+            label,
+        });
     }
     with_output(a.opt(&["-o", "--output"]), out, |w| {
         merge::merge_to(&inputs, &mut &mut *w, &CancelToken::new(), None)?;
@@ -660,18 +942,47 @@ fn sniff_kind(buf: &TextBuf) -> &'static str {
     }
     match lines.first().and_then(|l| l.first()) {
         Some(b'[') => "json",
-        Some(b'{') if lines.len() > 1 && lines.iter().all(|l| l.first() == Some(&b'{') && l.last() == Some(&b'}')) => "jsonl",
+        Some(b'{')
+            if lines.len() > 1
+                && lines
+                    .iter()
+                    .all(|l| l.first() == Some(&b'{') && l.last() == Some(&b'}')) =>
+        {
+            "jsonl"
+        }
         Some(b'{') => "json",
         _ if crate::logformat::Format::guess(&lines).is_some() => "log",
-        _ if lines.iter().filter(|l| crate::fields::line_fields(&String::from_utf8_lossy(l)).is_some_and(|f| f.0 == crate::fields::Syntax::Logfmt)).count() * 2 > lines.len() => "logfmt",
+        _ if lines
+            .iter()
+            .filter(|l| {
+                crate::fields::line_fields(&String::from_utf8_lossy(l))
+                    .is_some_and(|f| f.0 == crate::fields::Syntax::Logfmt)
+            })
+            .count()
+            * 2
+            > lines.len() =>
+        {
+            "logfmt"
+        }
         _ => "csv",
     }
 }
 
 fn cmd_convert(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["--no-header", "--header"], &["--to", "--from", "--path", "-o", "--output", "--skip", "--quote"])?;
-    let [file] = &a.rest[..] else { return fail("needs FILE") };
-    let to = a.opt(&["--to"]).ok_or_else(|| Fail("give --to json, jsonl, md, xlsx or csv".into()))?.to_ascii_lowercase();
+    let a = Args::parse(
+        args,
+        &["--no-header", "--header"],
+        &[
+            "--to", "--from", "--path", "-o", "--output", "--skip", "--quote",
+        ],
+    )?;
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
+    let to = a
+        .opt(&["--to"])
+        .ok_or_else(|| Fail("give --to json, jsonl, md, xlsx or csv".into()))?
+        .to_ascii_lowercase();
     let target = a.opt(&["-o", "--output"]);
     let (buf, _) = open(Path::new(file))?;
     let cancel = CancelToken::new();
@@ -724,12 +1035,20 @@ fn cmd_convert(args: &[String], out: &mut dyn Write) -> Res<i32> {
         ("csv", _) => {}
         (f, t) => return fail(format!("cannot convert {f} to {t} (json → jsonl, jsonl → json or csv, logfmt or log → csv, csv → json, jsonl, md, xlsx)")),
     }
-    let format = Format::ALL.into_iter().find(|f| f.ext() == to || (to == "markdown" && *f == Format::Markdown)).ok_or_else(|| Fail(format!("unknown format {to}")))?;
+    let format = Format::ALL
+        .into_iter()
+        .find(|f| f.ext() == to || (to == "markdown" && *f == Format::Markdown))
+        .ok_or_else(|| Fail(format!("unknown format {to}")))?;
     if format == Format::Xlsx && target.is_none() {
         return fail("an .xlsx workbook needs -o FILE");
     }
     let g = table_of(&buf, file, &a)?;
-    let spec = table_export::Spec { dialect: g.dialect, cols: None, header: g.header, format };
+    let spec = table_export::Spec {
+        dialect: g.dialect,
+        cols: None,
+        header: g.header,
+        format,
+    };
     with_output(target, out, |w| {
         table_export::export(&buf, spec, w, &CancelToken::new(), None)?;
         Ok(())
@@ -738,12 +1057,31 @@ fn cmd_convert(args: &[String], out: &mut dyn Write) -> Res<i32> {
 }
 
 fn cmd_report(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["--urls", "--minutes", "--slow"], &["--top", "-o", "--output"])?;
-    let [file] = &a.rest[..] else { return fail("needs FILE") };
-    let top = a.opt(&["--top"]).map(|n| n.parse::<usize>().map_err(|_| Fail(format!("not a number: {n}")))).transpose()?;
+    let a = Args::parse(
+        args,
+        &["--urls", "--minutes", "--slow"],
+        &["--top", "-o", "--output"],
+    )?;
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
+    let top = a
+        .opt(&["--top"])
+        .map(|n| {
+            n.parse::<usize>()
+                .map_err(|_| Fail(format!("not a number: {n}")))
+        })
+        .transpose()?;
     let (buf, _) = open(Path::new(file))?;
-    let f = crate::logformat::detect(&buf)?.filter(|f| f.has_requests()).ok_or_else(|| Fail(format!("{file}: not a web server log (nginx / Apache, AWS ALB or Classic ELB, IIS)")))?;
-    let r = crate::logformat::report(&buf, &f, &CancelToken::new(), None, |_| {})?.unwrap_or_default();
+    let f = crate::logformat::detect(&buf)?
+        .filter(|f| f.has_requests())
+        .ok_or_else(|| {
+            Fail(format!(
+                "{file}: not a web server log (nginx / Apache, AWS ALB or Classic ELB, IIS)"
+            ))
+        })?;
+    let r =
+        crate::logformat::report(&buf, &f, &CancelToken::new(), None, |_| {})?.unwrap_or_default();
     with_output(a.opt(&["-o", "--output"]), out, |w| {
         let w = &mut &mut *w;
         if a.flag(&["--urls"]) {
@@ -774,7 +1112,9 @@ fn cmd_sqldump(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let settings = !a.flag(&["--no-settings"]);
     match (action, names) {
         ("tables", None) => {
-            with_output(a.opt(&["-o", "--output"]), out, |w| Ok(crate::sqldump::tables_csv(&dump, &mut &mut *w)?))?;
+            with_output(a.opt(&["-o", "--output"]), out, |w| {
+                Ok(crate::sqldump::tables_csv(&dump, &mut &mut *w)?)
+            })?;
             Ok(if dump.tables.is_empty() { 1 } else { 0 })
         }
         ("extract", Some(names)) => {
@@ -782,22 +1122,52 @@ fn cmd_sqldump(args: &[String], out: &mut dyn Write) -> Res<i32> {
             for n in names.split(',').map(str::trim).filter(|n| !n.is_empty()) {
                 match dump.find(n) {
                     Some(i) => which.push(i),
-                    None => return fail(format!("no table {n} in {file} (bigtext-cli sqldump {file} tables lists them)")),
+                    None => {
+                        return fail(format!(
+                            "no table {n} in {file} (bigtext-cli sqldump {file} tables lists them)"
+                        ))
+                    }
                 }
             }
             with_output(a.opt(&["-o", "--output"]), out, |w| {
-                crate::sqldump::write_tables(&buf, &dump, &which, if settings { crate::sqldump::Extract::WHOLE } else { crate::sqldump::Extract::BARE }, &mut &mut *w, &cancel, None)?;
+                crate::sqldump::write_tables(
+                    &buf,
+                    &dump,
+                    &which,
+                    if settings {
+                        crate::sqldump::Extract::WHOLE
+                    } else {
+                        crate::sqldump::Extract::BARE
+                    },
+                    &mut &mut *w,
+                    &cancel,
+                    None,
+                )?;
                 Ok(())
             })?;
             Ok(0)
         }
         ("split", None) => {
             let path = Path::new(file);
-            let dir = a.opt(&["--out-dir"]).map(PathBuf::from).or_else(|| path.parent().map(Path::to_path_buf)).unwrap_or_default();
-            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            let stem = name.trim_end_matches(".gz").trim_end_matches(".zst").trim_end_matches(".xz").trim_end_matches(".bz2").trim_end_matches(".sql").to_string();
+            let dir = a
+                .opt(&["--out-dir"])
+                .map(PathBuf::from)
+                .or_else(|| path.parent().map(Path::to_path_buf))
+                .unwrap_or_default();
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let stem = name
+                .trim_end_matches(".gz")
+                .trim_end_matches(".zst")
+                .trim_end_matches(".xz")
+                .trim_end_matches(".bz2")
+                .trim_end_matches(".sql")
+                .to_string();
             std::fs::create_dir_all(&dir)?;
-            let files = crate::sqldump::split(&buf, &dump, &dir, &stem, settings, &cancel, None)?.unwrap_or_default();
+            let files = crate::sqldump::split(&buf, &dump, &dir, &stem, settings, &cancel, None)?
+                .unwrap_or_default();
             for (p, n) in &files {
                 writeln!(out, "{}\t{}", p.display(), human_bytes(*n))?;
             }
@@ -809,7 +1179,9 @@ fn cmd_sqldump(args: &[String], out: &mut dyn Write) -> Res<i32> {
 
 fn cmd_values(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &[], &["-o", "--output"])?;
-    let [key, file] = &a.rest[..] else { return fail("needs FIELD and FILE") };
+    let [key, file] = &a.rest[..] else {
+        return fail("needs FIELD and FILE");
+    };
     let (buf, _) = open(Path::new(file))?;
     // JSON Lines when the first non-empty line is an object, otherwise logfmt.
     let mut r = LineReader::new(&buf);
@@ -822,8 +1194,11 @@ fn cmd_values(args: &[String], out: &mut dyn Write) -> Res<i32> {
         }
         break;
     }
-    let c = crate::fields::value_counts(&buf, key, syntax, &CancelToken::new(), None)?.unwrap_or_default();
-    with_output(a.opt(&["-o", "--output"]), out, |w| Ok(crate::fields::counts_to_csv(&c, key, &mut &mut *w)?))?;
+    let c = crate::fields::value_counts(&buf, key, syntax, &CancelToken::new(), None)?
+        .unwrap_or_default();
+    with_output(a.opt(&["-o", "--output"]), out, |w| {
+        Ok(crate::fields::counts_to_csv(&c, key, &mut &mut *w)?)
+    })?;
     Ok(if c.lines > 0 { 0 } else { 1 })
 }
 
@@ -832,11 +1207,25 @@ fn cmd_values(args: &[String], out: &mut dyn Write) -> Res<i32> {
 /// `--skip N`, `--quote '` and `--header` / `--no-header` overriding what was detected.
 fn table_of(buf: &TextBuf, file: &str, a: &Args) -> Res<csv::TableGuess> {
     let bom = buf.codec.bom_len as u64;
-    let sample = buf.read(bom..buf.len().min(bom + 64 * 1024)).ok_or_else(|| Fail("could not read the file".into()))?;
-    let preferred = if file.to_ascii_lowercase().ends_with(".tsv") { b'\t' } else { b',' };
-    let mut g = csv::detect_table(&buf.codec, &sample, bom + sample.len() as u64 == buf.len(), preferred, bom);
+    let sample = buf
+        .read(bom..buf.len().min(bom + 64 * 1024))
+        .ok_or_else(|| Fail("could not read the file".into()))?;
+    let preferred = if file.to_ascii_lowercase().ends_with(".tsv") {
+        b'\t'
+    } else {
+        b','
+    };
+    let mut g = csv::detect_table(
+        &buf.codec,
+        &sample,
+        bom + sample.len() as u64 == buf.len(),
+        preferred,
+        bom,
+    );
     if let Some(n) = a.opt(&["--skip"]) {
-        let n: usize = n.parse().map_err(|_| Fail(format!("not a line count: {n}")))?;
+        let n: usize = n
+            .parse()
+            .map_err(|_| Fail(format!("not a line count: {n}")))?;
         let mut at = bom;
         for _ in 0..n {
             at = crate::filter::line_end_at(buf, at).unwrap_or(buf.len());
@@ -860,30 +1249,74 @@ fn table_of(buf: &TextBuf, file: &str, a: &Args) -> Res<csv::TableGuess> {
 /// A column given as a header name or a 1-based number.
 fn column_index(buf: &TextBuf, g: &csv::TableGuess, col: &str) -> Res<usize> {
     if let Ok(n) = col.parse::<usize>() {
-        return if n > 0 { Ok(n - 1) } else { fail("columns count from 1") };
+        return if n > 0 {
+            Ok(n - 1)
+        } else {
+            fail("columns count from 1")
+        };
     }
     let mut names = Vec::new();
     csv::for_each_record(buf, g.dialect, &CancelToken::new(), None, |r| {
-        names = r.fields.iter().filter_map(|f| buf.read(f.clone()).map(|b| csv::field_value(&buf.codec, g.dialect, &b))).collect();
+        names = r
+            .fields
+            .iter()
+            .filter_map(|f| {
+                buf.read(f.clone())
+                    .map(|b| csv::field_value(&buf.codec, g.dialect, &b))
+            })
+            .collect();
         false
     });
-    names.iter().position(|n| n.trim() == col.trim()).ok_or_else(|| Fail(format!("no column named {col}")))
+    names
+        .iter()
+        .position(|n| n.trim() == col.trim())
+        .ok_or_else(|| Fail(format!("no column named {col}")))
 }
 
 fn cmd_join(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["--inner", "--no-header", "--header"], &["--on", "--left-on", "--right-on", "-o", "--output", "--skip", "--quote"])?;
-    let [lf, rf] = &a.rest[..] else { return fail("needs LEFT and RIGHT") };
+    let a = Args::parse(
+        args,
+        &["--inner", "--no-header", "--header"],
+        &[
+            "--on",
+            "--left-on",
+            "--right-on",
+            "-o",
+            "--output",
+            "--skip",
+            "--quote",
+        ],
+    )?;
+    let [lf, rf] = &a.rest[..] else {
+        return fail("needs LEFT and RIGHT");
+    };
     let (left, _) = open(Path::new(lf))?;
     let (right, _) = open(Path::new(rf))?;
     let (lg, rg) = (table_of(&left, lf, &a)?, table_of(&right, rf, &a)?);
-    let (lc, rc) = match (a.opt(&["--on"]), a.opt(&["--left-on"]), a.opt(&["--right-on"])) {
+    let (lc, rc) = match (
+        a.opt(&["--on"]),
+        a.opt(&["--left-on"]),
+        a.opt(&["--right-on"]),
+    ) {
         (Some(c), None, None) => (c, c),
         (None, Some(l), Some(r)) => (l, r),
         _ => return fail("give --on COL, or --left-on COL and --right-on COL"),
     };
-    let spec = crate::csv_join::JoinSpec { left_key: column_index(&left, &lg, lc)?, right_key: column_index(&right, &rg, rc)?, inner: a.flag(&["--inner"]), header: lg.header && rg.header };
+    let spec = crate::csv_join::JoinSpec {
+        left_key: column_index(&left, &lg, lc)?,
+        right_key: column_index(&right, &rg, rc)?,
+        inner: a.flag(&["--inner"]),
+        header: lg.header && rg.header,
+    };
     with_output(a.opt(&["-o", "--output"]), out, |w| {
-        crate::csv_join::join_to((&left, lg.dialect), (&right, rg.dialect), spec, &mut &mut *w, &CancelToken::new(), None)?;
+        crate::csv_join::join_to(
+            (&left, lg.dialect),
+            (&right, rg.dialect),
+            spec,
+            &mut &mut *w,
+            &CancelToken::new(),
+            None,
+        )?;
         Ok(())
     })?;
     Ok(0)
@@ -896,13 +1329,31 @@ fn parse_conds(tokens: &[String], col: &dyn Fn(&str) -> Res<usize>) -> Res<Vec<c
     let mut i = 0;
     while i < tokens.len() {
         let t = &tokens[i];
-        let sym = [("!=", CondOp::NotEquals), ("!~", CondOp::NotContains), ("=", CondOp::Equals), ("~", CondOp::Contains), (">", CondOp::Greater), ("<", CondOp::Less)];
-        if let Some((at, len, op)) = sym.iter().filter_map(|(s, op)| t.find(s).map(|at| (at, s.len(), *op))).min_by_key(|x| x.0) {
-            out.push(csv::Cond { col: col(&t[..at])?, op, value: t[at + len..].to_string() });
+        let sym = [
+            ("!=", CondOp::NotEquals),
+            ("!~", CondOp::NotContains),
+            ("=", CondOp::Equals),
+            ("~", CondOp::Contains),
+            (">", CondOp::Greater),
+            ("<", CondOp::Less),
+        ];
+        if let Some((at, len, op)) = sym
+            .iter()
+            .filter_map(|(s, op)| t.find(s).map(|at| (at, s.len(), *op)))
+            .min_by_key(|x| x.0)
+        {
+            out.push(csv::Cond {
+                col: col(&t[..at])?,
+                op,
+                value: t[at + len..].to_string(),
+            });
             i += 1;
             continue;
         }
-        let word = tokens.get(i + 1).map(|w| w.to_ascii_lowercase()).unwrap_or_default();
+        let word = tokens
+            .get(i + 1)
+            .map(|w| w.to_ascii_lowercase())
+            .unwrap_or_default();
         let (op, takes) = match word.as_str() {
             "eq" => (CondOp::Equals, true),
             "ne" => (CondOp::NotEquals, true),
@@ -911,10 +1362,25 @@ fn parse_conds(tokens: &[String], col: &dyn Fn(&str) -> Res<usize>) -> Res<Vec<c
             "lt" => (CondOp::Less, true),
             "empty" => (CondOp::Empty, false),
             "nonempty" => (CondOp::NotEmpty, false),
-            _ => return fail(format!("not a condition: {t} (col=v, col>n, col~v, or col eq v)")),
+            _ => {
+                return fail(format!(
+                    "not a condition: {t} (col=v, col>n, col~v, or col eq v)"
+                ))
+            }
         };
-        let value = if takes { tokens.get(i + 2).cloned().ok_or_else(|| Fail(format!("{t} {word} needs a value")))? } else { String::new() };
-        out.push(csv::Cond { col: col(t)?, op, value });
+        let value = if takes {
+            tokens
+                .get(i + 2)
+                .cloned()
+                .ok_or_else(|| Fail(format!("{t} {word} needs a value")))?
+        } else {
+            String::new()
+        };
+        out.push(csv::Cond {
+            col: col(t)?,
+            op,
+            value,
+        });
         i += if takes { 3 } else { 2 };
     }
     if out.is_empty() {
@@ -924,7 +1390,19 @@ fn parse_conds(tokens: &[String], col: &dyn Fn(&str) -> Res<usize>) -> Res<Vec<c
 }
 
 fn cmd_csv(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["--no-header", "--header", "--desc"], &["-o", "--output", "--skip", "--quote", "--delimiter", "--by", "--sum"])?;
+    let a = Args::parse(
+        args,
+        &["--no-header", "--header", "--desc"],
+        &[
+            "-o",
+            "--output",
+            "--skip",
+            "--quote",
+            "--delimiter",
+            "--by",
+            "--sum",
+        ],
+    )?;
     let (file, op, rest) = match &a.rest[..] {
         [file, op, rest @ ..] => (file, op.as_str(), rest),
         _ => return fail("needs FILE and an operation (cut, drop, sort, where, stats, group)"),
@@ -943,22 +1421,44 @@ fn cmd_csv(args: &[String], out: &mut dyn Write) -> Res<i32> {
         column_index(&buf, &g, t).map_err(|Fail(e)| {
             let mut names = Vec::new();
             csv::for_each_record(&buf, d, &CancelToken::new(), None, |r| {
-                names = r.fields.iter().filter_map(|f| buf.read(f.clone()).map(|b| csv::field_value(&buf.codec, d, &b))).collect();
+                names = r
+                    .fields
+                    .iter()
+                    .filter_map(|f| {
+                        buf.read(f.clone())
+                            .map(|b| csv::field_value(&buf.codec, d, &b))
+                    })
+                    .collect();
                 false
             });
             Fail(format!("{e}; the columns are {}", names.join(", ")))
         })
     };
-    let cols = |list: &str| list.split(',').map(|c| col(c.trim())).collect::<Res<Vec<usize>>>();
+    let cols = |list: &str| {
+        list.split(',')
+            .map(|c| col(c.trim()))
+            .collect::<Res<Vec<usize>>>()
+    };
     let to = a.opt(&["-o", "--output"]);
     let cancel = CancelToken::new();
-    let one = |what: &str| rest.first().cloned().ok_or_else(|| Fail(format!("{op} needs {what}")));
+    let one = |what: &str| {
+        rest.first()
+            .cloned()
+            .ok_or_else(|| Fail(format!("{op} needs {what}")))
+    };
     match op {
         "cut" | "drop" => {
             let mut c = cols(&one("COLUMNS")?)?;
             with_output(to, out, |w| {
                 if op == "cut" {
-                    csv::rewrite_to(&buf, d, &csv::Rewrite::Select(c.clone()), &mut &mut *w, &cancel, None)?;
+                    csv::rewrite_to(
+                        &buf,
+                        d,
+                        &csv::Rewrite::Select(c.clone()),
+                        &mut &mut *w,
+                        &cancel,
+                        None,
+                    )?;
                 } else {
                     c.sort_unstable();
                     c.dedup();
@@ -974,9 +1474,17 @@ fn cmd_csv(args: &[String], out: &mut dyn Write) -> Res<i32> {
                 None => one("--by COLUMN")?,
             };
             if buf.len() > csv::SORT_MAX {
-                return fail(format!("sorting works on files up to {}; this one is {}", human_bytes(csv::SORT_MAX), human_bytes(buf.len())));
+                return fail(format!(
+                    "sorting works on files up to {}; this one is {}",
+                    human_bytes(csv::SORT_MAX),
+                    human_bytes(buf.len())
+                ));
             }
-            let rw = csv::Rewrite::Sort { col: col(&by)?, desc: a.flag(&["--desc"]), header: g.header };
+            let rw = csv::Rewrite::Sort {
+                col: col(&by)?,
+                desc: a.flag(&["--desc"]),
+                header: g.header,
+            };
             with_output(to, out, |w| {
                 csv::rewrite_to(&buf, d, &rw, &mut &mut *w, &cancel, None)?;
                 Ok(())
@@ -987,17 +1495,28 @@ fn cmd_csv(args: &[String], out: &mut dyn Write) -> Res<i32> {
             let conds = parse_conds(rest, &col)?;
             let mut kept = 0;
             with_output(to, out, |w| {
-                kept = csv::filter_rows_to(&buf, d, &conds, g.header, &mut &mut *w, &cancel, None)?.map(|x| x.0).unwrap_or(0);
+                kept = csv::filter_rows_to(&buf, d, &conds, g.header, &mut &mut *w, &cancel, None)?
+                    .map(|x| x.0)
+                    .unwrap_or(0);
                 Ok(())
             })?;
             Ok(if kept > 0 { 0 } else { 1 })
         }
         "stats" => {
             let c = col(&one("a COLUMN")?)?;
-            let st = csv::column_stats(&buf, d, c, g.header, &cancel, None).map_err(|_| Fail("could not read the file".into()))?;
+            let st = csv::column_stats(&buf, d, c, g.header, &cancel, None)
+                .map_err(|_| Fail("could not read the file".into()))?;
             if json() {
-                let top: Vec<serde_json::Value> = st.top.iter().map(|(v, n)| serde_json::json!({"value": v, "count": n})).collect();
-                writeln!(out, "{}", serde_json::json!({"column": st.name, "rows": st.rows, "empty": st.empty, "numbers": st.numeric, "sum": st.sum, "min": st.min, "max": st.max, "mean": st.mean(), "distinct": st.distinct, "top": top}))?;
+                let top: Vec<serde_json::Value> = st
+                    .top
+                    .iter()
+                    .map(|(v, n)| serde_json::json!({"value": v, "count": n}))
+                    .collect();
+                writeln!(
+                    out,
+                    "{}",
+                    serde_json::json!({"column": st.name, "rows": st.rows, "empty": st.empty, "numbers": st.numeric, "sum": st.sum, "min": st.min, "max": st.max, "mean": st.mean(), "distinct": st.distinct, "top": top})
+                )?;
                 return Ok(0);
             }
             writeln!(out, "column: {}", st.name)?;
@@ -1013,7 +1532,12 @@ fn cmd_csv(args: &[String], out: &mut dyn Write) -> Res<i32> {
                     writeln!(out, "mean: {m}")?;
                 }
             }
-            writeln!(out, "distinct: {}{}", st.distinct, if st.distinct_capped { "+" } else { "" })?;
+            writeln!(
+                out,
+                "distinct: {}{}",
+                st.distinct,
+                if st.distinct_capped { "+" } else { "" }
+            )?;
             for (v, n) in st.top.iter().take(10) {
                 writeln!(out, "  {n}\t{v}")?;
             }
@@ -1022,14 +1546,17 @@ fn cmd_csv(args: &[String], out: &mut dyn Write) -> Res<i32> {
         "group" => {
             let key = col(&one("a COLUMN")?)?;
             let sum = a.opt(&["--sum"]).map(col).transpose()?;
-            let gr = csv::group_by(&buf, d, key, sum, g.header, &cancel, None).map_err(|_| Fail("could not read the file".into()))?;
+            let gr = csv::group_by(&buf, d, key, sum, g.header, &cancel, None)
+                .map_err(|_| Fail("could not read the file".into()))?;
             with_output(to, out, |w| {
                 csv::groups_to_csv(&gr, &mut &mut *w)?;
                 Ok(())
             })?;
             Ok(0)
         }
-        _ => fail(format!("unknown csv operation {op} (cut, drop, sort, where, stats, group)")),
+        _ => fail(format!(
+            "unknown csv operation {op} (cut, drop, sort, where, stats, group)"
+        )),
     }
 }
 
@@ -1037,14 +1564,20 @@ fn cmd_csv(args: &[String], out: &mut dyn Write) -> Res<i32> {
 fn settings_path(a: &Args) -> Res<PathBuf> {
     match a.opt(&["--settings"]) {
         Some(p) => Ok(PathBuf::from(p)),
-        None => crate::settings_file::state_file().ok_or_else(|| Fail("no settings file (give --settings FILE)".into())),
+        None => crate::settings_file::state_file()
+            .ok_or_else(|| Fail("no settings file (give --settings FILE)".into())),
     }
 }
 
 /// `--saved NAME [--settings FILE]` replaced by the saved search's pattern and switches.
 fn with_saved(rest: &[String]) -> Res<Vec<String>> {
-    let Some(i) = rest.iter().position(|a| a == "--saved") else { return Ok(rest.to_vec()) };
-    let name = rest.get(i + 1).ok_or_else(|| Fail("--saved needs a NAME".into()))?.clone();
+    let Some(i) = rest.iter().position(|a| a == "--saved") else {
+        return Ok(rest.to_vec());
+    };
+    let name = rest
+        .get(i + 1)
+        .ok_or_else(|| Fail("--saved needs a NAME".into()))?
+        .clone();
     let mut others: Vec<String> = Vec::new();
     let mut settings = None;
     let mut it = rest.iter().enumerate();
@@ -1060,10 +1593,15 @@ fn with_saved(rest: &[String]) -> Res<Vec<String>> {
     }
     let path = match settings {
         Some(p) => PathBuf::from(p),
-        None => crate::settings_file::state_file().ok_or_else(|| Fail("no settings file (give --settings FILE)".into()))?,
+        None => crate::settings_file::state_file()
+            .ok_or_else(|| Fail("no settings file (give --settings FILE)".into()))?,
     };
-    let all = crate::settings_file::saved_searches(&path).map_err(|e| Fail(format!("{}: {e}", display_path(&path))))?;
-    let s = all.iter().find(|s| s.name == name).ok_or_else(|| Fail(format!("no saved search named “{name}”")))?;
+    let all = crate::settings_file::saved_searches(&path)
+        .map_err(|e| Fail(format!("{}: {e}", display_path(&path))))?;
+    let s = all
+        .iter()
+        .find(|s| s.name == name)
+        .ok_or_else(|| Fail(format!("no saved search named “{name}”")))?;
     let mut out = Vec::new();
     if s.query.regex {
         out.push("-E".into());
@@ -1086,21 +1624,52 @@ fn with_saved(rest: &[String]) -> Res<Vec<String>> {
 fn cmd_saved(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &[], &["--settings"])?;
     let path = settings_path(&a)?;
-    let all = crate::settings_file::saved_searches(&path).map_err(|e| Fail(format!("{}: {e}", display_path(&path))))?;
+    let all = crate::settings_file::saved_searches(&path)
+        .map_err(|e| Fail(format!("{}: {e}", display_path(&path))))?;
     for s in &all {
         let flags = crate::settings_file::query_flags(&s.query);
         if json() {
-            writeln!(out, "{}", serde_json::json!({"name": s.name, "pattern": s.query.pattern, "regex": s.query.regex, "case_sensitive": s.query.case_sensitive, "whole_word": s.query.whole_word, "invert": s.invert}))?;
+            writeln!(
+                out,
+                "{}",
+                serde_json::json!({"name": s.name, "pattern": s.query.pattern, "regex": s.query.regex, "case_sensitive": s.query.case_sensitive, "whole_word": s.query.whole_word, "invert": s.invert})
+            )?;
         } else {
-            writeln!(out, "{}\t{}{}{}", s.name, s.query.pattern, if flags.is_empty() { String::new() } else { format!("  ({flags})") }, if s.invert { "  (lines without)" } else { "" })?;
+            writeln!(
+                out,
+                "{}\t{}{}{}",
+                s.name,
+                s.query.pattern,
+                if flags.is_empty() {
+                    String::new()
+                } else {
+                    format!("  ({flags})")
+                },
+                if s.invert { "  (lines without)" } else { "" }
+            )?;
         }
     }
     Ok(if all.is_empty() { 1 } else { 0 })
 }
 
 fn cmd_replace(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["-i", "--ignore-case", "-w", "--word", "-E", "--regex", "--in-place", "--bak"], &["-o", "--output"])?;
-    let [pattern, replacement, file] = &a.rest[..] else { return fail("needs PATTERN, REPLACEMENT and FILE") };
+    let a = Args::parse(
+        args,
+        &[
+            "-i",
+            "--ignore-case",
+            "-w",
+            "--word",
+            "-E",
+            "--regex",
+            "--in-place",
+            "--bak",
+        ],
+        &["-o", "--output"],
+    )?;
+    let [pattern, replacement, file] = &a.rest[..] else {
+        return fail("needs PATTERN, REPLACEMENT and FILE");
+    };
     let path = Path::new(file);
     if a.flag(&["--in-place"]) && crate::decompress::detect(path).is_some() {
         return fail("--in-place does not work on a compressed file; give -o OUT");
@@ -1111,12 +1680,17 @@ fn cmd_replace(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let tpl = crate::replace::Template::new(replacement, q.regex);
     let cancel = CancelToken::new();
     let count = if a.flag(&["--in-place"]) {
-        let t = crate::save::Transform::Replace { matcher: &m, template: &tpl, range: 0..buf.len() };
-        let (temp, stats) = match crate::save::write_temp(&buf, path, t, &cancel, &Progress::default()) {
-            Ok(x) => x,
-            Err(crate::save::SaveError::Io(e)) => return fail(e),
-            Err(crate::save::SaveError::Cancelled) => return fail("cancelled"),
+        let t = crate::save::Transform::Replace {
+            matcher: &m,
+            template: &tpl,
+            range: 0..buf.len(),
         };
+        let (temp, stats) =
+            match crate::save::write_temp(&buf, path, t, &cancel, &Progress::default()) {
+                Ok(x) => x,
+                Err(crate::save::SaveError::Io(e)) => return fail(e),
+                Err(crate::save::SaveError::Cancelled) => return fail("cancelled"),
+            };
         // The file is still mapped until the buffer goes.
         drop(buf);
         if stats.count == 0 {
@@ -1128,13 +1702,27 @@ fn cmd_replace(args: &[String], out: &mut dyn Write) -> Res<i32> {
     } else {
         let mut n = 0;
         with_output(a.opt(&["-o", "--output"]), out, |w| {
-            n = crate::replace::replace_all_to(&buf, &m, &tpl, 0..buf.len(), &mut &mut *w, &cancel, None)?.map(|s| s.count).unwrap_or(0);
+            n = crate::replace::replace_all_to(
+                &buf,
+                &m,
+                &tpl,
+                0..buf.len(),
+                &mut &mut *w,
+                &cancel,
+                None,
+            )?
+            .map(|s| s.count)
+            .unwrap_or(0);
             Ok(())
         })?;
         n
     };
     if json() {
-        writeln!(out, "{}", serde_json::json!({"file": file, "replaced": count}))?;
+        writeln!(
+            out,
+            "{}",
+            serde_json::json!({"file": file, "replaced": count})
+        )?;
     } else if a.flag(&["--in-place"]) {
         writeln!(out, "{count} replaced")?;
     }
@@ -1143,20 +1731,37 @@ fn cmd_replace(args: &[String], out: &mut dyn Write) -> Res<i32> {
 
 /// Writes `range` of `buf` (with line 1 first when `header` and the range starts later): as it
 /// is to a file, decoded to UTF-8 on the console.
-fn write_slice(buf: &TextBuf, range: std::ops::Range<u64>, header: bool, to: Option<&str>, out: &mut dyn Write) -> Res<i32> {
+fn write_slice(
+    buf: &TextBuf,
+    range: std::ops::Range<u64>,
+    header: bool,
+    to: Option<&str>,
+    out: &mut dyn Write,
+) -> Res<i32> {
     let codec = buf.codec;
     let bom = codec.bom_len as u64;
-    let header = if header && range.start > bom { crate::filter::line_end_at(buf, bom).map(|e| bom..e) } else { None };
+    let header = if header && range.start > bom {
+        crate::filter::line_end_at(buf, bom).map(|e| bom..e)
+    } else {
+        None
+    };
     let raw = to.is_some() || codec.enc == crate::encoding::Encoding::Utf8;
     with_output(to, out, |w| {
         if to.is_some() && bom > 0 {
-            w.write_all(&buf.read(0..bom).ok_or_else(|| Fail("could not read the file".into()))?)?;
+            w.write_all(
+                &buf.read(0..bom)
+                    .ok_or_else(|| Fail("could not read the file".into()))?,
+            )?;
         }
         let mut copy = |r: std::ops::Range<u64>| -> Res<()> {
             let r = r.start.max(bom)..r.end;
             let mut err = None;
             buf.for_each_chunk(r, |_, b| {
-                let res = if raw { w.write_all(b) } else { w.write_all(codec.decode_lossy(b).as_bytes()) };
+                let res = if raw {
+                    w.write_all(b)
+                } else {
+                    w.write_all(codec.decode_lossy(b).as_bytes())
+                };
                 match res {
                     Ok(()) => true,
                     Err(e) => {
@@ -1181,9 +1786,13 @@ fn write_slice(buf: &TextBuf, range: std::ops::Range<u64>, header: bool, to: Opt
 
 fn cmd_head_tail(args: &[String], out: &mut dyn Write, head: bool) -> Res<i32> {
     let a = Args::parse(args, &[], &["-n", "--lines", "-o", "--output"])?;
-    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
     let n: u64 = match a.opt(&["-n", "--lines"]) {
-        Some(v) => v.parse().map_err(|_| Fail(format!("-n needs a number of lines, not {v}")))?,
+        Some(v) => v
+            .parse()
+            .map_err(|_| Fail(format!("-n needs a number of lines, not {v}")))?,
         None => 10,
     };
     let (buf, _) = open(Path::new(file))?;
@@ -1194,19 +1803,33 @@ fn cmd_head_tail(args: &[String], out: &mut dyn Write, head: bool) -> Res<i32> {
             _ => 0..0,
         }
     } else {
-        crate::lines::last_lines_start(&buf, n).ok_or_else(|| Fail("could not read the file".into()))?..buf.len()
+        crate::lines::last_lines_start(&buf, n)
+            .ok_or_else(|| Fail("could not read the file".into()))?..buf.len()
     };
     write_slice(&buf, range, false, a.opt(&["-o", "--output"]), out)
 }
 
 fn cmd_slice(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["--header"], &["--lines", "--bytes", "--from", "--to", "-o", "--output"])?;
-    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let a = Args::parse(
+        args,
+        &["--header"],
+        &["--lines", "--bytes", "--from", "--to", "-o", "--output"],
+    )?;
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
     let (buf, _) = open(Path::new(file))?;
     let buf = buf.snapshot();
     let pair = |v: &str, what: &str| -> Res<(u64, u64)> {
-        let (x, y) = v.split_once('-').ok_or_else(|| Fail(format!("{what} needs A-B")))?;
-        let num = |s: &str| s.trim().replace('_', "").parse::<u64>().map_err(|_| Fail(format!("{what}: “{s}” is not a number")));
+        let (x, y) = v
+            .split_once('-')
+            .ok_or_else(|| Fail(format!("{what} needs A-B")))?;
+        let num = |s: &str| {
+            s.trim()
+                .replace('_', "")
+                .parse::<u64>()
+                .map_err(|_| Fail(format!("{what}: “{s}” is not a number")))
+        };
         let (x, y) = (num(x)?, num(y)?);
         if x > y {
             return fail(format!("{what}: {x} is after {y}"));
@@ -1214,7 +1837,12 @@ fn cmd_slice(args: &[String], out: &mut dyn Write) -> Res<i32> {
         Ok((x, y))
     };
     let cancel = CancelToken::new();
-    let range = match (a.opt(&["--lines"]), a.opt(&["--bytes"]), a.opt(&["--from"]), a.opt(&["--to"])) {
+    let range = match (
+        a.opt(&["--lines"]),
+        a.opt(&["--bytes"]),
+        a.opt(&["--from"]),
+        a.opt(&["--to"]),
+    ) {
         (Some(v), None, None, None) => {
             let (x, y) = pair(v, "--lines")?;
             split::line_range(&buf, x.max(1), y.max(1), &cancel, None).unwrap_or(0..0)
@@ -1228,33 +1856,59 @@ fn cmd_slice(args: &[String], out: &mut dyn Write) -> Res<i32> {
             s..e.max(s)
         }
         (None, None, from, to) if from.is_some() || to.is_some() => {
-            let parse = |t: &str| timestamp::parse(t).ok_or_else(|| Fail(format!("not a time: {t}")));
+            let parse =
+                |t: &str| timestamp::parse(t).ok_or_else(|| Fail(format!("not a time: {t}")));
             let from = from.map(parse).transpose()?;
-            let to = to.map(parse).transpose()?.map(|t| from.map(|f| timestamp::rebase(t, f)).unwrap_or(t));
+            let to = to
+                .map(parse)
+                .transpose()?
+                .map(|t| from.map(|f| timestamp::rebase(t, f)).unwrap_or(t));
             match timestamp::time_range(&buf, from, to, &cancel) {
                 Ok((s, e)) => s..e,
-                Err(timestamp::TimeError::NoTimestamps) => return fail("the file has no timestamps"),
+                Err(timestamp::TimeError::NoTimestamps) => {
+                    return fail("the file has no timestamps")
+                }
                 Err(e) => return fail(format!("{e:?}")),
             }
         }
         _ => return fail("give one of --lines A-B, --bytes A-B, or --from (and --to)"),
     };
-    write_slice(&buf, range, a.flag(&["--header"]), a.opt(&["-o", "--output"]), out)
+    write_slice(
+        &buf,
+        range,
+        a.flag(&["--header"]),
+        a.opt(&["-o", "--output"]),
+        out,
+    )
 }
 
 fn cmd_sort(args: &[String], out: &mut dyn Write, uniq: bool) -> Res<i32> {
     use crate::extsort::{SortMode, SortSpec};
     let a = Args::parse(args, &["-r", "-n", "-i", "-u", "-c"], &["-o", "--output"])?;
-    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
     let mode = match (uniq, a.flag(&["-c"]), a.flag(&["-u"])) {
         (true, true, _) => SortMode::Count,
         (true, false, _) | (false, _, true) => SortMode::Unique,
         _ => SortMode::Sort,
     };
-    let spec = SortSpec { reverse: a.flag(&["-r"]), numeric: a.flag(&["-n"]), ignore_case: a.flag(&["-i"]), mode, counts_csv: false };
+    let spec = SortSpec {
+        reverse: a.flag(&["-r"]),
+        numeric: a.flag(&["-n"]),
+        ignore_case: a.flag(&["-i"]),
+        mode,
+        counts_csv: false,
+    };
     let (buf, det) = open(Path::new(file))?;
     let snap = buf.snapshot();
-    let eol = snap.codec.encode(if det.line_ending == crate::encoding::LineEnding::CrLf { "\r\n" } else { "\n" });
+    let eol = snap
+        .codec
+        .encode(if det.line_ending == crate::encoding::LineEnding::CrLf {
+            "\r\n"
+        } else {
+            "\n"
+        });
     with_output(a.opt(&["-o", "--output"]), out, |w| {
         crate::extsort::sort_to(&snap, spec, &eol, w, &CancelToken::new(), None)?;
         Ok(())
@@ -1267,7 +1921,16 @@ fn text_op(file: &str, op: crate::textops::Op, to: Option<&str>, out: &mut dyn W
     let (buf, _) = open(Path::new(file))?;
     let snap = buf.snapshot();
     with_output(to, out, |w| {
-        crate::textops::text_op_to(&snap, 0..snap.len(), op, crate::text::rows::TAB_WIDTH, w, &CancelToken::new(), None).map_err(|e| Fail(e.to_string()))?;
+        crate::textops::text_op_to(
+            &snap,
+            0..snap.len(),
+            op,
+            crate::text::rows::TAB_WIDTH,
+            w,
+            &CancelToken::new(),
+            None,
+        )
+        .map_err(|e| Fail(e.to_string()))?;
         Ok(())
     })?;
     Ok(0)
@@ -1276,14 +1939,20 @@ fn text_op(file: &str, op: crate::textops::Op, to: Option<&str>, out: &mut dyn W
 fn cmd_transform(args: &[String], out: &mut dyn Write) -> Res<i32> {
     use crate::textops::Op;
     let a = Args::parse(args, &[], &["--op", "-o", "--output"])?;
-    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
     let op = match a.opt(&["--op"]) {
         Some("upper") => Op::Upper,
         Some("lower") => Op::Lower,
         Some("trim") => Op::TrimTrailing,
         Some("tabs") => Op::TabsToSpaces,
         Some("untabs") => Op::SpacesToTabs,
-        Some(o) => return fail(format!("unknown --op {o} (upper, lower, trim, tabs, untabs)")),
+        Some(o) => {
+            return fail(format!(
+                "unknown --op {o} (upper, lower, trim, tabs, untabs)"
+            ))
+        }
         None => return fail("give --op upper|lower|trim|tabs|untabs"),
     };
     text_op(file, op, a.opt(&["-o", "--output"]), out)
@@ -1292,7 +1961,9 @@ fn cmd_transform(args: &[String], out: &mut dyn Write) -> Res<i32> {
 fn cmd_format(args: &[String], out: &mut dyn Write) -> Res<i32> {
     use crate::textops::Op;
     let a = Args::parse(args, &[], &["--json", "-o", "--output"])?;
-    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
     let op = match a.opt(&["--json"]) {
         Some("pretty") | None => Op::JsonPretty,
         Some("minify") => Op::JsonMinify,
@@ -1302,28 +1973,66 @@ fn cmd_format(args: &[String], out: &mut dyn Write) -> Res<i32> {
 }
 
 fn cmd_diff_table(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["--all", "--no-header", "--header"], &["--key", "--key-b", "-o", "--output", "--skip", "--quote"])?;
-    let [fa, fb] = &a.rest[..] else { return fail("needs A and B") };
-    let Some(ka) = a.opt(&["--key"]) else { return fail("give --key COL (a header name or a 1-based number)") };
+    let a = Args::parse(
+        args,
+        &["--all", "--no-header", "--header"],
+        &["--key", "--key-b", "-o", "--output", "--skip", "--quote"],
+    )?;
+    let [fa, fb] = &a.rest[..] else {
+        return fail("needs A and B");
+    };
+    let Some(ka) = a.opt(&["--key"]) else {
+        return fail("give --key COL (a header name or a 1-based number)");
+    };
     let kb = a.opt(&["--key-b"]).unwrap_or(ka);
     let (ta, _) = open(Path::new(fa))?;
     let (tb, _) = open(Path::new(fb))?;
     let (ga, gb) = (table_of(&ta, fa, &a)?, table_of(&tb, fb, &a)?);
-    let spec = crate::csv_diff::KeyedSpec { key_a: column_index(&ta, &ga, ka)?, key_b: column_index(&tb, &gb, kb)?, header: ga.header && gb.header, all: a.flag(&["--all"]) };
+    let spec = crate::csv_diff::KeyedSpec {
+        key_a: column_index(&ta, &ga, ka)?,
+        key_b: column_index(&tb, &gb, kb)?,
+        header: ga.header && gb.header,
+        all: a.flag(&["--all"]),
+    };
     let mut stats = None;
     with_output(a.opt(&["-o", "--output"]), out, |w| {
-        stats = crate::csv_diff::keyed_diff_to((&ta, ga.dialect), (&tb, gb.dialect), spec, w, &CancelToken::new(), None)?;
+        stats = crate::csv_diff::keyed_diff_to(
+            (&ta, ga.dialect),
+            (&tb, gb.dialect),
+            spec,
+            w,
+            &CancelToken::new(),
+            None,
+        )?;
         Ok(())
     })?;
     Ok(stats.is_some_and(|s| s.changed + s.added + s.removed > 0) as i32)
 }
 
 fn cmd_jsonl(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["-v", "--invert", "--count"], &["-q", "--query", "--fields", "--to", "-o", "--output"])?;
-    let [file] = &a.rest[..] else { return fail("needs FILE") };
-    let q = a.opt(&["-q", "--query"]).map(crate::jsonq::FieldQuery::parse).transpose().map_err(Fail)?;
+    let a = Args::parse(
+        args,
+        &["-v", "--invert", "--count"],
+        &["-q", "--query", "--fields", "--to", "-o", "--output"],
+    )?;
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
+    let q = a
+        .opt(&["-q", "--query"])
+        .map(crate::jsonq::FieldQuery::parse)
+        .transpose()
+        .map_err(Fail)?;
     let invert = a.flag(&["-v", "--invert"]);
-    let fields: Vec<String> = a.opt(&["--fields"]).map(|f| f.split(',').map(|s| s.trim().trim_start_matches('.').to_string()).filter(|s| !s.is_empty()).collect()).unwrap_or_default();
+    let fields: Vec<String> = a
+        .opt(&["--fields"])
+        .map(|f| {
+            f.split(',')
+                .map(|s| s.trim().trim_start_matches('.').to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
     let csv_out = match a.opt(&["--to"]).map(str::to_ascii_lowercase).as_deref() {
         None | Some("jsonl") => false,
         Some("csv") if !fields.is_empty() => true,
@@ -1334,11 +2043,25 @@ fn cmd_jsonl(args: &[String], out: &mut dyn Write) -> Res<i32> {
     if buf.codec.unit() != 1 {
         return fail("JSON Lines must be UTF-8");
     }
-    let quote = |s: &str| if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() };
+    let quote = |s: &str| {
+        if s.contains([',', '"', '\n', '\r']) {
+            format!("\"{}\"", s.replace('"', "\"\""))
+        } else {
+            s.to_string()
+        }
+    };
     let mut n = 0u64;
     with_output(a.opt(&["-o", "--output"]), out, |w| {
         if csv_out {
-            writeln!(w, "{}", fields.iter().map(|f| quote(f)).collect::<Vec<_>>().join(","))?;
+            writeln!(
+                w,
+                "{}",
+                fields
+                    .iter()
+                    .map(|f| quote(f))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )?;
         }
         let mut r = LineReader::new(&buf);
         while let Some((_, line)) = r.next()? {
@@ -1354,10 +2077,29 @@ fn cmd_jsonl(args: &[String], out: &mut dyn Write) -> Res<i32> {
                 w.write_all(line.strip_suffix(b"\r").unwrap_or(line))?;
                 w.write_all(b"\n")?;
             } else if csv_out {
-                let row: Vec<String> = fields.iter().map(|f| quote(&crate::fields::find_value(line, f, crate::fields::Syntax::Json).unwrap_or_default())).collect();
+                let row: Vec<String> = fields
+                    .iter()
+                    .map(|f| {
+                        quote(
+                            &crate::fields::find_value(line, f, crate::fields::Syntax::Json)
+                                .unwrap_or_default(),
+                        )
+                    })
+                    .collect();
                 writeln!(w, "{}", row.join(","))?;
             } else {
-                let parts: Vec<String> = fields.iter().map(|f| format!("\"{}\": {}", f.replace('"', "\\\""), crate::fields::find_raw_json(line, f).map(|v| String::from_utf8_lossy(v).into_owned()).unwrap_or_else(|| "null".into()))).collect();
+                let parts: Vec<String> = fields
+                    .iter()
+                    .map(|f| {
+                        format!(
+                            "\"{}\": {}",
+                            f.replace('"', "\\\""),
+                            crate::fields::find_raw_json(line, f)
+                                .map(|v| String::from_utf8_lossy(v).into_owned())
+                                .unwrap_or_else(|| "null".into())
+                        )
+                    })
+                    .collect();
                 writeln!(w, "{{{}}}", parts.join(", "))?;
             }
         }
@@ -1371,11 +2113,15 @@ fn cmd_jsonl(args: &[String], out: &mut dyn Write) -> Res<i32> {
 
 fn cmd_jsondiff(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &[], &[])?;
-    let [fa, fb] = &a.rest[..] else { return fail("needs A and B") };
+    let [fa, fb] = &a.rest[..] else {
+        return fail("needs A and B");
+    };
     let (ba, _) = open(Path::new(fa))?;
     let (bb, _) = open(Path::new(fb))?;
     let cancel = CancelToken::new();
-    let pa = crate::json_diff::flatten_to_temp(&ba, "a.flat", &cancel, None).map_err(Fail)?.ok_or_else(|| Fail("cancelled".into()))?;
+    let pa = crate::json_diff::flatten_to_temp(&ba, "a.flat", &cancel, None)
+        .map_err(Fail)?
+        .ok_or_else(|| Fail("cancelled".into()))?;
     let pb = match crate::json_diff::flatten_to_temp(&bb, "b.flat", &cancel, None) {
         Ok(Some(p)) => p,
         r => {
@@ -1402,21 +2148,38 @@ fn cmd_jsondiff(args: &[String], out: &mut dyn Write) -> Res<i32> {
     if let Some(e) = err {
         return Err(e.into());
     }
-    Ok(if r.map_err(Fail)?.unwrap_or(false) { 1 } else { 0 })
+    Ok(if r.map_err(Fail)?.unwrap_or(false) {
+        1
+    } else {
+        0
+    })
 }
 
 /// What -w, -b, -i, -t and --mask ignore.
 fn diff_options(a: &Args) -> Res<crate::diff::DiffOptions> {
     let mask = match a.opt(&["--mask"]) {
-        Some(m) => Some(regex_automata::meta::Regex::new(m).map_err(|e| Fail(format!("--mask: {e}")))?),
+        Some(m) => {
+            Some(regex_automata::meta::Regex::new(m).map_err(|e| Fail(format!("--mask: {e}")))?)
+        }
         None => None,
     };
-    Ok(crate::diff::DiffOptions { whitespace: a.flag(&["-w", "-b"]), case: a.flag(&["-i"]), timestamps: a.flag(&["-t"]), mask })
+    Ok(crate::diff::DiffOptions {
+        whitespace: a.flag(&["-w", "-b"]),
+        case: a.flag(&["-i"]),
+        timestamps: a.flag(&["-t"]),
+        mask,
+    })
 }
 
 fn cmd_only_in(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["-w", "-b", "-i", "-t", "--count"], &["--mask", "-o", "--output"])?;
-    let [fa, fb] = &a.rest[..] else { return fail("needs A and B") };
+    let a = Args::parse(
+        args,
+        &["-w", "-b", "-i", "-t", "--count"],
+        &["--mask", "-o", "--output"],
+    )?;
+    let [fa, fb] = &a.rest[..] else {
+        return fail("needs A and B");
+    };
     let opts = diff_options(&a)?;
     let (ba, _) = open(Path::new(fa))?;
     let (bb, _) = open(Path::new(fb))?;
@@ -1424,18 +2187,21 @@ fn cmd_only_in(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let cancel = CancelToken::new();
     let budget = crate::setdiff::BUDGET;
     if a.flag(&["--count"]) {
-        let c = crate::setdiff::only_in(&ba, &bb, &opts, budget, &cancel, None, |_| true)?.ok_or_else(|| Fail("cancelled".into()))?;
+        let c = crate::setdiff::only_in(&ba, &bb, &opts, budget, &cancel, None, |_| true)?
+            .ok_or_else(|| Fail("cancelled".into()))?;
         writeln!(out, "{}", c.only)?;
         return Ok((c.only > 0) as i32);
     }
     let mut only = 0u64;
     with_output(a.opt(&["-o", "--output"]), out, |w| {
         let mut err = None;
-        let c = crate::setdiff::only_in(&ba, &bb, &opts, budget, &cancel, None, |off| match crate::setdiff::write_line_at(&ba, off, w) {
-            Ok(()) => true,
-            Err(e) => {
-                err = Some(e);
-                false
+        let c = crate::setdiff::only_in(&ba, &bb, &opts, budget, &cancel, None, |off| {
+            match crate::setdiff::write_line_at(&ba, off, w) {
+                Ok(()) => true,
+                Err(e) => {
+                    err = Some(e);
+                    false
+                }
             }
         })?;
         if let Some(e) = err {
@@ -1448,22 +2214,40 @@ fn cmd_only_in(args: &[String], out: &mut dyn Write) -> Res<i32> {
 }
 
 fn cmd_diff(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["-w", "-b", "-i", "-t", "-q", "-u"], &["--mask", "-U", "--context", "-o", "--output"])?;
-    let [fa, fb] = &a.rest[..] else { return fail("needs A and B") };
+    let a = Args::parse(
+        args,
+        &["-w", "-b", "-i", "-t", "-q", "-u"],
+        &["--mask", "-U", "--context", "-o", "--output"],
+    )?;
+    let [fa, fb] = &a.rest[..] else {
+        return fail("needs A and B");
+    };
     let opts = diff_options(&a)?;
     let context = match a.opt(&["-U", "--context"]) {
-        Some(n) => n.parse::<u64>().map_err(|_| Fail(format!("-U needs a number of lines, not {n}")))?,
+        Some(n) => n
+            .parse::<u64>()
+            .map_err(|_| Fail(format!("-U needs a number of lines, not {n}")))?,
         None => 3,
     };
     let (ba, _) = open(Path::new(fa))?;
     let (bb, _) = open(Path::new(fb))?;
     if a.flag(&["-q"]) {
         let mut differ = false;
-        let end = crate::diff::diff_with(&*ba.source, &*bb.source, &opts, &CancelToken::new(), None, |_| {
-            differ = true;
-            false
-        });
-        if matches!(end, crate::diff::DiffEnd::Failed | crate::diff::DiffEnd::Cancelled) {
+        let end = crate::diff::diff_with(
+            &*ba.source,
+            &*bb.source,
+            &opts,
+            &CancelToken::new(),
+            None,
+            |_| {
+                differ = true;
+                false
+            },
+        );
+        if matches!(
+            end,
+            crate::diff::DiffEnd::Failed | crate::diff::DiffEnd::Cancelled
+        ) {
             return fail("could not read the files");
         }
         if differ {
@@ -1471,7 +2255,14 @@ fn cmd_diff(args: &[String], out: &mut dyn Write) -> Res<i32> {
         }
         return Ok(differ as i32);
     }
-    let u = crate::unified::Unified { a: &*ba.source, b: &*bb.source, a_name: fa, b_name: fb, opts: &opts, context };
+    let u = crate::unified::Unified {
+        a: &*ba.source,
+        b: &*bb.source,
+        a_name: fa,
+        b_name: fb,
+        opts: &opts,
+        context,
+    };
     let mut differ = false;
     with_output(a.opt(&["-o", "--output"]), out, |w| {
         differ = crate::unified::write_unified(&u, w, &CancelToken::new(), None)?.unwrap_or(false);
@@ -1481,8 +2272,14 @@ fn cmd_diff(args: &[String], out: &mut dyn Write) -> Res<i32> {
 }
 
 fn cmd_derive(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["--no-header", "--header"], &["--name", "--expr", "-o", "--output", "--skip", "--quote"])?;
-    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let a = Args::parse(
+        args,
+        &["--no-header", "--header"],
+        &["--name", "--expr", "-o", "--output", "--skip", "--quote"],
+    )?;
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
     let (name, expr) = match (a.opt(&["--name"]), a.opt(&["--expr"])) {
         (Some(n), Some(e)) => (n.to_string(), e.to_string()),
         _ => return fail("give --name NAME and --expr EXPR"),
@@ -1492,14 +2289,33 @@ fn cmd_derive(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let mut names = Vec::new();
     if g.header {
         csv::for_each_record(&buf, g.dialect, &CancelToken::new(), None, |r| {
-            names = r.fields.iter().filter_map(|f| buf.read(f.clone()).map(|b| csv::field_value(&buf.codec, g.dialect, &b))).collect();
+            names = r
+                .fields
+                .iter()
+                .filter_map(|f| {
+                    buf.read(f.clone())
+                        .map(|b| csv::field_value(&buf.codec, g.dialect, &b))
+                })
+                .collect();
             false
         });
     }
     crate::csv_expr::Expr::compile(&expr, &names).map_err(Fail)?;
-    let rw = csv::Rewrite::Derive { name, expr, names, header: g.header };
+    let rw = csv::Rewrite::Derive {
+        name,
+        expr,
+        names,
+        header: g.header,
+    };
     with_output(a.opt(&["-o", "--output"]), out, |w| {
-        csv::rewrite_to(&buf, g.dialect, &rw, &mut &mut *w, &CancelToken::new(), None)?;
+        csv::rewrite_to(
+            &buf,
+            g.dialect,
+            &rw,
+            &mut &mut *w,
+            &CancelToken::new(),
+            None,
+        )?;
         Ok(())
     })?;
     Ok(0)
@@ -1507,19 +2323,35 @@ fn cmd_derive(args: &[String], out: &mut dyn Write) -> Res<i32> {
 
 fn cmd_pivot(args: &[String], out: &mut dyn Write) -> Res<i32> {
     use crate::csv_pivot::{Agg, Bucket, PivotSpec};
-    let a = Args::parse(args, &["--no-header", "--header"], &["--rows", "--cols", "--value", "--agg", "--by", "-o", "--output", "--skip", "--quote"])?;
-    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let a = Args::parse(
+        args,
+        &["--no-header", "--header"],
+        &[
+            "--rows", "--cols", "--value", "--agg", "--by", "-o", "--output", "--skip", "--quote",
+        ],
+    )?;
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
     let (buf, _) = open(Path::new(file))?;
     let g = table_of(&buf, file, &a)?;
     let col = |name: &str| -> Res<usize> {
-        let c = a.opt(&[name]).ok_or_else(|| Fail(format!("give {name} COL")))?;
+        let c = a
+            .opt(&[name])
+            .ok_or_else(|| Fail(format!("give {name} COL")))?;
         column_index(&buf, &g, c)
     };
-    let value = a.opt(&["--value"]).map(|c| column_index(&buf, &g, c)).transpose()?;
+    let value = a
+        .opt(&["--value"])
+        .map(|c| column_index(&buf, &g, c))
+        .transpose()?;
     let agg = match a.opt(&["--agg"]) {
         None if value.is_some() => Agg::Sum,
         None => Agg::Count,
-        Some(n) => Agg::ALL.into_iter().find(|x| x.name() == n.to_ascii_lowercase()).ok_or_else(|| Fail(format!("unknown --agg {n} (count, sum, mean, min, max)")))?,
+        Some(n) => Agg::ALL
+            .into_iter()
+            .find(|x| x.name() == n.to_ascii_lowercase())
+            .ok_or_else(|| Fail(format!("unknown --agg {n} (count, sum, mean, min, max)")))?,
     };
     if agg != Agg::Count && value.is_none() {
         return fail("--agg needs --value COL");
@@ -1531,21 +2363,48 @@ fn cmd_pivot(args: &[String], out: &mut dyn Write) -> Res<i32> {
         Some("month") => Bucket::Month,
         Some(b) => return fail(format!("unknown --by {b} (hour, day, month)")),
     };
-    let spec = PivotSpec { rows: col("--rows")?, cols: col("--cols")?, value, agg, bucket, header: g.header };
-    let p = crate::csv_pivot::pivot(&buf, g.dialect, spec, &CancelToken::new(), None).map_err(|_| Fail("could not read the file".into()))?;
-    with_output(a.opt(&["-o", "--output"]), out, |w| Ok(crate::csv_pivot::pivot_to_csv(&p, agg, &mut &mut *w)?))?;
+    let spec = PivotSpec {
+        rows: col("--rows")?,
+        cols: col("--cols")?,
+        value,
+        agg,
+        bucket,
+        header: g.header,
+    };
+    let p = crate::csv_pivot::pivot(&buf, g.dialect, spec, &CancelToken::new(), None)
+        .map_err(|_| Fail("could not read the file".into()))?;
+    with_output(a.opt(&["-o", "--output"]), out, |w| {
+        Ok(crate::csv_pivot::pivot_to_csv(&p, agg, &mut &mut *w)?)
+    })?;
     Ok(0)
 }
 
 fn cmd_validate(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["--no-header", "--header", "--json", "--lines"], &["--numeric", "--skip", "--quote"])?;
-    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let a = Args::parse(
+        args,
+        &["--no-header", "--header", "--json", "--lines"],
+        &["--numeric", "--skip", "--quote"],
+    )?;
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
     // JSON: as one document, or as JSON Lines.
     let (jbuf, _) = open(Path::new(file))?;
-    let kind = if a.flag(&["--lines"]) { "jsonl" } else if a.flag(&["--json"]) { "json" } else { sniff_kind(&jbuf) };
+    let kind = if a.flag(&["--lines"]) {
+        "jsonl"
+    } else if a.flag(&["--json"]) {
+        "json"
+    } else {
+        sniff_kind(&jbuf)
+    };
     if kind == "json" || kind == "jsonl" {
         let cancel = CancelToken::new();
-        let c = if kind == "jsonl" { crate::json_check::check_lines(&jbuf, &cancel, None, |_| {})? } else { crate::json_check::check_document(&jbuf, &cancel, None) }.unwrap_or_default();
+        let c = if kind == "jsonl" {
+            crate::json_check::check_lines(&jbuf, &cancel, None, |_| {})?
+        } else {
+            crate::json_check::check_document(&jbuf, &cancel, None)
+        }
+        .unwrap_or_default();
         let (mut at, mut line) = (0u64, 0u64);
         for p in &c.problems {
             jbuf.for_each_chunk(at..p.at, |base, ch| {
@@ -1559,7 +2418,13 @@ fn cmd_validate(args: &[String], out: &mut dyn Write) -> Res<i32> {
         return Ok(if c.problems.is_empty() { 0 } else { 1 });
     }
     let mut numeric = Vec::new();
-    for n in a.opt(&["--numeric"]).unwrap_or("").split(',').map(str::trim).filter(|n| !n.is_empty()) {
+    for n in a
+        .opt(&["--numeric"])
+        .unwrap_or("")
+        .split(',')
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+    {
         match n.parse::<usize>() {
             Ok(n) if n > 0 => numeric.push(n - 1),
             _ => return fail(format!("not a column number: {n}")),
@@ -1567,7 +2432,16 @@ fn cmd_validate(args: &[String], out: &mut dyn Write) -> Res<i32> {
     }
     let (buf, _) = open(Path::new(file))?;
     let g = table_of(&buf, file, &a)?;
-    let c = crate::csv_check::check(&buf, g.dialect, g.header, &numeric, &CancelToken::new(), None, |_| {})?.unwrap_or_default();
+    let c = crate::csv_check::check(
+        &buf,
+        g.dialect,
+        g.header,
+        &numeric,
+        &CancelToken::new(),
+        None,
+        |_| {},
+    )?
+    .unwrap_or_default();
     let (mut at, mut line) = (0u64, 0u64);
     for p in &c.problems {
         buf.for_each_chunk(at..p.start, |base, ch| {
@@ -1577,11 +2451,21 @@ fn cmd_validate(args: &[String], out: &mut dyn Write) -> Res<i32> {
         .ok_or_else(|| Fail("could not read the file".into()))?;
         at = p.start;
         let what = match p.kind {
-            crate::csv_check::Kind::Fields { got, want } => format!("{got} fields instead of {want}"),
-            crate::csv_check::Kind::StrayQuote { col } => format!("column {}: a stray quote", col + 1),
-            crate::csv_check::Kind::Unclosed { col } => format!("column {}: a quote that is never closed", col + 1),
-            crate::csv_check::Kind::Control { col } => format!("column {}: a control character", col + 1),
-            crate::csv_check::Kind::NotNumber { col } => format!("column {}: not a number", col + 1),
+            crate::csv_check::Kind::Fields { got, want } => {
+                format!("{got} fields instead of {want}")
+            }
+            crate::csv_check::Kind::StrayQuote { col } => {
+                format!("column {}: a stray quote", col + 1)
+            }
+            crate::csv_check::Kind::Unclosed { col } => {
+                format!("column {}: a quote that is never closed", col + 1)
+            }
+            crate::csv_check::Kind::Control { col } => {
+                format!("column {}: a control character", col + 1)
+            }
+            crate::csv_check::Kind::NotNumber { col } => {
+                format!("column {}: not a number", col + 1)
+            }
             crate::csv_check::Kind::Huge => "longer than 64 KB, not checked".to_string(),
         };
         writeln!(out, "{}: {what}", line + 1)?;
@@ -1590,9 +2474,30 @@ fn cmd_validate(args: &[String], out: &mut dyn Write) -> Res<i32> {
 }
 
 fn cmd_extract(args: &[String], out: &mut dyn Write) -> Res<i32> {
-    let a = Args::parse(args, &["-i", "--ignore-case", "-w", "--word", "-E", "--regex", "--count"], &["-g", "--group", "-o", "--output"])?;
-    let [pattern, file] = &a.rest[..] else { return fail("needs PATTERN and FILE") };
-    let group = a.opt(&["-g", "--group"]).map(|g| g.parse::<usize>().map_err(|_| Fail(format!("not a group number: {g}")))).transpose()?.unwrap_or(0);
+    let a = Args::parse(
+        args,
+        &[
+            "-i",
+            "--ignore-case",
+            "-w",
+            "--word",
+            "-E",
+            "--regex",
+            "--count",
+        ],
+        &["-g", "--group", "-o", "--output"],
+    )?;
+    let [pattern, file] = &a.rest[..] else {
+        return fail("needs PATTERN and FILE");
+    };
+    let group = a
+        .opt(&["-g", "--group"])
+        .map(|g| {
+            g.parse::<usize>()
+                .map_err(|_| Fail(format!("not a group number: {g}")))
+        })
+        .transpose()?
+        .unwrap_or(0);
     let (buf, _) = open(Path::new(file))?;
     let m = Matcher::new(&query(&a, pattern), buf.codec).map_err(Fail)?;
     if group > crate::search::group_names(&m).len() {
@@ -1602,13 +2507,23 @@ fn cmd_extract(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let mut n = 0;
     with_output(a.opt(&["-o", "--output"]), out, |w| {
         if a.flag(&["--count"]) {
-            let t = crate::extract::count(&buf, &m, group, 0..buf.len(), &cancel, None)?.unwrap_or_default();
+            let t = crate::extract::count(&buf, &m, group, 0..buf.len(), &cancel, None)?
+                .unwrap_or_default();
             for (v, c) in &t.values {
                 writeln!(w, "{c}\t{v}")?;
             }
             n = t.matches;
         } else {
-            n = crate::extract::write_values_to(&buf, &m, group, 0..buf.len(), &mut &mut *w, &cancel, None)?.unwrap_or(0);
+            n = crate::extract::write_values_to(
+                &buf,
+                &m,
+                group,
+                0..buf.len(),
+                &mut &mut *w,
+                &cancel,
+                None,
+            )?
+            .unwrap_or(0);
         }
         Ok(())
     })?;
@@ -1617,23 +2532,37 @@ fn cmd_extract(args: &[String], out: &mut dyn Write) -> Res<i32> {
 
 fn cmd_patterns(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &["--rare"], &["--top", "-o", "--output"])?;
-    let [file] = &a.rest[..] else { return fail("needs FILE") };
-    let top = a.opt(&["--top"]).map(|n| n.parse::<usize>().map_err(|_| Fail(format!("not a number: {n}")))).transpose()?;
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
+    let top = a
+        .opt(&["--top"])
+        .map(|n| {
+            n.parse::<usize>()
+                .map_err(|_| Fail(format!("not a number: {n}")))
+        })
+        .transpose()?;
     let (buf, _) = open(Path::new(file))?;
-    let mut p = crate::patterns::build(&buf, None, &CancelToken::new(), None, |_| {})?.unwrap_or_default();
+    let mut p =
+        crate::patterns::build(&buf, None, &CancelToken::new(), None, |_| {})?.unwrap_or_default();
     crate::patterns::sort(&mut p.templates, a.flag(&["--rare"]));
     if let Some(n) = top {
         p.templates.truncate(n);
     }
-    with_output(a.opt(&["-o", "--output"]), out, |w| Ok(crate::patterns::to_csv(&p.templates, &mut &mut *w)?))?;
+    with_output(a.opt(&["-o", "--output"]), out, |w| {
+        Ok(crate::patterns::to_csv(&p.templates, &mut &mut *w)?)
+    })?;
     Ok(0)
 }
 
 fn cmd_gaps(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(args, &[], &["--min"])?;
-    let [file] = &a.rest[..] else { return fail("needs FILE") };
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
     let min = a.opt(&["--min"]).unwrap_or("30s");
-    let min_ms = crate::gaps::parse_duration(min).ok_or_else(|| Fail(format!("not a duration: {min} (30s, 5m, 1h)")))?;
+    let min_ms = crate::gaps::parse_duration(min)
+        .ok_or_else(|| Fail(format!("not a duration: {min} (30s, 5m, 1h)")))?;
     let (buf, _) = open(Path::new(file))?;
     let g = crate::gaps::scan(&buf, min_ms, &CancelToken::new(), None, |_| {})?.unwrap_or_default();
     // Line numbers, counted forward from gap to gap.
@@ -1650,7 +2579,13 @@ fn cmd_gaps(args: &[String], out: &mut dyn Write) -> Res<i32> {
     for x in &g.gaps {
         let (a1, a2) = (line_of(x.before)?, line_of(x.after)?);
         let key = |k| timestamp::format_key(k, g.dated, true);
-        writeln!(out, "{a1}-{a2}: {} ({} -> {})", timestamp::format_delta(x.ms()), key(x.from), key(x.to))?;
+        writeln!(
+            out,
+            "{a1}-{a2}: {} ({} -> {})",
+            timestamp::format_delta(x.ms()),
+            key(x.from),
+            key(x.to)
+        )?;
     }
     Ok(if g.gaps.is_empty() { 1 } else { 0 })
 }
@@ -1667,15 +2602,27 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
 
 /// The files of `positionals` (with `*` and `?` in names expanded, as Windows shells do not)
 /// and of `-r DIR` limited to `--names`.
-fn expand_inputs(positionals: &[String], dir: Option<&str>, names: Option<&str>) -> Res<Vec<String>> {
+fn expand_inputs(
+    positionals: &[String],
+    dir: Option<&str>,
+    names: Option<&str>,
+) -> Res<Vec<String>> {
     let cancel = CancelToken::new();
     let mut out = Vec::new();
     for p in positionals {
         let path = Path::new(p);
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         if name.contains(['*', '?']) && !path.exists() {
-            let parent = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
-            let mut found = crate::find_files::list_files(parent, std::slice::from_ref(&name), false, &cancel).map_err(|e| Fail(format!("{p}: {e}")))?;
+            let parent = path
+                .parent()
+                .filter(|d| !d.as_os_str().is_empty())
+                .unwrap_or(Path::new("."));
+            let mut found =
+                crate::find_files::list_files(parent, std::slice::from_ref(&name), false, &cancel)
+                    .map_err(|e| Fail(format!("{p}: {e}")))?;
             if found.is_empty() {
                 return fail(format!("no files match {p}"));
             }
@@ -1687,7 +2634,8 @@ fn expand_inputs(positionals: &[String], dir: Option<&str>, names: Option<&str>)
     }
     if let Some(d) = dir {
         let pats = names.map(crate::find_files::patterns).unwrap_or_default();
-        let mut found = crate::find_files::list_files(Path::new(d), &pats, true, &cancel).map_err(|e| Fail(format!("{d}: {e}")))?;
+        let mut found = crate::find_files::list_files(Path::new(d), &pats, true, &cancel)
+            .map_err(|e| Fail(format!("{d}: {e}")))?;
         found.sort();
         out.extend(found.into_iter().map(|f| f.to_string_lossy().into_owned()));
     }
@@ -1699,10 +2647,34 @@ fn expand_inputs(positionals: &[String], dir: Option<&str>, names: Option<&str>)
 /// or one output per file in `--out-dir`. The exit code is 2 if a file failed, else 0 if any
 /// matched, else 1. `None` when it is a plain single-file run.
 fn run_batch(cmd: &str, rest: &[String], out: &mut dyn Write, err: &mut dyn Write) -> Option<i32> {
-    let filter_flags = [&["-v", "--invert", "-i", "--ignore-case", "-w", "--word", "-E", "--regex", "--any"][..], &CONTEXT_FLAGS].concat();
+    let filter_flags = [
+        &[
+            "-v",
+            "--invert",
+            "-i",
+            "--ignore-case",
+            "-w",
+            "--word",
+            "-E",
+            "--regex",
+            "--any",
+        ][..],
+        &CONTEXT_FLAGS,
+    ]
+    .concat();
     let (flags, opts): (Vec<&str>, Vec<&str>) = match cmd {
-        "filter" | "count" | "grep" => (filter_flags, [&["-o", "--output", "-e", "--pattern", "--not"][..], &CONTEXT_OPTS].concat()),
-        "levels" => (CONTEXT_FLAGS.to_vec(), [&["-o", "--output"][..], &CONTEXT_OPTS].concat()),
+        "filter" | "count" | "grep" => (
+            filter_flags,
+            [
+                &["-o", "--output", "-e", "--pattern", "--not"][..],
+                &CONTEXT_OPTS,
+            ]
+            .concat(),
+        ),
+        "levels" => (
+            CONTEXT_FLAGS.to_vec(),
+            [&["-o", "--output"][..], &CONTEXT_OPTS].concat(),
+        ),
         _ => return None,
     };
     const BATCH: [&str; 4] = ["-r", "--recursive", "--names", "--out-dir"];
@@ -1729,7 +2701,14 @@ fn run_batch(cmd: &str, rest: &[String], out: &mut dyn Write, err: &mut dyn Writ
     }
     // A pattern (or levels) first, unless the patterns come with -e and the first is a file.
     let with_e = own.iter().any(|o| o == "-e" || o == "--pattern");
-    let lead = if cmd != "levels" && with_e && positionals.first().is_some_and(|p| Path::new(p).exists()) { 0 } else { 1 };
+    let lead = if cmd != "levels"
+        && with_e
+        && positionals.first().is_some_and(|p| Path::new(p).exists())
+    {
+        0
+    } else {
+        1
+    };
     if positionals.len() < lead {
         return None;
     }
@@ -1740,7 +2719,12 @@ fn run_batch(cmd: &str, rest: &[String], out: &mut dyn Write, err: &mut dyn Writ
             return Some(2);
         }
     };
-    if cmd != "grep" && files.len() <= 1 && dir.is_none() && out_dir.is_none() && files.len() + lead == positionals.len() {
+    if cmd != "grep"
+        && files.len() <= 1
+        && dir.is_none()
+        && out_dir.is_none()
+        && files.len() + lead == positionals.len()
+    {
         return None;
     }
     let single = if cmd == "grep" { "filter" } else { cmd };
@@ -1757,10 +2741,16 @@ fn run_batch(cmd: &str, rest: &[String], out: &mut dyn Write, err: &mut dyn Writ
             let p = Path::new(f);
             let inner = match crate::decompress::detect(p) {
                 Some(_) => crate::decompress::inner_name(p),
-                None => p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                None => p
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
             };
             let q = Path::new(&inner);
-            let stem = q.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            let stem = q
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default();
             let name = match q.extension() {
                 Some(e) => format!("{stem}.filtered.{}", e.to_string_lossy()),
                 None => format!("{stem}.filtered"),
@@ -1792,7 +2782,13 @@ fn run_batch(cmd: &str, rest: &[String], out: &mut dyn Write, err: &mut dyn Writ
     if cmd == "count" {
         let _ = writeln!(out, "total: {total}");
     }
-    Some(if failed { 2 } else if matched { 0 } else { 1 })
+    Some(if failed {
+        2
+    } else if matched {
+        0
+    } else {
+        1
+    })
 }
 
 fn run_command(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
@@ -1804,7 +2800,11 @@ fn run_command(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32
     // (format has a --json option of its own.)
     let json = cmd != "format" && args.iter().any(|a| a == "--json");
     JSON.with(|j| j.set(json));
-    let mut rest: Vec<String> = args[1..].iter().filter(|a| !json || *a != "--json").cloned().collect();
+    let mut rest: Vec<String> = args[1..]
+        .iter()
+        .filter(|a| !json || *a != "--json")
+        .cloned()
+        .collect();
     if matches!(cmd.as_str(), "filter" | "count" | "grep") {
         match with_saved(&rest) {
             Ok(r) => rest = r,
@@ -1883,7 +2883,11 @@ mod tests {
         let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
         let (mut out, mut err) = (Vec::new(), Vec::new());
         let code = run(&args, &mut out, &mut err);
-        (code, String::from_utf8_lossy(&out).into_owned(), String::from_utf8_lossy(&err).into_owned())
+        (
+            code,
+            String::from_utf8_lossy(&out).into_owned(),
+            String::from_utf8_lossy(&err).into_owned(),
+        )
     }
 
     fn file(dir: &tempfile::TempDir, name: &str, text: &[u8]) -> String {
@@ -1895,19 +2899,39 @@ mod tests {
     #[test]
     fn filter_count_and_exit_codes() {
         let d = tempfile::tempdir().unwrap();
-        let log = file(&d, "app.log", b"10:00:00 INFO a\r\n10:00:01 ERROR b\r\n10:00:02 error c\r\n");
-        assert_eq!(run_args(&["filter", "ERROR", &log]), (0, "10:00:01 ERROR b\n".into(), String::new()));
-        assert_eq!(run_args(&["--filter", "-i", "error", &log]).1, "10:00:01 ERROR b\n10:00:02 error c\n");
-        assert_eq!(run_args(&["filter", "-v", "-E", "ERROR|INFO", &log]).1, "10:00:02 error c\n");
+        let log = file(
+            &d,
+            "app.log",
+            b"10:00:00 INFO a\r\n10:00:01 ERROR b\r\n10:00:02 error c\r\n",
+        );
+        assert_eq!(
+            run_args(&["filter", "ERROR", &log]),
+            (0, "10:00:01 ERROR b\n".into(), String::new())
+        );
+        assert_eq!(
+            run_args(&["--filter", "-i", "error", &log]).1,
+            "10:00:01 ERROR b\n10:00:02 error c\n"
+        );
+        assert_eq!(
+            run_args(&["filter", "-v", "-E", "ERROR|INFO", &log]).1,
+            "10:00:02 error c\n"
+        );
         assert_eq!(run_args(&["filter", "NOPE", &log]).0, 1);
-        assert_eq!(run_args(&["count", "-i", "error", &log]), (0, "2\n".into(), String::new()));
+        assert_eq!(
+            run_args(&["count", "-i", "error", &log]),
+            (0, "2\n".into(), String::new())
+        );
         assert_eq!(run_args(&["levels", "error", &log]).1, "10:00:01 ERROR b\n");
         // To a file, in the file's own form (CRLF kept).
         let out = d.path().join("errors.log");
-        assert_eq!(run_args(&["filter", "ERROR", &log, "-o", &out.to_string_lossy()]).0, 0);
+        assert_eq!(
+            run_args(&["filter", "ERROR", &log, "-o", &out.to_string_lossy()]).0,
+            0
+        );
         assert_eq!(std::fs::read(&out).unwrap(), b"10:00:01 ERROR b\r\n");
         // Errors.
-        let (code, _, err) = run_args(&["filter", "x", &d.path().join("missing").to_string_lossy()]);
+        let (code, _, err) =
+            run_args(&["filter", "x", &d.path().join("missing").to_string_lossy()]);
         assert_eq!(code, 2);
         assert!(err.starts_with("bigtext filter: "), "{err}");
         assert_eq!(run_args(&["filter", "--bogus", "x", &log]).0, 2);
@@ -1923,11 +2947,29 @@ mod tests {
         let (code, out, _) = run_args(&["filter", "-n", "-B", "1", "ERROR", &log]);
         assert_eq!(code, 0);
         assert_eq!(out, "1-2024-05-01 10:00:00 INFO a\n2:2024-05-01 10:00:01 ERROR b\n--\n5-2024-05-01 10:00:03 INFO d\n6:2024-05-01 10:00:04 ERROR e\n");
-        assert_eq!(run_args(&["levels", "--entries", "error", &log]).1, "2024-05-01 10:00:01 ERROR b\n\tat x.Y(Y.java:1)\n--\n2024-05-01 10:00:04 ERROR e\n");
-        assert_eq!(run_args(&["filter", "-C", "1", "c$", &log, "-E"]).1.lines().count(), 3);
+        assert_eq!(
+            run_args(&["levels", "--entries", "error", &log]).1,
+            "2024-05-01 10:00:01 ERROR b\n\tat x.Y(Y.java:1)\n--\n2024-05-01 10:00:04 ERROR e\n"
+        );
+        assert_eq!(
+            run_args(&["filter", "-C", "1", "c$", &log, "-E"])
+                .1
+                .lines()
+                .count(),
+            3
+        );
         assert_eq!(run_args(&["count", "-C", "3", "ERROR", &log]).1, "2\n");
         let o = d.path().join("o.log");
-        run_args(&["filter", "-n", "-A", "1", "ERROR", &log, "-o", &o.to_string_lossy()]);
+        run_args(&[
+            "filter",
+            "-n",
+            "-A",
+            "1",
+            "ERROR",
+            &log,
+            "-o",
+            &o.to_string_lossy(),
+        ]);
         assert_eq!(std::fs::read_to_string(&o).unwrap(), "2:2024-05-01 10:00:01 ERROR b\n3-\tat x.Y(Y.java:1)\n--\n6:2024-05-01 10:00:04 ERROR e\n");
         assert_eq!(run_args(&["filter", "-A", "x", "ERROR", &log]).0, 2);
     }
@@ -1935,13 +2977,33 @@ mod tests {
     #[test]
     fn convert_json_and_logfmt() {
         let d = tempfile::tempdir().unwrap();
-        let j = file(&d, "a.json", b"{\"n\": 2, \"events\": [ {\"id\": 1}, {\"id\": 2} ]}");
-        assert_eq!(run_args(&["convert", &j, "--to", "jsonl"]).1, "{\"id\":1}\n{\"id\":2}\n");
-        assert_eq!(run_args(&["convert", &j, "--to", "jsonl", "--path", "$.events[1]"]).0, 2);
+        let j = file(
+            &d,
+            "a.json",
+            b"{\"n\": 2, \"events\": [ {\"id\": 1}, {\"id\": 2} ]}",
+        );
+        assert_eq!(
+            run_args(&["convert", &j, "--to", "jsonl"]).1,
+            "{\"id\":1}\n{\"id\":2}\n"
+        );
+        assert_eq!(
+            run_args(&["convert", &j, "--to", "jsonl", "--path", "$.events[1]"]).0,
+            2
+        );
         let l = file(&d, "a.jsonl", b"{\"id\":1}\n{\"id\":2}\n");
-        assert_eq!(run_args(&["convert", &l, "--to", "json"]).1, "[\n{\"id\":1},\n{\"id\":2}\n]\n");
-        let f = file(&d, "a.log", b"level=info msg=ok\nlevel=error msg=\"bad x\"\n");
-        assert_eq!(run_args(&["convert", &f, "--to", "csv"]).1, "level,msg\ninfo,ok\nerror,bad x\n");
+        assert_eq!(
+            run_args(&["convert", &l, "--to", "json"]).1,
+            "[\n{\"id\":1},\n{\"id\":2}\n]\n"
+        );
+        let f = file(
+            &d,
+            "a.log",
+            b"level=info msg=ok\nlevel=error msg=\"bad x\"\n",
+        );
+        assert_eq!(
+            run_args(&["convert", &f, "--to", "csv"]).1,
+            "level,msg\ninfo,ok\nerror,bad x\n"
+        );
         assert_eq!(run_args(&["convert", &f, "--to", "json"]).0, 2);
     }
 
@@ -1949,22 +3011,58 @@ mod tests {
     fn convert_detects_the_table() {
         let d = tempfile::tempdir().unwrap();
         let t = file(&d, "t.csv", b"sep=;\n# note\nk;v\nx;1\n");
-        assert_eq!(run_args(&["convert", &t, "--to", "jsonl"]).1, "{\"k\": \"x\", \"v\": \"1\"}\n");
+        assert_eq!(
+            run_args(&["convert", &t, "--to", "jsonl"]).1,
+            "{\"k\": \"x\", \"v\": \"1\"}\n"
+        );
         let n = file(&d, "n.csv", b"1,2\n3,4\n5,6\n");
-        assert_eq!(run_args(&["convert", &n, "--to", "jsonl"]).1.lines().next(), Some("{\"column1\": \"1\", \"column2\": \"2\"}"));
-        assert_eq!(run_args(&["convert", &n, "--to", "jsonl", "--header"]).1.lines().next(), Some("{\"1\": \"3\", \"2\": \"4\"}"));
+        assert_eq!(
+            run_args(&["convert", &n, "--to", "jsonl"]).1.lines().next(),
+            Some("{\"column1\": \"1\", \"column2\": \"2\"}")
+        );
+        assert_eq!(
+            run_args(&["convert", &n, "--to", "jsonl", "--header"])
+                .1
+                .lines()
+                .next(),
+            Some("{\"1\": \"3\", \"2\": \"4\"}")
+        );
         let q = file(&d, "q.csv", b"a,b\n'x,y',2\n");
-        assert_eq!(run_args(&["convert", &q, "--to", "jsonl", "--quote", "'"]).1, "{\"a\": \"x,y\", \"b\": \"2\"}\n");
+        assert_eq!(
+            run_args(&["convert", &q, "--to", "jsonl", "--quote", "'"]).1,
+            "{\"a\": \"x,y\", \"b\": \"2\"}\n"
+        );
     }
 
     #[test]
     fn json_lines_queries() {
         let d = tempfile::tempdir().unwrap();
         let f = file(&d, "e.jsonl", b"{\"level\":\"error\",\"ms\":700,\"u\":{\"id\":1}}\n{\"level\":\"info\",\"ms\":20}\n{\"level\":\"error\",\"ms\":5,\"msg\":\"a, b\"}\n");
-        assert_eq!(run_args(&["jsonl", &f, "-q", ".level == error and .ms > 500"]).1, "{\"level\":\"error\",\"ms\":700,\"u\":{\"id\":1}}\n");
-        assert_eq!(run_args(&["jsonl", &f, "-q", ".level = error", "--count"]).1, "2\n");
-        assert_eq!(run_args(&["jsonl", &f, "-q", ".level = error", "-v", "--fields", "level,ms"]).1, "{\"level\": \"info\", \"ms\": 20}\n");
-        assert_eq!(run_args(&["jsonl", &f, "--fields", "ms,u.id,msg", "--to", "csv"]).1, "ms,u.id,msg\n700,1,\n20,,\n5,,\"a, b\"\n");
+        assert_eq!(
+            run_args(&["jsonl", &f, "-q", ".level == error and .ms > 500"]).1,
+            "{\"level\":\"error\",\"ms\":700,\"u\":{\"id\":1}}\n"
+        );
+        assert_eq!(
+            run_args(&["jsonl", &f, "-q", ".level = error", "--count"]).1,
+            "2\n"
+        );
+        assert_eq!(
+            run_args(&[
+                "jsonl",
+                &f,
+                "-q",
+                ".level = error",
+                "-v",
+                "--fields",
+                "level,ms"
+            ])
+            .1,
+            "{\"level\": \"info\", \"ms\": 20}\n"
+        );
+        assert_eq!(
+            run_args(&["jsonl", &f, "--fields", "ms,u.id,msg", "--to", "csv"]).1,
+            "ms,u.id,msg\n700,1,\n20,,\n5,,\"a, b\"\n"
+        );
         assert_eq!(run_args(&["jsonl", &f, "-q", ".nope exists"]).0, 1);
         assert_eq!(run_args(&["jsonl", &f, "-q", "level"]).0, 2);
     }
@@ -1973,17 +3071,36 @@ mod tests {
     fn derived_column() {
         let d = tempfile::tempdir().unwrap();
         let t = file(&d, "s.csv", b"price,qty\r\n2.5,4\r\n1,\"x\"\r\n");
-        assert_eq!(run_args(&["derive", &t, "--name", "total", "--expr", "{price} * {qty}"]).1, "price,qty,total\r\n2.5,4,10\r\n1,\"x\",\r\n");
-        assert_eq!(run_args(&["derive", &t, "--name", "x", "--expr", "{nope}"]).0, 2);
+        assert_eq!(
+            run_args(&["derive", &t, "--name", "total", "--expr", "{price} * {qty}"]).1,
+            "price,qty,total\r\n2.5,4,10\r\n1,\"x\",\r\n"
+        );
+        assert_eq!(
+            run_args(&["derive", &t, "--name", "x", "--expr", "{nope}"]).0,
+            2
+        );
     }
 
     #[test]
     fn pivot_tables() {
         let d = tempfile::tempdir().unwrap();
-        let t = file(&d, "s.csv", b"city,product,qty\nT,tea,3\nB,tea,5\nT,rice,7\n");
-        assert_eq!(run_args(&["pivot", &t, "--rows", "city", "--cols", "product"]).1, "city,rice,tea,Total\nT,1,1,2\nB,0,1,1\n");
-        assert_eq!(run_args(&["pivot", &t, "--rows", "1", "--cols", "2", "--value", "qty"]).1, "city,rice,tea,Total\nT,7,3,10\nB,,5,5\n");
-        assert_eq!(run_args(&["pivot", &t, "--rows", "city", "--cols", "product", "--agg", "mean"]).0, 2);
+        let t = file(
+            &d,
+            "s.csv",
+            b"city,product,qty\nT,tea,3\nB,tea,5\nT,rice,7\n",
+        );
+        assert_eq!(
+            run_args(&["pivot", &t, "--rows", "city", "--cols", "product"]).1,
+            "city,rice,tea,Total\nT,1,1,2\nB,0,1,1\n"
+        );
+        assert_eq!(
+            run_args(&["pivot", &t, "--rows", "1", "--cols", "2", "--value", "qty"]).1,
+            "city,rice,tea,Total\nT,7,3,10\nB,,5,5\n"
+        );
+        assert_eq!(
+            run_args(&["pivot", &t, "--rows", "city", "--cols", "product", "--agg", "mean"]).0,
+            2
+        );
     }
 
     #[test]
@@ -1991,31 +3108,78 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let o = file(&d, "o.csv", b"order,user\n1,u1\n2,u3\n");
         let u = file(&d, "u.csv", b"id,name\nu1,Ann\nu2,Bob\n");
-        assert_eq!(run_args(&["join", &o, &u, "--left-on", "user", "--right-on", "id"]).1, "order,user,name\n1,u1,Ann\n2,u3,\n");
-        assert_eq!(run_args(&["join", &o, &u, "--left-on", "2", "--right-on", "1", "--inner"]).1, "order,user,name\n1,u1,Ann\n");
+        assert_eq!(
+            run_args(&["join", &o, &u, "--left-on", "user", "--right-on", "id"]).1,
+            "order,user,name\n1,u1,Ann\n2,u3,\n"
+        );
+        assert_eq!(
+            run_args(&[
+                "join",
+                &o,
+                &u,
+                "--left-on",
+                "2",
+                "--right-on",
+                "1",
+                "--inner"
+            ])
+            .1,
+            "order,user,name\n1,u1,Ann\n"
+        );
         assert_eq!(run_args(&["join", &o, &u, "--on", "nope"]).0, 2);
     }
 
     #[test]
     fn line_diff() {
         let d = tempfile::tempdir().unwrap();
-        let a = file(&d, "a.log", b"10:00:01 start req=a1\n10:00:02 Working\n10:00:03 end\n");
-        let b = file(&d, "b.log", b"11:20:01 start req=f9\n11:20:02 working\n11:20:03 end\nextra\n");
+        let a = file(
+            &d,
+            "a.log",
+            b"10:00:01 start req=a1\n10:00:02 Working\n10:00:03 end\n",
+        );
+        let b = file(
+            &d,
+            "b.log",
+            b"11:20:01 start req=f9\n11:20:02 working\n11:20:03 end\nextra\n",
+        );
         let (code, out, _) = run_args(&["diff", &a, &b]);
         assert_eq!(code, 1);
-        assert!(out.starts_with(&format!("--- {a}\n+++ {b}\n@@ -1,3 +1,4 @@\n-10:00:01 start req=a1\n")), "{out}");
+        assert!(
+            out.starts_with(&format!(
+                "--- {a}\n+++ {b}\n@@ -1,3 +1,4 @@\n-10:00:01 start req=a1\n"
+            )),
+            "{out}"
+        );
         assert!(out.ends_with("+11:20:03 end\n+extra\n"), "{out}");
         let masked = ["diff", &a, &b, "-t", "-i", "--mask", "req=[0-9a-f]+"];
         let (code, out, _) = run_args(&masked);
         let body = |out: &str| out.lines().skip(2).map(String::from).collect::<Vec<_>>();
-        assert_eq!((code, body(&out)), (1, vec!["@@ -1,3 +1,4 @@".into(), " 10:00:01 start req=a1".into(), " 10:00:02 Working".into(), " 10:00:03 end".into(), "+extra".into()]));
+        assert_eq!(
+            (code, body(&out)),
+            (
+                1,
+                vec![
+                    "@@ -1,3 +1,4 @@".into(),
+                    " 10:00:01 start req=a1".into(),
+                    " 10:00:02 Working".into(),
+                    " 10:00:03 end".into(),
+                    "+extra".into()
+                ]
+            )
+        );
         let (_, out, _) = run_args(&[&masked[..], &["-U", "0"]].concat());
         assert_eq!(body(&out), vec!["@@ -3,0 +4,1 @@", "+extra"]);
-        assert_eq!(run_args(&["diff", &a, &b, "-q"]), (1, format!("Files {a} and {b} differ\n"), String::new()));
+        assert_eq!(
+            run_args(&["diff", &a, &b, "-q"]),
+            (1, format!("Files {a} and {b} differ\n"), String::new())
+        );
         let o = d.path().join("out.diff").to_string_lossy().into_owned();
         assert_eq!(run_args(&["diff", &a, &b, "-o", &o]).1, "");
         assert!(std::fs::read_to_string(&o).unwrap().contains("+extra\n"));
-        assert_eq!(run_args(&["diff", &a, &a]), (0, String::new(), String::new()));
+        assert_eq!(
+            run_args(&["diff", &a, &a]),
+            (0, String::new(), String::new())
+        );
         assert_eq!(run_args(&["diff", &a, &a, "-q"]).0, 0);
         assert_eq!(run_args(&["diff", &a, &b, "--mask", "("]).0, 2);
     }
@@ -2023,22 +3187,59 @@ mod tests {
     #[test]
     fn lines_only_in_one_file() {
         let d = tempfile::tempdir().unwrap();
-        let a = file(&d, "a.log", b"09:00:01 start job=1\n09:00:02 load\n09:00:03 crash\n09:00:04 load\n");
+        let a = file(
+            &d,
+            "a.log",
+            b"09:00:01 start job=1\n09:00:02 load\n09:00:03 crash\n09:00:04 load\n",
+        );
         let b = file(&d, "b.log", b"10:15:00 load\n10:15:01 start job=7\n");
-        assert_eq!(run_args(&["only-in", &a, &b]), (1, "09:00:01 start job=1\n09:00:02 load\n09:00:03 crash\n09:00:04 load\n".into(), String::new()));
+        assert_eq!(
+            run_args(&["only-in", &a, &b]),
+            (
+                1,
+                "09:00:01 start job=1\n09:00:02 load\n09:00:03 crash\n09:00:04 load\n".into(),
+                String::new()
+            )
+        );
         let masked = ["only-in", &a, &b, "-t", "--mask", "job=[0-9]+"];
-        assert_eq!(run_args(&masked), (1, "09:00:03 crash\n".into(), String::new()));
-        assert_eq!(run_args(&[&masked[..], &["--count"]].concat()), (1, "1\n".into(), String::new()));
-        assert_eq!(run_args(&["only-in", &b, &a, "-t", "--mask", "job=[0-9]+"]), (0, String::new(), String::new()));
+        assert_eq!(
+            run_args(&masked),
+            (1, "09:00:03 crash\n".into(), String::new())
+        );
+        assert_eq!(
+            run_args(&[&masked[..], &["--count"]].concat()),
+            (1, "1\n".into(), String::new())
+        );
+        assert_eq!(
+            run_args(&["only-in", &b, &a, "-t", "--mask", "job=[0-9]+"]),
+            (0, String::new(), String::new())
+        );
     }
 
     #[test]
     fn table_diff_by_key() {
         let d = tempfile::tempdir().unwrap();
         let a = file(&d, "a.csv", b"id,name,qty\n1,apple,5\n2,banana,7\n");
-        let b = file(&d, "b.csv", b"qty,name,id\n6,apple,1\n7,banana,2\n1,fig,9\n");
-        assert_eq!(run_args(&["diff-table", &a, &b, "--key", "id"]), (1, "status,id,changed,name,qty\nchanged,1,qty,apple,5 → 6\nadded,9,,fig,1\n".into(), String::new()));
-        assert_eq!(run_args(&["diff-table", &a, &b, "--key", "1", "--key-b", "3", "--all"]).1.lines().nth(2), Some("same,2,,banana,7"));
+        let b = file(
+            &d,
+            "b.csv",
+            b"qty,name,id\n6,apple,1\n7,banana,2\n1,fig,9\n",
+        );
+        assert_eq!(
+            run_args(&["diff-table", &a, &b, "--key", "id"]),
+            (
+                1,
+                "status,id,changed,name,qty\nchanged,1,qty,apple,5 → 6\nadded,9,,fig,1\n".into(),
+                String::new()
+            )
+        );
+        assert_eq!(
+            run_args(&["diff-table", &a, &b, "--key", "1", "--key-b", "3", "--all"])
+                .1
+                .lines()
+                .nth(2),
+            Some("same,2,,banana,7")
+        );
         assert_eq!(run_args(&["diff-table", &a, &a, "--key", "id"]).0, 0);
         assert_eq!(run_args(&["diff-table", &a, &b]).0, 2);
     }
@@ -2046,22 +3247,56 @@ mod tests {
     #[test]
     fn csv_column_tools() {
         let d = tempfile::tempdir().unwrap();
-        let t = file(&d, "s.csv", b"id,city,amount\n1,Tashkent,120\n2,Bukhara,80\n3,Tashkent,40\n");
-        assert_eq!(run_args(&["csv", &t, "cut", "amount,id"]).1, "amount,id\n120,1\n80,2\n40,3\n");
-        assert_eq!(run_args(&["csv", &t, "drop", "2"]).1, "id,amount\n1,120\n2,80\n3,40\n");
-        assert_eq!(run_args(&["csv", &t, "sort", "--by", "amount", "--desc"]).1, "id,city,amount\n1,Tashkent,120\n2,Bukhara,80\n3,Tashkent,40\n");
-        assert_eq!(run_args(&["csv", &t, "sort", "amount"]).1.lines().nth(1), Some("3,Tashkent,40"));
-        assert_eq!(run_args(&["csv", &t, "where", "city=Tashkent", "amount>50"]).1, "id,city,amount\n1,Tashkent,120\n");
-        assert_eq!(run_args(&["csv", &t, "where", "amount", "lt", "100"]).1, "id,city,amount\n2,Bukhara,80\n3,Tashkent,40\n");
+        let t = file(
+            &d,
+            "s.csv",
+            b"id,city,amount\n1,Tashkent,120\n2,Bukhara,80\n3,Tashkent,40\n",
+        );
+        assert_eq!(
+            run_args(&["csv", &t, "cut", "amount,id"]).1,
+            "amount,id\n120,1\n80,2\n40,3\n"
+        );
+        assert_eq!(
+            run_args(&["csv", &t, "drop", "2"]).1,
+            "id,amount\n1,120\n2,80\n3,40\n"
+        );
+        assert_eq!(
+            run_args(&["csv", &t, "sort", "--by", "amount", "--desc"]).1,
+            "id,city,amount\n1,Tashkent,120\n2,Bukhara,80\n3,Tashkent,40\n"
+        );
+        assert_eq!(
+            run_args(&["csv", &t, "sort", "amount"]).1.lines().nth(1),
+            Some("3,Tashkent,40")
+        );
+        assert_eq!(
+            run_args(&["csv", &t, "where", "city=Tashkent", "amount>50"]).1,
+            "id,city,amount\n1,Tashkent,120\n"
+        );
+        assert_eq!(
+            run_args(&["csv", &t, "where", "amount", "lt", "100"]).1,
+            "id,city,amount\n2,Bukhara,80\n3,Tashkent,40\n"
+        );
         assert_eq!(run_args(&["csv", &t, "where", "city~zzz"]).0, 1);
         let st = run_args(&["csv", &t, "stats", "amount"]).1;
-        assert!(st.contains("rows: 3\n") && st.contains("sum: 240\n") && st.contains("mean: 80\n"), "{st}");
+        assert!(
+            st.contains("rows: 3\n") && st.contains("sum: 240\n") && st.contains("mean: 80\n"),
+            "{st}"
+        );
         let gr = run_args(&["csv", &t, "group", "city", "--sum", "amount"]).1;
-        assert!(gr.starts_with("city,rows,sum") || gr.contains("Tashkent"), "{gr}");
+        assert!(
+            gr.starts_with("city,rows,sum") || gr.contains("Tashkent"),
+            "{gr}"
+        );
         let (code, _, err) = run_args(&["csv", &t, "cut", "nope"]);
-        assert!(code == 2 && err.contains("the columns are id, city, amount"), "{err}");
+        assert!(
+            code == 2 && err.contains("the columns are id, city, amount"),
+            "{err}"
+        );
         let semi = file(&d, "p.txt", b"a|b\n1|2\n");
-        assert_eq!(run_args(&["csv", &semi, "cut", "b", "--delimiter", "|"]).1, "b\n2\n");
+        assert_eq!(
+            run_args(&["csv", &semi, "cut", "b", "--delimiter", "|"]).1,
+            "b\n2\n"
+        );
     }
 
     #[test]
@@ -2070,25 +3305,79 @@ mod tests {
         let log = file(&d, "a.log", b"ok\r\nERROR one\r\nERROR two\r\n");
         let (code, out, _) = run_args(&["filter", "ERROR", &log, "--json"]);
         assert_eq!(code, 0);
-        let recs: Vec<serde_json::Value> = out.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
-        assert_eq!((recs.len(), recs[0]["line"].as_u64(), recs[0]["offset"].as_u64(), recs[1]["text"].as_str()), (2, Some(2), Some(4), Some("ERROR two")));
-        let c: serde_json::Value = serde_json::from_str(run_args(&["count", "ERROR", &log, "--json"]).1.trim()).unwrap();
+        let recs: Vec<serde_json::Value> = out
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(
+            (
+                recs.len(),
+                recs[0]["line"].as_u64(),
+                recs[0]["offset"].as_u64(),
+                recs[1]["text"].as_str()
+            ),
+            (2, Some(2), Some(4), Some("ERROR two"))
+        );
+        let c: serde_json::Value =
+            serde_json::from_str(run_args(&["count", "ERROR", &log, "--json"]).1.trim()).unwrap();
         assert_eq!(c["count"], 2);
-        let st: serde_json::Value = serde_json::from_str(run_args(&["stats", &log, "--json"]).1.trim()).unwrap();
-        assert_eq!((st["lines"].as_u64(), st["crlf"].as_u64()), (Some(3), Some(3)));
-        let e: serde_json::Value = serde_json::from_str(run_args(&["count", "x", "--saved", "nope", "--settings", &log, "--json"]).1.trim()).unwrap();
+        let st: serde_json::Value =
+            serde_json::from_str(run_args(&["stats", &log, "--json"]).1.trim()).unwrap();
+        assert_eq!(
+            (st["lines"].as_u64(), st["crlf"].as_u64()),
+            (Some(3), Some(3))
+        );
+        let e: serde_json::Value = serde_json::from_str(
+            run_args(&[
+                "count",
+                "x",
+                "--saved",
+                "nope",
+                "--settings",
+                &log,
+                "--json",
+            ])
+            .1
+            .trim(),
+        )
+        .unwrap();
         assert!(e["error"].as_str().unwrap().contains("nope"));
         // Replace to stdout, then in place with a backup.
-        assert_eq!(run_args(&["replace", "-E", "ERROR (\\w+)", "E[$1]", &log]).1, "ok\r\nE[one]\r\nE[two]\r\n");
-        assert_eq!(run_args(&["replace", "ERROR", "Error", &log, "--in-place", "--bak"]), (0, "2 replaced\n".into(), String::new()));
-        assert_eq!(std::fs::read(&log).unwrap(), b"ok\r\nError one\r\nError two\r\n");
+        assert_eq!(
+            run_args(&["replace", "-E", "ERROR (\\w+)", "E[$1]", &log]).1,
+            "ok\r\nE[one]\r\nE[two]\r\n"
+        );
+        assert_eq!(
+            run_args(&["replace", "ERROR", "Error", &log, "--in-place", "--bak"]),
+            (0, "2 replaced\n".into(), String::new())
+        );
+        assert_eq!(
+            std::fs::read(&log).unwrap(),
+            b"ok\r\nError one\r\nError two\r\n"
+        );
         assert!(std::path::Path::new(&format!("{log}.bak")).exists());
-        assert_eq!(run_args(&["replace", "nothing", "x", &log, "--in-place"]).0, 1);
+        assert_eq!(
+            run_args(&["replace", "nothing", "x", &log, "--in-place"]).0,
+            1
+        );
         // A saved search from a settings file.
-        let settings = file(&d, "settings.txt", b"saved=Errors|i|0||error\nsaved=Not ok|c|1||ok\n");
-        assert_eq!(run_args(&["saved", "--settings", &settings]).1, "Errors\terror\nNot ok\tok  (c)  (lines without)\n");
-        assert_eq!(run_args(&["count", "--saved", "Errors", "--settings", &settings, &log]).1, "2\n");
-        assert_eq!(run_args(&["filter", "--saved", "Not ok", "--settings", &settings, &log]).1, "Error one\nError two\n");
+        let settings = file(
+            &d,
+            "settings.txt",
+            b"saved=Errors|i|0||error\nsaved=Not ok|c|1||ok\n",
+        );
+        assert_eq!(
+            run_args(&["saved", "--settings", &settings]).1,
+            "Errors\terror\nNot ok\tok  (c)  (lines without)\n"
+        );
+        assert_eq!(
+            run_args(&["count", "--saved", "Errors", "--settings", &settings, &log]).1,
+            "2\n"
+        );
+        assert_eq!(
+            run_args(&["filter", "--saved", "Not ok", "--settings", &settings, &log]).1,
+            "Error one\nError two\n"
+        );
     }
 
     #[test]
@@ -2105,40 +3394,101 @@ mod tests {
         let star = d.path().join("*.log").to_string_lossy().into_owned();
         let (code, out, _) = run_args(&["count", "ERROR", &star]);
         assert_eq!(code, 0);
-        assert!(out.contains("a.log: 1\n") && out.contains("b.log: 0\n") && out.ends_with("total: 1\n"), "{out}");
+        assert!(
+            out.contains("a.log: 1\n") && out.contains("b.log: 0\n") && out.ends_with("total: 1\n"),
+            "{out}"
+        );
         let dir = d.path().to_string_lossy().into_owned();
         let (code, out, _) = run_args(&["grep", "ERROR", "-r", &dir, "--names", "*.log;*.gz"]);
         assert_eq!(code, 0);
-        assert!(out.contains("a.log:2:ERROR one\n") && out.contains("c.log.gz:1:ERROR packed\n"), "{out}");
+        assert!(
+            out.contains("a.log:2:ERROR one\n") && out.contains("c.log.gz:1:ERROR packed\n"),
+            "{out}"
+        );
         assert_eq!(run_args(&["grep", "nothing", &a]).0, 1);
         // One output per input.
         let outdir = d.path().join("out");
         std::fs::create_dir(&outdir).unwrap();
-        let (code, _, _) = run_args(&["filter", "ERROR", &star, "--out-dir", &outdir.to_string_lossy()]);
+        let (code, _, _) = run_args(&[
+            "filter",
+            "ERROR",
+            &star,
+            "--out-dir",
+            &outdir.to_string_lossy(),
+        ]);
         assert_eq!(code, 0);
-        assert_eq!(std::fs::read_to_string(outdir.join("a.filtered.log")).unwrap(), "ERROR one\n");
+        assert_eq!(
+            std::fs::read_to_string(outdir.join("a.filtered.log")).unwrap(),
+            "ERROR one\n"
+        );
         // A compressed input on its own.
-        assert_eq!(run_args(&["filter", "packed", &sub.join("c.log.gz").to_string_lossy()]).1, "ERROR packed\n");
-        assert_eq!(run_args(&["count", "ERROR", &d.path().join("*.txt").to_string_lossy()]).0, 2);
+        assert_eq!(
+            run_args(&["filter", "packed", &sub.join("c.log.gz").to_string_lossy()]).1,
+            "ERROR packed\n"
+        );
+        assert_eq!(
+            run_args(&["count", "ERROR", &d.path().join("*.txt").to_string_lossy()]).0,
+            2
+        );
     }
 
     #[test]
     fn head_tail_slice() {
         let d = tempfile::tempdir().unwrap();
-        let log: String = (0..100).map(|i| format!("2024-05-01 10:{:02}:{:02} line {i}\n", i / 60, i % 60)).collect();
+        let log: String = (0..100)
+            .map(|i| format!("2024-05-01 10:{:02}:{:02} line {i}\n", i / 60, i % 60))
+            .collect();
         let f = file(&d, "t.log", log.as_bytes());
         let lines = |s: &str| s.lines().map(String::from).collect::<Vec<_>>();
-        assert_eq!(lines(&run_args(&["head", "-n", "2", &f]).1), ["2024-05-01 10:00:00 line 0", "2024-05-01 10:00:01 line 1"]);
-        assert_eq!(lines(&run_args(&["tail", "-n", "1", &f]).1), ["2024-05-01 10:01:39 line 99"]);
+        assert_eq!(
+            lines(&run_args(&["head", "-n", "2", &f]).1),
+            ["2024-05-01 10:00:00 line 0", "2024-05-01 10:00:01 line 1"]
+        );
+        assert_eq!(
+            lines(&run_args(&["tail", "-n", "1", &f]).1),
+            ["2024-05-01 10:01:39 line 99"]
+        );
         assert_eq!(run_args(&["tail", &f]).1.lines().count(), 10);
-        assert_eq!(lines(&run_args(&["slice", &f, "--lines", "3-4"]).1), ["2024-05-01 10:00:02 line 2", "2024-05-01 10:00:03 line 3"]);
+        assert_eq!(
+            lines(&run_args(&["slice", &f, "--lines", "3-4"]).1),
+            ["2024-05-01 10:00:02 line 2", "2024-05-01 10:00:03 line 3"]
+        );
         // Bytes widen to whole lines.
-        assert_eq!(run_args(&["slice", &f, "--bytes", "5-40"]).1.lines().count(), 2);
-        let (code, out, _) = run_args(&["slice", &f, "--from", "2024-05-01 10:01:00", "--to", "10:01:02"]);
-        assert_eq!((code, lines(&out)), (0, vec!["2024-05-01 10:01:00 line 60".to_string(), "2024-05-01 10:01:01 line 61".into(), "2024-05-01 10:01:02 line 62".into()]));
-        assert_eq!(run_args(&["slice", &f, "--from", "2024-05-02 00:00:00"]).0, 1);
+        assert_eq!(
+            run_args(&["slice", &f, "--bytes", "5-40"])
+                .1
+                .lines()
+                .count(),
+            2
+        );
+        let (code, out, _) = run_args(&[
+            "slice",
+            &f,
+            "--from",
+            "2024-05-01 10:01:00",
+            "--to",
+            "10:01:02",
+        ]);
+        assert_eq!(
+            (code, lines(&out)),
+            (
+                0,
+                vec![
+                    "2024-05-01 10:01:00 line 60".to_string(),
+                    "2024-05-01 10:01:01 line 61".into(),
+                    "2024-05-01 10:01:02 line 62".into()
+                ]
+            )
+        );
+        assert_eq!(
+            run_args(&["slice", &f, "--from", "2024-05-02 00:00:00"]).0,
+            1
+        );
         let csv = file(&d, "t.csv", b"id,v\n1,a\n2,b\n3,c\n");
-        assert_eq!(run_args(&["slice", &csv, "--lines", "3-3", "--header"]).1, "id,v\n2,b\n");
+        assert_eq!(
+            run_args(&["slice", &csv, "--lines", "3-3", "--header"]).1,
+            "id,v\n2,b\n"
+        );
         assert_eq!(run_args(&["slice", &f]).0, 2);
     }
 
@@ -2147,22 +3497,43 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let f = file(&d, "s.txt", b"pear\napple\n10\n9\napple\n");
         assert_eq!(run_args(&["sort", &f]).1, "10\n9\napple\napple\npear\n");
-        assert_eq!(run_args(&["sort", "-n", "-r", &f]).1.lines().next(), Some("10"));
+        assert_eq!(
+            run_args(&["sort", "-n", "-r", &f]).1.lines().next(),
+            Some("10")
+        );
         assert_eq!(run_args(&["sort", "-u", &f]).1, "10\n9\napple\npear\n");
-        assert_eq!(run_args(&["uniq", "-c", &f]).1, "2\tapple\n1\t10\n1\t9\n1\tpear\n");
+        assert_eq!(
+            run_args(&["uniq", "-c", &f]).1,
+            "2\tapple\n1\t10\n1\t9\n1\tpear\n"
+        );
     }
 
     #[test]
     fn transform_and_format() {
         let d = tempfile::tempdir().unwrap();
         let t = file(&d, "t.log", b"Hello\tworld  \nSecond\n");
-        assert_eq!(run_args(&["transform", "--op", "upper", &t]).1, "HELLO\tWORLD  \nSECOND\n");
-        assert_eq!(run_args(&["transform", "--op", "trim", &t]).1, "Hello\tworld\nSecond\n");
-        assert_eq!(run_args(&["transform", "--op", "tabs", &t]).1, "Hello   world  \nSecond\n");
+        assert_eq!(
+            run_args(&["transform", "--op", "upper", &t]).1,
+            "HELLO\tWORLD  \nSECOND\n"
+        );
+        assert_eq!(
+            run_args(&["transform", "--op", "trim", &t]).1,
+            "Hello\tworld\nSecond\n"
+        );
+        assert_eq!(
+            run_args(&["transform", "--op", "tabs", &t]).1,
+            "Hello   world  \nSecond\n"
+        );
         assert_eq!(run_args(&["transform", "--op", "sort", &t]).0, 2);
         let j = file(&d, "j.json", b"{\"a\": [1, {\"b\": null}]}\n");
-        assert_eq!(run_args(&["format", &j, "--json", "minify"]).1, "{\"a\":[1,{\"b\":null}]}\n");
-        assert_eq!(run_args(&["format", &j]).1, "{\n  \"a\": [\n    1,\n    {\n      \"b\": null\n    }\n  ]\n}\n");
+        assert_eq!(
+            run_args(&["format", &j, "--json", "minify"]).1,
+            "{\"a\":[1,{\"b\":null}]}\n"
+        );
+        assert_eq!(
+            run_args(&["format", &j]).1,
+            "{\n  \"a\": [\n    1,\n    {\n      \"b\": null\n    }\n  ]\n}\n"
+        );
         let bad = file(&d, "bad.json", b"[1, 2");
         assert_eq!(run_args(&["format", &bad]).0, 2);
     }
@@ -2172,7 +3543,10 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let a = file(&d, "a.json", b"{\"x\": 1, \"y\": [1, 2]}");
         let b = file(&d, "b.json", b"{\n  \"y\": [1, 3],\n  \"x\": 1\n}");
-        assert_eq!(run_args(&["jsondiff", &a, &b]), (1, "$.y[1]: 2 -> 3\n".into(), String::new()));
+        assert_eq!(
+            run_args(&["jsondiff", &a, &b]),
+            (1, "$.y[1]: 2 -> 3\n".into(), String::new())
+        );
         let c = file(&d, "c.json", b"{\"y\":[1,2],\"x\":1}");
         assert_eq!(run_args(&["jsondiff", &a, &c]).0, 0);
     }
@@ -2181,9 +3555,19 @@ mod tests {
     fn validate_json() {
         let d = tempfile::tempdir().unwrap();
         let j = file(&d, "a.json", b"{\n  \"a\": [1, 2,]\n}\n");
-        assert_eq!(run_args(&["validate", &j]), (1, "2: byte 15: a comma before a closing bracket (a trailing comma)\n".into(), String::new()));
+        assert_eq!(
+            run_args(&["validate", &j]),
+            (
+                1,
+                "2: byte 15: a comma before a closing bracket (a trailing comma)\n".into(),
+                String::new()
+            )
+        );
         let l = file(&d, "a.jsonl", b"{\"a\":1}\n{\"a\":}\n{\"b\":2}\n");
-        assert_eq!(run_args(&["validate", &l]).1, "2: byte 13: a value is missing after the key\n");
+        assert_eq!(
+            run_args(&["validate", &l]).1,
+            "2: byte 13: a value is missing after the key\n"
+        );
         let ok = file(&d, "ok.json", b"[1, {\"x\": null}]");
         assert_eq!(run_args(&["validate", &ok]).0, 0);
     }
@@ -2192,7 +3576,14 @@ mod tests {
     fn validate_a_table() {
         let d = tempfile::tempdir().unwrap();
         let t = file(&d, "t.csv", b"id,qty\n1,2\n2\n3,x\n");
-        assert_eq!(run_args(&["validate", "--numeric", "2", &t]), (1, "3: 1 fields instead of 2\n4: column 2: not a number\n".into(), String::new()));
+        assert_eq!(
+            run_args(&["validate", "--numeric", "2", &t]),
+            (
+                1,
+                "3: 1 fields instead of 2\n4: column 2: not a number\n".into(),
+                String::new()
+            )
+        );
         let ok = file(&d, "ok.csv", b"a,b\n1,2\n");
         assert_eq!(run_args(&["validate", &ok]).0, 0);
     }
@@ -2201,8 +3592,14 @@ mod tests {
     fn extract_matches() {
         let d = tempfile::tempdir().unwrap();
         let log = file(&d, "a.log", b"GET /a 200\nGET /b 404\nPOST /a 200\n");
-        assert_eq!(run_args(&["extract", "-E", "[0-9]{3}", &log]).1, "200\n404\n200\n");
-        assert_eq!(run_args(&["extract", "-E", "--count", "-g", "1", r"(GET|POST) /", &log]).1, "2\tGET\n1\tPOST\n");
+        assert_eq!(
+            run_args(&["extract", "-E", "[0-9]{3}", &log]).1,
+            "200\n404\n200\n"
+        );
+        assert_eq!(
+            run_args(&["extract", "-E", "--count", "-g", "1", r"(GET|POST) /", &log]).1,
+            "2\tGET\n1\tPOST\n"
+        );
         assert_eq!(run_args(&["extract", "-E", "-g", "2", "(x)", &log]).0, 2);
         assert_eq!(run_args(&["extract", "nope", &log]).0, 1);
     }
@@ -2210,49 +3607,122 @@ mod tests {
     #[test]
     fn message_patterns() {
         let d = tempfile::tempdir().unwrap();
-        let log = file(&d, "a.log", b"10:00:00 INFO req 1 ok\n10:00:01 INFO req 2 ok\n10:00:02 ERROR disk full\n");
+        let log = file(
+            &d,
+            "a.log",
+            b"10:00:00 INFO req 1 ok\n10:00:01 INFO req 2 ok\n10:00:02 ERROR disk full\n",
+        );
         let (code, out, _) = run_args(&["patterns", &log]);
         assert_eq!(code, 0);
         assert_eq!(out.lines().nth(1), Some("2,INFO,INFO req <n> ok,0,23"));
-        assert_eq!(run_args(&["patterns", "--rare", "--top", "1", &log]).1.lines().nth(1), Some("1,ERROR,ERROR disk full,46,46"));
+        assert_eq!(
+            run_args(&["patterns", "--rare", "--top", "1", &log])
+                .1
+                .lines()
+                .nth(1),
+            Some("1,ERROR,ERROR disk full,46,46")
+        );
     }
 
     #[test]
     fn between_times() {
         let d = tempfile::tempdir().unwrap();
         let log = file(&d, "a.log", b"2024-05-01 10:00:00 ERROR a\n2024-05-01 10:00:30 ERROR b\n2024-05-01 10:01:00 INFO c\n2024-05-01 10:01:30 ERROR d\n");
-        assert_eq!(run_args(&["filter", "ERROR", "--from", "10:00:30", "--to", "10:01:00", &log]).1, "2024-05-01 10:00:30 ERROR b\n");
-        assert_eq!(run_args(&["levels", "error", "--from", "2024-05-01 10:00:15", &log]).1, "2024-05-01 10:00:30 ERROR b\n2024-05-01 10:01:30 ERROR d\n");
-        assert_eq!(run_args(&["count", "ERROR", "--to", "10:00:30", &log]).1, "2\n");
+        assert_eq!(
+            run_args(&["filter", "ERROR", "--from", "10:00:30", "--to", "10:01:00", &log]).1,
+            "2024-05-01 10:00:30 ERROR b\n"
+        );
+        assert_eq!(
+            run_args(&["levels", "error", "--from", "2024-05-01 10:00:15", &log]).1,
+            "2024-05-01 10:00:30 ERROR b\n2024-05-01 10:01:30 ERROR d\n"
+        );
+        assert_eq!(
+            run_args(&["count", "ERROR", "--to", "10:00:30", &log]).1,
+            "2\n"
+        );
         assert_eq!(run_args(&["filter", "ERROR", "--from", "noon", &log]).0, 2);
     }
 
     #[test]
     fn combined_patterns() {
         let d = tempfile::tempdir().unwrap();
-        let log = file(&d, "a.log", b"ERROR timeout user=1\nERROR timeout healthcheck\nWARN timeout user=1\nERROR disk\n");
-        assert_eq!(run_args(&["filter", "ERROR", "-e", "timeout", "--not", "healthcheck", &log]).1, "ERROR timeout user=1\n");
-        assert_eq!(run_args(&["count", "-e", "disk", "-e", "WARN", "--any", &log]).1, "2\n");
-        assert_eq!(run_args(&["count", "-e", "ERROR", "-e", "user=1", &log]).1, "1\n");
-        assert_eq!(run_args(&["filter", "-E", "--any", "-e", "^WARN", "-e", "disk$", &log]).1, "WARN timeout user=1\nERROR disk\n");
+        let log = file(
+            &d,
+            "a.log",
+            b"ERROR timeout user=1\nERROR timeout healthcheck\nWARN timeout user=1\nERROR disk\n",
+        );
+        assert_eq!(
+            run_args(&[
+                "filter",
+                "ERROR",
+                "-e",
+                "timeout",
+                "--not",
+                "healthcheck",
+                &log
+            ])
+            .1,
+            "ERROR timeout user=1\n"
+        );
+        assert_eq!(
+            run_args(&["count", "-e", "disk", "-e", "WARN", "--any", &log]).1,
+            "2\n"
+        );
+        assert_eq!(
+            run_args(&["count", "-e", "ERROR", "-e", "user=1", &log]).1,
+            "1\n"
+        );
+        assert_eq!(
+            run_args(&["filter", "-E", "--any", "-e", "^WARN", "-e", "disk$", &log]).1,
+            "WARN timeout user=1\nERROR disk\n"
+        );
         assert_eq!(run_args(&["filter", &log]).0, 2);
     }
 
     #[test]
     fn values_of_a_field() {
         let d = tempfile::tempdir().unwrap();
-        let jl = file(&d, "e.jsonl", b"\n{\"level\":\"info\"}\n{\"level\":\"error\"}\n{\"level\":\"info\"}\n");
-        assert_eq!(run_args(&["values", "level", &jl]), (0, "level,lines,percent,first,last\ninfo,2,66.67,,\nerror,1,33.33,,\n".into(), String::new()));
-        let lf = file(&d, "a.log", b"ts=2024-05-01T10:00:00Z status=200\nts=2024-05-01T10:00:09Z status=200\n");
-        assert_eq!(run_args(&["values", "status", &lf]).1.lines().nth(1), Some("200,2,100.00,2024-05-01 10:00:00,2024-05-01 10:00:09"));
+        let jl = file(
+            &d,
+            "e.jsonl",
+            b"\n{\"level\":\"info\"}\n{\"level\":\"error\"}\n{\"level\":\"info\"}\n",
+        );
+        assert_eq!(
+            run_args(&["values", "level", &jl]),
+            (
+                0,
+                "level,lines,percent,first,last\ninfo,2,66.67,,\nerror,1,33.33,,\n".into(),
+                String::new()
+            )
+        );
+        let lf = file(
+            &d,
+            "a.log",
+            b"ts=2024-05-01T10:00:00Z status=200\nts=2024-05-01T10:00:09Z status=200\n",
+        );
+        assert_eq!(
+            run_args(&["values", "status", &lf]).1.lines().nth(1),
+            Some("200,2,100.00,2024-05-01 10:00:00,2024-05-01 10:00:09")
+        );
         assert_eq!(run_args(&["values", "nope", &lf]).0, 1);
     }
 
     #[test]
     fn gaps_with_line_numbers() {
         let d = tempfile::tempdir().unwrap();
-        let log = file(&d, "a.log", b"2024-05-01 10:00:00 a\n2024-05-01 10:00:05 b\n  trace\n2024-05-01 10:02:05 c\n");
-        assert_eq!(run_args(&["gaps", &log]), (0, "2-4: +2 m 00.000 s (2024-05-01 10:00:05 -> 2024-05-01 10:02:05)\n".into(), String::new()));
+        let log = file(
+            &d,
+            "a.log",
+            b"2024-05-01 10:00:00 a\n2024-05-01 10:00:05 b\n  trace\n2024-05-01 10:02:05 c\n",
+        );
+        assert_eq!(
+            run_args(&["gaps", &log]),
+            (
+                0,
+                "2-4: +2 m 00.000 s (2024-05-01 10:00:05 -> 2024-05-01 10:02:05)\n".into(),
+                String::new()
+            )
+        );
         assert_eq!(run_args(&["gaps", "--min", "5m", &log]).0, 1);
         assert_eq!(run_args(&["gaps", "--min", "soon", &log]).0, 2);
     }
@@ -2260,28 +3730,68 @@ mod tests {
     #[test]
     fn split_stats_merge_convert() {
         let d = tempfile::tempdir().unwrap();
-        let log = file(&d, "a.log", b"2024-05-01 10:00:00 one\n2024-05-01 10:00:02 two\n2024-05-01 11:00:00 three\n");
+        let log = file(
+            &d,
+            "a.log",
+            b"2024-05-01 10:00:00 one\n2024-05-01 10:00:02 two\n2024-05-01 11:00:00 three\n",
+        );
         let (code, out, _) = run_args(&["split", "--lines", "2", &log]);
         assert_eq!(code, 0);
         assert_eq!(out.lines().count(), 2);
-        assert_eq!(std::fs::read_to_string(d.path().join("a.part002.log")).unwrap(), "2024-05-01 11:00:00 three\n");
+        assert_eq!(
+            std::fs::read_to_string(d.path().join("a.part002.log")).unwrap(),
+            "2024-05-01 11:00:00 three\n"
+        );
         let packed = d.path().join("packed");
         std::fs::create_dir(&packed).unwrap();
-        let (_, out, _) = run_args(&["split", "--lines", "2", "--gz", "--out-dir", &packed.to_string_lossy(), &log]);
+        let (_, out, _) = run_args(&[
+            "split",
+            "--lines",
+            "2",
+            "--gz",
+            "--out-dir",
+            &packed.to_string_lossy(),
+            &log,
+        ]);
         assert!(out.lines().all(|l| l.ends_with(".log.gz")), "{out}");
         // -o with a compressed name compresses.
         let gz = d.path().join("two.log.gz").to_string_lossy().into_owned();
         assert_eq!(run_args(&["filter", "two", &log, "-o", &gz]).0, 0);
         let mut text = Vec::new();
-        crate::decompress::unpack_to(Path::new(&gz), crate::decompress::Kind::Gzip, &mut text, &CancelToken::new(), &Progress::default()).unwrap();
+        crate::decompress::unpack_to(
+            Path::new(&gz),
+            crate::decompress::Kind::Gzip,
+            &mut text,
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
         assert_eq!(text, b"2024-05-01 10:00:02 two\n");
         let (_, s, _) = run_args(&["stats", &log]);
-        assert!(s.contains("line endings: LF (LF 3, CRLF 0, CR 0)\n") && s.contains("final line break: yes\n") && s.contains("longest line: 25 bytes (line 3)\n"), "{s}");
-        assert!(s.contains("lines: 3\n") && s.contains("encoding: UTF-8") && s.contains("first time: 2024-05-01 10:00:00") && s.contains("last time: 2024-05-01 11:00:00") && s.contains("span: 1 h 00 m 00 s"), "{s}");
+        assert!(
+            s.contains("line endings: LF (LF 3, CRLF 0, CR 0)\n")
+                && s.contains("final line break: yes\n")
+                && s.contains("longest line: 25 bytes (line 3)\n"),
+            "{s}"
+        );
+        assert!(
+            s.contains("lines: 3\n")
+                && s.contains("encoding: UTF-8")
+                && s.contains("first time: 2024-05-01 10:00:00")
+                && s.contains("last time: 2024-05-01 11:00:00")
+                && s.contains("span: 1 h 00 m 00 s"),
+            "{s}"
+        );
         let b = file(&d, "b.log", b"2024-05-01 10:00:01 b1\n");
-        assert_eq!(run_args(&["merge", &log, &b]).1.lines().nth(1), Some("b.log │ 2024-05-01 10:00:01 b1"));
+        assert_eq!(
+            run_args(&["merge", &log, &b]).1.lines().nth(1),
+            Some("b.log │ 2024-05-01 10:00:01 b1")
+        );
         let csv_path = file(&d, "t.csv", b"k,v\nx,1\n");
-        assert_eq!(run_args(&["convert", &csv_path, "--to", "jsonl"]).1, "{\"k\": \"x\", \"v\": \"1\"}\n");
+        assert_eq!(
+            run_args(&["convert", &csv_path, "--to", "jsonl"]).1,
+            "{\"k\": \"x\", \"v\": \"1\"}\n"
+        );
         assert_eq!(run_args(&["convert", &csv_path, "--to", "xlsx"]).0, 2);
         let jl = file(&d, "e.jsonl", b"{\"a\": 1}\n");
         assert_eq!(run_args(&["convert", &jl, "--to", "csv"]).1, "a\n1\n");

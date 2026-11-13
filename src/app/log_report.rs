@@ -95,14 +95,19 @@ const CHART_HEIGHT: f32 = 110.0;
 impl BigTextApp {
     pub(crate) fn open_log_report(&mut self) {
         self.log_report.open = true;
-        let fresh = self.docs.get(self.active).and_then(|d| d.log_report.as_ref().map(|r| r.version == d.version));
+        let fresh = self
+            .docs
+            .get(self.active)
+            .and_then(|d| d.log_report.as_ref().map(|r| r.version == d.version));
         if fresh != Some(true) {
             self.start_log_report();
         }
     }
 
     pub(crate) fn start_log_report(&mut self) {
-        let Some(d) = self.docs.get_mut(self.active) else { return };
+        let Some(d) = self.docs.get_mut(self.active) else {
+            return;
+        };
         if !d.is_ready() {
             return;
         }
@@ -111,7 +116,12 @@ impl BigTextApp {
         }
         let data = Arc::new(Mutex::new(ReportData::default()));
         let (cancel, progress) = (CancelToken::new(), Progress::new(d.buf.len()));
-        d.log_report = Some(ReportResults { version: d.version, data: data.clone(), cancel: cancel.clone(), progress: progress.clone() });
+        d.log_report = Some(ReportResults {
+            version: d.version,
+            data: data.clone(),
+            cancel: cancel.clone(),
+            progress: progress.clone(),
+        });
         let snap = d.buf.snapshot();
         let waker = self.waker.clone();
         jobs::spawn("log-report", move || {
@@ -149,7 +159,11 @@ impl BigTextApp {
         }
         let mut open = true;
         let mut act = None;
-        let (mut tab, mut worst, mut only) = (self.log_report.tab, self.log_report.worst_first, self.log_report.only_errors);
+        let (mut tab, mut worst, mut only) = (
+            self.log_report.tab,
+            self.log_report.worst_first,
+            self.log_report.only_errors,
+        );
         egui::Window::new(tr("Web log report")).open(&mut open).default_size([880.0, 500.0]).resizable(true).show(ctx, |ui| {
             let Some(d) = self.docs.get(self.active) else { return };
             let Some(res) = &d.log_report else {
@@ -340,16 +354,44 @@ impl BigTextApp {
 
     /// Filters the active document to the requests to `url` (a URL of its report).
     pub(crate) fn filter_by_url(&mut self, url: &str) {
-        let Some(pattern) = self.docs.get(self.active).and_then(|d| d.log_report.as_ref()).and_then(|r| r.data.lock().unwrap().format.as_ref().map(|f| f.url_regex(url))) else { return };
-        self.search.query = Query { pattern, regex: true, case_sensitive: true, whole_word: false, dot_all: false };
+        let Some(pattern) = self
+            .docs
+            .get(self.active)
+            .and_then(|d| d.log_report.as_ref())
+            .and_then(|r| {
+                r.data
+                    .lock()
+                    .unwrap()
+                    .format
+                    .as_ref()
+                    .map(|f| f.url_regex(url))
+            })
+        else {
+            return;
+        };
+        self.search.query = Query {
+            pattern,
+            regex: true,
+            case_sensitive: true,
+            whole_word: false,
+            dot_all: false,
+        };
         self.search.invert = false;
         self.start_filter();
     }
 
     /// Writes a report as CSV to a file the user picks (`export`) or opens it as a table.
     pub(crate) fn report_csv(&mut self, tab: Tab, export: bool) {
-        let Some(d) = self.docs.get(self.active) else { return };
-        let Some(r) = d.log_report.as_ref().and_then(|x| x.data.lock().unwrap().r.clone()) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
+        let Some(r) = d
+            .log_report
+            .as_ref()
+            .and_then(|x| x.data.lock().unwrap().r.clone())
+        else {
+            return;
+        };
         let rows = match tab {
             Tab::Urls => r.urls.len(),
             Tab::Minutes => r.minutes.len(),
@@ -360,37 +402,60 @@ impl BigTextApp {
             Tab::Minutes => logformat::minutes_csv(&r, w),
             Tab::Slow => logformat::slow_csv(&r, w, None),
         };
-        let stem = std::path::Path::new(&d.title).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "log".into());
+        let stem = std::path::Path::new(&d.title)
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "log".into());
         let name = format!("{stem}.{}.csv", tab.file_suffix());
         if export {
-            let Some(target) = self.pick_output_file(tr("Export CSV"), &name) else { return };
-            self.spawn_task(tr("Saving").into(), move |_: &Progress, _: &CancelToken| -> TaskOutcome {
-                tasks::write_via_temp(&target, |w| {
-                    write(w)?;
-                    Ok(Some(trf("Saved {n} rows to {file}.", &[("n", &fmt_count(rows)), ("file", &file_name(&target))])))
-                })
-            });
+            let Some(target) = self.pick_output_file(tr("Export CSV"), &name) else {
+                return;
+            };
+            self.spawn_task(
+                tr("Saving").into(),
+                move |_: &Progress, _: &CancelToken| -> TaskOutcome {
+                    tasks::write_via_temp(&target, |w| {
+                        write(w)?;
+                        Ok(Some(trf(
+                            "Saved {n} rows to {file}.",
+                            &[("n", &fmt_count(rows)), ("file", &file_name(&target))],
+                        )))
+                    })
+                },
+            );
             return;
         }
         let target = bigtext::decompress::temp_file(&name);
         let title = format!("{} ({})", tr(tab.name()), d.title);
-        self.spawn_task(tr("Saving").into(), move |_: &Progress, _: &CancelToken| -> TaskOutcome {
-            let r = (|| {
-                if let Some(dir) = target.parent() {
-                    std::fs::create_dir_all(dir)?;
+        self.spawn_task(
+            tr("Saving").into(),
+            move |_: &Progress, _: &CancelToken| -> TaskOutcome {
+                let r = (|| {
+                    if let Some(dir) = target.parent() {
+                        std::fs::create_dir_all(dir)?;
+                    }
+                    let mut w = std::io::BufWriter::new(
+                        std::fs::File::options()
+                            .write(true)
+                            .create_new(true)
+                            .open(&target)?,
+                    );
+                    write(&mut w)?;
+                    std::io::Write::flush(&mut w)
+                })();
+                match r {
+                    Ok(()) => TaskOutcome::TempTable(Box::new(tasks::TempTable {
+                        path: target,
+                        title,
+                        message: String::new(),
+                    })),
+                    Err(e) => {
+                        bigtext::decompress::remove_temp(&target);
+                        TaskOutcome::Failed(e.to_string())
+                    }
                 }
-                let mut w = std::io::BufWriter::new(std::fs::File::options().write(true).create_new(true).open(&target)?);
-                write(&mut w)?;
-                std::io::Write::flush(&mut w)
-            })();
-            match r {
-                Ok(()) => TaskOutcome::TempTable(Box::new(tasks::TempTable { path: target, title, message: String::new() })),
-                Err(e) => {
-                    bigtext::decompress::remove_temp(&target);
-                    TaskOutcome::Failed(e.to_string())
-                }
-            }
-        });
+            },
+        );
     }
 }
 
@@ -412,7 +477,16 @@ fn statuses_line(ui: &mut egui::Ui, r: &Report) {
     list.sort_by_key(|x| std::cmp::Reverse(x.1));
     ui.horizontal_wrapped(|ui| {
         for (s, n) in list.into_iter().take(12) {
-            let text = egui::RichText::new(format!("{} {}", if s == 0 { "-".to_string() } else { s.to_string() }, fmt_count(n))).monospace();
+            let text = egui::RichText::new(format!(
+                "{} {}",
+                if s == 0 {
+                    "-".to_string()
+                } else {
+                    s.to_string()
+                },
+                fmt_count(n)
+            ))
+            .monospace();
             let text = match s {
                 500..=599 => text.color(ui.visuals().error_fg_color),
                 400..=499 => text.color(super::theme::warn_text(ui)),
@@ -429,7 +503,8 @@ fn statuses_line(ui: &mut egui::Ui, r: &Report) {
 fn minutes_chart(ui: &mut egui::Ui, r: &Report) -> Option<u64> {
     let (first, last) = (r.minutes.first()?.minute, r.minutes.last()?.minute);
     let width = ui.available_width().max(100.0);
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, CHART_HEIGHT), egui::Sense::click());
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(width, CHART_HEIGHT), egui::Sense::click());
     let span = last - first + 1;
     let max_bars = ((width / BAR_MIN).floor() as i64).max(1);
     let per = ((span + max_bars - 1) / max_bars).max(1);
@@ -441,13 +516,20 @@ fn minutes_chart(ui: &mut egui::Ui, r: &Report) -> Option<u64> {
         err[i] += m.server_errors;
         firsts[i] = Some(firsts[i].map_or(m.first, |f| f.min(m.first)));
     }
-    let (max_req, max_err) = (req.iter().copied().max().unwrap_or(0).max(1), err.iter().copied().max().unwrap_or(0));
+    let (max_req, max_err) = (
+        req.iter().copied().max().unwrap_or(0).max(1),
+        err.iter().copied().max().unwrap_or(0),
+    );
     let painter = ui.painter_at(rect);
     let v = ui.visuals();
     painter.rect_filled(rect, 2.0, v.extreme_bg_color);
     // Requests above, 5xx errors below, each to its own scale.
     let split = rect.top() + (rect.height() * 0.6).round();
-    painter.hline(rect.x_range(), split, egui::Stroke::new(1.0, v.widgets.noninteractive.bg_stroke.color));
+    painter.hline(
+        rect.x_range(),
+        split,
+        egui::Stroke::new(1.0, v.widgets.noninteractive.bg_stroke.color),
+    );
     let bar_w = (rect.width() / n as f32).min(BAR_MAX);
     let gap = if bar_w >= 4.0 { 1.0 } else { 0.0 };
     let (grey, red) = (v.weak_text_color().gamma_multiply(0.6), v.error_fg_color);
@@ -456,21 +538,51 @@ fn minutes_chart(ui: &mut egui::Ui, r: &Report) -> Option<u64> {
         let x = rect.left() + i as f32 * bar_w;
         let h = req[i] as f32 / max_req as f32 * top_h;
         if req[i] > 0 {
-            painter.rect_filled(egui::Rect::from_min_max(egui::pos2(x, split - h.max(1.0)), egui::pos2(x + (bar_w - gap).max(1.0), split)), 0.0, grey);
+            painter.rect_filled(
+                egui::Rect::from_min_max(
+                    egui::pos2(x, split - h.max(1.0)),
+                    egui::pos2(x + (bar_w - gap).max(1.0), split),
+                ),
+                0.0,
+                grey,
+            );
         }
         if err[i] > 0 {
             let h = (err[i] as f32 / max_err.max(1) as f32 * low_h).max(1.0);
-            painter.rect_filled(egui::Rect::from_min_max(egui::pos2(x, rect.bottom() - h), egui::pos2(x + (bar_w - gap).max(1.0), rect.bottom())), 0.0, red);
+            painter.rect_filled(
+                egui::Rect::from_min_max(
+                    egui::pos2(x, rect.bottom() - h),
+                    egui::pos2(x + (bar_w - gap).max(1.0), rect.bottom()),
+                ),
+                0.0,
+                red,
+            );
         }
     }
-    let label = |m: i64| logformat::Minute { minute: m, ..Default::default() }.label();
+    let label = |m: i64| {
+        logformat::Minute {
+            minute: m,
+            ..Default::default()
+        }
+        .label()
+    };
     let mut clicked = None;
     if let Some(p) = resp.hover_pos() {
         let i = ((p.x - rect.left()) / bar_w) as usize;
         if i < n {
             let (from, to) = (first + i as i64 * per, first + (i as i64 + 1) * per - 1);
-            let when = if per == 1 { label(from) } else { format!("{} – {}", label(from), label(to)) };
-            resp.clone().on_hover_text(format!("{when}\n{}", trf("{n} requests, {e} 5xx", &[("n", &fmt_count(req[i])), ("e", &fmt_count(err[i]))])));
+            let when = if per == 1 {
+                label(from)
+            } else {
+                format!("{} – {}", label(from), label(to))
+            };
+            resp.clone().on_hover_text(format!(
+                "{when}\n{}",
+                trf(
+                    "{n} requests, {e} 5xx",
+                    &[("n", &fmt_count(req[i])), ("e", &fmt_count(err[i]))]
+                )
+            ));
             if resp.clicked() {
                 clicked = firsts[i];
             }

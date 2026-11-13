@@ -26,7 +26,12 @@ fn read_failed() -> io::Error {
 }
 
 /// Writes the unified diff of `u.a` and `u.b`: whether they differ, or `None` when cancelled.
-pub fn write_unified(u: &Unified, w: &mut dyn Write, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<bool>> {
+pub fn write_unified(
+    u: &Unified,
+    w: &mut dyn Write,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<bool>> {
     let mut block: Vec<Hunk> = Vec::new();
     // The end of the last block's lines in A: (line, offset).
     let mut floor = (0u64, 0u64);
@@ -39,7 +44,10 @@ pub fn write_unified(u: &Unified, w: &mut dyn Write, cancel: &CancelToken, progr
                 writeln!(w, "--- {}\n+++ {}", u.a_name, u.b_name)?;
             }
             // Hunks whose context would meet share one block.
-            if block.last().is_some_and(|l| h.a_line - (l.a_line + l.a_count) > 2 * u.context) {
+            if block
+                .last()
+                .is_some_and(|l| h.a_line - (l.a_line + l.a_count) > 2 * u.context)
+            {
                 floor = write_block(u, &block, floor, w)?;
                 block.clear();
             }
@@ -71,17 +79,30 @@ pub fn write_unified(u: &Unified, w: &mut dyn Write, cancel: &CancelToken, progr
 
 /// One `@@` block: context before, the hunks with the unchanged lines between them, context after.
 /// Returns where it ends in A.
-fn write_block(u: &Unified, block: &[Hunk], floor: (u64, u64), w: &mut dyn Write) -> io::Result<(u64, u64)> {
+fn write_block(
+    u: &Unified,
+    block: &[Hunk],
+    floor: (u64, u64),
+    w: &mut dyn Write,
+) -> io::Result<(u64, u64)> {
     let (first, last) = (block[0], block[block.len() - 1]);
     let lead = u.context.min(first.a_line - floor.0);
     let lead_off = back_lines(u.a, first.a_off, lead, floor.1)?;
     let (trail, trail_end) = forward_lines(u.a, last.a_end, u.context)?;
-    let between: u64 = block.windows(2).map(|p| p[1].a_line - (p[0].a_line + p[0].a_count)).sum();
+    let between: u64 = block
+        .windows(2)
+        .map(|p| p[1].a_line - (p[0].a_line + p[0].a_count))
+        .sum();
     let na = lead + block.iter().map(|h| h.a_count).sum::<u64>() + between + trail;
     let nb = lead + block.iter().map(|h| h.b_count).sum::<u64>() + between + trail;
     // 1-based; an empty side names the line before.
     let start = |s: u64, n: u64| if n == 0 { s } else { s + 1 };
-    writeln!(w, "@@ -{},{na} +{},{nb} @@", start(first.a_line - lead, na), start(first.b_line - lead, nb))?;
+    writeln!(
+        w,
+        "@@ -{},{na} +{},{nb} @@",
+        start(first.a_line - lead, na),
+        start(first.b_line - lead, nb)
+    )?;
     copy_lines(u.a, lead_off..first.a_off, b' ', w)?;
     for (i, h) in block.iter().enumerate() {
         if i > 0 {
@@ -96,7 +117,12 @@ fn write_block(u: &Unified, block: &[Hunk], floor: (u64, u64), w: &mut dyn Write
 
 /// Copies the lines of `range` with `mark` before each, in chunks; a last line without a line
 /// break gets diff's "\ No newline at end of file".
-fn copy_lines(src: &dyn LineSource, range: Range<u64>, mark: u8, w: &mut dyn Write) -> io::Result<()> {
+fn copy_lines(
+    src: &dyn LineSource,
+    range: Range<u64>,
+    mark: u8,
+    w: &mut dyn Write,
+) -> io::Result<()> {
     let mut pos = range.start;
     if pos == 0 && range.end >= BOM.len() as u64 {
         let mut head = [0u8; 3];
@@ -208,7 +234,14 @@ mod tests {
         let (_fa, sa) = src(a.as_bytes());
         let (_fb, sb) = src(b.as_bytes());
         let opts = DiffOptions::default();
-        let u = Unified { a: &sa, b: &sb, a_name: "a.txt", b_name: "b.txt", opts: &opts, context };
+        let u = Unified {
+            a: &sa,
+            b: &sb,
+            a_name: "a.txt",
+            b_name: "b.txt",
+            opts: &opts,
+            context,
+        };
         let mut out = Vec::new();
         let r = write_unified(&u, &mut out, &CancelToken::new(), None).unwrap();
         (r, String::from_utf8(out).unwrap())
@@ -220,14 +253,28 @@ mod tests {
 
     /// `text` with its 1-based lines `at` replaced.
     fn change(text: &str, at: &[(usize, &str)]) -> String {
-        text.lines().enumerate().map(|(i, l)| format!("{}\n", at.iter().find(|c| c.0 == i + 1).map(|c| c.1).unwrap_or(l))).collect()
+        text.lines()
+            .enumerate()
+            .map(|(i, l)| {
+                format!(
+                    "{}\n",
+                    at.iter().find(|c| c.0 == i + 1).map(|c| c.1).unwrap_or(l)
+                )
+            })
+            .collect()
     }
 
     #[test]
     fn one_change_with_context() {
         let a = numbers(10);
         let b = change(&a, &[(5, "five")]);
-        assert_eq!(unified(&a, &b, 3), (Some(true), "--- a.txt\n+++ b.txt\n@@ -2,7 +2,7 @@\n 2\n 3\n 4\n-5\n+five\n 6\n 7\n 8\n".into()));
+        assert_eq!(
+            unified(&a, &b, 3),
+            (
+                Some(true),
+                "--- a.txt\n+++ b.txt\n@@ -2,7 +2,7 @@\n 2\n 3\n 4\n-5\n+five\n 6\n 7\n 8\n".into()
+            )
+        );
         assert_eq!(unified(&a, &a, 3), (Some(false), String::new()));
     }
 
@@ -240,7 +287,11 @@ mod tests {
         assert!(out.contains("@@ -2,12 +2,12 @@\n"), "{out}");
         let far = change(&a, &[(5, "five"), (20, "twenty")]);
         let (_, out) = unified(&a, &far, 3);
-        assert!(out.contains("@@ -2,7 +2,7 @@\n") && out.contains("@@ -17,7 +17,7 @@\n 17\n 18\n 19\n-20\n+twenty\n 21\n 22\n 23\n"), "{out}");
+        assert!(
+            out.contains("@@ -2,7 +2,7 @@\n")
+                && out.contains("@@ -17,7 +17,7 @@\n 17\n 18\n 19\n-20\n+twenty\n 21\n 22\n 23\n"),
+            "{out}"
+        );
     }
 
     #[test]
@@ -253,7 +304,10 @@ mod tests {
         assert_eq!(out, "--- a.txt\n+++ b.txt\n@@ -0,0 +1,2 @@\n+a\n+b\n");
         // The last line loses its line break.
         let (_, out) = unified("a\nb\n", "a\nb", 3);
-        assert_eq!(out, "--- a.txt\n+++ b.txt\n@@ -1,2 +1,2 @@\n a\n-b\n+b\n\\ No newline at end of file\n");
+        assert_eq!(
+            out,
+            "--- a.txt\n+++ b.txt\n@@ -1,2 +1,2 @@\n a\n-b\n+b\n\\ No newline at end of file\n"
+        );
         // No context: an insertion names the line before it.
         let (_, out) = unified(&numbers(5), &numbers(5).replace("3\n", "3\nin\n"), 0);
         assert_eq!(out, "--- a.txt\n+++ b.txt\n@@ -3,0 +4,1 @@\n+in\n");
@@ -268,6 +322,9 @@ mod tests {
         let a = format!("1\n2\n{long}\n4\n");
         let b = format!("1\n2\n{long}y\n4\n");
         let (_, out) = unified(&a, &b, 1);
-        assert_eq!(out, format!("--- a.txt\n+++ b.txt\n@@ -2,3 +2,3 @@\n 2\n-{long}\n+{long}y\n 4\n"));
+        assert_eq!(
+            out,
+            format!("--- a.txt\n+++ b.txt\n@@ -2,3 +2,3 @@\n 2\n-{long}\n+{long}y\n 4\n")
+        );
     }
 }

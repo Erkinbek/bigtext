@@ -6,7 +6,9 @@ pub fn b64_encode(b: &[u8]) -> String {
     const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(b.len().div_ceil(3) * 4);
     for c in b.chunks(3) {
-        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        let n = (c[0] as u32) << 16
+            | (*c.get(1).unwrap_or(&0) as u32) << 8
+            | *c.get(2).unwrap_or(&0) as u32;
         for i in 0..4 {
             if i <= c.len() {
                 out.push(A[(n >> (18 - 6 * i) & 63) as usize] as char);
@@ -54,11 +56,15 @@ pub fn jwt(s: &str) -> Option<String> {
     }
     let part = |p: &str| -> Option<String> {
         let text = String::from_utf8(b64_decode(p).ok()?).ok()?;
-        text.trim_start().starts_with('{').then(|| crate::textops::json_format(&text, Some("  "), "\n").unwrap_or(text))
+        text.trim_start()
+            .starts_with('{')
+            .then(|| crate::textops::json_format(&text, Some("  "), "\n").unwrap_or(text))
     };
     let (header, payload) = (part(parts[0])?, part(parts[1])?);
     let sig = b64_decode(parts[2]).map(|b| b.len()).unwrap_or(0);
-    Some(format!("header:\n{header}\n\npayload:\n{payload}\n\nsignature: {sig} bytes (not checked)\n"))
+    Some(format!(
+        "header:\n{header}\n\npayload:\n{payload}\n\nsignature: {sig} bytes (not checked)\n"
+    ))
 }
 
 fn hex_digit(c: u8) -> Option<u8> {
@@ -92,8 +98,14 @@ pub fn url_decode(s: &str) -> Result<Vec<u8>, String> {
     while i < b.len() {
         match b[i] {
             b'%' => {
-                let (Some(h), Some(l)) = (b.get(i + 1).copied().and_then(hex_digit), b.get(i + 2).copied().and_then(hex_digit)) else {
-                    return Err(format!("“%” at character {} is not followed by two hex digits.", i + 1));
+                let (Some(h), Some(l)) = (
+                    b.get(i + 1).copied().and_then(hex_digit),
+                    b.get(i + 2).copied().and_then(hex_digit),
+                ) else {
+                    return Err(format!(
+                        "“%” at character {} is not followed by two hex digits.",
+                        i + 1
+                    ));
                 };
                 out.push(h << 4 | l);
                 i += 3;
@@ -129,7 +141,13 @@ pub fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
         match hex_digit(c) {
             Some(d) => digits.push(d),
             None if c.is_ascii_whitespace() || c == b':' || c == b'-' || c == b',' => {}
-            None => return Err(format!("“{}” (character {}) is not a hex digit.", c as char, i + 1)),
+            None => {
+                return Err(format!(
+                    "“{}” (character {}) is not a hex digit.",
+                    c as char,
+                    i + 1
+                ))
+            }
         }
         i += 1;
     }
@@ -242,12 +260,18 @@ pub fn json_escape(s: &str) -> String {
 
 /// A JSON string's escapes undone (its quotes dropped, when they are there).
 pub fn json_unescape(s: &str) -> Result<String, String> {
-    let s = s.strip_prefix('"').and_then(|x| x.strip_suffix('"')).unwrap_or(s);
+    let s = s
+        .strip_prefix('"')
+        .and_then(|x| x.strip_suffix('"'))
+        .unwrap_or(s);
     let mut out = String::with_capacity(s.len());
     let mut it = s.chars();
     let hex4 = |it: &mut std::str::Chars| -> Result<u32, String> {
         let h: String = it.by_ref().take(4).collect();
-        u32::from_str_radix(&h, 16).ok().filter(|_| h.len() == 4).ok_or_else(|| format!("“\\u{h}” is not four hex digits."))
+        u32::from_str_radix(&h, 16)
+            .ok()
+            .filter(|_| h.len() == 4)
+            .ok_or_else(|| format!("“\\u{h}” is not four hex digits."))
     };
     while let Some(c) = it.next() {
         if c != '\\' {
@@ -300,14 +324,22 @@ mod tests {
         assert!(b64_decode("a").is_err());
         let token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMiLCJuYW1lIjoiQW5uIn0.c2lnbmF0dXJl";
         let shown = jwt(token).unwrap();
-        assert!(shown.contains("\"alg\": \"HS256\"") && shown.contains("\"name\": \"Ann\"") && shown.contains("signature: 9 bytes"), "{shown}");
+        assert!(
+            shown.contains("\"alg\": \"HS256\"")
+                && shown.contains("\"name\": \"Ann\"")
+                && shown.contains("signature: 9 bytes"),
+            "{shown}"
+        );
         assert_eq!(jwt("a.b"), None);
     }
 
     #[test]
     fn url_hex_html_json() {
         assert_eq!(url_encode("a b&c=d/é"), "a%20b%26c%3Dd%2F%C3%A9");
-        assert_eq!(url_decode("a%20b%26c%3Dd%2F%C3%A9").unwrap(), "a b&c=d/é".as_bytes());
+        assert_eq!(
+            url_decode("a%20b%26c%3Dd%2F%C3%A9").unwrap(),
+            "a b&c=d/é".as_bytes()
+        );
         assert_eq!(url_decode("q=a+b&x=1").unwrap(), b"q=a b&x=1");
         assert_eq!(url_decode("1+1").unwrap(), b"1+1");
         assert!(url_decode("%zz").is_err());
@@ -315,10 +347,19 @@ mod tests {
         assert_eq!(hex_decode("48 69 0x00").unwrap(), b"Hi\x00");
         assert_eq!(hex_decode("48:69").unwrap(), b"Hi");
         assert!(hex_decode("486").is_err());
-        assert_eq!(html_escape("<a href=\"x\">&</a>"), "&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;");
-        assert_eq!(html_unescape("&lt;b&gt; &amp; &#65;&#x42; &copy; &bogus; & x"), "<b> & AB © &bogus; & x");
+        assert_eq!(
+            html_escape("<a href=\"x\">&</a>"),
+            "&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;"
+        );
+        assert_eq!(
+            html_unescape("&lt;b&gt; &amp; &#65;&#x42; &copy; &bogus; & x"),
+            "<b> & AB © &bogus; & x"
+        );
         assert_eq!(json_escape("a\"b\\c\nd\u{1}"), "a\\\"b\\\\c\\nd\\u0001");
-        assert_eq!(json_unescape("\"a\\\"b\\\\c\\nd\\u0041\\ud83d\\ude00\"").unwrap(), "a\"b\\c\ndA😀");
+        assert_eq!(
+            json_unescape("\"a\\\"b\\\\c\\nd\\u0041\\ud83d\\ude00\"").unwrap(),
+            "a\"b\\c\ndA😀"
+        );
         assert!(json_unescape("\\q").is_err());
     }
 }

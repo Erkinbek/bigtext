@@ -101,13 +101,30 @@ impl Op {
     pub fn is_codec_op(self) -> bool {
         matches!(
             self,
-            Op::B64Decode | Op::B64Encode | Op::UrlDecode | Op::UrlEncode | Op::HexDecode | Op::HexEncode | Op::HtmlUnescape | Op::HtmlEscape | Op::JsonUnescape | Op::JsonEscape
+            Op::B64Decode
+                | Op::B64Encode
+                | Op::UrlDecode
+                | Op::UrlEncode
+                | Op::HexDecode
+                | Op::HexEncode
+                | Op::HtmlUnescape
+                | Op::HtmlEscape
+                | Op::JsonUnescape
+                | Op::JsonEscape
         )
     }
 
     /// Operations that work line by line (separators between groups in menus).
     pub fn is_line_op(self) -> bool {
-        matches!(self, Op::SortAsc | Op::SortDesc | Op::SortNumeric | Op::Reverse | Op::Unique | Op::CountDuplicates)
+        matches!(
+            self,
+            Op::SortAsc
+                | Op::SortDesc
+                | Op::SortNumeric
+                | Op::Reverse
+                | Op::Unique
+                | Op::CountDuplicates
+        )
     }
 }
 
@@ -125,12 +142,20 @@ fn split_lines(text: &str) -> (Vec<&str>, &'static str, bool) {
     let body = text.strip_suffix(eol);
     let trailing = body.is_some();
     let body = body.unwrap_or(text);
-    let lines = if eol == "\r\n" { body.split("\r\n").collect() } else { body.split(eol).collect() };
+    let lines = if eol == "\r\n" {
+        body.split("\r\n").collect()
+    } else {
+        body.split(eol).collect()
+    };
     (lines, eol, trailing)
 }
 
 fn join(lines: &[impl AsRef<str>], eol: &str, trailing: bool) -> String {
-    let mut out = lines.iter().map(|l| l.as_ref()).collect::<Vec<_>>().join(eol);
+    let mut out = lines
+        .iter()
+        .map(|l| l.as_ref())
+        .collect::<Vec<_>>()
+        .join(eol);
     if trailing {
         out.push_str(eol);
     }
@@ -139,7 +164,11 @@ fn join(lines: &[impl AsRef<str>], eol: &str, trailing: bool) -> String {
 
 fn leading_number(s: &str) -> Option<f64> {
     let t = s.trim_start();
-    let end = t.char_indices().find(|&(i, c)| !(c.is_ascii_digit() || c == '.' || (i == 0 && (c == '-' || c == '+')))).map(|x| x.0).unwrap_or(t.len());
+    let end = t
+        .char_indices()
+        .find(|&(i, c)| !(c.is_ascii_digit() || c == '.' || (i == 0 && (c == '-' || c == '+'))))
+        .map(|x| x.0)
+        .unwrap_or(t.len());
     t[..end].parse().ok()
 }
 
@@ -155,14 +184,19 @@ pub fn apply(op: Op, text: &str, tab_width: usize) -> Result<String, String> {
             join(&v, eol, trailing)
         }
         Op::SortNumeric => {
-            let mut v: Vec<(Option<f64>, &str)> = lines.into_iter().map(|l| (leading_number(l), l)).collect();
+            let mut v: Vec<(Option<f64>, &str)> =
+                lines.into_iter().map(|l| (leading_number(l), l)).collect();
             v.sort_by(|a, b| match (a.0, b.0) {
                 (Some(x), Some(y)) => x.total_cmp(&y),
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
                 (None, None) => std::cmp::Ordering::Equal,
             });
-            join(&v.into_iter().map(|x| x.1).collect::<Vec<_>>(), eol, trailing)
+            join(
+                &v.into_iter().map(|x| x.1).collect::<Vec<_>>(),
+                eol,
+                trailing,
+            )
         }
         Op::Reverse => {
             let mut v = lines;
@@ -187,11 +221,25 @@ pub fn apply(op: Op, text: &str, tab_width: usize) -> Result<String, String> {
                 }
             }
             counts.sort_by_key(|c| std::cmp::Reverse(c.1));
-            join(&counts.iter().map(|(l, n)| format!("{n}\t{l}")).collect::<Vec<_>>(), eol, trailing)
+            join(
+                &counts
+                    .iter()
+                    .map(|(l, n)| format!("{n}\t{l}"))
+                    .collect::<Vec<_>>(),
+                eol,
+                trailing,
+            )
         }
         Op::Upper => text.to_uppercase(),
         Op::Lower => text.to_lowercase(),
-        Op::TrimTrailing => join(&lines.iter().map(|l| l.trim_end_matches([' ', '\t'])).collect::<Vec<_>>(), eol, trailing),
+        Op::TrimTrailing => join(
+            &lines
+                .iter()
+                .map(|l| l.trim_end_matches([' ', '\t']))
+                .collect::<Vec<_>>(),
+            eol,
+            trailing,
+        ),
         Op::TabsToSpaces => {
             let v: Vec<String> = lines
                 .iter()
@@ -218,14 +266,20 @@ pub fn apply(op: Op, text: &str, tab_width: usize) -> Result<String, String> {
                 .iter()
                 .map(|l| {
                     let indent = l.len() - l.trim_start_matches(' ').len();
-                    format!("{}{}{}", "\t".repeat(indent / tab_width), " ".repeat(indent % tab_width), &l[indent..])
+                    format!(
+                        "{}{}{}",
+                        "\t".repeat(indent / tab_width),
+                        " ".repeat(indent % tab_width),
+                        &l[indent..]
+                    )
                 })
                 .collect();
             join(&v, eol, trailing)
         }
         Op::JsonPretty => json_format(text, Some("  "), eol)?,
         Op::JsonMinify => json_format(text, None, eol)?,
-        _ => String::from_utf8(codec_apply(op, text)?).map_err(|_| "The result is not text.".to_string())?,
+        _ => String::from_utf8(codec_apply(op, text)?)
+            .map_err(|_| "The result is not text.".to_string())?,
     })
 }
 
@@ -279,7 +333,19 @@ pub struct JsonFormatter<'a> {
 
 impl<'a> JsonFormatter<'a> {
     pub fn new(indent: Option<&'a str>, eol: &'a str) -> Self {
-        JsonFormatter { indent, eol, stack: Vec::new(), in_str: false, escaped: false, pending: false, after_open: false, top_break: false, started: false, line: 1, tail: String::new() }
+        JsonFormatter {
+            indent,
+            eol,
+            stack: Vec::new(),
+            in_str: false,
+            escaped: false,
+            pending: false,
+            after_open: false,
+            top_break: false,
+            started: false,
+            line: 1,
+            tail: String::new(),
+        }
     }
 
     fn newline(&self, out: &mut String, depth: usize) {
@@ -310,7 +376,10 @@ impl<'a> JsonFormatter<'a> {
                 } else if c == '"' {
                     self.in_str = false;
                 } else if c == '\n' {
-                    return Err(format!("Line break inside a JSON string (line {}).", self.line));
+                    return Err(format!(
+                        "Line break inside a JSON string (line {}).",
+                        self.line
+                    ));
                 }
                 continue;
             }
@@ -325,7 +394,10 @@ impl<'a> JsonFormatter<'a> {
             }
             let line = self.line;
             if matches!(c, '}' | ']') {
-                let open = self.stack.pop().ok_or_else(|| format!("Unexpected “{c}” (line {line})."))?;
+                let open = self
+                    .stack
+                    .pop()
+                    .ok_or_else(|| format!("Unexpected “{c}” (line {line})."))?;
                 if (open == '{') != (c == '}') {
                     return Err(format!("“{c}” does not close “{open}” (line {line})."));
                 }
@@ -360,7 +432,9 @@ impl<'a> JsonFormatter<'a> {
                 }
                 ',' => {
                     if self.stack.is_empty() {
-                        return Err(format!("Unexpected “,” outside an object or array (line {line})."));
+                        return Err(format!(
+                            "Unexpected “,” outside an object or array (line {line})."
+                        ));
                     }
                     out.push(c);
                     self.pending = true;
@@ -394,7 +468,16 @@ impl<'a> JsonFormatter<'a> {
 impl Op {
     /// Whether it can work through a document a piece at a time (sorting cannot).
     pub fn streams(self) -> bool {
-        matches!(self, Op::Upper | Op::Lower | Op::TrimTrailing | Op::TabsToSpaces | Op::SpacesToTabs | Op::JsonPretty | Op::JsonMinify)
+        matches!(
+            self,
+            Op::Upper
+                | Op::Lower
+                | Op::TrimTrailing
+                | Op::TabsToSpaces
+                | Op::SpacesToTabs
+                | Op::JsonPretty
+                | Op::JsonMinify
+        )
     }
 }
 
@@ -421,14 +504,34 @@ fn copy_range(buf: &TextBuf, r: Range<u64>, out: &mut dyn Write) -> io::Result<u
 
 /// Writes `buf` with `op` applied to `range` (the rest as it is) to `out`, whole lines at a
 /// time, for documents of any size. Returns the bytes written, or `None` when cancelled.
-pub fn text_op_to(buf: &TextBuf, range: Range<u64>, op: Op, tab_width: usize, out: &mut dyn Write, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<u64>> {
+pub fn text_op_to(
+    buf: &TextBuf,
+    range: Range<u64>,
+    op: Op,
+    tab_width: usize,
+    out: &mut dyn Write,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<u64>> {
     text_op_window(buf, range, op, tab_width, out, cancel, progress, WINDOW)
 }
 
 #[allow(clippy::too_many_arguments)]
-fn text_op_window(buf: &TextBuf, range: Range<u64>, op: Op, tab_width: usize, out: &mut dyn Write, cancel: &CancelToken, progress: Option<&Progress>, window: u64) -> io::Result<Option<u64>> {
+fn text_op_window(
+    buf: &TextBuf,
+    range: Range<u64>,
+    op: Op,
+    tab_width: usize,
+    out: &mut dyn Write,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    window: u64,
+) -> io::Result<Option<u64>> {
     if !op.streams() {
-        return Err(io::Error::new(io::ErrorKind::Unsupported, "this operation needs all the lines at once"));
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "this operation needs all the lines at once",
+        ));
     }
     let bad = |e: String| io::Error::new(io::ErrorKind::InvalidData, e);
     let codec = buf.codec;
@@ -451,7 +554,9 @@ fn text_op_window(buf: &TextBuf, range: Range<u64>, op: Op, tab_width: usize, ou
         let mut w = window;
         let (bytes, cut) = loop {
             let end = (pos + w).min(range.end);
-            let bytes = buf.read(pos..end).ok_or_else(|| io::Error::other("Could not read the document"))?;
+            let bytes = buf
+                .read(pos..end)
+                .ok_or_else(|| io::Error::other("Could not read the document"))?;
             if end == range.end {
                 let n = bytes.len();
                 break (bytes, n);
@@ -476,7 +581,11 @@ fn text_op_window(buf: &TextBuf, range: Range<u64>, op: Op, tab_width: usize, ou
                             c -= 1;
                         }
                     } else if unit == 2 && c >= 2 {
-                        let u = if codec.enc == crate::encoding::Encoding::Utf16Be { u16::from_be_bytes([bytes[c - 2], bytes[c - 1]]) } else { u16::from_le_bytes([bytes[c - 2], bytes[c - 1]]) };
+                        let u = if codec.enc == crate::encoding::Encoding::Utf16Be {
+                            u16::from_be_bytes([bytes[c - 2], bytes[c - 1]])
+                        } else {
+                            u16::from_le_bytes([bytes[c - 2], bytes[c - 1]])
+                        };
                         if (0xD800..0xDC00).contains(&u) {
                             c -= 2;
                         }
@@ -492,11 +601,20 @@ fn text_op_window(buf: &TextBuf, range: Range<u64>, op: Op, tab_width: usize, ou
         let chunk = &bytes[..cut];
         let text = codec.decode_lossy(chunk);
         if codec.encode(&text) != chunk {
-            return Err(bad(format!("The text contains bytes that are not valid {}; the operation would change them.", codec.enc.name())));
+            return Err(bad(format!(
+                "The text contains bytes that are not valid {}; the operation would change them.",
+                codec.enc.name()
+            )));
         }
         if first {
             first = false;
-            let eol = if text.contains("\r\n") { "\r\n" } else if text.contains('\n') || !text.contains('\r') { "\n" } else { "\r" };
+            let eol = if text.contains("\r\n") {
+                "\r\n"
+            } else if text.contains('\n') || !text.contains('\r') {
+                "\n"
+            } else {
+                "\r"
+            };
             json = match op {
                 Op::JsonPretty => Some(JsonFormatter::new(Some("  "), eol)),
                 Op::JsonMinify => Some(JsonFormatter::new(None, eol)),
@@ -535,20 +653,38 @@ mod tests {
 
     #[test]
     fn line_ops_keep_breaks() {
-        assert_eq!(apply(Op::SortAsc, "b\r\na\r\nc\r\n", 4).unwrap(), "a\r\nb\r\nc\r\n");
+        assert_eq!(
+            apply(Op::SortAsc, "b\r\na\r\nc\r\n", 4).unwrap(),
+            "a\r\nb\r\nc\r\n"
+        );
         assert_eq!(apply(Op::SortDesc, "b\na\nc", 4).unwrap(), "c\nb\na");
-        assert_eq!(apply(Op::SortNumeric, "10 x\n9 y\nz\n-1 w\n", 4).unwrap(), "-1 w\n9 y\n10 x\nz\n");
+        assert_eq!(
+            apply(Op::SortNumeric, "10 x\n9 y\nz\n-1 w\n", 4).unwrap(),
+            "-1 w\n9 y\n10 x\nz\n"
+        );
         assert_eq!(apply(Op::Reverse, "1\n2\n3\n", 4).unwrap(), "3\n2\n1\n");
-        assert_eq!(apply(Op::Unique, "a\nb\na\nc\nb\n", 4).unwrap(), "a\nb\nc\n");
+        assert_eq!(
+            apply(Op::Unique, "a\nb\na\nc\nb\n", 4).unwrap(),
+            "a\nb\nc\n"
+        );
         assert_eq!(apply(Op::TrimTrailing, "a  \nb\t\n", 4).unwrap(), "a\nb\n");
     }
 
     #[test]
     fn case_and_indentation() {
-        assert_eq!(apply(Op::Upper, "straße привет", 4).unwrap(), "STRASSE ПРИВЕТ");
+        assert_eq!(
+            apply(Op::Upper, "straße привет", 4).unwrap(),
+            "STRASSE ПРИВЕТ"
+        );
         assert_eq!(apply(Op::Lower, "ÄB", 4).unwrap(), "äb");
-        assert_eq!(apply(Op::TabsToSpaces, "\tx\n ab\tc", 4).unwrap(), "    x\n ab c");
-        assert_eq!(apply(Op::SpacesToTabs, "      x  y\n  z", 4).unwrap(), "\t  x  y\n  z");
+        assert_eq!(
+            apply(Op::TabsToSpaces, "\tx\n ab\tc", 4).unwrap(),
+            "    x\n ab c"
+        );
+        assert_eq!(
+            apply(Op::SpacesToTabs, "      x  y\n  z", 4).unwrap(),
+            "\t  x  y\n  z"
+        );
     }
 
     fn buf(data: &[u8]) -> (tempfile::NamedTempFile, TextBuf) {
@@ -556,20 +692,45 @@ mod tests {
         let mut f = tempfile::NamedTempFile::new().unwrap();
         f.write_all(data).unwrap();
         f.flush().unwrap();
-        let s = std::sync::Arc::new(crate::file::Source::open(f.path(), crate::file::OpenMode::Auto).unwrap());
+        let s = std::sync::Arc::new(
+            crate::file::Source::open(f.path(), crate::file::OpenMode::Auto).unwrap(),
+        );
         let det = crate::encoding::detect(data, true);
-        (f, TextBuf::new(s.clone(), crate::index::LineIndex::new(s.len()), det.codec))
+        (
+            f,
+            TextBuf::new(s.clone(), crate::index::LineIndex::new(s.len()), det.codec),
+        )
     }
 
     #[test]
     fn streaming_matches_in_memory_at_any_window() {
-        for text in ["Straße\tone  \n  two\tTWO \nпривет мир\t\n\n    four\nlast", "a\t \r\n    b  \r\nc"] {
+        for text in [
+            "Straße\tone  \n  two\tTWO \nпривет мир\t\n\n    four\nlast",
+            "a\t \r\n    b  \r\nc",
+        ] {
             let (_f, b) = buf(text.as_bytes());
-            for op in [Op::Upper, Op::Lower, Op::TrimTrailing, Op::TabsToSpaces, Op::SpacesToTabs] {
+            for op in [
+                Op::Upper,
+                Op::Lower,
+                Op::TrimTrailing,
+                Op::TabsToSpaces,
+                Op::SpacesToTabs,
+            ] {
                 let want = apply(op, text, 4).unwrap();
                 for window in [1, 3, 7, 16, 1000] {
                     let mut out = Vec::new();
-                    text_op_window(&b, 0..b.len(), op, 4, &mut out, &CancelToken::new(), None, window).unwrap().unwrap();
+                    text_op_window(
+                        &b,
+                        0..b.len(),
+                        op,
+                        4,
+                        &mut out,
+                        &CancelToken::new(),
+                        None,
+                        window,
+                    )
+                    .unwrap()
+                    .unwrap();
                     assert_eq!(String::from_utf8(out).unwrap(), want, "{op:?} at {window}");
                 }
             }
@@ -578,25 +739,68 @@ mod tests {
         let (_f, b) = buf(text.as_bytes());
         // Only the range changes.
         let mut out = Vec::new();
-        text_op_window(&b, 8..13, Op::Upper, 4, &mut out, &CancelToken::new(), None, 2).unwrap().unwrap();
-        assert!(String::from_utf8(out).unwrap().starts_with("Straße\tONE  \n"));
-        assert!(text_op_to(&b, 0..b.len(), Op::SortAsc, 4, &mut Vec::new(), &CancelToken::new(), None).is_err());
+        text_op_window(
+            &b,
+            8..13,
+            Op::Upper,
+            4,
+            &mut out,
+            &CancelToken::new(),
+            None,
+            2,
+        )
+        .unwrap()
+        .unwrap();
+        assert!(String::from_utf8(out)
+            .unwrap()
+            .starts_with("Straße\tONE  \n"));
+        assert!(text_op_to(
+            &b,
+            0..b.len(),
+            Op::SortAsc,
+            4,
+            &mut Vec::new(),
+            &CancelToken::new(),
+            None
+        )
+        .is_err());
     }
 
     #[test]
     fn json_streams_too() {
-        let src = "{\"b\":1,\"a\":[1, 2.50,{}],\"s\":\"x, \\\"y\\\": [z]\",\"e\":[]}\n{\"n\": null}\n";
+        let src =
+            "{\"b\":1,\"a\":[1, 2.50,{}],\"s\":\"x, \\\"y\\\": [z]\",\"e\":[]}\n{\"n\": null}\n";
         let (_f, b) = buf(src.as_bytes());
         for (op, indent) in [(Op::JsonPretty, Some("  ")), (Op::JsonMinify, None)] {
             let want = json_format(src, indent, "\n").unwrap();
             for window in [1, 5, 13, 4096] {
                 let mut out = Vec::new();
-                text_op_window(&b, 0..b.len(), op, 4, &mut out, &CancelToken::new(), None, window).unwrap().unwrap();
+                text_op_window(
+                    &b,
+                    0..b.len(),
+                    op,
+                    4,
+                    &mut out,
+                    &CancelToken::new(),
+                    None,
+                    window,
+                )
+                .unwrap()
+                .unwrap();
                 assert_eq!(String::from_utf8(out).unwrap(), want, "{op:?} at {window}");
             }
         }
         let (_g, broken) = buf(b"{\"a\": [1}");
-        assert!(text_op_to(&broken, 0..broken.len(), Op::JsonMinify, 4, &mut Vec::new(), &CancelToken::new(), None).is_err());
+        assert!(text_op_to(
+            &broken,
+            0..broken.len(),
+            Op::JsonMinify,
+            4,
+            &mut Vec::new(),
+            &CancelToken::new(),
+            None
+        )
+        .is_err());
     }
 
     #[test]
@@ -604,10 +808,20 @@ mod tests {
         let src = r#"{"b":1,"a":[1, 2.50,{}],"s":"x, \"y\": [z]","e":[]}"#;
         let pretty = json_format(src, Some("  "), "\n").unwrap();
         assert_eq!(pretty, "{\n  \"b\": 1,\n  \"a\": [\n    1,\n    2.50,\n    {}\n  ],\n  \"s\": \"x, \\\"y\\\": [z]\",\n  \"e\": []\n}");
-        assert_eq!(json_format(&pretty, None, "\n").unwrap(), r#"{"b":1,"a":[1,2.50,{}],"s":"x, \"y\": [z]","e":[]}"#);
+        assert_eq!(
+            json_format(&pretty, None, "\n").unwrap(),
+            r#"{"b":1,"a":[1,2.50,{}],"s":"x, \"y\": [z]","e":[]}"#
+        );
         // JSON Lines stay one value per line.
-        assert_eq!(json_format("{\"a\": 1}\n{\"b\": [ 2 ]}\n", None, "\n").unwrap(), "{\"a\":1}\n{\"b\":[2]}\n");
-        assert!(json_format("{\"a\": [1}", None, "\n").unwrap_err().contains("does not close"));
-        assert!(json_format("[1", None, "\n").unwrap_err().contains("not closed"));
+        assert_eq!(
+            json_format("{\"a\": 1}\n{\"b\": [ 2 ]}\n", None, "\n").unwrap(),
+            "{\"a\":1}\n{\"b\":[2]}\n"
+        );
+        assert!(json_format("{\"a\": [1}", None, "\n")
+            .unwrap_err()
+            .contains("does not close"));
+        assert!(json_format("[1", None, "\n")
+            .unwrap_err()
+            .contains("not closed"));
     }
 }

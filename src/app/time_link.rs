@@ -69,38 +69,72 @@ const LINK_DEBOUNCE: Duration = Duration::from_millis(100);
 impl BigTextApp {
     /// Moves every other open text tab to the time of the caret's line.
     pub(crate) fn time_all_tabs(&mut self) {
-        let Some(d) = self.docs.get(self.active) else { return };
-        let Some(st) = d.line_bounds(d.view.caret, 64 * 1024).and_then(|b| timestamp::stamp_at(&d.buf, b.0)) else {
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
+        let Some(st) = d
+            .line_bounds(d.view.caret, 64 * 1024)
+            .and_then(|b| timestamp::stamp_at(&d.buf, b.0))
+        else {
             self.error = Some(tr("The caret's line has no timestamp.").into());
             return;
         };
         self.align_seq += 1;
         let (seq, me) = (self.align_seq, d.id);
         let mut n = 0;
-        for d in self.docs.iter().filter(|d| d.id != me && d.is_ready() && !d.hex && !d.table) {
+        for d in self
+            .docs
+            .iter()
+            .filter(|d| d.id != me && d.is_ready() && !d.hex && !d.table)
+        {
             let (snap, doc, version) = (d.buf.snapshot(), d.id, d.version);
             let (tx, waker) = (self.tx.clone(), self.waker.clone());
             jobs::spawn("time-all-tabs", move || {
                 let off = timestamp::find_time_utc(&snap, st, &CancelToken::new()).ok();
-                let _ = tx.send(Msg::Aligned(Box::new(Aligned { doc, version, seq, off, link: false })));
+                let _ = tx.send(Msg::Aligned(Box::new(Aligned {
+                    doc,
+                    version,
+                    seq,
+                    off,
+                    link: false,
+                })));
                 waker();
             });
             n += 1;
         }
         let time = timestamp::format_key(st.ms, st.has_date, true);
-        let text = if n == 0 { tr("No other text tabs are open.").to_string() } else { trf("Moving {n} other tabs to {time}.", &[("n", &n.to_string()), ("time", &time)]) };
+        let text = if n == 0 {
+            tr("No other text tabs are open.").to_string()
+        } else {
+            trf(
+                "Moving {n} other tabs to {time}.",
+                &[("n", &n.to_string()), ("time", &time)],
+            )
+        };
         self.notify(text, None);
     }
 
     pub(super) fn on_aligned(&mut self, a: Aligned) {
-        if a.seq != if a.link { self.link_seq } else { self.align_seq } {
+        if a.seq
+            != if a.link {
+                self.link_seq
+            } else {
+                self.align_seq
+            }
+        {
             return;
         }
         if a.link {
             self.link_job = None;
         }
         let Some(off) = a.off else { return };
-        let Some(d) = self.docs.iter_mut().find(|d| d.id == a.doc && d.version == a.version) else { return };
+        let Some(d) = self
+            .docs
+            .iter_mut()
+            .find(|d| d.id == a.doc && d.version == a.version)
+        else {
+            return;
+        };
         let off = off.min(d.buf.len());
         if a.link {
             d.view.top = off;
@@ -115,17 +149,32 @@ impl BigTextApp {
         let d = self.docs.get(self.active)?;
         let link = d.link.as_ref()?;
         let text = |d: &super::document::Document| d.is_ready() && !d.hex && !d.table;
-        if !text(d) || d.split.is_some() || (self.side_by_side && self.diff.as_ref().is_some_and(|r| r.doc == d.id)) {
+        if !text(d)
+            || d.split.is_some()
+            || (self.side_by_side && self.diff.as_ref().is_some_and(|r| r.doc == d.id))
+        {
             return None;
         }
-        self.docs.iter().position(|x| x.id == link.partner && x.id != d.id && text(x))
+        self.docs
+            .iter()
+            .position(|x| x.id == link.partner && x.id != d.id && text(x))
     }
 
     /// Links the active document with the tab `partner`.
     pub(crate) fn link_with(&mut self, partner: u64, mode: LinkMode) {
-        let skew_ms = self.docs.get(self.active).and_then(|d| d.link.as_ref()).map(|l| l.skew_ms).unwrap_or(0);
+        let skew_ms = self
+            .docs
+            .get(self.active)
+            .and_then(|d| d.link.as_ref())
+            .map(|l| l.skew_ms)
+            .unwrap_or(0);
         if let Some(d) = self.docs.get_mut(self.active).filter(|d| d.id != partner) {
-            d.link = Some(Link { partner, mode, skew_ms, synced: None });
+            d.link = Some(Link {
+                partner,
+                mode,
+                skew_ms,
+                synced: None,
+            });
             d.split = None;
         }
     }
@@ -141,7 +190,9 @@ impl BigTextApp {
 
     /// Moves the linked partner to where the active document now is.
     pub(super) fn sync_link(&mut self, ctx: &egui::Context) {
-        let Some(pi) = self.linked_partner() else { return };
+        let Some(pi) = self.linked_partner() else {
+            return;
+        };
         let a = &self.docs[self.active];
         let Some(link) = a.link.clone() else { return };
         let top = a.view.top;
@@ -162,28 +213,48 @@ impl BigTextApp {
                 let b = &mut self.docs[pi];
                 let off = ((b.buf.len() as f64 * f) as u64).min(b.buf.len());
                 let wrap = crate::view::text_view::wrap_cols(&b.view);
-                b.view.top = bigtext::text::rows::row_at(&b.buf, off, wrap).map(|r| r.start).unwrap_or(off);
+                b.view.top = bigtext::text::rows::row_at(&b.buf, off, wrap)
+                    .map(|r| r.start)
+                    .unwrap_or(off);
             }
             LinkMode::Time => {
                 // At most one lookup per 100 ms while scrolling, the latest one winning.
-                if self.link_job.as_ref().is_some_and(|(_, t)| t.elapsed() < LINK_DEBOUNCE) {
+                if self
+                    .link_job
+                    .as_ref()
+                    .is_some_and(|(_, t)| t.elapsed() < LINK_DEBOUNCE)
+                {
                     ctx.request_repaint_after(LINK_DEBOUNCE);
                     return;
                 }
-                if let Some(st) = a.line_bounds(top, 64 * 1024).and_then(|b| timestamp::stamp_at(&a.buf, b.0)) {
-                    let st = timestamp::Stamp { ms: st.ms + link.skew_ms, ..st };
+                if let Some(st) = a
+                    .line_bounds(top, 64 * 1024)
+                    .and_then(|b| timestamp::stamp_at(&a.buf, b.0))
+                {
+                    let st = timestamp::Stamp {
+                        ms: st.ms + link.skew_ms,
+                        ..st
+                    };
                     if let Some((c, _)) = self.link_job.take() {
                         c.cancel();
                     }
                     self.link_seq += 1;
                     let b = &self.docs[pi];
-                    let (snap, doc, version, seq) = (b.buf.snapshot(), b.id, b.version, self.link_seq);
-                    let (tx, waker, cancel) = (self.tx.clone(), self.waker.clone(), CancelToken::new());
+                    let (snap, doc, version, seq) =
+                        (b.buf.snapshot(), b.id, b.version, self.link_seq);
+                    let (tx, waker, cancel) =
+                        (self.tx.clone(), self.waker.clone(), CancelToken::new());
                     self.link_job = Some((cancel.clone(), Instant::now()));
                     jobs::spawn("link-time", move || {
                         let off = timestamp::find_time_utc(&snap, st, &cancel).ok();
                         if !cancel.is_cancelled() {
-                            let _ = tx.send(Msg::Aligned(Box::new(Aligned { doc, version, seq, off, link: true })));
+                            let _ = tx.send(Msg::Aligned(Box::new(Aligned {
+                                doc,
+                                version,
+                                seq,
+                                off,
+                                link: true,
+                            })));
                             waker();
                         }
                     });
@@ -197,9 +268,16 @@ impl BigTextApp {
 
     /// View → Link scrolling with ▸ (the mode, then the tab).
     pub(super) fn link_menu(&mut self, ui: &mut egui::Ui) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let (me, linked) = (d.id, d.link.clone());
-        let tabs: Vec<(u64, String)> = self.docs.iter().filter(|x| x.id != me && x.is_ready() && !x.hex && !x.table).map(|x| (x.id, x.title.clone())).collect();
+        let tabs: Vec<(u64, String)> = self
+            .docs
+            .iter()
+            .filter(|x| x.id != me && x.is_ready() && !x.hex && !x.table)
+            .map(|x| (x.id, x.title.clone()))
+            .collect();
         ui.add_enabled_ui(!tabs.is_empty() || linked.is_some(), |ui| {
             ui.menu_button(tr("Link scrolling with"), |ui| {
                 for m in LinkMode::ALL {
@@ -212,7 +290,10 @@ impl BigTextApp {
                 }
                 ui.separator();
                 for (id, title) in tabs {
-                    if ui.radio(linked.as_ref().is_some_and(|l| l.partner == id), title).clicked() {
+                    if ui
+                        .radio(linked.as_ref().is_some_and(|l| l.partner == id), title)
+                        .clicked()
+                    {
                         self.link_with(id, self.link_mode);
                         ui.close();
                     }

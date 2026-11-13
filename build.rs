@@ -11,7 +11,10 @@ fn main() {
             .set("FileDescription", "BigText")
             .set("ProductName", "BigText")
             .set("CompanyName", "Erkin Pardayev")
-            .set("LegalCopyright", "Copyright (c) 2026 Erkin Pardayev, MIT license");
+            .set(
+                "LegalCopyright",
+                "Copyright (c) 2026 Erkin Pardayev, MIT license",
+            );
         if let Err(e) = res.compile() {
             panic!("embedding Windows resources failed: {e}");
         }

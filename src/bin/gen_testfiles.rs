@@ -29,16 +29,74 @@ impl Rng {
 }
 
 const WORDS: &[&str] = &[
-    "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet",
-    "kilo", "lima", "mike", "november", "oscar", "papa", "quebec", "romeo", "sierra", "tango",
-    "uniform", "victor", "whiskey", "xray", "yankee", "zulu", "request", "response", "error",
-    "timeout", "connection", "database", "session", "user", "payload", "checksum", "retry",
-    "latency", "cache", "miss", "hit", "worker", "thread", "queue", "socket", "buffer", "index",
+    "alpha",
+    "bravo",
+    "charlie",
+    "delta",
+    "echo",
+    "foxtrot",
+    "golf",
+    "hotel",
+    "india",
+    "juliet",
+    "kilo",
+    "lima",
+    "mike",
+    "november",
+    "oscar",
+    "papa",
+    "quebec",
+    "romeo",
+    "sierra",
+    "tango",
+    "uniform",
+    "victor",
+    "whiskey",
+    "xray",
+    "yankee",
+    "zulu",
+    "request",
+    "response",
+    "error",
+    "timeout",
+    "connection",
+    "database",
+    "session",
+    "user",
+    "payload",
+    "checksum",
+    "retry",
+    "latency",
+    "cache",
+    "miss",
+    "hit",
+    "worker",
+    "thread",
+    "queue",
+    "socket",
+    "buffer",
+    "index",
 ];
 const LEVELS: &[&str] = &["INFO", "DEBUG", "WARN", "ERROR", "TRACE"];
 const RU_WORDS: &[&str] = &[
-    "привет", "мир", "строка", "файл", "данные", "ошибка", "пользователь", "сервер", "запрос",
-    "ответ", "время", "журнал", "проверка", "система", "память", "поиск", "замена", "текст",
+    "привет",
+    "мир",
+    "строка",
+    "файл",
+    "данные",
+    "ошибка",
+    "пользователь",
+    "сервер",
+    "запрос",
+    "ответ",
+    "время",
+    "журнал",
+    "проверка",
+    "система",
+    "память",
+    "поиск",
+    "замена",
+    "текст",
 ];
 
 fn write_until(path: &Path, target: u64, mut fill: impl FnMut(&mut Vec<u8>)) -> io::Result<u64> {
@@ -200,16 +258,25 @@ fn gen_short_lines(path: &Path, lines: u64) -> io::Result<u64> {
 
 fn gen_small(dir: &Path) -> io::Result<()> {
     std::fs::write(dir.join("empty.txt"), b"")?;
-    std::fs::write(dir.join("no-trailing-newline.txt"), b"first line\nsecond line without newline")?;
+    std::fs::write(
+        dir.join("no-trailing-newline.txt"),
+        b"first line\nsecond line without newline",
+    )?;
     std::fs::write(dir.join("cr-only.txt"), b"old\rmac\rline\rendings\r")?;
-    std::fs::write(dir.join("bom-in-middle.txt"), "start\n\u{FEFF}after bom\nend\n".as_bytes())?;
+    std::fs::write(
+        dir.join("bom-in-middle.txt"),
+        "start\n\u{FEFF}after bom\nend\n".as_bytes(),
+    )?;
     let mut nul = b"text with NUL ".to_vec();
     nul.extend_from_slice(&[0, 0, 0]);
     nul.extend_from_slice(b" bytes\n\xFF\xFE invalid utf8 \xC3\x28 here\n");
     std::fs::write(dir.join("nul-and-invalid.txt"), nul)?;
     let long_path_dir = dir.join("unicode-путь-日本");
     std::fs::create_dir_all(&long_path_dir)?;
-    std::fs::write(long_path_dir.join("файл.txt"), "Unicode path test\n".as_bytes())?;
+    std::fs::write(
+        long_path_dir.join("файл.txt"),
+        "Unicode path test\n".as_bytes(),
+    )?;
     Ok(())
 }
 
@@ -233,7 +300,9 @@ fn main() -> io::Result<()> {
             "--skip-big" => skip_big = true,
             "--force" => force = true,
             "-h" | "--help" => {
-                println!("usage: gen-testfiles [--out DIR] [--only name,...] [--skip-big] [--force]");
+                println!(
+                    "usage: gen-testfiles [--out DIR] [--only name,...] [--skip-big] [--force]"
+                );
                 return Ok(());
             }
             other => eprintln!("ignoring unknown argument {other}"),
@@ -256,7 +325,10 @@ fn main() -> io::Result<()> {
     ];
     for (name, size, f, big) in jobs {
         if let Some(only) = &only {
-            if !only.iter().any(|o| o == name || name.starts_with(o.as_str())) {
+            if !only
+                .iter()
+                .any(|o| o == name || name.starts_with(o.as_str()))
+            {
                 continue;
             }
         } else if big && skip_big {
@@ -270,7 +342,11 @@ fn main() -> io::Result<()> {
         let t = Instant::now();
         let n = f(&path, size)?;
         let secs = t.elapsed().as_secs_f64();
-        println!("{name}: {:.2} MB in {secs:.1}s ({:.0} MB/s)", n as f64 / MIB as f64, n as f64 / MIB as f64 / secs);
+        println!(
+            "{name}: {:.2} MB in {secs:.1}s ({:.0} MB/s)",
+            n as f64 / MIB as f64,
+            n as f64 / MIB as f64 / secs
+        );
     }
     Ok(())
 }

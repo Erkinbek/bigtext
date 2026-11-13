@@ -42,56 +42,85 @@ impl BigTextApp {
     pub(crate) fn open_pivot(&mut self, col: usize) {
         let names = self.column_names_of(self.active);
         let cols = if col + 1 < names.len() { col + 1 } else { 0 };
-        self.pivot = Some(PivotDialog { rows: col, cols, value: None, agg: Agg::Count, bucket: Bucket::AsIs, names });
+        self.pivot = Some(PivotDialog {
+            rows: col,
+            cols,
+            value: None,
+            agg: Agg::Count,
+            bucket: Bucket::AsIs,
+            names,
+        });
     }
 
     pub(super) fn pivot_window(&mut self, ctx: &egui::Context) {
         let Some(p) = self.pivot.as_mut() else { return };
         let mut open = true;
         let mut go = false;
-        egui::Window::new(tr("Pivot table")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
-            let pick = |ui: &mut egui::Ui, salt: &str, col: &mut usize, names: &[String]| {
-                egui::ComboBox::from_id_salt(salt).selected_text(names.get(*col).cloned().unwrap_or_default()).width(180.0).show_ui(ui, |ui| {
-                    for (i, n) in names.iter().enumerate() {
-                        ui.selectable_value(col, i, n);
-                    }
-                });
-            };
-            egui::Grid::new("pivot").num_columns(2).show(ui, |ui| {
-                ui.label(tr("Rows"));
-                ui.horizontal(|ui| {
-                    pick(ui, "pivot-rows", &mut p.rows, &p.names);
-                    egui::ComboBox::from_id_salt("pivot-bucket").selected_text(tr(bucket_label(p.bucket))).show_ui(ui, |ui| {
-                        for b in Bucket::ALL {
-                            ui.selectable_value(&mut p.bucket, b, tr(bucket_label(b)));
+        egui::Window::new(tr("Pivot table"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                let pick = |ui: &mut egui::Ui, salt: &str, col: &mut usize, names: &[String]| {
+                    egui::ComboBox::from_id_salt(salt)
+                        .selected_text(names.get(*col).cloned().unwrap_or_default())
+                        .width(180.0)
+                        .show_ui(ui, |ui| {
+                            for (i, n) in names.iter().enumerate() {
+                                ui.selectable_value(col, i, n);
+                            }
+                        });
+                };
+                egui::Grid::new("pivot").num_columns(2).show(ui, |ui| {
+                    ui.label(tr("Rows"));
+                    ui.horizontal(|ui| {
+                        pick(ui, "pivot-rows", &mut p.rows, &p.names);
+                        egui::ComboBox::from_id_salt("pivot-bucket")
+                            .selected_text(tr(bucket_label(p.bucket)))
+                            .show_ui(ui, |ui| {
+                                for b in Bucket::ALL {
+                                    ui.selectable_value(&mut p.bucket, b, tr(bucket_label(b)));
+                                }
+                            });
+                    });
+                    ui.end_row();
+                    ui.label(tr("Columns"));
+                    pick(ui, "pivot-cols", &mut p.cols, &p.names);
+                    ui.end_row();
+                    ui.label(tr("Cells"));
+                    ui.horizontal(|ui| {
+                        egui::ComboBox::from_id_salt("pivot-agg")
+                            .selected_text(tr(agg_label(p.agg)))
+                            .show_ui(ui, |ui| {
+                                for a in Agg::ALL {
+                                    ui.selectable_value(&mut p.agg, a, tr(agg_label(a)));
+                                }
+                            });
+                        if p.agg != Agg::Count {
+                            let mut v = p.value.unwrap_or(0);
+                            pick(ui, "pivot-value", &mut v, &p.names);
+                            p.value = Some(v);
                         }
                     });
+                    ui.end_row();
                 });
-                ui.end_row();
-                ui.label(tr("Columns"));
-                pick(ui, "pivot-cols", &mut p.cols, &p.names);
-                ui.end_row();
-                ui.label(tr("Cells"));
-                ui.horizontal(|ui| {
-                    egui::ComboBox::from_id_salt("pivot-agg").selected_text(tr(agg_label(p.agg))).show_ui(ui, |ui| {
-                        for a in Agg::ALL {
-                            ui.selectable_value(&mut p.agg, a, tr(agg_label(a)));
-                        }
-                    });
-                    if p.agg != Agg::Count {
-                        let mut v = p.value.unwrap_or(0);
-                        pick(ui, "pivot-value", &mut v, &p.names);
-                        p.value = Some(v);
-                    }
-                });
-                ui.end_row();
+                ui.weak(tr(
+                    "By hour, day or month groups the rows column by its times.",
+                ));
+                go = ui
+                    .add_enabled(p.rows != p.cols, egui::Button::new(tr("Make the table")))
+                    .clicked();
             });
-            ui.weak(tr("By hour, day or month groups the rows column by its times."));
-            go = ui.add_enabled(p.rows != p.cols, egui::Button::new(tr("Make the table"))).clicked();
-        });
         if go {
             let p = self.pivot.take().expect("dialog");
-            let spec = PivotSpec { rows: p.rows, cols: p.cols, value: if p.agg == Agg::Count { None } else { p.value }, agg: p.agg, bucket: p.bucket, header: true };
+            let spec = PivotSpec {
+                rows: p.rows,
+                cols: p.cols,
+                value: if p.agg == Agg::Count { None } else { p.value },
+                agg: p.agg,
+                bucket: p.bucket,
+                header: true,
+            };
             self.start_pivot(spec);
         } else if !open {
             self.pivot = None;
@@ -99,9 +128,16 @@ impl BigTextApp {
     }
 
     pub(crate) fn start_pivot(&mut self, spec: PivotSpec) {
-        let Some(d) = self.docs.get(self.active) else { return };
-        let Some(dialect) = d.table_state.dialect else { return };
-        let spec = PivotSpec { header: d.table_state.header, ..spec };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
+        let Some(dialect) = d.table_state.dialect else {
+            return;
+        };
+        let spec = PivotSpec {
+            header: d.table_state.header,
+            ..spec
+        };
         let (snap, doc) = (d.buf.snapshot(), d.title.clone());
         let target = bigtext::decompress::temp_file("pivot.csv");
         let title = trf("Pivot of {name}", &[("name", &doc)]);

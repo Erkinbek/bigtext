@@ -79,10 +79,17 @@ pub fn format(j: &Journal) -> String {
         s.push_str(&format!("mtime={}.{:09}\n", m.as_secs(), m.subsec_nanos()));
     }
     let nl = if j.codec.nl == NlByte::Cr { "cr" } else { "lf" };
-    s.push_str(&format!("codec={}|{nl}|{}\n", j.codec.enc.name(), j.codec.bom_len));
+    s.push_str(&format!(
+        "codec={}|{nl}|{}\n",
+        j.codec.enc.name(),
+        j.codec.bom_len
+    ));
     s.push_str(&format!("add={}\n", j.add_len));
     for &(b, start, len) in &j.pieces {
-        s.push_str(&format!("{} {start} {len}\n", if b == Buf::Orig { 'o' } else { 'a' }));
+        s.push_str(&format!(
+            "{} {start} {len}\n",
+            if b == Buf::Orig { 'o' } else { 'a' }
+        ));
     }
     s
 }
@@ -93,7 +100,17 @@ pub fn parse(id: &str, text: &str) -> Option<Journal> {
     if lines.next()? != "bigtext-journal 1" {
         return None;
     }
-    let mut j = Journal { id: id.to_string(), title: String::new(), path: None, len: 0, mtime: None, codec: Codec::utf8(), pieces: Vec::new(), add_len: 0, saved: None };
+    let mut j = Journal {
+        id: id.to_string(),
+        title: String::new(),
+        path: None,
+        len: 0,
+        mtime: None,
+        codec: Codec::utf8(),
+        pieces: Vec::new(),
+        add_len: 0,
+        saved: None,
+    };
     for l in lines {
         if let Some((k, v)) = l.split_once('=') {
             match k {
@@ -108,7 +125,11 @@ pub fn parse(id: &str, text: &str) -> Option<Journal> {
                     let mut it = v.split('|');
                     let enc = it.next()?;
                     let enc = Encoding::ALL.into_iter().find(|e| e.name() == enc)?;
-                    let nl = if it.next()? == "cr" { NlByte::Cr } else { NlByte::Lf };
+                    let nl = if it.next()? == "cr" {
+                        NlByte::Cr
+                    } else {
+                        NlByte::Lf
+                    };
                     j.codec = Codec::new(enc, nl, it.next()?.parse().ok()?);
                 }
                 "add" => j.add_len = v.parse().ok()?,
@@ -122,7 +143,8 @@ pub fn parse(id: &str, text: &str) -> Option<Journal> {
             "a" => Buf::Add,
             _ => return None,
         };
-        j.pieces.push((b, it.next()?.parse().ok()?, it.next()?.parse().ok()?));
+        j.pieces
+            .push((b, it.next()?.parse().ok()?, it.next()?.parse().ok()?));
     }
     Some(j)
 }
@@ -177,7 +199,10 @@ pub struct RecoveryState {
 impl RecoveryState {
     /// Journaling on (it starts once a folder is known).
     pub fn new() -> RecoveryState {
-        RecoveryState { enabled: true, ..Default::default() }
+        RecoveryState {
+            enabled: true,
+            ..Default::default()
+        }
     }
 
     fn id(doc: u64) -> String {
@@ -202,24 +227,33 @@ impl BigTextApp {
         if fs::create_dir_all(&dir).is_err() {
             return;
         }
-        let lock = File::create(dir.join(format!("{}.lock", std::process::id()))).ok().filter(|f| f.try_lock().is_ok());
+        let lock = File::create(dir.join(format!("{}.lock", std::process::id())))
+            .ok()
+            .filter(|f| f.try_lock().is_ok());
         self.recovery.lock = lock;
         self.recovery.dir = Some(dir);
         self.scan_recovery();
     }
 
     pub(crate) fn scan_recovery(&mut self) {
-        let Some(dir) = self.recovery.dir.clone() else { return };
+        let Some(dir) = self.recovery.dir.clone() else {
+            return;
+        };
         let mine = std::process::id().to_string();
         let mut found = Vec::new();
         for e in fs::read_dir(&dir).into_iter().flatten().flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
-            let Some(id) = name.strip_suffix(".pieces") else { continue };
+            let Some(id) = name.strip_suffix(".pieces") else {
+                continue;
+            };
             let pid = id.split('-').next().unwrap_or("");
             if pid == mine || running(&dir, pid) {
                 continue;
             }
-            if let Some(mut j) = fs::read_to_string(e.path()).ok().and_then(|t| parse(id, &t)) {
+            if let Some(mut j) = fs::read_to_string(e.path())
+                .ok()
+                .and_then(|t| parse(id, &t))
+            {
                 j.saved = e.metadata().and_then(|m| m.modified()).ok();
                 found.push(j);
             }
@@ -228,7 +262,10 @@ impl BigTextApp {
         for e in fs::read_dir(&dir).into_iter().flatten().flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
             if let Some(pid) = name.strip_suffix(".lock") {
-                if pid != mine && !running(&dir, pid) && !found.iter().any(|j| j.id.starts_with(&format!("{pid}-"))) {
+                if pid != mine
+                    && !running(&dir, pid)
+                    && !found.iter().any(|j| j.id.starts_with(&format!("{pid}-")))
+                {
                     let _ = fs::remove_file(e.path());
                 }
             }
@@ -240,10 +277,18 @@ impl BigTextApp {
     /// Writes the journals of documents that changed and settled, and drops those of documents
     /// that are saved, unchanged or closed (every frame).
     pub(super) fn journal_tick(&mut self) {
-        let Some(dir) = self.recovery.dir.clone() else { return };
+        let Some(dir) = self.recovery.dir.clone() else {
+            return;
+        };
         let now = Instant::now();
         let ids: Vec<u64> = self.docs.iter().map(|d| d.id).collect();
-        let gone: Vec<u64> = self.recovery.entries.keys().copied().filter(|id| !ids.contains(id)).collect();
+        let gone: Vec<u64> = self
+            .recovery
+            .entries
+            .keys()
+            .copied()
+            .filter(|id| !ids.contains(id))
+            .collect();
         for id in gone {
             if let Some(e) = self.recovery.entries.remove(&id) {
                 if e.exists {
@@ -273,14 +318,22 @@ impl BigTextApp {
                 e.changed_at = Some(now);
                 e.waiting_since.get_or_insert(now);
             }
-            let settled = e.changed_at.is_some_and(|t| now - t >= Duration::from_secs(2)) || e.waiting_since.is_some_and(|t| now - t >= Duration::from_secs(30));
+            let settled = e
+                .changed_at
+                .is_some_and(|t| now - t >= Duration::from_secs(2))
+                || e.waiting_since
+                    .is_some_and(|t| now - t >= Duration::from_secs(30));
             if e.writing || e.written == d.version || !settled {
                 continue;
             }
             e.writing = true;
             let add = d.buf.add_bytes();
             // Only the new typed bytes are appended; a smaller add buffer is written again.
-            let (append, delta) = if add.len() as u64 >= e.add_written && e.exists { (true, add[e.add_written as usize..].to_vec()) } else { (false, add.to_vec()) };
+            let (append, delta) = if add.len() as u64 >= e.add_written && e.exists {
+                (true, add[e.add_written as usize..].to_vec())
+            } else {
+                (false, add.to_vec())
+            };
             let j = Journal {
                 id: RecoveryState::id(d.id),
                 title: d.title.clone(),
@@ -288,28 +341,51 @@ impl BigTextApp {
                 len: d.buf.source.len(),
                 mtime: mtime_of(d.buf.source.modified()),
                 codec: d.buf.codec,
-                pieces: d.buf.pieces().iter().map(|p| (p.buf, p.start, p.len)).collect(),
+                pieces: d
+                    .buf
+                    .pieces()
+                    .iter()
+                    .map(|p| (p.buf, p.start, p.len))
+                    .collect(),
                 add_len: add.len() as u64,
                 saved: None,
             };
-            let (doc, version, dir, tx, waker) = (d.id, d.version, dir.clone(), self.tx.clone(), self.waker.clone());
+            let (doc, version, dir, tx, waker) = (
+                d.id,
+                d.version,
+                dir.clone(),
+                self.tx.clone(),
+                self.waker.clone(),
+            );
             jobs::spawn("journal", move || {
                 let r = (|| -> io::Result<()> {
-                    let mut f = File::options().create(true).write(true).append(append).truncate(!append).open(add_path(&dir, &j.id))?;
+                    let mut f = File::options()
+                        .create(true)
+                        .write(true)
+                        .append(append)
+                        .truncate(!append)
+                        .open(add_path(&dir, &j.id))?;
                     f.write_all(&delta)?;
                     f.sync_data()?;
                     let temp = dir.join(format!("{}.pieces.tmp", j.id));
                     fs::write(&temp, format(&j))?;
                     fs::rename(&temp, pieces_path(&dir, &j.id))
                 })();
-                let _ = tx.send(Msg::Journaled { doc, version, add_len: j.add_len, ok: r.is_ok() });
+                let _ = tx.send(Msg::Journaled {
+                    doc,
+                    version,
+                    add_len: j.add_len,
+                    ok: r.is_ok(),
+                });
                 waker();
             });
         }
     }
 
     pub(super) fn on_journaled(&mut self, doc: u64, version: u64, add_len: u64, ok: bool) {
-        let Some(e) = self.recovery.entries.get_mut(&doc) else { return };
+        let Some(e) = self.recovery.entries.get_mut(&doc) else {
+            return;
+        };
         e.writing = false;
         if ok {
             e.written = version;
@@ -321,7 +397,9 @@ impl BigTextApp {
 
     /// A clean exit: this instance's journals and lock go.
     pub(super) fn end_recovery(&mut self) {
-        let Some(dir) = self.recovery.dir.clone() else { return };
+        let Some(dir) = self.recovery.dir.clone() else {
+            return;
+        };
         for (id, e) in self.recovery.entries.drain() {
             if e.exists {
                 remove(&dir, &RecoveryState::id(id));
@@ -333,7 +411,9 @@ impl BigTextApp {
 
     /// Opens the journal's file (or a new document) with the edits put back.
     pub(crate) fn restore_journal(&mut self, i: usize) {
-        let Some(dir) = self.recovery.dir.clone() else { return };
+        let Some(dir) = self.recovery.dir.clone() else {
+            return;
+        };
         if i >= self.recovery.offered.len() {
             return;
         }
@@ -342,7 +422,8 @@ impl BigTextApp {
             None => {
                 self.new_doc();
                 let Some(buf) = rebuild(&dir, &j, Arc::new(Source::empty())) else {
-                    self.error = Some(tr("The journal is damaged; nothing could be restored.").into());
+                    self.error =
+                        Some(tr("The journal is damaged; nothing could be restored.").into());
                     return;
                 };
                 if let Some(d) = self.docs.get_mut(self.active) {
@@ -371,11 +452,22 @@ impl BigTextApp {
         if self.recovery.pending.is_empty() {
             return;
         }
-        let Some(dir) = self.recovery.dir.clone() else { return };
-        let ready: Vec<u64> = self.docs.iter().filter(|d| d.is_ready() && self.recovery.pending.contains_key(&d.id)).map(|d| d.id).collect();
+        let Some(dir) = self.recovery.dir.clone() else {
+            return;
+        };
+        let ready: Vec<u64> = self
+            .docs
+            .iter()
+            .filter(|d| d.is_ready() && self.recovery.pending.contains_key(&d.id))
+            .map(|d| d.id)
+            .collect();
         for id in ready {
-            let Some(j) = self.recovery.pending.remove(&id) else { continue };
-            let Some(d) = self.docs.iter_mut().find(|d| d.id == id) else { continue };
+            let Some(j) = self.recovery.pending.remove(&id) else {
+                continue;
+            };
+            let Some(d) = self.docs.iter_mut().find(|d| d.id == id) else {
+                continue;
+            };
             if d.is_modified() || d.buf.source.len() != j.len {
                 self.error = Some(tr("The document changed before the edits could be put back; nothing was restored.").into());
                 continue;
@@ -383,57 +475,92 @@ impl BigTextApp {
             match rebuild(&dir, &j, d.buf.source.clone()) {
                 Some(buf) => {
                     d.restore_edits(buf);
-                    d.banner = Some(Banner::Info(tr("Unsaved edits from the last session were put back. Save to keep them.").into()));
+                    d.banner = Some(Banner::Info(
+                        tr("Unsaved edits from the last session were put back. Save to keep them.")
+                            .into(),
+                    ));
                     remove(&dir, &j.id);
                 }
-                None => self.error = Some(tr("The journal is damaged; nothing could be restored.").into()),
+                None => {
+                    self.error =
+                        Some(tr("The journal is damaged; nothing could be restored.").into())
+                }
             }
         }
     }
 
     /// Writes the journal's edited text to a file the user picks.
     fn save_journal_as(&mut self, i: usize) {
-        let Some(dir) = self.recovery.dir.clone() else { return };
-        let Some(j) = self.recovery.offered.get(i).cloned() else { return };
-        let name = j.path.as_deref().and_then(|p| p.file_name()).map(|n| format!("{} (recovered)", n.to_string_lossy())).unwrap_or_else(|| format!("{}.txt", j.title));
-        let Some(target) = rfd::FileDialog::new().set_title(tr("Save text as")).set_file_name(name).save_file() else { return };
+        let Some(dir) = self.recovery.dir.clone() else {
+            return;
+        };
+        let Some(j) = self.recovery.offered.get(i).cloned() else {
+            return;
+        };
+        let name = j
+            .path
+            .as_deref()
+            .and_then(|p| p.file_name())
+            .map(|n| format!("{} (recovered)", n.to_string_lossy()))
+            .unwrap_or_else(|| format!("{}.txt", j.title));
+        let Some(target) = rfd::FileDialog::new()
+            .set_title(tr("Save text as"))
+            .set_file_name(name)
+            .save_file()
+        else {
+            return;
+        };
         self.recovery.offered.remove(i);
-        self.spawn_task(tr("Saving the recovered text").into(), move |progress, cancel| {
-            let source = match &j.path {
-                Some(p) => match Source::open(p, OpenMode::Auto) {
-                    Ok(s) => Arc::new(s),
-                    Err(e) => return TaskOutcome::Failed(super::friendly_io(&e, p)),
-                },
-                None => Arc::new(Source::empty()),
-            };
-            let Some(buf) = rebuild(&dir, &j, source) else { return TaskOutcome::Failed(tr("The journal is damaged; nothing could be restored.").into()) };
-            let snap = buf.snapshot();
-            progress.set_total(snap.len());
-            let out = tasks::write_via_temp(&target, |w| {
-                let mut stopped = false;
-                snap.for_each_chunk(0..snap.len(), |base, b| {
-                    if cancel.is_cancelled() || w.write_all(b).is_err() {
-                        stopped = true;
-                        return false;
-                    }
-                    progress.set_done(base + b.len() as u64);
-                    true
-                })
-                .ok_or_else(|| io::Error::other("reading failed"))?;
-                Ok((!stopped).then(|| trf("Saved the recovered text to {file}.", &[("file", &super::filter_panel::file_name(&target))])))
-            });
-            if matches!(out, TaskOutcome::Done { .. }) {
-                remove(&dir, &j.id);
-            }
-            out
-        });
+        self.spawn_task(
+            tr("Saving the recovered text").into(),
+            move |progress, cancel| {
+                let source = match &j.path {
+                    Some(p) => match Source::open(p, OpenMode::Auto) {
+                        Ok(s) => Arc::new(s),
+                        Err(e) => return TaskOutcome::Failed(super::friendly_io(&e, p)),
+                    },
+                    None => Arc::new(Source::empty()),
+                };
+                let Some(buf) = rebuild(&dir, &j, source) else {
+                    return TaskOutcome::Failed(
+                        tr("The journal is damaged; nothing could be restored.").into(),
+                    );
+                };
+                let snap = buf.snapshot();
+                progress.set_total(snap.len());
+                let out = tasks::write_via_temp(&target, |w| {
+                    let mut stopped = false;
+                    snap.for_each_chunk(0..snap.len(), |base, b| {
+                        if cancel.is_cancelled() || w.write_all(b).is_err() {
+                            stopped = true;
+                            return false;
+                        }
+                        progress.set_done(base + b.len() as u64);
+                        true
+                    })
+                    .ok_or_else(|| io::Error::other("reading failed"))?;
+                    Ok((!stopped).then(|| {
+                        trf(
+                            "Saved the recovered text to {file}.",
+                            &[("file", &super::filter_panel::file_name(&target))],
+                        )
+                    }))
+                });
+                if matches!(out, TaskOutcome::Done { .. }) {
+                    remove(&dir, &j.id);
+                }
+                out
+            },
+        );
     }
 
     pub(super) fn recovery_window(&mut self, ctx: &egui::Context) {
         if self.recovery.offered.is_empty() {
             return;
         }
-        let Some(dir) = self.recovery.dir.clone() else { return };
+        let Some(dir) = self.recovery.dir.clone() else {
+            return;
+        };
         let (mut restore, mut save, mut discard) = (None, None, None);
         egui::Window::new(tr("Unsaved edits from the last session")).collapsible(false).resizable(false).show(ctx, |ui| {
             ui.label(tr("BigText did not close properly. These documents had edits that were not saved:"));
@@ -485,12 +612,21 @@ mod tests {
             len: 1 << 40,
             mtime: Some(Duration::new(1_761_000_000, 123_456_789)),
             codec: Codec::new(Encoding::Utf16Le, NlByte::Lf, 2),
-            pieces: vec![(Buf::Orig, 0, 100), (Buf::Add, 0, 5), (Buf::Orig, 100, (1 << 40) - 100)],
+            pieces: vec![
+                (Buf::Orig, 0, 100),
+                (Buf::Add, 0, 5),
+                (Buf::Orig, 100, (1 << 40) - 100),
+            ],
             add_len: 5,
             saved: None,
         };
         assert_eq!(parse("12-3", &format(&j)), Some(j.clone()));
-        let untitled = Journal { path: None, mtime: None, codec: Codec::utf8(), ..j };
+        let untitled = Journal {
+            path: None,
+            mtime: None,
+            codec: Codec::utf8(),
+            ..j
+        };
         assert_eq!(parse("12-3", &format(&untitled)), Some(untitled));
         assert_eq!(parse("x", "not a journal\n"), None);
     }

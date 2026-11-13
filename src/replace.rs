@@ -86,7 +86,15 @@ pub enum Collected {
 }
 
 /// Collects up to `threshold` replacements in `range`.
-pub fn collect(buf: &TextBuf, m: &Matcher, tpl: &Template, range: Range<u64>, threshold: usize, cancel: &CancelToken, progress: Option<&Progress>) -> Collected {
+pub fn collect(
+    buf: &TextBuf,
+    m: &Matcher,
+    tpl: &Template,
+    range: Range<u64>,
+    threshold: usize,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> Collected {
     let mut edits = Vec::new();
     let mut too_many = false;
     let end = search::search_forward(buf, m, range, cancel, progress, |s, e| {
@@ -105,11 +113,21 @@ pub fn collect(buf: &TextBuf, m: &Matcher, tpl: &Template, range: Range<u64>, th
 }
 
 /// First `n` replacements as (offset, before, after) for preview.
-pub fn preview(buf: &TextBuf, m: &Matcher, tpl: &Template, range: Range<u64>, n: usize, cancel: &CancelToken) -> Vec<(u64, String, String)> {
+pub fn preview(
+    buf: &TextBuf,
+    m: &Matcher,
+    tpl: &Template,
+    range: Range<u64>,
+    n: usize,
+    cancel: &CancelToken,
+) -> Vec<(u64, String, String)> {
     let codec = buf.codec;
     let mut out = Vec::new();
     search::search_forward(buf, m, range, cancel, None, |s, e| {
-        let before = buf.read(s..e.min(s + 200)).map(|b| codec.decode_lossy(&b)).unwrap_or_default();
+        let before = buf
+            .read(s..e.min(s + 200))
+            .map(|b| codec.decode_lossy(&b))
+            .unwrap_or_default();
         let after = codec.decode_lossy(&tpl.expand(buf, m, s, e));
         out.push((s, before, after));
         out.len() < n
@@ -128,12 +146,21 @@ pub fn replace_all_to<W: Write>(
     cancel: &CancelToken,
     progress: Option<&Progress>,
 ) -> io::Result<Option<ReplaceStats>> {
-    let mut stats = ReplaceStats { bytes_in: buf.len(), ..Default::default() };
+    let mut stats = ReplaceStats {
+        bytes_in: buf.len(),
+        ..Default::default()
+    };
     let mut pos = 0u64;
     let mut err: Option<io::Error> = None;
     let mut scratch = Vec::new();
     // Copies [from, to) to `out`, straight from the search window when it holds those bytes.
-    let mut copy = |from: u64, to: u64, hay: &[u8], base: u64, out: &mut W, stats: &mut ReplaceStats| -> io::Result<()> {
+    let mut copy = |from: u64,
+                    to: u64,
+                    hay: &[u8],
+                    base: u64,
+                    out: &mut W,
+                    stats: &mut ReplaceStats|
+     -> io::Result<()> {
         if from >= to {
             return Ok(());
         }
@@ -145,7 +172,9 @@ pub fn replace_all_to<W: Write>(
         let mut p = from;
         while p < to {
             let e = (p + STEP).min(to);
-            let n = buf.read_to(p..e, &mut scratch).ok_or_else(|| io::Error::other("could not read the document"))?;
+            let n = buf
+                .read_to(p..e, &mut scratch)
+                .ok_or_else(|| io::Error::other("could not read the document"))?;
             out.write_all(&scratch[..n])?;
             p = e;
         }
@@ -200,13 +229,36 @@ mod tests {
 
     fn run(data: &[u8], pattern: &str, regex: bool, rep: &str) -> String {
         let (_f, t) = buf_with(data);
-        let q = Query { pattern: pattern.into(), regex, case_sensitive: true, ..Default::default() };
+        let q = Query {
+            pattern: pattern.into(),
+            regex,
+            case_sensitive: true,
+            ..Default::default()
+        };
         let m = Matcher::new(&q, Codec::utf8()).unwrap();
         let tpl = Template::new(rep, regex);
         let mut out = Vec::new();
-        replace_all_to(&t, &m, &tpl, 0..t.len(), &mut out, &CancelToken::new(), None).unwrap().unwrap();
+        replace_all_to(
+            &t,
+            &m,
+            &tpl,
+            0..t.len(),
+            &mut out,
+            &CancelToken::new(),
+            None,
+        )
+        .unwrap()
+        .unwrap();
         // The batch path must agree with the streaming path.
-        if let Collected::Edits(edits) = collect(&t, &m, &tpl, 0..t.len(), 1_000_000, &CancelToken::new(), None) {
+        if let Collected::Edits(edits) = collect(
+            &t,
+            &m,
+            &tpl,
+            0..t.len(),
+            1_000_000,
+            &CancelToken::new(),
+            None,
+        ) {
             let (pieces, add) = t.build_batch(&edits);
             let mut t2 = t.clone();
             t2.apply_batch(pieces, &add);
@@ -225,8 +277,14 @@ mod tests {
 
     #[test]
     fn capture_groups() {
-        assert_eq!(run(b"2026-10-24", r"(\d+)-(\d+)-(\d+)", true, "$3.$2.$1"), "24.10.2026");
-        assert_eq!(run(b"key=value", r"(?P<k>\w+)=(?P<v>\w+)", true, "${v}=${k}"), "value=key");
+        assert_eq!(
+            run(b"2026-10-24", r"(\d+)-(\d+)-(\d+)", true, "$3.$2.$1"),
+            "24.10.2026"
+        );
+        assert_eq!(
+            run(b"key=value", r"(?P<k>\w+)=(?P<v>\w+)", true, "${v}=${k}"),
+            "value=key"
+        );
     }
 
     #[test]
@@ -249,20 +307,35 @@ mod tests {
     #[test]
     fn threshold_switches_to_streaming() {
         let (_f, t) = buf_with(&b"a ".repeat(1000));
-        let q = Query { pattern: "a".into(), case_sensitive: true, ..Default::default() };
+        let q = Query {
+            pattern: "a".into(),
+            case_sensitive: true,
+            ..Default::default()
+        };
         let m = Matcher::new(&q, Codec::utf8()).unwrap();
         let tpl = Template::new("b", false);
-        assert!(matches!(collect(&t, &m, &tpl, 0..t.len(), 10, &CancelToken::new(), None), Collected::TooMany));
+        assert!(matches!(
+            collect(&t, &m, &tpl, 0..t.len(), 10, &CancelToken::new(), None),
+            Collected::TooMany
+        ));
     }
 
     #[test]
     fn cancel_leaves_no_result() {
         let (_f, t) = buf_with(b"aaaa");
-        let q = Query { pattern: "a".into(), case_sensitive: true, ..Default::default() };
+        let q = Query {
+            pattern: "a".into(),
+            case_sensitive: true,
+            ..Default::default()
+        };
         let m = Matcher::new(&q, Codec::utf8()).unwrap();
         let c = CancelToken::new();
         c.cancel();
         let mut out = Vec::new();
-        assert!(replace_all_to(&t, &m, &Template::new("b", false), 0..4, &mut out, &c, None).unwrap().is_none());
+        assert!(
+            replace_all_to(&t, &m, &Template::new("b", false), 0..4, &mut out, &c, None)
+                .unwrap()
+                .is_none()
+        );
     }
 }

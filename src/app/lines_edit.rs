@@ -30,10 +30,18 @@ impl LineSel {
             Some(q) => q.matches(line),
             None => {
                 let mut found = false;
-                self.matcher.find_in(line, 0, 0, line.len(), line.len(), &mut None, &mut |_, _| {
-                    found = true;
-                    false
-                });
+                self.matcher.find_in(
+                    line,
+                    0,
+                    0,
+                    line.len(),
+                    line.len(),
+                    &mut None,
+                    &mut |_, _| {
+                        found = true;
+                        false
+                    },
+                );
                 found
             }
         };
@@ -59,9 +67,13 @@ impl BigTextApp {
         if !d.editable() {
             Some(tr("The document is read-only"))
         } else if r.version != d.version {
-            Some(tr("The document changed since the filter ran. Run the filter again first."))
+            Some(tr(
+                "The document changed since the filter ran. Run the filter again first.",
+            ))
         } else if r.spec.has_context() || r.spec.column.is_some() || r.spec.range.is_some() {
-            Some(tr("Turn off the lines around matches, the column and the time range first."))
+            Some(tr(
+                "Turn off the lines around matches, the column and the time range first.",
+            ))
         } else {
             None
         }
@@ -73,9 +85,16 @@ impl BigTextApp {
             self.notify(why.into(), None);
             return;
         }
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let Some(r) = &d.filter else { return };
-        let sel = Arc::new(LineSel { matcher: r.matcher.clone(), json: r.json.clone(), invert: r.spec.invert, terms: r.terms.clone() });
+        let sel = Arc::new(LineSel {
+            matcher: r.matcher.clone(),
+            json: r.json.clone(),
+            invert: r.spec.invert,
+            terms: r.terms.clone(),
+        });
         let (snap, doc, version, add_len) = (d.buf.snapshot(), d.id, d.version, d.buf.add_len());
         let (tx, waker) = (self.tx.clone(), self.waker.clone());
         self.search.status = tr("Finding the lines…").into();
@@ -85,23 +104,43 @@ impl BigTextApp {
             let mut lines = 0u64;
             let mut too_many = false;
             let gone = |l: &[u8]| sel.shows(l) != keep;
-            filter::filter_predicate(&snap, FilterSpec::default(), &gone, &CancelToken::new(), None, |ls, le, _| {
-                lines += 1;
-                let ls = ls.max(bom);
-                match runs.last_mut() {
-                    // Next to the last run: one longer edit.
-                    Some(last) if last.end == ls => last.end = le,
-                    _ => runs.push(ls..le),
-                }
-                too_many = runs.len() > UNDO_THRESHOLD;
-                !too_many
-            });
+            filter::filter_predicate(
+                &snap,
+                FilterSpec::default(),
+                &gone,
+                &CancelToken::new(),
+                None,
+                |ls, le, _| {
+                    lines += 1;
+                    let ls = ls.max(bom);
+                    match runs.last_mut() {
+                        // Next to the last run: one longer edit.
+                        Some(last) if last.end == ls => last.end = le,
+                        _ => runs.push(ls..le),
+                    }
+                    too_many = runs.len() > UNDO_THRESHOLD;
+                    !too_many
+                },
+            );
             let msg = if too_many {
-                Msg::LinesTooMany { doc, version, sel, keep }
+                Msg::LinesTooMany {
+                    doc,
+                    version,
+                    sel,
+                    keep,
+                }
             } else {
-                let edits: Vec<(Range<u64>, Vec<u8>)> = runs.into_iter().map(|r| (r, Vec::new())).collect();
+                let edits: Vec<(Range<u64>, Vec<u8>)> =
+                    runs.into_iter().map(|r| (r, Vec::new())).collect();
                 let (pieces, add) = snap.build_batch(&edits);
-                Msg::LinesRemoved(Box::new(LinesRemoved { doc, version, add_len, pieces, add, lines }))
+                Msg::LinesRemoved(Box::new(LinesRemoved {
+                    doc,
+                    version,
+                    add_len,
+                    pieces,
+                    add,
+                    lines,
+                }))
             };
             let _ = tx.send(msg);
             waker();
@@ -109,7 +148,9 @@ impl BigTextApp {
     }
 
     pub(super) fn on_lines_removed(&mut self, l: LinesRemoved) {
-        let Some(d) = self.docs.iter_mut().find(|d| d.id == l.doc) else { return };
+        let Some(d) = self.docs.iter_mut().find(|d| d.id == l.doc) else {
+            return;
+        };
         if d.version != l.version || d.buf.add_len() != l.add_len {
             self.search.status = tr("The document changed meanwhile; no line was deleted.").into();
             return;
@@ -127,11 +168,22 @@ impl BigTextApp {
         if let Some(r) = d.filter.take() {
             r.cancel.cancel();
         }
-        self.search.status = trf("Deleted {n} lines (undo with Ctrl+Z).", &[("n", &fmt_count(l.lines))]);
+        self.search.status = trf(
+            "Deleted {n} lines (undo with Ctrl+Z).",
+            &[("n", &fmt_count(l.lines))],
+        );
     }
 
-    pub(super) fn on_lines_too_many(&mut self, doc: u64, version: u64, sel: Arc<LineSel>, keep: bool) {
-        let Some(d) = self.docs.iter().find(|d| d.id == doc) else { return };
+    pub(super) fn on_lines_too_many(
+        &mut self,
+        doc: u64,
+        version: u64,
+        sel: Arc<LineSel>,
+        keep: bool,
+    ) {
+        let Some(d) = self.docs.iter().find(|d| d.id == doc) else {
+            return;
+        };
         if d.version != version {
             return;
         }
@@ -156,7 +208,14 @@ impl BigTextApp {
     }
 
     pub(super) fn lines_on_disk(&mut self, doc: u64, sel: Arc<LineSel>, keep: bool, backup: bool) {
-        let Some(path) = self.docs.iter().find(|d| d.id == doc).and_then(|d| d.path.clone()) else { return };
+        let Some(path) = self
+            .docs
+            .iter()
+            .find(|d| d.id == doc)
+            .and_then(|d| d.path.clone())
+        else {
+            return;
+        };
         if let Some(d) = self.docs.iter_mut().find(|d| d.id == doc) {
             if let Some(r) = d.filter.take() {
                 r.cancel.cancel();

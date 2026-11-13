@@ -48,7 +48,13 @@ impl FieldStat {
 
     /// The kinds seen: "string", "number | null"…
     pub fn type_names(&self) -> String {
-        TYPES.iter().zip(self.types).filter(|(_, n)| *n > 0).map(|(t, _)| *t).collect::<Vec<_>>().join(" | ")
+        TYPES
+            .iter()
+            .zip(self.types)
+            .filter(|(_, n)| *n > 0)
+            .map(|(t, _)| *t)
+            .collect::<Vec<_>>()
+            .join(" | ")
     }
 }
 
@@ -105,7 +111,10 @@ fn value_end(b: &[u8], i: usize) -> Option<usize> {
             None
         }
         _ => {
-            let k = b[i..].iter().position(|c| matches!(c, b',' | b'}' | b']') || c.is_ascii_whitespace()).map_or(b.len(), |n| i + n);
+            let k = b[i..]
+                .iter()
+                .position(|c| matches!(c, b',' | b'}' | b']') || c.is_ascii_whitespace())
+                .map_or(b.len(), |n| i + n);
             (k > i).then_some(k)
         }
     }
@@ -151,7 +160,10 @@ impl Collector {
             return None;
         }
         self.index.insert(path.to_string(), self.out.stats.len());
-        self.out.stats.push(FieldStat { path: path.to_string(), ..Default::default() });
+        self.out.stats.push(FieldStat {
+            path: path.to_string(),
+            ..Default::default()
+        });
         self.out.stats.last_mut()
     }
 
@@ -168,7 +180,11 @@ impl Collector {
         s.count += 1;
         s.types[kind] += 1;
         if kind >= 2 && kind != 5 {
-            let text = if kind == 2 { json::unescape(v) } else { String::from_utf8_lossy(v).into_owned() };
+            let text = if kind == 2 {
+                json::unescape(v)
+            } else {
+                String::from_utf8_lossy(v).into_owned()
+            };
             let text: String = text.chars().take(VALUE_MAX).collect();
             if kind == 3 {
                 if let Ok(x) = text.parse::<f64>() {
@@ -204,7 +220,9 @@ impl Collector {
     }
 
     fn object(&mut self, b: &[u8], prefix: &str, depth: usize) {
-        let Some(fields) = json::object_fields(b) else { return };
+        let Some(fields) = json::object_fields(b) else {
+            return;
+        };
         for (k, r) in fields {
             self.value(&format!("{prefix}{k}"), &b[r], depth);
         }
@@ -226,19 +244,30 @@ impl Collector {
 
 /// The fields of the document's records: each line of JSON Lines, or each item of a JSON array
 /// at the top. Returns `None` when cancelled.
-pub fn field_stats(buf: &TextBuf, cancel: &CancelToken, progress: Option<&Progress>) -> Result<Option<Fields>, String> {
+pub fn field_stats(
+    buf: &TextBuf,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> Result<Option<Fields>, String> {
     if buf.codec.unit() != 1 {
         return Err("JSON must be UTF-8".into());
     }
     if let Some(p) = progress {
         p.set_total(buf.len());
     }
-    let mut c = Collector { index: HashMap::new(), out: Fields::default() };
+    let mut c = Collector {
+        index: HashMap::new(),
+        out: Fields::default(),
+    };
     let at = json::root(buf, cancel)?;
     if buf.read(at..at + 1).is_some_and(|b| b[0] == b'[') {
         // The items of the array, each copied out and looked at like a line.
         let mut items: Vec<u8> = Vec::new();
-        let mut sink = RecordSink { items: &mut items, c: &mut c, cancel };
+        let mut sink = RecordSink {
+            items: &mut items,
+            c: &mut c,
+            cancel,
+        };
         match json::array_to_lines(buf, at, &mut sink, cancel, progress) {
             Ok(Some(_)) => {}
             Ok(None) => return Ok(None),
@@ -301,16 +330,29 @@ fn show(x: f64) -> String {
     if x.fract() == 0.0 && x.abs() < 1e15 {
         format!("{}", x as i64)
     } else {
-        format!("{x:.4}").trim_end_matches('0').trim_end_matches('.').to_string()
+        format!("{x:.4}")
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string()
     }
 }
 
 /// The fields as CSV: path, types, count, nulls, min, max, mean, distinct, examples.
 pub fn fields_to_csv<W: Write>(f: &Fields, out: &mut W) -> io::Result<()> {
-    let q = |s: &str| if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() };
+    let q = |s: &str| {
+        if s.contains([',', '"', '\n', '\r']) {
+            format!("\"{}\"", s.replace('"', "\"\""))
+        } else {
+            s.to_string()
+        }
+    };
     writeln!(out, "path,types,count,nulls,min,max,mean,distinct,examples")?;
     for s in &f.stats {
-        let distinct = if s.many { format!("{}+", s.distinct.len()) } else { s.distinct.len().to_string() };
+        let distinct = if s.many {
+            format!("{}+", s.distinct.len())
+        } else {
+            s.distinct.len().to_string()
+        };
         writeln!(
             out,
             "{},{},{},{},{},{},{},{},{}",
@@ -335,7 +377,12 @@ pub fn fields_to_schema(f: &Fields) -> String {
         s.replace('\\', "\\\\").replace('"', "\\\"")
     }
     fn types(s: &FieldStat) -> String {
-        let names: Vec<String> = TYPES.iter().zip(s.types).filter(|(_, n)| *n > 0).map(|(t, _)| format!("\"{t}\"")).collect();
+        let names: Vec<String> = TYPES
+            .iter()
+            .zip(s.types)
+            .filter(|(_, n)| *n > 0)
+            .map(|(t, _)| format!("\"{t}\""))
+            .collect();
         if names.len() == 1 {
             names[0].clone()
         } else {
@@ -345,21 +392,46 @@ pub fn fields_to_schema(f: &Fields) -> String {
     // Children of each object path ("" for the record).
     fn node(f: &Fields, prefix: &str, indent: usize, top: bool) -> String {
         let pad = " ".repeat(indent);
-        let kids: Vec<&FieldStat> = f.stats.iter().filter(|s| s.path.strip_prefix(prefix).is_some_and(|rest| !rest.is_empty() && !rest.contains('.') && !rest.contains("[]"))).collect();
+        let kids: Vec<&FieldStat> = f
+            .stats
+            .iter()
+            .filter(|s| {
+                s.path.strip_prefix(prefix).is_some_and(|rest| {
+                    !rest.is_empty() && !rest.contains('.') && !rest.contains("[]")
+                })
+            })
+            .collect();
         let mut out = String::new();
-        out.push_str(&format!("{pad}\"type\": \"object\",\n{pad}\"properties\": {{\n"));
+        out.push_str(&format!(
+            "{pad}\"type\": \"object\",\n{pad}\"properties\": {{\n"
+        ));
         let body: Vec<String> = kids
             .iter()
             .map(|s| {
                 let name = &s.path[prefix.len()..];
-                let mut v = format!("{pad}  \"{}\": {{\n{pad}    \"type\": {}", esc(name), types(s));
+                let mut v = format!(
+                    "{pad}  \"{}\": {{\n{pad}    \"type\": {}",
+                    esc(name),
+                    types(s)
+                );
                 if s.types[0] > 0 {
                     v.push_str(",\n");
                     let inner = node(f, &format!("{}.", s.path), indent + 4, false);
-                    v.push_str(inner.trim_start_matches(&format!("{pad}    \"type\": \"object\",\n")));
-                } else if s.types[1] > 0 && f.stats.iter().any(|x| x.path == format!("{}[]", s.path)) {
-                    let item = f.stats.iter().find(|x| x.path == format!("{}[]", s.path)).expect("item");
-                    v.push_str(&format!(",\n{pad}    \"items\": {{ \"type\": {} }}", types(item)));
+                    v.push_str(
+                        inner.trim_start_matches(&format!("{pad}    \"type\": \"object\",\n")),
+                    );
+                } else if s.types[1] > 0
+                    && f.stats.iter().any(|x| x.path == format!("{}[]", s.path))
+                {
+                    let item = f
+                        .stats
+                        .iter()
+                        .find(|x| x.path == format!("{}[]", s.path))
+                        .expect("item");
+                    v.push_str(&format!(
+                        ",\n{pad}    \"items\": {{ \"type\": {} }}",
+                        types(item)
+                    ));
                 }
                 v.push_str(&format!("\n{pad}  }}"));
                 v
@@ -368,14 +440,21 @@ pub fn fields_to_schema(f: &Fields) -> String {
         out.push_str(&body.join(",\n"));
         out.push_str(&format!("\n{pad}}}"));
         if top {
-            let req: Vec<String> = kids.iter().filter(|s| s.count == f.records && f.records > 0).map(|s| format!("\"{}\"", esc(&s.path))).collect();
+            let req: Vec<String> = kids
+                .iter()
+                .filter(|s| s.count == f.records && f.records > 0)
+                .map(|s| format!("\"{}\"", esc(&s.path)))
+                .collect();
             if !req.is_empty() {
                 out.push_str(&format!(",\n{pad}\"required\": [{}]", req.join(", ")));
             }
         }
         out
     }
-    format!("{{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n{}\n}}\n", node(f, "", 2, true))
+    format!(
+        "{{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n{}\n}}\n",
+        node(f, "", 2, true)
+    )
 }
 
 #[cfg(test)]
@@ -403,22 +482,49 @@ mod tests {
         let f = stats(LINES);
         assert_eq!((f.records, f.skipped), (3, 1));
         let paths: Vec<&str> = f.stats.iter().map(|s| s.path.as_str()).collect();
-        assert_eq!(paths, ["id", "user", "user.name", "user.age", "tags", "tags[]", "extra"]);
+        assert_eq!(
+            paths,
+            [
+                "id",
+                "user",
+                "user.name",
+                "user.age",
+                "tags",
+                "tags[]",
+                "extra"
+            ]
+        );
         let id = &f.stats[0];
-        assert_eq!((id.count, id.min, id.max, id.mean()), (3, Some(1.0), Some(3.5), Some(6.5 / 3.0)));
+        assert_eq!(
+            (id.count, id.min, id.max, id.mean()),
+            (3, Some(1.0), Some(3.5), Some(6.5 / 3.0))
+        );
         assert_eq!(f.stats[3].type_names(), "number | null");
         assert_eq!(f.stats[5].count, 2);
         let mut csv = Vec::new();
         fields_to_csv(&f, &mut csv).unwrap();
-        assert!(String::from_utf8(csv).unwrap().contains("\nuser.age,number | null,2,1,30,30,30,1,30\n"));
+        assert!(String::from_utf8(csv)
+            .unwrap()
+            .contains("\nuser.age,number | null,2,1,30,30,30,1,30\n"));
         let schema = fields_to_schema(&f);
-        assert!(schema.contains("\"required\": [\"id\"]") && schema.contains("\"age\": {") && schema.contains("\"items\": { \"type\": \"string\" }"), "{schema}");
+        assert!(
+            schema.contains("\"required\": [\"id\"]")
+                && schema.contains("\"age\": {")
+                && schema.contains("\"items\": { \"type\": \"string\" }"),
+            "{schema}"
+        );
     }
 
     #[test]
     fn items_of_an_array() {
         let f = stats("[ {\"a\": 1}, {\"a\": 2, \"b\": \"x\"} ]");
         assert_eq!(f.records, 2);
-        assert_eq!(f.stats.iter().map(|s| (s.path.as_str(), s.count)).collect::<Vec<_>>(), [("a", 2), ("b", 1)]);
+        assert_eq!(
+            f.stats
+                .iter()
+                .map(|s| (s.path.as_str(), s.count))
+                .collect::<Vec<_>>(),
+            [("a", 2), ("b", 1)]
+        );
     }
 }

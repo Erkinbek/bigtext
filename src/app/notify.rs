@@ -54,7 +54,10 @@ pub fn hide() {
 #[allow(dead_code)]
 fn spawn(program: &str, args: &[&str]) -> bool {
     let mut c = Command::new(program);
-    c.args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    c.args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     bigtext::remote::hide_console(&mut c);
     match c.spawn() {
         Ok(mut child) => {
@@ -84,7 +87,11 @@ mod os {
         if spawn("notify-send", &args) {
             return true;
         }
-        let hints = if sound { "{'sound-name': <'dialog-warning'>}" } else { "{}" };
+        let hints = if sound {
+            "{'sound-name': <'dialog-warning'>}"
+        } else {
+            "{}"
+        };
         let (t, b) = (gvariant(title), gvariant(body));
         let args = [
             "call",
@@ -110,7 +117,10 @@ mod os {
 
     pub fn beep() {
         if !spawn("canberra-gtk-play", &["-i", "dialog-warning"]) {
-            spawn("paplay", &["/usr/share/sounds/freedesktop/stereo/dialog-warning.oga"]);
+            spawn(
+                "paplay",
+                &["/usr/share/sounds/freedesktop/stereo/dialog-warning.oga"],
+            );
         }
     }
 
@@ -129,7 +139,11 @@ mod os {
     }
 
     pub fn show(title: &str, body: &str, sound: bool) -> bool {
-        let mut script = format!("display notification {} with title {}", quoted(body), quoted(title));
+        let mut script = format!(
+            "display notification {} with title {}",
+            quoted(body),
+            quoted(title)
+        );
         if sound {
             script.push_str(" sound name \"Glass\"");
         }
@@ -154,10 +168,14 @@ mod os {
     use windows_sys::Win32::System::Diagnostics::Debug::MessageBeep;
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows_sys::Win32::UI::Shell::{
-        Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIIF_LARGE_ICON, NIIF_NOSOUND, NIIF_USER, NIM_ADD, NIM_DELETE, NIM_MODIFY, NIM_SETVERSION, NIN_BALLOONUSERCLICK, NIN_SELECT, NOTIFYICONDATAW, NOTIFYICON_VERSION_4,
+        Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIIF_LARGE_ICON,
+        NIIF_NOSOUND, NIIF_USER, NIM_ADD, NIM_DELETE, NIM_MODIFY, NIM_SETVERSION,
+        NIN_BALLOONUSERCLICK, NIN_SELECT, NOTIFYICONDATAW, NOTIFYICON_VERSION_4,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, LoadIconW, LoadImageW, RegisterClassW, TranslateMessage, HICON, HWND_MESSAGE, IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTSIZE, MB_ICONEXCLAMATION, MSG, WM_APP, WNDCLASSW,
+        CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, LoadIconW, LoadImageW,
+        RegisterClassW, TranslateMessage, HICON, HWND_MESSAGE, IDI_APPLICATION, IMAGE_ICON,
+        LR_DEFAULTSIZE, MB_ICONEXCLAMATION, MSG, WM_APP, WNDCLASSW,
     };
 
     /// The message the icon's events come in.
@@ -216,9 +234,23 @@ mod os {
                     wc.hInstance = inst;
                     wc.lpszClassName = class.as_ptr();
                     RegisterClassW(&wc);
-                    let hwnd = CreateWindowExW(0, class.as_ptr(), std::ptr::null(), 0, 0, 0, 0, 0, HWND_MESSAGE, std::ptr::null_mut(), inst, std::ptr::null());
+                    let hwnd = CreateWindowExW(
+                        0,
+                        class.as_ptr(),
+                        std::ptr::null(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        HWND_MESSAGE,
+                        std::ptr::null_mut(),
+                        inst,
+                        std::ptr::null(),
+                    );
                     // The executable's icon (resource 1), or the system's.
-                    let mut icon = LoadImageW(inst, 1 as _, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE) as HICON;
+                    let mut icon =
+                        LoadImageW(inst, 1 as _, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE) as HICON;
                     if icon.is_null() {
                         icon = LoadIconW(std::ptr::null_mut(), IDI_APPLICATION);
                     }

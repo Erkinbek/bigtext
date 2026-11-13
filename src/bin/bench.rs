@@ -26,7 +26,9 @@ fn ms(d: Duration) -> f64 {
 }
 
 fn mem() -> String {
-    sysinfo::private_bytes().map(human_bytes).unwrap_or_else(|| "n/a".into())
+    sysinfo::private_bytes()
+        .map(human_bytes)
+        .unwrap_or_else(|| "n/a".into())
 }
 
 struct Rng(u64);
@@ -62,7 +64,11 @@ fn goto_bench(buf: &TextBuf, n: usize, max_line: u64, seed: u64) -> (f64, f64, b
         let line = rng.next() % max_line.max(1);
         let t = Instant::now();
         let (off, exact) = buf.line_start(line).unwrap_or((buf.len(), false));
-        let off = if exact { off } else { rows::seg_start(buf, off).unwrap() };
+        let off = if exact {
+            off
+        } else {
+            rows::seg_start(buf, off).unwrap()
+        };
         let _ = first_screen(buf, off, 50);
         let e = ms(t.elapsed());
         all_exact &= exact;
@@ -143,7 +149,10 @@ fn main() {
     let n = src.len().min(1 << 20);
     let det = encoding::detect(&src.read(0..n).unwrap(), n == src.len());
     let open_ms = ms(t.elapsed());
-    println!("private memory right after open (mapping created, nothing read): {}", mem());
+    println!(
+        "private memory right after open (mapping created, nothing read): {}",
+        mem()
+    );
     println!(
         "size: {} ({} bytes), backing: {}, encoding: {}, line endings: {}",
         human_bytes(src.len()),
@@ -160,7 +169,11 @@ fn main() {
     buf.blocking = true;
     let t = Instant::now();
     let chars = first_screen(&buf, 0, 60);
-    println!("first screen (60 rows, {chars} chars): {:.3} ms  => open-to-first-screen {:.2} ms", ms(t.elapsed()), open_ms + ms(t.elapsed()));
+    println!(
+        "first screen (60 rows, {chars} chars): {:.3} ms  => open-to-first-screen {:.2} ms",
+        ms(t.elapsed()),
+        open_ms + ms(t.elapsed())
+    );
 
     // 3. Go-to before indexing (estimated positions).
     let est_lines = (src.len() as f64 / 120.0) as u64;
@@ -204,20 +217,50 @@ fn main() {
             s,
             buf.len() as f64 / 1048576.0 / s.max(1e-9),
             buf.len() as f64 / 1073741824.0 / s.max(1e-9),
-            if m.is_literal() { " [memmem]" } else { " [regex]" }
+            if m.is_literal() {
+                " [memmem]"
+            } else {
+                " [regex]"
+            }
         );
     };
     for l in &literals {
-        run(&Query { pattern: l.clone(), case_sensitive: true, ..Default::default() }, "literal");
-        run(&Query { pattern: l.clone(), case_sensitive: false, ..Default::default() }, "literal (ignore case)");
+        run(
+            &Query {
+                pattern: l.clone(),
+                case_sensitive: true,
+                ..Default::default()
+            },
+            "literal",
+        );
+        run(
+            &Query {
+                pattern: l.clone(),
+                case_sensitive: false,
+                ..Default::default()
+            },
+            "literal (ignore case)",
+        );
     }
     for r in &regexes {
-        run(&Query { pattern: r.clone(), regex: true, case_sensitive: true, ..Default::default() }, "regex");
+        run(
+            &Query {
+                pattern: r.clone(),
+                regex: true,
+                case_sensitive: true,
+                ..Default::default()
+            },
+            "regex",
+        );
     }
 
     // 8. Streaming replace-all into a temp file next to the input (deleted afterwards).
     if do_replace {
-        let q = Query { pattern: replace.0.clone(), case_sensitive: true, ..Default::default() };
+        let q = Query {
+            pattern: replace.0.clone(),
+            case_sensitive: true,
+            ..Default::default()
+        };
         let m = Matcher::new(&q, det.codec).unwrap();
         let tpl = Template::new(&replace.1, false);
         let before = sysinfo::private_bytes().unwrap_or(0);
@@ -236,7 +279,17 @@ fn main() {
         };
         let t = Instant::now();
         let target = file.with_extension("bench-replace-out");
-        let r = save::write_temp(&buf, &target, Transform::Replace { matcher: &m, template: &tpl, range: 0..buf.len() }, &CancelToken::new(), &Progress::default());
+        let r = save::write_temp(
+            &buf,
+            &target,
+            Transform::Replace {
+                matcher: &m,
+                template: &tpl,
+                range: 0..buf.len(),
+            },
+            &CancelToken::new(),
+            &Progress::default(),
+        );
         let s = t.elapsed().as_secs_f64();
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
         let _ = sampler.join();
@@ -277,24 +330,40 @@ fn io_test(path: &std::path::Path) {
         n += bigtext::encoding::count_byte(&buf[..k], b'\n');
         pos += k as u64;
     }
-    println!("pread 16MB reused buffer + count: {:.2} GB/s ({n})", len as f64 / 1073741824.0 / t.elapsed().as_secs_f64());
+    println!(
+        "pread 16MB reused buffer + count: {:.2} GB/s ({n})",
+        len as f64 / 1073741824.0 / t.elapsed().as_secs_f64()
+    );
     for view in [64u64 << 20, 1u64 << 30] {
         let t = Instant::now();
         let mut pos = 0;
         let mut n = 0u64;
         while pos < len {
             let k = view.min(len - pos);
-            let m = unsafe { memmap2::MmapOptions::new().offset(pos).len(k as usize).map(&f).unwrap() };
+            let m = unsafe {
+                memmap2::MmapOptions::new()
+                    .offset(pos)
+                    .len(k as usize)
+                    .map(&f)
+                    .unwrap()
+            };
             n += bigtext::encoding::count_byte(&m, b'\n');
             pos += k;
         }
-        println!("fresh mmap views of {} MB + count: {:.2} GB/s ({n})", view >> 20, len as f64 / 1073741824.0 / t.elapsed().as_secs_f64());
+        println!(
+            "fresh mmap views of {} MB + count: {:.2} GB/s ({n})",
+            view >> 20,
+            len as f64 / 1073741824.0 / t.elapsed().as_secs_f64()
+        );
     }
     let m = unsafe { memmap2::Mmap::map(&f).unwrap() };
     for pass in 0..2 {
         let t = Instant::now();
         let n = bigtext::encoding::count_byte(&m[..len as usize], b'\n');
-        println!("global mmap pass {pass} + count: {:.2} GB/s ({n})", len as f64 / 1073741824.0 / t.elapsed().as_secs_f64());
+        println!(
+            "global mmap pass {pass} + count: {:.2} GB/s ({n})",
+            len as f64 / 1073741824.0 / t.elapsed().as_secs_f64()
+        );
     }
     let _ = (&f).read(&mut [0u8; 0]);
 }

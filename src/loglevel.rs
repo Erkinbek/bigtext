@@ -29,7 +29,18 @@ impl Level {
     /// The words that mark a line of this level.
     pub fn words(self) -> &'static [&'static str] {
         match self {
-            Level::Error => &["ERROR", "ERR", "FATAL", "CRITICAL", "CRIT", "SEVERE", "EMERG", "EMERGENCY", "ALERT", "PANIC"],
+            Level::Error => &[
+                "ERROR",
+                "ERR",
+                "FATAL",
+                "CRITICAL",
+                "CRIT",
+                "SEVERE",
+                "EMERG",
+                "EMERGENCY",
+                "ALERT",
+                "PANIC",
+            ],
             Level::Warn => &["WARN", "WARNING"],
             Level::Info => &["INFO", "NOTICE"],
             Level::Debug => &["DEBUG", "TRACE", "VERBOSE", "FINE", "FINER", "FINEST"],
@@ -83,7 +94,10 @@ impl Levels {
 
 /// Regex that matches a level word of `levels` in a line (None for an empty set).
 pub fn pattern(levels: Levels) -> Option<String> {
-    let words: Vec<&str> = levels.iter().flat_map(|l| l.words().iter().copied()).collect();
+    let words: Vec<&str> = levels
+        .iter()
+        .flat_map(|l| l.words().iter().copied())
+        .collect();
     if words.is_empty() {
         return None;
     }
@@ -96,7 +110,13 @@ pub fn pattern(levels: Levels) -> Option<String> {
 
 /// Search query for the lines of `levels`.
 pub fn query(levels: Levels) -> Option<Query> {
-    Some(Query { pattern: pattern(levels)?, regex: true, case_sensitive: true, whole_word: false, dot_all: false })
+    Some(Query {
+        pattern: pattern(levels)?,
+        regex: true,
+        case_sensitive: true,
+        whole_word: false,
+        dot_all: false,
+    })
 }
 
 #[cfg(test)]
@@ -108,10 +128,18 @@ mod tests {
     fn hit(levels: Levels, line: &str) -> bool {
         let m = Matcher::new(&query(levels).unwrap(), Codec::utf8()).unwrap();
         let mut found = false;
-        m.find_in(line.as_bytes(), 0, 0, line.len(), line.len(), &mut None, &mut |_, _| {
-            found = true;
-            false
-        });
+        m.find_in(
+            line.as_bytes(),
+            0,
+            0,
+            line.len(),
+            line.len(),
+            &mut None,
+            &mut |_, _| {
+                found = true;
+                false
+            },
+        );
         found
     }
 
@@ -137,7 +165,15 @@ mod tests {
     #[test]
     fn ignores_ordinary_words() {
         let e = Levels::only(Level::Error);
-        for line in ["no error found", "ERRORS: 0", "an Error occurred", "level=errorless", "TERROR", "MyError: x", "INFO all good"] {
+        for line in [
+            "no error found",
+            "ERRORS: 0",
+            "an Error occurred",
+            "level=errorless",
+            "TERROR",
+            "MyError: x",
+            "INFO all good",
+        ] {
             assert!(!hit(e, line), "{line}");
         }
     }

@@ -63,7 +63,15 @@ pub struct LineReader<'a> {
 impl<'a> LineReader<'a> {
     pub fn new(buf: &'a TextBuf) -> LineReader<'a> {
         let start = (buf.codec.bom_len as u64).min(buf.len());
-        LineReader { buf, data: Vec::new(), at: 0, end: start, line: Vec::new(), chunk: Vec::new(), taken: 0 }
+        LineReader {
+            buf,
+            data: Vec::new(),
+            at: 0,
+            end: start,
+            line: Vec::new(),
+            chunk: Vec::new(),
+            taken: 0,
+        }
     }
 
     pub fn buf(&self) -> &'a TextBuf {
@@ -93,7 +101,9 @@ impl<'a> LineReader<'a> {
                     }
                     Some((n, n))
                 }
-                None if self.end >= self.buf.len() => (!pending.is_empty()).then_some((pending.len(), pending.len())),
+                None if self.end >= self.buf.len() => {
+                    (!pending.is_empty()).then_some((pending.len(), pending.len()))
+                }
                 _ => None,
             };
             if let Some((content, taken)) = cut {
@@ -114,7 +124,10 @@ impl<'a> LineReader<'a> {
             self.at = 0;
             let to = (self.end + CHUNK as u64).min(self.buf.len());
             // `read_to` writes from the start of its buffer.
-            let n = self.buf.read_to(self.end..to, &mut self.chunk).ok_or_else(|| io::Error::other("could not read the file"))?;
+            let n = self
+                .buf
+                .read_to(self.end..to, &mut self.chunk)
+                .ok_or_else(|| io::Error::other("could not read the file"))?;
             self.data.extend_from_slice(&self.chunk[..n]);
             self.end = to;
         }
@@ -148,10 +161,24 @@ mod tests {
 
     #[test]
     fn offsets_line_breaks_and_bom() {
-        assert_eq!(lines(b"a\r\nbb\n\nccc"), vec![(0, "a".into()), (3, "bb".into()), (6, "".into()), (7, "ccc".into())]);
-        assert_eq!(lines(b"\xEF\xBB\xBFx\ny\n"), vec![(3, "x".into()), (5, "y".into())]);
+        assert_eq!(
+            lines(b"a\r\nbb\n\nccc"),
+            vec![
+                (0, "a".into()),
+                (3, "bb".into()),
+                (6, "".into()),
+                (7, "ccc".into())
+            ]
+        );
+        assert_eq!(
+            lines(b"\xEF\xBB\xBFx\ny\n"),
+            vec![(3, "x".into()), (5, "y".into())]
+        );
         assert_eq!(lines(b""), vec![]);
-        let utf16: Vec<u8> = [0xFF, 0xFE].into_iter().chain("п\r\nq".encode_utf16().flat_map(|u| u.to_le_bytes())).collect();
+        let utf16: Vec<u8> = [0xFF, 0xFE]
+            .into_iter()
+            .chain("п\r\nq".encode_utf16().flat_map(|u| u.to_le_bytes()))
+            .collect();
         assert_eq!(lines(&utf16), vec![(2, "п".into()), (8, "q".into())]);
     }
 

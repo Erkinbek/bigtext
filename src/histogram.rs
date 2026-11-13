@@ -71,13 +71,27 @@ pub struct Histogram {
 
 impl Default for Histogram {
     fn default() -> Self {
-        Histogram { width: WIDTHS[0], buckets: BTreeMap::new(), dated: true, lines: 0, untimed: 0, hits: 0 }
+        Histogram {
+            width: WIDTHS[0],
+            buckets: BTreeMap::new(),
+            dated: true,
+            lines: 0,
+            untimed: 0,
+            hits: 0,
+        }
     }
 }
 
 impl Histogram {
     fn add(&mut self, key: i64, off: u64, hit: bool) {
-        let b = self.buckets.entry(key.div_euclid(self.width) * self.width).or_insert(Bucket { lines: 0, hits: 0, first: off });
+        let b = self
+            .buckets
+            .entry(key.div_euclid(self.width) * self.width)
+            .or_insert(Bucket {
+                lines: 0,
+                hits: 0,
+                first: off,
+            });
         b.lines += 1;
         b.hits += hit as u64;
         b.first = b.first.min(off);
@@ -89,11 +103,17 @@ impl Histogram {
     /// Merges the buckets into wider ones until there are few enough.
     fn coarsen(&mut self) {
         while self.buckets.len() > MAX_BUCKETS {
-            let Some(&w) = WIDTHS.iter().find(|&&w| w > self.width) else { return };
+            let Some(&w) = WIDTHS.iter().find(|&&w| w > self.width) else {
+                return;
+            };
             self.width = w;
             let old = std::mem::take(&mut self.buckets);
             for (k, b) in old {
-                let e = self.buckets.entry(k.div_euclid(w) * w).or_insert(Bucket { lines: 0, hits: 0, first: b.first });
+                let e = self.buckets.entry(k.div_euclid(w) * w).or_insert(Bucket {
+                    lines: 0,
+                    hits: 0,
+                    first: b.first,
+                });
                 e.lines += b.lines;
                 e.hits += b.hits;
                 e.first = e.first.min(b.first);
@@ -103,20 +123,30 @@ impl Histogram {
 
     /// First and last bucket start.
     pub fn span(&self) -> Option<(i64, i64)> {
-        Some((*self.buckets.first_key_value()?.0, *self.buckets.last_key_value()?.0))
+        Some((
+            *self.buckets.first_key_value()?.0,
+            *self.buckets.last_key_value()?.0,
+        ))
     }
 
     /// The narrowest bar width (a multiple of the bucket width) that needs at most `max_bars`
     /// bars for the whole span.
     pub fn step_for(&self, max_bars: usize) -> i64 {
-        let Some((a, b)) = self.span() else { return self.width };
+        let Some((a, b)) = self.span() else {
+            return self.width;
+        };
         let fits = |s: i64| ((b.div_euclid(s) - a.div_euclid(s)) as usize) < max_bars.max(1);
-        STEPS.iter().copied().filter(|s| s % self.width == 0).find(|&s| fits(s)).unwrap_or_else(|| {
-            // Longer than the widest step allows: whole multiples of it.
-            let w = STEPS[STEPS.len() - 1];
-            let n = ((b - a) / w) as usize / max_bars.max(1) + 1;
-            w * n as i64
-        })
+        STEPS
+            .iter()
+            .copied()
+            .filter(|s| s % self.width == 0)
+            .find(|&s| fits(s))
+            .unwrap_or_else(|| {
+                // Longer than the widest step allows: whole multiples of it.
+                let w = STEPS[STEPS.len() - 1];
+                let n = ((b - a) / w) as usize / max_bars.max(1) + 1;
+                w * n as i64
+            })
     }
 
     /// The buckets summed into bars `step` wide: (start, totals), in time order, without empty
@@ -150,7 +180,13 @@ fn stamp(codec: Codec, line: &[u8]) -> Option<Stamp> {
 /// Builds the histogram of `buf`; lines that `m` matches count as hits. Lines without a time
 /// count in the bucket of the line above. `partial` gets the histogram so far now and then.
 /// Returns `None` when cancelled.
-pub fn build(buf: &TextBuf, m: Option<&Matcher>, cancel: &CancelToken, progress: Option<&Progress>, mut partial: impl FnMut(&Histogram)) -> io::Result<Option<Histogram>> {
+pub fn build(
+    buf: &TextBuf,
+    m: Option<&Matcher>,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut partial: impl FnMut(&Histogram),
+) -> io::Result<Option<Histogram>> {
     let codec = buf.codec;
     if let Some(p) = progress {
         p.set_total(buf.len());
@@ -166,10 +202,18 @@ pub fn build(buf: &TextBuf, m: Option<&Matcher>, cancel: &CancelToken, progress:
         h.lines += 1;
         let hit = m.is_some_and(|m| {
             let mut found = false;
-            m.find_in(line, off, 0, line.len(), line.len(), &mut None, &mut |_, _| {
-                found = true;
-                false
-            });
+            m.find_in(
+                line,
+                off,
+                0,
+                line.len(),
+                line.len(),
+                &mut None,
+                &mut |_, _| {
+                    found = true;
+                    false
+                },
+            );
             found
         });
         h.hits += hit as u64;
@@ -216,8 +260,20 @@ mod tests {
         let det = encoding::detect(&src.read(0..src.len()).unwrap(), true);
         let len = src.len();
         let buf = TextBuf::new(src, LineIndex::new(len), det.codec);
-        let m = pattern.map(|p| Matcher::new(&Query { pattern: p.into(), case_sensitive: true, ..Default::default() }, det.codec).unwrap());
-        build(&buf, m.as_ref(), &CancelToken::new(), None, |_| {}).unwrap().unwrap()
+        let m = pattern.map(|p| {
+            Matcher::new(
+                &Query {
+                    pattern: p.into(),
+                    case_sensitive: true,
+                    ..Default::default()
+                },
+                det.codec,
+            )
+            .unwrap()
+        });
+        build(&buf, m.as_ref(), &CancelToken::new(), None, |_| {})
+            .unwrap()
+            .unwrap()
     }
 
     #[test]
@@ -225,12 +281,35 @@ mod tests {
         let text = "head\n2024-05-01 10:00:00 a ERROR\n  trace ERROR\n2024-05-01 10:00:00 b\n2024-05-01 10:00:02 c ERROR\n";
         let h = hist(text.as_bytes(), Some("ERROR"));
         let t0 = timestamp::parse("2024-05-01 10:00:00").unwrap().ms;
-        assert_eq!((h.lines, h.untimed, h.hits, h.width, h.dated), (5, 1, 3, SEC, true));
-        assert_eq!(h.buckets.get(&t0), Some(&Bucket { lines: 3, hits: 2, first: 5 }));
-        assert_eq!(h.buckets.get(&(t0 + 2 * SEC)).map(|b| (b.lines, b.hits)), Some((1, 1)));
+        assert_eq!(
+            (h.lines, h.untimed, h.hits, h.width, h.dated),
+            (5, 1, 3, SEC, true)
+        );
+        assert_eq!(
+            h.buckets.get(&t0),
+            Some(&Bucket {
+                lines: 3,
+                hits: 2,
+                first: 5
+            })
+        );
+        assert_eq!(
+            h.buckets.get(&(t0 + 2 * SEC)).map(|b| (b.lines, b.hits)),
+            Some((1, 1))
+        );
         assert_eq!(h.span(), Some((t0, t0 + 2 * SEC)));
         // Ten-second bars put every timed line in one bar.
-        assert_eq!(h.bars(10 * SEC), vec![(t0, Bucket { lines: 4, hits: 3, first: 5 })]);
+        assert_eq!(
+            h.bars(10 * SEC),
+            vec![(
+                t0,
+                Bucket {
+                    lines: 4,
+                    hits: 3,
+                    first: 5
+                }
+            )]
+        );
     }
 
     #[test]
@@ -244,7 +323,10 @@ mod tests {
         let h = hist(text.as_bytes(), None);
         assert_eq!(h.width, 10 * MIN);
         assert!(h.buckets.len() <= MAX_BUCKETS);
-        assert_eq!(h.buckets.values().map(|b| b.lines).sum::<u64>(), 30 * 24 * 60);
+        assert_eq!(
+            h.buckets.values().map(|b| b.lines).sum::<u64>(),
+            30 * 24 * 60
+        );
         assert!(h.buckets.values().all(|b| b.lines == 10));
         // About 100 bars over 30 days: 12-hour bars.
         assert_eq!(h.step_for(100), 12 * HOUR);
@@ -256,12 +338,22 @@ mod tests {
         let h = hist(b"23:59:59 a\n00:00:01 b\n", None);
         assert!(!h.dated);
         assert_eq!(h.span(), Some((DAY - SEC, DAY + SEC)));
-        assert_eq!(timestamp::format_key(DAY + SEC, h.dated, true), "00:00:01 +1 d");
+        assert_eq!(
+            timestamp::format_key(DAY + SEC, h.dated, true),
+            "00:00:01 +1 d"
+        );
     }
 
     #[test]
     fn utf16_logs() {
-        let utf16: Vec<u8> = [0xFF, 0xFE].into_iter().chain("10:00:00 x\r\n10:00:01 ERROR\r\n".encode_utf16().flat_map(|u| u.to_le_bytes())).collect();
+        let utf16: Vec<u8> = [0xFF, 0xFE]
+            .into_iter()
+            .chain(
+                "10:00:00 x\r\n10:00:01 ERROR\r\n"
+                    .encode_utf16()
+                    .flat_map(|u| u.to_le_bytes()),
+            )
+            .collect();
         let h = hist(&utf16, Some("ERROR"));
         assert_eq!((h.lines, h.hits, h.buckets.len()), (2, 1, 2));
     }

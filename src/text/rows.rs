@@ -131,9 +131,19 @@ pub fn seg_at(buf: &TextBuf, q: u64) -> Result<Seg, Pending> {
     let unit = codec.unit() as u64;
     let line_start = is_line_start(buf, q)?;
     if q >= len {
-        return Ok(Seg { start: len, content_end: len, next: len, line_start, has_nl: false });
+        return Ok(Seg {
+            start: len,
+            content_end: len,
+            next: len,
+            line_start,
+            has_nl: false,
+        });
     }
-    let soft_mult = if line_start { (q + SEG).div_ceil(SEG) * SEG } else { (q / SEG + 1) * SEG };
+    let soft_mult = if line_start {
+        (q + SEG).div_ceil(SEG) * SEG
+    } else {
+        (q / SEG + 1) * SEG
+    };
     let scan_end = (soft_mult + 8).min(len);
     let hay = read(buf, q..scan_end)?;
     let soft = if soft_mult < len {
@@ -163,11 +173,29 @@ pub fn seg_at(buf: &TextBuf, q: u64) -> Result<Seg, Pending> {
                     ce -= cr.len() as u64;
                 }
             }
-            Ok(Seg { start: q, content_end: ce, next: nl + unit, line_start, has_nl: true })
+            Ok(Seg {
+                start: q,
+                content_end: ce,
+                next: nl + unit,
+                line_start,
+                has_nl: true,
+            })
         }
         _ => match soft {
-            Some(s) => Ok(Seg { start: q, content_end: s, next: s, line_start, has_nl: false }),
-            None => Ok(Seg { start: q, content_end: len, next: len, line_start, has_nl: false }),
+            Some(s) => Ok(Seg {
+                start: q,
+                content_end: s,
+                next: s,
+                line_start,
+                has_nl: false,
+            }),
+            None => Ok(Seg {
+                start: q,
+                content_end: len,
+                next: len,
+                line_start,
+                has_nl: false,
+            }),
         },
     }
 }
@@ -280,7 +308,14 @@ pub fn for_each_cell(codec: &Codec, bytes: &[u8], base: u64, mut f: impl FnMut(C
             c if (c as u32) < 0x20 || (0x7F..=0x9F).contains(&(c as u32)) => (CellKind::Control, 1),
             c => (CellKind::Normal, char_cells(c)),
         };
-        if !f(Cell { off, len: l as u32, cell, width, ch: c, kind }) {
+        if !f(Cell {
+            off,
+            len: l as u32,
+            cell,
+            width,
+            ch: c,
+            kind,
+        }) {
             return;
         }
         cell += width;
@@ -319,14 +354,22 @@ pub fn wrap_starts(codec: &Codec, bytes: &[u8], base: u64, wrap: usize) -> Vec<u
 
 pub fn rows_of_seg(buf: &TextBuf, seg: &Seg, wrap: Option<usize>) -> Result<Vec<Row>, Pending> {
     let Some(w) = wrap else {
-        return Ok(vec![Row { start: seg.start, end: seg.content_end, seg: *seg }]);
+        return Ok(vec![Row {
+            start: seg.start,
+            end: seg.content_end,
+            seg: *seg,
+        }]);
     };
     let bytes = read(buf, seg.start..seg.content_end)?;
     let starts = wrap_starts(&buf.codec, &bytes, seg.start, w);
     let mut rows = Vec::with_capacity(starts.len());
     for (i, &s) in starts.iter().enumerate() {
         let e = starts.get(i + 1).copied().unwrap_or(seg.content_end);
-        rows.push(Row { start: s, end: e, seg: *seg });
+        rows.push(Row {
+            start: s,
+            end: e,
+            seg: *seg,
+        });
     }
     Ok(rows)
 }
@@ -350,7 +393,11 @@ pub fn next_row(buf: &TextBuf, row: &Row, wrap: Option<usize>) -> Result<Option<
         None => Ok(None),
         Some(s) => {
             if wrap.is_none() {
-                Ok(Some(Row { start: s.start, end: s.content_end, seg: s }))
+                Ok(Some(Row {
+                    start: s.start,
+                    end: s.content_end,
+                    seg: s,
+                }))
             } else {
                 Ok(rows_of_seg(buf, &s, wrap)?.first().copied())
             }
@@ -369,7 +416,11 @@ pub fn prev_row(buf: &TextBuf, row: &Row, wrap: Option<usize>) -> Result<Option<
         None => Ok(None),
         Some(s) => {
             if wrap.is_none() {
-                Ok(Some(Row { start: s.start, end: s.content_end, seg: s }))
+                Ok(Some(Row {
+                    start: s.start,
+                    end: s.content_end,
+                    seg: s,
+                }))
             } else {
                 Ok(rows_of_seg(buf, &s, wrap)?.last().copied())
             }
@@ -411,7 +462,11 @@ pub fn offset_at_cell(buf: &TextBuf, row: &Row, col: u32) -> Result<u64, Pending
             return false;
         }
         if col < c.cell + c.width {
-            result = if col - c.cell <= c.width / 2 { c.off } else { c.off + c.len as u64 };
+            result = if col - c.cell <= c.width / 2 {
+                c.off
+            } else {
+                c.off + c.len as u64
+            };
             return false;
         }
         true
@@ -462,8 +517,15 @@ mod tests {
             assert_eq!(w[0].next, w[1].start);
         }
         for s in &segs {
-            assert!(s.content_end - s.start <= 2 * SEG + 4, "segment too long: {s:?}");
-            for p in [s.start, (s.start + s.next) / 2, s.next.saturating_sub(1).max(s.start)] {
+            assert!(
+                s.content_end - s.start <= 2 * SEG + 4,
+                "segment too long: {s:?}"
+            );
+            for p in [
+                s.start,
+                (s.start + s.next) / 2,
+                s.next.saturating_sub(1).max(s.start),
+            ] {
                 if p < s.next || (p == s.start && s.start == len) {
                     let p = t.snap_char(p).min(s.next.saturating_sub(1).max(s.start));
                     assert_eq!(seg_start(t, p).unwrap(), s.start, "p={p} seg={s:?}");
@@ -484,7 +546,10 @@ mod tests {
         let (_f, t) = buf_with(b"ab\ncd\r\n\nlast", Codec::utf8());
         let segs = all_segs(&t);
         assert_eq!(segs.len(), 4);
-        assert_eq!((segs[1].start, segs[1].content_end, segs[1].next), (3, 5, 7));
+        assert_eq!(
+            (segs[1].start, segs[1].content_end, segs[1].next),
+            (3, 5, 7)
+        );
         assert!(segs[3].is_last(t.len()));
         check_invariants(&t);
     }
@@ -543,7 +608,10 @@ mod tests {
         let (_f, t) = buf_with(b"0123456789abcdef\n\tx", Codec::utf8());
         let seg = seg_at(&t, 0).unwrap();
         let rows = rows_of_seg(&t, &seg, Some(5)).unwrap();
-        assert_eq!(rows.iter().map(|r| r.start).collect::<Vec<_>>(), vec![0, 5, 10, 15]);
+        assert_eq!(
+            rows.iter().map(|r| r.start).collect::<Vec<_>>(),
+            vec![0, 5, 10, 15]
+        );
         let r = row_at(&t, 12, Some(5)).unwrap();
         assert_eq!(r.start, 10);
         let n = next_row(&t, &rows[3], Some(5)).unwrap().unwrap();

@@ -42,7 +42,13 @@ impl ExportUi {
 }
 
 /// Writes `range` of the document (with its byte order mark) to `target`.
-fn write_range(snap: &TextBuf, range: std::ops::Range<u64>, target: &std::path::Path, progress: &Progress, cancel: &CancelToken) -> TaskOutcome {
+fn write_range(
+    snap: &TextBuf,
+    range: std::ops::Range<u64>,
+    target: &std::path::Path,
+    progress: &Progress,
+    cancel: &CancelToken,
+) -> TaskOutcome {
     progress.set_total(range.end - range.start);
     progress.set_done(0);
     let bom = snap.codec.bom_len as u64;
@@ -52,8 +58,14 @@ fn write_range(snap: &TextBuf, range: std::ops::Range<u64>, target: &std::path::
                 std::io::Write::write_all(w, &b)?;
             }
         }
-        Ok(filter::write_range_to(snap, range, w, cancel, Some(progress))?
-            .map(|n| trf("Saved {size} to {file}.", &[("size", &human_bytes(n)), ("file", &file_name(target))])))
+        Ok(
+            filter::write_range_to(snap, range, w, cancel, Some(progress))?.map(|n| {
+                trf(
+                    "Saved {size} to {file}.",
+                    &[("size", &human_bytes(n)), ("file", &file_name(target))],
+                )
+            }),
+        )
     })
 }
 
@@ -71,15 +83,30 @@ impl BigTextApp {
     }
 
     pub(crate) fn open_export_lines(&mut self) {
-        let Some(d) = self.docs.get(self.active).filter(|d| d.is_ready()) else { return };
+        let Some(d) = self.docs.get(self.active).filter(|d| d.is_ready()) else {
+            return;
+        };
         let (s, e) = d.selection();
-        let e = if e > s { e - d.buf.codec.unit() as u64 } else { e };
+        let e = if e > s {
+            e - d.buf.codec.unit() as u64
+        } else {
+            e
+        };
         let (a, b) = (d.buf.line_of(s).0 + 1, d.buf.line_of(e).0 + 1);
-        self.export.lines = Some(LinesDialog { from: a.to_string(), to: b.to_string(), error: None, times: false, from_time: String::new(), to_time: String::new() });
+        self.export.lines = Some(LinesDialog {
+            from: a.to_string(),
+            to: b.to_string(),
+            error: None,
+            times: false,
+            from_time: String::new(),
+            to_time: String::new(),
+        });
     }
 
     pub(crate) fn save_selection_as(&mut self) {
-        let Some(d) = self.docs.get(self.active).filter(|d| d.is_ready()) else { return };
+        let Some(d) = self.docs.get(self.active).filter(|d| d.is_ready()) else {
+            return;
+        };
         let (s, e) = d.selection();
         if s == e {
             self.error = Some(tr("Select some text first.").into());
@@ -87,73 +114,140 @@ impl BigTextApp {
         }
         let snap = d.buf.snapshot();
         let name = format!("{}.selection.txt", self.output_base_name());
-        let Some(target) = self.pick_output_file(tr("Save selection as"), &name) else { return };
-        self.spawn_task(tr("Saving selection").into(), move |progress, cancel| write_range(&snap, s..e, &target, progress, cancel));
+        let Some(target) = self.pick_output_file(tr("Save selection as"), &name) else {
+            return;
+        };
+        self.spawn_task(tr("Saving selection").into(), move |progress, cancel| {
+            write_range(&snap, s..e, &target, progress, cancel)
+        });
     }
 
     pub(crate) fn open_split(&mut self) {
         if self.docs.get(self.active).is_some_and(|d| d.is_ready()) {
-            self.export.split = Some(SplitDialog { by_lines: false, pack: None, size_mb: "100".into(), lines: "1000000".into(), error: None });
+            self.export.split = Some(SplitDialog {
+                by_lines: false,
+                pack: None,
+                size_mb: "100".into(),
+                lines: "1000000".into(),
+                error: None,
+            });
         }
     }
 
     /// Writes the lines from one time to another (inclusive to its second; `to` without a date
     /// is on `from`'s day) to a file the user picks.
-    pub(crate) fn export_times(&mut self, from: Option<bigtext::timestamp::Stamp>, to: Option<bigtext::timestamp::Stamp>, target: Option<std::path::PathBuf>) {
-        let Some(d) = self.docs.get(self.active) else { return };
+    pub(crate) fn export_times(
+        &mut self,
+        from: Option<bigtext::timestamp::Stamp>,
+        to: Option<bigtext::timestamp::Stamp>,
+        target: Option<std::path::PathBuf>,
+    ) {
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let snap = d.buf.snapshot();
         let name = format!("{}.between.txt", self.output_base_name());
-        let Some(target) = target.or_else(|| self.pick_output_file(tr("Export lines"), &name)) else { return };
+        let Some(target) = target.or_else(|| self.pick_output_file(tr("Export lines"), &name))
+        else {
+            return;
+        };
         let to = match (from, to) {
             (Some(f), Some(t)) => Some(bigtext::timestamp::rebase(t, f)),
             (_, t) => t,
         };
-        self.spawn_task(tr("Exporting lines between times").into(), move |progress, cancel| match bigtext::timestamp::time_range(&snap, from, to, cancel) {
-            Ok((s, e)) if e > s => write_range(&snap, s..e, &target, progress, cancel),
-            Ok(_) => TaskOutcome::Failed(tr("No lines between these times.").into()),
-            Err(bigtext::timestamp::TimeError::Cancelled) => TaskOutcome::Cancelled,
-            Err(_) => TaskOutcome::Failed(tr("The document has no timestamps to go by.").into()),
-        });
+        self.spawn_task(
+            tr("Exporting lines between times").into(),
+            move |progress, cancel| match bigtext::timestamp::time_range(&snap, from, to, cancel) {
+                Ok((s, e)) if e > s => write_range(&snap, s..e, &target, progress, cancel),
+                Ok(_) => TaskOutcome::Failed(tr("No lines between these times.").into()),
+                Err(bigtext::timestamp::TimeError::Cancelled) => TaskOutcome::Cancelled,
+                Err(_) => {
+                    TaskOutcome::Failed(tr("The document has no timestamps to go by.").into())
+                }
+            },
+        );
     }
 
     fn export_lines(&mut self, from: u64, to: u64) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let snap = d.buf.snapshot();
         let name = format!("{}.lines-{from}-{to}.txt", self.output_base_name());
-        let Some(target) = self.pick_output_file(tr("Export lines"), &name) else { return };
-        self.spawn_task(trf("Exporting lines {a}–{b}", &[("a", &from.to_string()), ("b", &to.to_string())]), move |progress, cancel| {
-            match split::line_range(&snap, from, to, cancel, Some(progress)) {
+        let Some(target) = self.pick_output_file(tr("Export lines"), &name) else {
+            return;
+        };
+        self.spawn_task(
+            trf(
+                "Exporting lines {a}–{b}",
+                &[("a", &from.to_string()), ("b", &to.to_string())],
+            ),
+            move |progress, cancel| match split::line_range(&snap, from, to, cancel, Some(progress))
+            {
                 Some(range) => write_range(&snap, range, &target, progress, cancel),
                 None if cancel.is_cancelled() => TaskOutcome::Cancelled,
-                None => TaskOutcome::Failed(trf("Line {n} does not exist.", &[("n", &from.to_string())])),
-            }
-        });
+                None => TaskOutcome::Failed(trf(
+                    "Line {n} does not exist.",
+                    &[("n", &from.to_string())],
+                )),
+            },
+        );
     }
 
     fn split_file(&mut self, by: SplitBy, pack: Option<bigtext::decompress::Kind>) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let snap = d.buf.snapshot();
         let mut dlg = rfd::FileDialog::new().set_title(tr("Folder for the parts"));
-        if let Some(dir) = d.unpacked_from.as_ref().or(d.path.as_ref()).and_then(|p| p.parent()) {
+        if let Some(dir) = d
+            .unpacked_from
+            .as_ref()
+            .or(d.path.as_ref())
+            .and_then(|p| p.parent())
+        {
             dlg = dlg.set_directory(bigtext::file::display_path(dir));
         }
         let Some(dir) = dlg.pick_folder() else { return };
         let name = self.output_base_name();
-        self.spawn_task(tr("Splitting").into(), move |progress, cancel| match split::split_to_files(&snap, by, &dir, &name, pack, cancel, progress) {
-            Ok(Some(files)) => TaskOutcome::Done {
-                message: trf("Wrote {n} parts to {dir}.", &[("n", &fmt_count(files.len() as u64)), ("dir", &bigtext::file::display_path(&dir))]),
-                open: files.first().cloned(),
+        self.spawn_task(
+            tr("Splitting").into(),
+            move |progress, cancel| match split::split_to_files(
+                &snap, by, &dir, &name, pack, cancel, progress,
+            ) {
+                Ok(Some(files)) => TaskOutcome::Done {
+                    message: trf(
+                        "Wrote {n} parts to {dir}.",
+                        &[
+                            ("n", &fmt_count(files.len() as u64)),
+                            ("dir", &bigtext::file::display_path(&dir)),
+                        ],
+                    ),
+                    open: files.first().cloned(),
+                },
+                Ok(None) => TaskOutcome::Cancelled,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    TaskOutcome::Failed(trf(
+                        "{file} already exists in that folder; nothing was written.",
+                        &[(
+                            "file",
+                            &file_name(&split::packed_part_path(&dir, &name, 1, pack)),
+                        )],
+                    ))
+                }
+                Err(e) => TaskOutcome::Failed(bigtext::save::describe(&e, &dir)),
             },
-            Ok(None) => TaskOutcome::Cancelled,
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                TaskOutcome::Failed(trf("{file} already exists in that folder; nothing was written.", &[("file", &file_name(&split::packed_part_path(&dir, &name, 1, pack)))]))
-            }
-            Err(e) => TaskOutcome::Failed(bigtext::save::describe(&e, &dir)),
-        });
+        );
     }
 
     pub(super) fn export_windows(&mut self, ctx: &egui::Context) {
-        let parse = |s: &str| s.trim().replace(['_', ',', ' '], "").parse::<u64>().ok().filter(|&n| n > 0);
+        let parse = |s: &str| {
+            s.trim()
+                .replace(['_', ',', ' '], "")
+                .parse::<u64>()
+                .ok()
+                .filter(|&n| n > 0)
+        };
         if let Some(g) = &mut self.export.lines {
             let mut open = true;
             let mut go = None;

@@ -13,9 +13,15 @@ pub(crate) struct Spill {
 
 impl Spill {
     pub fn new(name: &str) -> io::Result<Spill> {
-        let dir = crate::decompress::temp_file(name).parent().map(Path::to_path_buf).unwrap_or_else(std::env::temp_dir);
+        let dir = crate::decompress::temp_file(name)
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(std::env::temp_dir);
         std::fs::create_dir_all(&dir)?;
-        Ok(Spill { dir, made: RefCell::new(Vec::new()) })
+        Ok(Spill {
+            dir,
+            made: RefCell::new(Vec::new()),
+        })
     }
 
     pub fn path(&self, name: &str) -> PathBuf {
@@ -30,7 +36,10 @@ impl Spill {
     }
 
     pub fn open(&self, name: &str) -> io::Result<BufReader<File>> {
-        Ok(BufReader::with_capacity(256 << 10, File::open(self.path(name))?))
+        Ok(BufReader::with_capacity(
+            256 << 10,
+            File::open(self.path(name))?,
+        ))
     }
 }
 

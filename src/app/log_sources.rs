@@ -156,7 +156,16 @@ impl SourcesUi {
             HowMuch::All => "all",
         };
         let b = |x: bool| if x { "1" } else { "0" };
-        format!("{}|{}|{}|{how}|{}|{}|{}|{}", self.applied.replace('|', ""), self.tab.id(), self.tool, self.lines, self.minutes, b(self.follow), b(self.timestamps))
+        format!(
+            "{}|{}|{}|{how}|{}|{}|{}|{}",
+            self.applied.replace('|', ""),
+            self.tab.id(),
+            self.tool,
+            self.lines,
+            self.minutes,
+            b(self.follow),
+            b(self.timestamps)
+        )
     }
 
     pub fn set_line(&mut self, line: &str) {
@@ -171,7 +180,11 @@ impl SourcesUi {
             "journal" => Tab::Journal,
             _ => Tab::Docker,
         };
-        self.tool = if f[2] == "podman" { "podman".into() } else { "docker".into() };
+        self.tool = if f[2] == "podman" {
+            "podman".into()
+        } else {
+            "docker".into()
+        };
         self.how = match f[3] {
             "minutes" => HowMuch::Minutes,
             "all" => HowMuch::All,
@@ -194,30 +207,68 @@ impl SourcesUi {
                         "restarting" | "dead" => Look::Bad,
                         _ => Look::Weak,
                     };
-                    rows.push(Row { key: c.id.clone(), text: format!("{:<32} {:<10} {:<26} {}", c.name, c.state, c.status, c.image), look });
+                    rows.push(Row {
+                        key: c.id.clone(),
+                        text: format!(
+                            "{:<32} {:<10} {:<26} {}",
+                            c.name, c.state, c.status, c.image
+                        ),
+                        look,
+                    });
                 }
             }
             Tab::Kubernetes => {
-                for p in l.pods.iter().filter(|p| self.namespace.as_ref().is_none_or(|n| *n == p.namespace)) {
+                for p in l
+                    .pods
+                    .iter()
+                    .filter(|p| self.namespace.as_ref().is_none_or(|n| *n == p.namespace))
+                {
                     let look = match p.status.as_str() {
                         "Running" => Look::Normal,
-                        "Succeeded" | "Completed" | "Pending" | "Terminating" | "ContainerCreating" | "PodInitializing" => Look::Weak,
+                        "Succeeded" | "Completed" | "Pending" | "Terminating"
+                        | "ContainerCreating" | "PodInitializing" => Look::Weak,
                         _ => Look::Bad,
                     };
-                    let text = format!("{:<16} {:<40} {:>5} {:<18} {:>8}", p.namespace, p.name, format!("{}/{}", p.ready.0, p.ready.1), p.status, p.restarts);
-                    rows.push(Row { key: format!("{}/{}", p.namespace, p.name), text, look });
+                    let text = format!(
+                        "{:<16} {:<40} {:>5} {:<18} {:>8}",
+                        p.namespace,
+                        p.name,
+                        format!("{}/{}", p.ready.0, p.ready.1),
+                        p.status,
+                        p.restarts
+                    );
+                    rows.push(Row {
+                        key: format!("{}/{}", p.namespace, p.name),
+                        text,
+                        look,
+                    });
                 }
             }
             Tab::Journal => {
-                rows.push(Row { key: JOURNAL.into(), text: tr("The whole journal").into(), look: Look::Normal });
-                rows.push(Row { key: KERNEL.into(), text: tr("Kernel messages").into(), look: Look::Normal });
+                rows.push(Row {
+                    key: JOURNAL.into(),
+                    text: tr("The whole journal").into(),
+                    look: Look::Normal,
+                });
+                rows.push(Row {
+                    key: KERNEL.into(),
+                    text: tr("Kernel messages").into(),
+                    look: Look::Normal,
+                });
                 for u in &l.units {
                     let look = match u.active.as_str() {
                         "active" => Look::Normal,
                         "failed" => Look::Bad,
                         _ => Look::Weak,
                     };
-                    rows.push(Row { key: u.name.clone(), text: format!("{:<40} {:<9} {:<9} {}", u.name, u.active, u.sub, u.description), look });
+                    rows.push(Row {
+                        key: u.name.clone(),
+                        text: format!(
+                            "{:<40} {:<9} {:<9} {}",
+                            u.name, u.active, u.sub, u.description
+                        ),
+                        look,
+                    });
                 }
             }
         }
@@ -247,18 +298,44 @@ impl SourcesUi {
         Some(match self.tab {
             Tab::Docker => {
                 let c = l.containers.iter().find(|c| c.id == sel)?;
-                Target::Container { tool: self.tool.clone(), id: c.id.clone(), name: c.name.clone() }
+                Target::Container {
+                    tool: self.tool.clone(),
+                    id: c.id.clone(),
+                    name: c.name.clone(),
+                }
             }
             Tab::Kubernetes => {
-                let p = l.pods.iter().find(|p| format!("{}/{}", p.namespace, p.name) == sel)?;
+                let p = l
+                    .pods
+                    .iter()
+                    .find(|p| format!("{}/{}", p.namespace, p.name) == sel)?;
                 // One container needs no name (and no prefix on each line).
-                let container = if p.containers.len() + p.init_containers.len() <= 1 { None } else { self.pod_container(p) };
+                let container = if p.containers.len() + p.init_containers.len() <= 1 {
+                    None
+                } else {
+                    self.pod_container(p)
+                };
                 let context = self.context.clone();
-                Target::Pod { context, namespace: p.namespace.clone(), pod: p.name.clone(), container, previous: self.previous }
+                Target::Pod {
+                    context,
+                    namespace: p.namespace.clone(),
+                    pod: p.name.clone(),
+                    container,
+                    previous: self.previous,
+                }
             }
-            Tab::Journal if sel == JOURNAL => Target::Journal { unit: None, kernel: false },
-            Tab::Journal if sel == KERNEL => Target::Journal { unit: None, kernel: true },
-            Tab::Journal => Target::Journal { unit: Some(sel.to_string()), kernel: false },
+            Tab::Journal if sel == JOURNAL => Target::Journal {
+                unit: None,
+                kernel: false,
+            },
+            Tab::Journal if sel == KERNEL => Target::Journal {
+                unit: None,
+                kernel: true,
+            },
+            Tab::Journal => Target::Journal {
+                unit: Some(sel.to_string()),
+                kernel: false,
+            },
         })
     }
 }
@@ -275,8 +352,20 @@ fn explain(e: String) -> String {
 /// Reads a listing (in the background).
 fn read_listing(key: &ListKey) -> Listing {
     let mut out = Listing::default();
-    let starter = |p: &str| if matches!(key.host, Host::Ssh { .. }) { "ssh".to_string() } else { p.to_string() };
-    let run = |program: &str, args: Vec<String>| ls::run_list(key.host.command(program, &args), &starter(program), LIST_TIMEOUT);
+    let starter = |p: &str| {
+        if matches!(key.host, Host::Ssh { .. }) {
+            "ssh".to_string()
+        } else {
+            p.to_string()
+        }
+    };
+    let run = |program: &str, args: Vec<String>| {
+        ls::run_list(
+            key.host.command(program, &args),
+            &starter(program),
+            LIST_TIMEOUT,
+        )
+    };
     match key.tab {
         Tab::Docker => match run(&key.tool, ls::containers_args()) {
             Ok(s) => out.containers = ls::parse_containers(&s),
@@ -284,19 +373,34 @@ fn read_listing(key: &ListKey) -> Listing {
         },
         Tab::Kubernetes => {
             match run("kubectl", ls::contexts_args()) {
-                Ok(s) => out.contexts = s.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect(),
+                Ok(s) => {
+                    out.contexts = s
+                        .lines()
+                        .map(str::trim)
+                        .filter(|l| !l.is_empty())
+                        .map(String::from)
+                        .collect()
+                }
                 Err(e) => {
                     out.error = Some(e);
                     return out;
                 }
             }
             if out.contexts.is_empty() {
-                out.error = Some(tr("The kubeconfig has no contexts: connect kubectl to a cluster first.").to_string());
+                out.error = Some(
+                    tr("The kubeconfig has no contexts: connect kubectl to a cluster first.")
+                        .to_string(),
+                );
                 return out;
             }
-            out.current_context = run("kubectl", ls::current_context_args()).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+            out.current_context = run("kubectl", ls::current_context_args())
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
             let mut r = run("kubectl", ls::pods_args(key.context.as_deref(), true));
-            if r.as_ref().is_err_and(|e| e.to_ascii_lowercase().contains("forbidden")) {
+            if r.as_ref()
+                .is_err_and(|e| e.to_ascii_lowercase().contains("forbidden"))
+            {
                 r = run("kubectl", ls::pods_args(key.context.as_deref(), false));
                 out.one_namespace = true;
             }
@@ -328,13 +432,22 @@ impl BigTextApp {
         let s = &mut self.log_sources;
         s.applied = s.host.trim().to_string();
         let Some(host) = Host::parse(&s.applied) else {
-            s.error = Some(tr("Not a server address: user@server, server or user@server:2222.").into());
+            s.error =
+                Some(tr("Not a server address: user@server, server or user@server:2222.").into());
             return;
         };
         s.error = None;
-        let key = ListKey { host, tab: s.tab, tool: s.tool.clone(), context: s.context.clone() };
+        let key = ListKey {
+            host,
+            tab: s.tab,
+            tool: s.tool.clone(),
+            context: s.context.clone(),
+        };
         s.key = Some(key.clone());
-        let list = Arc::new(Mutex::new(Listing { loading: true, ..Default::default() }));
+        let list = Arc::new(Mutex::new(Listing {
+            loading: true,
+            ..Default::default()
+        }));
         s.list = list.clone();
         let waker = self.waker.clone();
         jobs::spawn("log-sources", move || {
@@ -347,54 +460,80 @@ impl BigTextApp {
     /// Opens the chosen row's log.
     pub(crate) fn open_chosen_log(&mut self) -> Result<(), String> {
         let s = &self.log_sources;
-        let host = Host::parse(&s.applied).ok_or_else(|| tr("Not a server address: user@server, server or user@server:2222.").to_string())?;
-        let target = s.target(&s.list.lock().unwrap()).ok_or_else(|| tr("Choose a log first.").to_string())?;
+        let host = Host::parse(&s.applied).ok_or_else(|| {
+            tr("Not a server address: user@server, server or user@server:2222.").to_string()
+        })?;
+        let target = s
+            .target(&s.list.lock().unwrap())
+            .ok_or_else(|| tr("Choose a log first.").to_string())?;
         let (program, args) = ls::log_command(&target, s.amount(), s.follow, s.timestamps);
         let cmd = host.command(&program, &args);
-        let starter = if matches!(host, Host::Ssh { .. }) { "ssh".to_string() } else { program };
+        let starter = if matches!(host, Host::Ssh { .. }) {
+            "ssh".to_string()
+        } else {
+            program
+        };
         let title = target.title(&host);
         let (path, file) = super::remote::temp_copy(&target.file_name())?;
         if s.follow {
             return self.follow_process(cmd, title, path, file, &starter);
         }
-        self.spawn_task(trf("Reading {name}…", &[("name", &title)]), move |progress: &Progress, cancel: &CancelToken| -> TaskOutcome {
-            let mut cmd = cmd;
-            let failed = |path: &std::path::Path, e: String| {
-                bigtext::decompress::remove_temp(path);
-                TaskOutcome::Failed(format!("{}: {e}", trf("Could not read {name}", &[("name", &title)])))
-            };
-            let mut child = match cmd.spawn() {
-                Ok(c) => c,
-                Err(e) => return failed(&path, super::remote::missing(&e, &starter)),
-            };
-            let (Some(out), Some(err)) = (child.stdout.take(), child.stderr.take()) else { return failed(&path, "no output".into()) };
-            let child = Arc::new(Mutex::new(child));
-            // Cancel kills the command.
-            let done = Arc::new(AtomicBool::new(false));
-            let (c2, d2, cancel2) = (child.clone(), done.clone(), cancel.clone());
-            jobs::spawn("log-read-cancel", move || {
-                while !d2.load(Ordering::Relaxed) {
-                    if cancel2.is_cancelled() {
-                        let _ = c2.lock().map(|mut c| c.kill());
-                        return;
+        self.spawn_task(
+            trf("Reading {name}…", &[("name", &title)]),
+            move |progress: &Progress, cancel: &CancelToken| -> TaskOutcome {
+                let mut cmd = cmd;
+                let failed = |path: &std::path::Path, e: String| {
+                    bigtext::decompress::remove_temp(path);
+                    TaskOutcome::Failed(format!(
+                        "{}: {e}",
+                        trf("Could not read {name}", &[("name", &title)])
+                    ))
+                };
+                let mut child = match cmd.spawn() {
+                    Ok(c) => c,
+                    Err(e) => return failed(&path, super::remote::missing(&e, &starter)),
+                };
+                let (Some(out), Some(err)) = (child.stdout.take(), child.stderr.take()) else {
+                    return failed(&path, "no output".into());
+                };
+                let child = Arc::new(Mutex::new(child));
+                // Cancel kills the command.
+                let done = Arc::new(AtomicBool::new(false));
+                let (c2, d2, cancel2) = (child.clone(), done.clone(), cancel.clone());
+                jobs::spawn("log-read-cancel", move || {
+                    while !d2.load(Ordering::Relaxed) {
+                        if cancel2.is_cancelled() {
+                            let _ = c2.lock().map(|mut c| c.kill());
+                            return;
+                        }
+                        std::thread::sleep(Duration::from_millis(50));
                     }
-                    std::thread::sleep(Duration::from_millis(50));
+                });
+                progress.set_total(0);
+                let copied = ls::copy_merged(out, err, file, Some(progress.clone()));
+                done.store(true, Ordering::Relaxed);
+                let code = child
+                    .lock()
+                    .ok()
+                    .and_then(|mut c| c.wait().ok())
+                    .and_then(|st| st.code());
+                if cancel.is_cancelled() {
+                    bigtext::decompress::remove_temp(&path);
+                    return TaskOutcome::Cancelled;
                 }
-            });
-            progress.set_total(0);
-            let copied = ls::copy_merged(out, err, file, Some(progress.clone()));
-            done.store(true, Ordering::Relaxed);
-            let code = child.lock().ok().and_then(|mut c| c.wait().ok()).and_then(|st| st.code());
-            if cancel.is_cancelled() {
-                bigtext::decompress::remove_temp(&path);
-                return TaskOutcome::Cancelled;
-            }
-            match copied {
-                Ok(c) if code == Some(0) => TaskOutcome::Remote(Box::new(super::remote::RemoteDone { path, title: title.clone(), bytes: c.bytes })),
-                Ok(c) => failed(&path, super::remote::ssh_error(&c.errors, code)),
-                Err(e) => failed(&path, e.to_string()),
-            }
-        });
+                match copied {
+                    Ok(c) if code == Some(0) => {
+                        TaskOutcome::Remote(Box::new(super::remote::RemoteDone {
+                            path,
+                            title: title.clone(),
+                            bytes: c.bytes,
+                        }))
+                    }
+                    Ok(c) => failed(&path, super::remote::ssh_error(&c.errors, code)),
+                    Err(e) => failed(&path, e.to_string()),
+                }
+            },
+        );
         Ok(())
     }
 
@@ -591,7 +730,12 @@ impl BigTextApp {
         let s = &mut self.log_sources;
         s.open = true;
         s.tab = tab;
-        s.key = Some(ListKey { host: Host::Local, tab, tool: s.tool.clone(), context: s.context.clone() });
+        s.key = Some(ListKey {
+            host: Host::Local,
+            tab,
+            tool: s.tool.clone(),
+            context: s.context.clone(),
+        });
         s.list = Arc::new(Mutex::new(listing));
     }
 }
@@ -602,33 +746,119 @@ mod tests {
 
     #[test]
     fn choices_are_kept_as_a_line() {
-        let mut s = SourcesUi { applied: "deploy@web1".into(), tab: Tab::Kubernetes, tool: "podman".into(), how: HowMuch::Minutes, lines: 500, minutes: 15, follow: false, timestamps: true, ..Default::default() };
+        let mut s = SourcesUi {
+            applied: "deploy@web1".into(),
+            tab: Tab::Kubernetes,
+            tool: "podman".into(),
+            how: HowMuch::Minutes,
+            lines: 500,
+            minutes: 15,
+            follow: false,
+            timestamps: true,
+            ..Default::default()
+        };
         let line = s.to_line();
         assert_eq!(line, "deploy@web1|kubernetes|podman|minutes|500|15|0|1");
         s = SourcesUi::default();
         s.set_line(&line);
-        assert_eq!((s.host.as_str(), s.tab, s.tool.as_str(), s.how, s.lines, s.minutes, s.follow, s.timestamps), ("deploy@web1", Tab::Kubernetes, "podman", HowMuch::Minutes, 500, 15, false, true));
+        assert_eq!(
+            (
+                s.host.as_str(),
+                s.tab,
+                s.tool.as_str(),
+                s.how,
+                s.lines,
+                s.minutes,
+                s.follow,
+                s.timestamps
+            ),
+            (
+                "deploy@web1",
+                Tab::Kubernetes,
+                "podman",
+                HowMuch::Minutes,
+                500,
+                15,
+                false,
+                true
+            )
+        );
         s.set_line("garbage");
         assert_eq!(s.tab, Tab::Kubernetes);
     }
 
     #[test]
     fn the_chosen_row_is_a_target() {
-        let pod = |name: &str, containers: &[&str], init: &[&str]| Pod { namespace: "prod".into(), name: name.into(), containers: containers.iter().map(|c| c.to_string()).collect(), init_containers: init.iter().map(|c| c.to_string()).collect(), ..Default::default() };
-        let l = Listing { pods: vec![pod("one", &["app"], &[]), pod("two", &["app", "proxy"], &["migrate"])], containers: vec![Container { id: "4a1".into(), name: "api".into(), ..Default::default() }], ..Default::default() };
-        let mut s = SourcesUi { tab: Tab::Kubernetes, selected: Some("prod/one".into()), ..Default::default() };
-        assert_eq!(s.target(&l), Some(Target::Pod { context: None, namespace: "prod".into(), pod: "one".into(), container: None, previous: false }));
+        let pod = |name: &str, containers: &[&str], init: &[&str]| Pod {
+            namespace: "prod".into(),
+            name: name.into(),
+            containers: containers.iter().map(|c| c.to_string()).collect(),
+            init_containers: init.iter().map(|c| c.to_string()).collect(),
+            ..Default::default()
+        };
+        let l = Listing {
+            pods: vec![
+                pod("one", &["app"], &[]),
+                pod("two", &["app", "proxy"], &["migrate"]),
+            ],
+            containers: vec![Container {
+                id: "4a1".into(),
+                name: "api".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut s = SourcesUi {
+            tab: Tab::Kubernetes,
+            selected: Some("prod/one".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            s.target(&l),
+            Some(Target::Pod {
+                context: None,
+                namespace: "prod".into(),
+                pod: "one".into(),
+                container: None,
+                previous: false
+            })
+        );
         s.selected = Some("prod/two".into());
         assert!(matches!(s.target(&l), Some(Target::Pod { container: Some(c), .. }) if c == "app"));
         (s.container, s.container_of) = (None, Some("prod/two".into()));
-        assert!(matches!(s.target(&l), Some(Target::Pod { container: None, .. })));
+        assert!(matches!(
+            s.target(&l),
+            Some(Target::Pod {
+                container: None,
+                ..
+            })
+        ));
         s.tab = Tab::Docker;
         s.selected = Some("4a1".into());
-        assert_eq!(s.target(&l), Some(Target::Container { tool: "docker".into(), id: "4a1".into(), name: "api".into() }));
+        assert_eq!(
+            s.target(&l),
+            Some(Target::Container {
+                tool: "docker".into(),
+                id: "4a1".into(),
+                name: "api".into()
+            })
+        );
         s.tab = Tab::Journal;
         s.selected = Some(KERNEL.into());
-        assert_eq!(s.target(&l), Some(Target::Journal { unit: None, kernel: true }));
+        assert_eq!(
+            s.target(&l),
+            Some(Target::Journal {
+                unit: None,
+                kernel: true
+            })
+        );
         s.selected = Some("nginx.service".into());
-        assert_eq!(s.target(&l), Some(Target::Journal { unit: Some("nginx.service".into()), kernel: false }));
+        assert_eq!(
+            s.target(&l),
+            Some(Target::Journal {
+                unit: Some("nginx.service".into()),
+                kernel: false
+            })
+        );
     }
 }

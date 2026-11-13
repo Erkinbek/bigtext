@@ -8,14 +8,17 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 use egui::text::{CCursor, LayoutJob, TextFormat};
-use egui::{pos2, Align2, Color32, CursorIcon, Event, EventFilter, FontId, Key, Modifiers, PointerButton, Pos2, Rect, Sense, Ui};
+use egui::{
+    pos2, Align2, Color32, CursorIcon, Event, EventFilter, FontId, Key, Modifiers, PointerButton,
+    Pos2, Rect, Sense, Ui,
+};
 
 use bigtext::text::rows::{self, CellKind, Pending, Row};
 use bigtext::text::TextBuf;
 
 use super::block::{block_rows, block_text, edit_block, Block, BlockEdit};
-use crate::app::theme::{role, Tone};
 use crate::app::document::Document;
+use crate::app::theme::{role, Tone};
 
 const SCROLLBAR: f32 = 14.0;
 /// Selections up to this size are copied synchronously; larger ones go through a worker.
@@ -139,7 +142,18 @@ impl Look {
     fn new(v: &egui::Visuals, code: bool) -> Look {
         if code && !crate::app::theme::high_contrast_on() {
             let c = crate::app::theme::code_colors(v.dark_mode);
-            return Look { bg: c.bg, gutter: c.bg, fg: c.fg, line_no: c.line_no, line_no_active: c.line_no_active, cur_line: c.cur_line, guide: c.guide, caret: c.caret, dark: c.dark, code: true };
+            return Look {
+                bg: c.bg,
+                gutter: c.bg,
+                fg: c.fg,
+                line_no: c.line_no,
+                line_no_active: c.line_no_active,
+                cur_line: c.cur_line,
+                guide: c.guide,
+                caret: c.caret,
+                dark: c.dark,
+                code: true,
+            };
         }
         let weak = v.weak_text_color();
         Look {
@@ -148,7 +162,11 @@ impl Look {
             fg: v.text_color(),
             line_no: weak,
             line_no_active: v.text_color(),
-            cur_line: if v.dark_mode { Color32::from_white_alpha(8) } else { Color32::from_black_alpha(10) },
+            cur_line: if v.dark_mode {
+                Color32::from_white_alpha(8)
+            } else {
+                Color32::from_black_alpha(10)
+            },
             guide: weak.gamma_multiply(0.4),
             caret: v.text_cursor.stroke.color,
             dark: v.dark_mode,
@@ -159,13 +177,21 @@ impl Look {
     /// The colour of a token.
     fn token(&self, k: super::highlight::Kind) -> Color32 {
         let plain = crate::app::theme::cvd() || crate::app::theme::high_contrast_on();
-        self.code.then(|| crate::app::theme::code_token(k, self.dark)).flatten().filter(|_| !plain).unwrap_or_else(|| super::highlight::color(k, self.dark))
+        self.code
+            .then(|| crate::app::theme::code_token(k, self.dark))
+            .flatten()
+            .filter(|_| !plain)
+            .unwrap_or_else(|| super::highlight::color(k, self.dark))
     }
 }
 
 /// The width rows wrap at (`None`: not wrapping): the column of View → Wrap at, or the pane's.
 pub(crate) fn wrap_cols(view: &crate::app::document::ViewState) -> Option<usize> {
-    view.wrap.then(|| view.wrap_column.unwrap_or(view.text_cols.saturating_sub(1)).max(1))
+    view.wrap.then(|| {
+        view.wrap_column
+            .unwrap_or(view.text_cols.saturating_sub(1))
+            .max(1)
+    })
 }
 
 /// Rows scroll sideways: not wrapping, or wrapping wider than the pane.
@@ -173,12 +199,23 @@ fn h_scroll(view: &crate::app::document::ViewState) -> bool {
     wrap_cols(view).is_none_or(|w| w >= view.text_cols)
 }
 
-pub(crate) fn layout_rows(buf: &TextBuf, top: u64, n: usize, wrap: Option<usize>) -> Result<Vec<Row>, Pending> {
+pub(crate) fn layout_rows(
+    buf: &TextBuf,
+    top: u64,
+    n: usize,
+    wrap: Option<usize>,
+) -> Result<Vec<Row>, Pending> {
     layout_rows_folded(buf, top, n, wrap, &[])
 }
 
 /// The `n` rows shown from `top`, folded lines left out.
-pub(crate) fn layout_rows_folded(buf: &TextBuf, top: u64, n: usize, wrap: Option<usize>, folds: &[super::folds::Fold]) -> Result<Vec<Row>, Pending> {
+pub(crate) fn layout_rows_folded(
+    buf: &TextBuf,
+    top: u64,
+    n: usize,
+    wrap: Option<usize>,
+    folds: &[super::folds::Fold],
+) -> Result<Vec<Row>, Pending> {
     let mut v = Vec::with_capacity(n + 1);
     v.push(rows::row_at(buf, top, wrap)?);
     while v.len() < n {
@@ -198,15 +235,30 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     let code = env.lang.is_code();
     let show_ws = env.show_ws.for_lang(env.lang);
     let font = FontId::monospace(*env.font_size / ui.ctx().zoom_factor());
-    let (cw, fh) = ui.ctx().fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
+    let (cw, fh) = ui
+        .ctx()
+        .fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
     let fh = fh.max(1.0);
-    let rh = if code { (fh * CODE_LINE_SPACING).round() } else { fh };
-    let m = Metrics { cw: cw.max(1.0), rh, pad: ((rh - fh) / 2.0).round() };
+    let rh = if code {
+        (fh * CODE_LINE_SPACING).round()
+    } else {
+        fh
+    };
+    let m = Metrics {
+        cw: cw.max(1.0),
+        rh,
+        pad: ((rh - fh) / 2.0).round(),
+    };
 
     let full = ui.available_rect_before_wrap();
     let id = ui.id().with(("textview", doc.id, env.pane));
     let resp = ui.interact(full, id, Sense::click_and_drag());
-    if env.focus && (resp.clicked() || resp.drag_started() || resp.is_pointer_button_down_on() || (env.pane == doc.active_pane && ui.memory(|mem| mem.focused().is_none()))) {
+    if env.focus
+        && (resp.clicked()
+            || resp.drag_started()
+            || resp.is_pointer_button_down_on()
+            || (env.pane == doc.active_pane && ui.memory(|mem| mem.focused().is_none())))
+    {
         resp.request_focus();
     }
     if resp.is_pointer_button_down_on() || resp.has_focus() {
@@ -214,7 +266,15 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     }
     let active_pane = doc.active_pane == env.pane;
     ui.memory_mut(|mem| {
-        mem.set_focus_lock_filter(id, EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: false })
+        mem.set_focus_lock_filter(
+            id,
+            EventFilter {
+                tab: true,
+                horizontal_arrows: true,
+                vertical_arrows: true,
+                escape: false,
+            },
+        )
     });
     let focused = resp.has_focus();
     if resp.hovered() {
@@ -223,20 +283,36 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
 
     let (line_est, _) = doc.buf.line_count();
     // Without line numbers a strip stays for the bookmark marks.
-    let gutter_w = if env.show_gutter { digits(line_est).max(3) as f32 * m.cw + 24.0 } else { 6.0 };
+    let gutter_w = if env.show_gutter {
+        digits(line_est).max(3) as f32 * m.cw + 24.0
+    } else {
+        6.0
+    };
     doc.view.wrap_column = env.wrap_column;
-    let pane_cols = ((full.width() - gutter_w - 6.0 - SCROLLBAR) / m.cw).floor().max(4.0) as usize;
+    let pane_cols = ((full.width() - gutter_w - 6.0 - SCROLLBAR) / m.cw)
+        .floor()
+        .max(4.0) as usize;
     let show_h = !doc.view.wrap || env.wrap_column.is_some_and(|c| c >= pane_cols);
     if !show_h {
         doc.view.scroll_x = 0.0;
     }
     let text_rect = Rect::from_min_max(
         pos2(full.left() + gutter_w + 6.0, full.top()),
-        pos2(full.right() - SCROLLBAR, full.bottom() - if show_h { SCROLLBAR } else { 0.0 }),
+        pos2(
+            full.right() - SCROLLBAR,
+            full.bottom() - if show_h { SCROLLBAR } else { 0.0 },
+        ),
     );
-    let gutter_rect = Rect::from_min_max(full.min, pos2(full.left() + gutter_w, text_rect.bottom()));
-    let vbar = Rect::from_min_max(pos2(text_rect.right(), full.top()), pos2(full.right(), text_rect.bottom()));
-    let hbar = Rect::from_min_max(pos2(text_rect.left(), text_rect.bottom()), pos2(text_rect.right(), full.bottom()));
+    let gutter_rect =
+        Rect::from_min_max(full.min, pos2(full.left() + gutter_w, text_rect.bottom()));
+    let vbar = Rect::from_min_max(
+        pos2(text_rect.right(), full.top()),
+        pos2(full.right(), text_rect.bottom()),
+    );
+    let hbar = Rect::from_min_max(
+        pos2(text_rect.left(), text_rect.bottom()),
+        pos2(text_rect.right(), full.bottom()),
+    );
     doc.view.text_rect = Some(text_rect);
     doc.view.cell = egui::vec2(m.cw, m.rh);
     doc.view.rows_on_screen = ((text_rect.height() / m.rh).floor() as usize).max(1);
@@ -248,7 +324,9 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             doc.view.folds.clear();
         }
         let caret = doc.view.caret;
-        doc.view.folds.retain(|f| !(f.hide_from <= caret && caret < f.end));
+        doc.view
+            .folds
+            .retain(|f| !(f.hide_from <= caret && caret < f.end));
         if let Some(f) = super::folds::hidden_by(&doc.view.folds, doc.view.top) {
             doc.view.top = f.start;
         }
@@ -260,7 +338,12 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     // A block selection needs rows that are lines, and rows that still start where they did.
     if let Some(b) = doc.view.block {
         let stale = |at: u64| !matches!(rows::row_at(&doc.buf, at.min(doc.buf.len()), None), Ok(r) if r.start == at);
-        if wrap.is_some() || !doc.is_ready() || stale(b.anchor) || stale(b.caret) || !doc.view.folds.is_empty() {
+        if wrap.is_some()
+            || !doc.is_ready()
+            || stale(b.anchor)
+            || stale(b.caret)
+            || !doc.view.folds.is_empty()
+        {
             doc.view.block = None;
             doc.view.block_drag = false;
         }
@@ -272,7 +355,13 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     let mut pending = false;
     if doc.is_ready() {
         // Input is handled against the current layout, then the layout is rebuilt for painting.
-        if let Ok(rows) = layout_rows_folded(&doc.buf, doc.view.top, doc.view.rows_on_screen + 1, wrap, &doc.view.folds) {
+        if let Ok(rows) = layout_rows_folded(
+            &doc.buf,
+            doc.view.top,
+            doc.view.rows_on_screen + 1,
+            wrap,
+            &doc.view.folds,
+        ) {
             handle_wheel(ui, doc, &resp, m, wrap, env);
             handle_mouse(ui, doc, &resp, text_rect, m, wrap, &rows, active_pane);
             epoch_tooltip(ui, doc, &resp, text_rect, m, &rows);
@@ -293,7 +382,9 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         }
     }
     // Moving the caret (a click, a key) or the focus ends a composition.
-    let interrupt = active_pane && !doc.view.preedit.text.is_empty() && (!focused || resp.gained_focus() || doc.view.preedit.at != doc.view.caret);
+    let interrupt = active_pane
+        && !doc.view.preedit.text.is_empty()
+        && (!focused || resp.gained_focus() || doc.view.preedit.at != doc.view.caret);
     if interrupt {
         doc.view.preedit = Preedit::default();
     }
@@ -301,12 +392,22 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     let painter = ui.painter_at(full);
     let visuals = ui.visuals().clone();
     let look = Look::new(&visuals, code);
-    let unit = if code && doc.is_ready() { indent_unit(doc) } else { 4 };
+    let unit = if code && doc.is_ready() {
+        indent_unit(doc)
+    } else {
+        4
+    };
     painter.rect_filled(full, 0.0, look.bg);
     painter.rect_filled(gutter_rect, 0.0, look.gutter);
 
     let rows = if doc.is_ready() {
-        match layout_rows_folded(&doc.buf, doc.view.top, doc.view.rows_on_screen + 1, wrap, &doc.view.folds) {
+        match layout_rows_folded(
+            &doc.buf,
+            doc.view.top,
+            doc.view.rows_on_screen + 1,
+            wrap,
+            &doc.view.folds,
+        ) {
             Ok(r) => r,
             Err(Pending) => {
                 pending = true;
@@ -336,7 +437,11 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     let mut line_indent: Option<u32> = None;
     let (sel_s, sel_e) = doc.selection();
     let caret = doc.view.caret;
-    let has_caret = |row: &Row| caret >= row.start && (caret < row.end || (caret == row.end && (row.is_last_in_seg() || row.end == doc.buf.len())));
+    let has_caret = |row: &Row| {
+        caret >= row.start
+            && (caret < row.end
+                || (caret == row.end && (row.is_last_in_seg() || row.end == doc.buf.len())))
+    };
     // The row with the caret's line number.
     let caret_label = rows.iter().position(has_caret).map(|mut k| {
         while k > 0 && !(rows[k].is_first_in_seg() && rows[k].seg.line_start) {
@@ -353,14 +458,26 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         (Some(o), Some(a), Some(b)) => (o.spans)(a.start..b.seg.next.max(b.end)),
         _ => Vec::new(),
     };
-    let hl_states = super::hl_rows::row_states(&mut doc.view.hl, &doc.buf, doc.version, env.lang, &rows);
+    let hl_states =
+        super::hl_rows::row_states(&mut doc.view.hl, &doc.buf, doc.version, env.lang, &rows);
     let stateful = env.lang.stateful();
     let diff_color = match env.diff.as_ref().map(|o| o.added) {
-        Some(true) => role(Color32::from_rgba_unmultiplied(70, 190, 90, if visuals.dark_mode { 40 } else { 55 }), Tone::Ok, visuals.dark_mode),
-        _ => role(Color32::from_rgba_unmultiplied(230, 70, 70, if visuals.dark_mode { 40 } else { 50 }), Tone::Bad, visuals.dark_mode),
+        Some(true) => role(
+            Color32::from_rgba_unmultiplied(70, 190, 90, if visuals.dark_mode { 40 } else { 55 }),
+            Tone::Ok,
+            visuals.dark_mode,
+        ),
+        _ => role(
+            Color32::from_rgba_unmultiplied(230, 70, 70, if visuals.dark_mode { 40 } else { 50 }),
+            Tone::Bad,
+            visuals.dark_mode,
+        ),
     };
 
-    let (mut line, line_exact) = rows.first().map(|r| doc.buf.line_of(r.start)).unwrap_or((0, true));
+    let (mut line, line_exact) = rows
+        .first()
+        .map(|r| doc.buf.line_of(r.start))
+        .unwrap_or((0, true));
     let mut max_w = doc.view.max_cells;
     // Folds whose chip was clicked.
     let mut unfold: Vec<u64> = Vec::new();
@@ -380,7 +497,16 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         let starts_line = row.is_first_in_seg() && row.seg.line_start;
         if i > 0 && starts_line {
             // After a fold the line number jumps.
-            line = if doc.view.folds.binary_search_by_key(&row.start, |f| f.end).is_ok() { doc.buf.line_of(row.start).0 } else { line + 1 };
+            line = if doc
+                .view
+                .folds
+                .binary_search_by_key(&row.start, |f| f.end)
+                .is_ok()
+            {
+                doc.buf.line_of(row.start).0
+            } else {
+                line + 1
+            };
         }
         let Some(bytes) = doc.buf.read(row.start..row.end) else {
             pending = true;
@@ -402,14 +528,23 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         let mut src = String::new();
         let mut map: Vec<(usize, usize)> = Vec::new();
         let mut pre = String::new();
-        let mut a11y_row = a11y_on.then(|| super::a11y::Row::new(row.start, row.end, Rect::from_min_max(pos2(text_rect.left(), y), pos2(text_rect.right(), y + m.rh))));
+        let mut a11y_row = a11y_on.then(|| {
+            super::a11y::Row::new(
+                row.start,
+                row.end,
+                Rect::from_min_max(pos2(text_rect.left(), y), pos2(text_rect.right(), y + m.rh)),
+            )
+        });
         let mut loose: Vec<Loose> = Vec::new();
         // The visible characters.
         let mut cells: Vec<rows::Cell> = Vec::new();
         // The cell the row's text starts in (`None`: blank so far).
         let mut ink: Option<u32> = None;
         rows::for_each_cell(&codec, &bytes, row.start, |c| {
-            if ink.is_none() && !matches!(c.kind, CellKind::Tab | CellKind::Hidden) && !(c.kind == CellKind::Normal && c.ch == ' ') {
+            if ink.is_none()
+                && !matches!(c.kind, CellKind::Tab | CellKind::Hidden)
+                && !(c.kind == CellKind::Normal && c.ch == ' ')
+            {
                 ink = Some(c.cell);
             }
             end_cell = c.cell + c.width;
@@ -442,7 +577,12 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                         CellKind::Invalid => '\u{FFFD}',
                         _ => x.ch,
                     };
-                    r.push(ch, x.off, (x.cell.max(first_cell) - first_cell) as f32 * m.cw, x.width as f32 * m.cw);
+                    r.push(
+                        ch,
+                        x.off,
+                        (x.cell.max(first_cell) - first_cell) as f32 * m.cw,
+                        x.width as f32 * m.cw,
+                    );
                 }
             }
             if c.cell > cur {
@@ -461,7 +601,9 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                         None => {
                             // A script no loaded font has: a system font for it is looked for.
                             crate::app::fonts::note_missing(&ctx, &font, &text);
-                            *advances.entry(text.clone()).or_insert(advance(&ctx, &font, &text))
+                            *advances
+                                .entry(text.clone())
+                                .or_insert(advance(&ctx, &font, &text))
                         }
                     };
                     let rtl = is_rtl(c.ch);
@@ -469,7 +611,14 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                     // accent the font lacks), cut by the left edge, or right-to-left (which the
                     // shaper would turn around with the text near it): painted apart.
                     if (adv - width as f32 * m.cw).abs() > 0.05 || c.cell < first_cell || rtl {
-                        loose.push(Loose { at, cell: c.cell, width, alone: group.len() > 1 || rtl, text, adv });
+                        loose.push(Loose {
+                            at,
+                            cell: c.cell,
+                            width,
+                            alone: group.len() > 1 || rtl,
+                            text,
+                            adv,
+                        });
                         (" ".repeat(shown), false)
                     } else {
                         whole = true;
@@ -478,7 +627,14 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                 }
                 CellKind::Tab if show_ws => {
                     let w = shown;
-                    (if c.cell >= first_cell { format!("→{}", " ".repeat(w - 1)) } else { " ".repeat(w) }, true)
+                    (
+                        if c.cell >= first_cell {
+                            format!("→{}", " ".repeat(w - 1))
+                        } else {
+                            " ".repeat(w)
+                        },
+                        true,
+                    )
                 }
                 CellKind::Tab => (" ".repeat(shown), false),
                 CellKind::Normal if show_ws && c.ch == ' ' => ("·".to_string(), true),
@@ -493,7 +649,11 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             // Highlighting sees every character; a cluster painted apart takes its first one's
             // colour.
             let mut r = at;
-            for (n, x) in group.iter().enumerate().filter(|(_, x)| x.kind != CellKind::Hidden) {
+            for (n, x) in group
+                .iter()
+                .enumerate()
+                .filter(|(_, x)| x.kind != CellKind::Hidden)
+            {
                 if n == 0 || whole {
                     map.push((src.len(), r));
                 }
@@ -504,9 +664,20 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             cur = c.cell.max(first_cell) + width;
         }
         let st = hl_states.get(i).copied().unwrap_or_default();
-        let st = if pre.is_empty() { st } else { super::highlight::scan(env.lang, st, &pre, false) };
-        let text = Shown { run: &run, specials: &specials, src: &src, map: &map };
-        build_job(&mut job, &text, env.lang, st, &font, text_color, weak, &look);
+        let st = if pre.is_empty() {
+            st
+        } else {
+            super::highlight::scan(env.lang, st, &pre, false)
+        };
+        let text = Shown {
+            run: &run,
+            specials: &specials,
+            src: &src,
+            map: &map,
+        };
+        build_job(
+            &mut job, &text, env.lang, st, &font, text_color, weak, &look,
+        );
         if code {
             // A wrapped row goes on with its line's indentation.
             let indent = if starts_line {
@@ -525,7 +696,12 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         }
         if let Some(mut r) = a11y_row.take() {
             if reached_end && row.is_last_in_seg() && row.seg.has_nl {
-                r.push('\n', row.end, (end_cell.max(first_cell) - first_cell) as f32 * m.cw, 0.0);
+                r.push(
+                    '\n',
+                    row.end,
+                    (end_cell.max(first_cell) - first_cell) as f32 * m.cw,
+                    0.0,
+                );
             }
             a11y_rows.push(r);
         }
@@ -535,7 +711,10 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             let w = if reached_end {
                 end_cell
             } else {
-                *doc.view.width_cache.entry(row.start).or_insert_with(|| rows::cell_width(&codec, &bytes, row.start))
+                *doc.view
+                    .width_cache
+                    .entry(row.start)
+                    .or_insert_with(|| rows::cell_width(&codec, &bytes, row.start))
             };
             max_w = max_w.max(w);
         }
@@ -556,27 +735,52 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             }
         };
         let row_has_caret = has_caret(row);
-        let in_diff = diff_spans.iter().any(|s| s.start <= row.start && row.start < s.end);
+        let in_diff = diff_spans
+            .iter()
+            .any(|s| s.start <= row.start && row.start < s.end);
         if in_diff {
-            text_painter.rect_filled(Rect::from_min_max(pos2(text_rect.left(), y), pos2(text_rect.right(), y + m.rh)), 0.0, diff_color);
-        } else if starts_line && diff_spans.iter().any(|s| s.is_empty() && s.start == row.start) {
-            text_painter.hline(text_rect.x_range(), y + 0.5, egui::Stroke::new(2.0, diff_color.to_opaque()));
+            text_painter.rect_filled(
+                Rect::from_min_max(pos2(text_rect.left(), y), pos2(text_rect.right(), y + m.rh)),
+                0.0,
+                diff_color,
+            );
+        } else if starts_line
+            && diff_spans
+                .iter()
+                .any(|s| s.is_empty() && s.start == row.start)
+        {
+            text_painter.hline(
+                text_rect.x_range(),
+                y + 0.5,
+                egui::Stroke::new(2.0, diff_color.to_opaque()),
+            );
         }
         if row_has_caret && focused && sel_s == sel_e {
-            text_painter.rect_filled(Rect::from_min_max(pos2(text_rect.left(), y), pos2(text_rect.right(), y + m.rh)), 0.0, cur_line_bg);
+            text_painter.rect_filled(
+                Rect::from_min_max(pos2(text_rect.left(), y), pos2(text_rect.right(), y + m.rh)),
+                0.0,
+                cur_line_bg,
+            );
         }
         for &(hs, he, color) in &highlights {
             if he > row.start && hs < row.end || (hs == he && hs >= row.start && hs < row.end) {
                 let x0 = x_of(cell_for(hs.max(row.start)));
                 let x1 = x_of(cell_for(he.min(row.end))).max(x0 + 2.0);
-                text_painter.rect_filled(Rect::from_min_max(pos2(x0, y), pos2(x1, y + m.rh)), 2.0, color);
+                text_painter.rect_filled(
+                    Rect::from_min_max(pos2(x0, y), pos2(x1, y + m.rh)),
+                    2.0,
+                    color,
+                );
             }
         }
         if let Some(b) = doc.view.block.filter(|b| b.contains_row(row.start)) {
             let (lo, hi) = b.cells();
             let x0 = text_rect.left() + lo as f32 * m.cw - doc.view.scroll_x;
             let x1 = text_rect.left() + hi as f32 * m.cw - doc.view.scroll_x;
-            let r = Rect::from_min_max(pos2(x0 - if lo == hi { 0.5 } else { 0.0 }, y), pos2(if lo == hi { x0 + 1.5 } else { x1 }, y + m.rh));
+            let r = Rect::from_min_max(
+                pos2(x0 - if lo == hi { 0.5 } else { 0.0 }, y),
+                pos2(if lo == hi { x0 + 1.5 } else { x1 }, y + m.rh),
+            );
             text_painter.rect_filled(r, 0.0, if lo == hi { look.caret } else { sel_color });
         }
         if sel_s < sel_e && sel_e > row.start && sel_s <= row.end {
@@ -586,15 +790,26 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                 x1 += m.cw * 0.5;
             }
             if x1 > x0 {
-                text_painter.rect_filled(Rect::from_min_max(pos2(x0, y), pos2(x1, y + m.rh)), 0.0, sel_color);
+                text_painter.rect_filled(
+                    Rect::from_min_max(pos2(x0, y), pos2(x1, y + m.rh)),
+                    0.0,
+                    sel_color,
+                );
             }
         }
         for &(a, c) in &extra {
             let (s, e) = (a.min(c), a.max(c));
             if s < e && e > row.start && s <= row.end {
-                let (x0, x1) = (x_of(cell_for(s.max(row.start))), x_of(cell_for(e.min(row.end))));
+                let (x0, x1) = (
+                    x_of(cell_for(s.max(row.start))),
+                    x_of(cell_for(e.min(row.end))),
+                );
                 if x1 > x0 {
-                    text_painter.rect_filled(Rect::from_min_max(pos2(x0, y), pos2(x1, y + m.rh)), 0.0, sel_color);
+                    text_painter.rect_filled(
+                        Rect::from_min_max(pos2(x0, y), pos2(x1, y + m.rh)),
+                        0.0,
+                        sel_color,
+                    );
                 }
             }
         }
@@ -616,7 +831,13 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             } else {
                 "↓"
             };
-            text_painter.text(pos2(x_of(end_cell), y + m.pad), Align2::LEFT_TOP, glyph, font.clone(), weak);
+            text_painter.text(
+                pos2(x_of(end_cell), y + m.pad),
+                Align2::LEFT_TOP,
+                glyph,
+                font.clone(),
+                weak,
+            );
         }
         if row_has_caret {
             let mut x = x_of(cell_for(caret));
@@ -624,27 +845,47 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             if focused && active_pane && !preedit.text.is_empty() {
                 // The composition goes over the text after the caret, underlined, with the
                 // caret where the input method has it.
-                let galley = ui.ctx().fonts_mut(|f| f.layout_no_wrap(preedit.text.clone(), font.clone(), text_color));
+                let galley = ui.ctx().fonts_mut(|f| {
+                    f.layout_no_wrap(preedit.text.clone(), font.clone(), text_color)
+                });
                 let under = Rect::from_min_max(pos2(x, y), pos2(x + galley.size().x, y + m.rh));
                 text_painter.rect_filled(under, 0.0, look.bg);
                 if sel_s == sel_e {
                     text_painter.rect_filled(under, 0.0, cur_line_bg);
                 }
-                text_painter.hline(under.x_range(), text_painter.round_to_pixel_center(y + m.rh - 1.5), egui::Stroke::new(1.0, text_color));
-                let n = preedit.cursor.unwrap_or(usize::MAX).min(preedit.text.chars().count());
+                text_painter.hline(
+                    under.x_range(),
+                    text_painter.round_to_pixel_center(y + m.rh - 1.5),
+                    egui::Stroke::new(1.0, text_color),
+                );
+                let n = preedit
+                    .cursor
+                    .unwrap_or(usize::MAX)
+                    .min(preedit.text.chars().count());
                 let dx = galley.pos_from_cursor(CCursor::new(n)).min.x;
                 text_painter.galley(pos2(x, y + m.pad), galley, text_color);
                 x += dx;
             }
             let color = if focused { look.caret } else { weak };
-            text_painter.rect_filled(Rect::from_min_max(pos2(x - 0.5, y), pos2(x + 1.5, y + m.rh)), 0.0, color);
+            text_painter.rect_filled(
+                Rect::from_min_max(pos2(x - 0.5, y), pos2(x + 1.5, y + m.rh)),
+                0.0,
+                color,
+            );
             caret_rect = Some(Rect::from_min_max(pos2(x, y), pos2(x + 1.0, y + m.rh)));
         }
         for &(_, c) in &extra {
-            if c >= row.start && (c < row.end || (c == row.end && (row.is_last_in_seg() || row.end == doc.buf.len()))) {
+            if c >= row.start
+                && (c < row.end
+                    || (c == row.end && (row.is_last_in_seg() || row.end == doc.buf.len())))
+            {
                 let x = x_of(cell_for(c));
                 let color = if focused { look.caret } else { weak };
-                text_painter.rect_filled(Rect::from_min_max(pos2(x - 0.5, y), pos2(x + 1.5, y + m.rh)), 0.0, color);
+                text_painter.rect_filled(
+                    Rect::from_min_max(pos2(x - 0.5, y), pos2(x + 1.5, y + m.rh)),
+                    0.0,
+                    color,
+                );
             }
         }
 
@@ -661,44 +902,126 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
             String::new()
         };
         if !label.is_empty() && env.show_gutter {
-            let color = if caret_label == Some(i) { look.line_no_active } else { look.line_no };
-            painter.text(pos2(gutter_rect.right() - 8.0, y + m.pad), Align2::RIGHT_TOP, label, font.clone(), color);
+            let color = if caret_label == Some(i) {
+                look.line_no_active
+            } else {
+                look.line_no
+            };
+            painter.text(
+                pos2(gutter_rect.right() - 8.0, y + m.pad),
+                Align2::RIGHT_TOP,
+                label,
+                font.clone(),
+                color,
+            );
         } else if !row.is_first_in_seg() && env.show_gutter {
             // A wrapped row: a dim mark, so the line numbers stay readable.
-            painter.text(pos2(gutter_rect.right() - 8.0, y + m.pad), Align2::RIGHT_TOP, "·", font.clone(), look.line_no.gamma_multiply(0.5));
+            painter.text(
+                pos2(gutter_rect.right() - 8.0, y + m.pad),
+                Align2::RIGHT_TOP,
+                "·",
+                font.clone(),
+                look.line_no.gamma_multiply(0.5),
+            );
         }
         if in_diff && starts_line && env.show_gutter {
-            let glyph = if env.diff.as_ref().is_some_and(|o| o.added) { "+" } else { "−" };
-            painter.text(pos2(gutter_rect.left() + 2.0, y + m.pad), Align2::LEFT_TOP, glyph, font.clone(), diff_color.to_opaque());
+            let glyph = if env.diff.as_ref().is_some_and(|o| o.added) {
+                "+"
+            } else {
+                "−"
+            };
+            painter.text(
+                pos2(gutter_rect.left() + 2.0, y + m.pad),
+                Align2::LEFT_TOP,
+                glyph,
+                font.clone(),
+                diff_color.to_opaque(),
+            );
         }
         // A folded value: ▸ in the gutter, "… N lines …" after its opening line.
-        if let Some(f) = super::folds::starting_at(&doc.view.folds, row.seg.start).filter(|_| row.seg.line_start).copied() {
+        if let Some(f) = super::folds::starting_at(&doc.view.folds, row.seg.start)
+            .filter(|_| row.seg.line_start)
+            .copied()
+        {
             let color = visuals.weak_text_color();
             if starts_line {
-                let (c, r) = (pos2(gutter_rect.right() - 3.0, y + m.rh * 0.5), (m.rh * 0.22).max(2.5));
-                painter.add(egui::Shape::convex_polygon(vec![pos2(c.x - r, c.y - r), pos2(c.x + r * 0.8, c.y), pos2(c.x - r, c.y + r)], color, egui::Stroke::NONE));
+                let (c, r) = (
+                    pos2(gutter_rect.right() - 3.0, y + m.rh * 0.5),
+                    (m.rh * 0.22).max(2.5),
+                );
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        pos2(c.x - r, c.y - r),
+                        pos2(c.x + r * 0.8, c.y),
+                        pos2(c.x - r, c.y + r),
+                    ],
+                    color,
+                    egui::Stroke::NONE,
+                ));
             }
             if row.is_last_in_seg() {
-                let chip = crate::app::i18n::trf("… {n} lines …", &[("n", &crate::app::filter_panel::fmt_count(f.lines))]);
-                let galley = ui.painter().layout_no_wrap(chip, FontId::proportional((m.rh * 0.7).max(9.0)), color);
-                let x = x_of(if reached_end { end_cell } else { first_cell + vis_cells }) + m.cw;
-                let rect = Rect::from_min_size(pos2(x, y + (m.rh - galley.size().y - 2.0) / 2.0), galley.size() + egui::vec2(10.0, 2.0));
+                let chip = crate::app::i18n::trf(
+                    "… {n} lines …",
+                    &[("n", &crate::app::filter_panel::fmt_count(f.lines))],
+                );
+                let galley = ui.painter().layout_no_wrap(
+                    chip,
+                    FontId::proportional((m.rh * 0.7).max(9.0)),
+                    color,
+                );
+                let x = x_of(if reached_end {
+                    end_cell
+                } else {
+                    first_cell + vis_cells
+                }) + m.cw;
+                let rect = Rect::from_min_size(
+                    pos2(x, y + (m.rh - galley.size().y - 2.0) / 2.0),
+                    galley.size() + egui::vec2(10.0, 2.0),
+                );
                 text_painter.rect_filled(rect, 4.0, visuals.faint_bg_color.gamma_multiply(2.0));
-                text_painter.rect_stroke(rect, 4.0, egui::Stroke::new(1.0, visuals.widgets.noninteractive.bg_stroke.color), egui::StrokeKind::Inside);
+                text_painter.rect_stroke(
+                    rect,
+                    4.0,
+                    egui::Stroke::new(1.0, visuals.widgets.noninteractive.bg_stroke.color),
+                    egui::StrokeKind::Inside,
+                );
                 text_painter.galley(rect.min + egui::vec2(5.0, 1.0), galley, color);
-                if ui.interact(rect, id.with(("fold", f.start)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                if ui
+                    .interact(rect, id.with(("fold", f.start)), Sense::click())
+                    .on_hover_cursor(CursorIcon::PointingHand)
+                    .clicked()
+                {
                     unfold.push(f.start);
                 }
             }
         }
         if starts_line && doc.time_mark == Some((doc.version, row.start)) {
             // ◆: where Go to this time in all tabs put this tab.
-            let (c, r) = (pos2(gutter_rect.left() + 5.5, y + m.rh * 0.5), (m.rh * 0.32).max(3.0));
-            let points = vec![pos2(c.x, c.y - r), pos2(c.x + r, c.y), pos2(c.x, c.y + r), pos2(c.x - r, c.y)];
-            painter.add(egui::Shape::convex_polygon(points, role(Color32::from_rgb(230, 180, 30), Tone::Found, visuals.dark_mode), egui::Stroke::NONE));
+            let (c, r) = (
+                pos2(gutter_rect.left() + 5.5, y + m.rh * 0.5),
+                (m.rh * 0.32).max(3.0),
+            );
+            let points = vec![
+                pos2(c.x, c.y - r),
+                pos2(c.x + r, c.y),
+                pos2(c.x, c.y + r),
+                pos2(c.x - r, c.y),
+            ];
+            painter.add(egui::Shape::convex_polygon(
+                points,
+                role(
+                    Color32::from_rgb(230, 180, 30),
+                    Tone::Found,
+                    visuals.dark_mode,
+                ),
+                egui::Stroke::NONE,
+            ));
         }
         if starts_line && doc.bookmarks.binary_search(&row.start).is_ok() {
-            let r = Rect::from_min_size(pos2(gutter_rect.left() + 3.0, y + m.rh * 0.2), egui::vec2(5.0, m.rh * 0.6));
+            let r = Rect::from_min_size(
+                pos2(gutter_rect.left() + 3.0, y + m.rh * 0.2),
+                egui::vec2(5.0, m.rh * 0.6),
+            );
             painter.rect_filled(r, 2.0, visuals.selection.stroke.color);
         }
     }
@@ -720,7 +1043,10 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
                 if n > cell {
                     from.get_or_insert(i);
                 } else if let Some(s) = from.take() {
-                    let (y0, y1) = (text_rect.top() + s as f32 * m.rh, text_rect.top() + i as f32 * m.rh);
+                    let (y0, y1) = (
+                        text_rect.top() + s as f32 * m.rh,
+                        text_rect.top() + i as f32 * m.rh,
+                    );
                     lines.push(egui::Shape::vline(x, y0..=y1, stroke));
                 }
             }
@@ -734,22 +1060,53 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
     if let Some(col) = env.ruler {
         let x = x_of(col as u32);
         if text_rect.x_range().contains(x) {
-            text_painter.vline(x, text_rect.y_range(), egui::Stroke::new(1.0, weak.gamma_multiply(0.45)));
+            text_painter.vline(
+                x,
+                text_rect.y_range(),
+                egui::Stroke::new(1.0, weak.gamma_multiply(0.45)),
+            );
         }
     }
     if focused && doc.is_ready() {
         // The input method puts its candidate window next to the caret (kept in the text area).
-        let at = caret_rect.map_or(Rect::from_min_size(text_rect.min, egui::vec2(1.0, m.rh)), |r| r.translate(egui::vec2(r.left().clamp(text_rect.left(), text_rect.right()) - r.left(), 0.0)));
+        let at = caret_rect.map_or(
+            Rect::from_min_size(text_rect.min, egui::vec2(1.0, m.rh)),
+            |r| {
+                r.translate(egui::vec2(
+                    r.left().clamp(text_rect.left(), text_rect.right()) - r.left(),
+                    0.0,
+                ))
+            },
+        );
         ime_output(ui, doc, at, interrupt);
     }
     if a11y_on {
         let (line, exact) = doc.buf.line_of(caret);
         let col = match doc.buf.line_start(line) {
-            Some((ls, true)) if caret >= ls && caret - ls <= 128 * 1024 => doc.buf.read(ls..caret).map(|b| (rows::cell_width(&doc.buf.codec, &b, ls) + 1).to_string()),
+            Some((ls, true)) if caret >= ls && caret - ls <= 128 * 1024 => doc
+                .buf
+                .read(ls..caret)
+                .map(|b| (rows::cell_width(&doc.buf.codec, &b, ls) + 1).to_string()),
             _ => None,
         };
-        let position = crate::app::i18n::trf("Ln {line}, Col {col}", &[("line", &format!("{}{}", if exact { "" } else { "~" }, line + 1)), ("col", col.as_deref().unwrap_or("?"))]);
-        let w = super::a11y::TextWidget { label: &doc.title, position, read_only: !doc.editable(), rows: &a11y_rows, anchor: doc.view.anchor, caret };
+        let position = crate::app::i18n::trf(
+            "Ln {line}, Col {col}",
+            &[
+                (
+                    "line",
+                    &format!("{}{}", if exact { "" } else { "~" }, line + 1),
+                ),
+                ("col", col.as_deref().unwrap_or("?")),
+            ],
+        );
+        let w = super::a11y::TextWidget {
+            label: &doc.title,
+            position,
+            read_only: !doc.editable(),
+            rows: &a11y_rows,
+            anchor: doc.view.anchor,
+            caret,
+        };
         let said = super::a11y::text_widget(ui, id, &w);
         doc.view.a11y_last = Some(said);
     }
@@ -758,23 +1115,55 @@ pub fn show(ui: &mut Ui, doc: &mut Document, env: &mut ViewEnv) {
         crate::app::document::DocState::Loading => {
             let msg = match &doc.unpacking {
                 Some((p, _)) if p.total() > 0 => {
-                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
-                    crate::app::i18n::trf("Unpacking… {pct}% of {size}", &[("pct", &format!("{:.0}", p.fraction() * 100.0)), ("size", &bigtext::jobs::human_bytes(p.total()))])
+                    ui.ctx()
+                        .request_repaint_after(std::time::Duration::from_millis(100));
+                    crate::app::i18n::trf(
+                        "Unpacking… {pct}% of {size}",
+                        &[
+                            ("pct", &format!("{:.0}", p.fraction() * 100.0)),
+                            ("size", &bigtext::jobs::human_bytes(p.total())),
+                        ],
+                    )
                 }
                 _ => crate::app::i18n::tr("Opening…").to_string(),
             };
-            painter.text(text_rect.center(), Align2::CENTER_CENTER, msg, FontId::proportional(18.0), weak);
+            painter.text(
+                text_rect.center(),
+                Align2::CENTER_CENTER,
+                msg,
+                FontId::proportional(18.0),
+                weak,
+            );
         }
         crate::app::document::DocState::Finalizing(msg) => {
-            painter.text(text_rect.center(), Align2::CENTER_CENTER, msg, FontId::proportional(18.0), weak);
+            painter.text(
+                text_rect.center(),
+                Align2::CENTER_CENTER,
+                msg,
+                FontId::proportional(18.0),
+                weak,
+            );
         }
         crate::app::document::DocState::Failed(e) => {
-            painter.text(text_rect.center(), Align2::CENTER_CENTER, e, FontId::proportional(16.0), visuals.error_fg_color);
+            painter.text(
+                text_rect.center(),
+                Align2::CENTER_CENTER,
+                e,
+                FontId::proportional(16.0),
+                visuals.error_fg_color,
+            );
         }
         crate::app::document::DocState::Ready => {
             if pending {
-                painter.text(text_rect.right_top() + egui::vec2(-8.0, 4.0), Align2::RIGHT_TOP, crate::app::i18n::tr("Loading…"), FontId::proportional(13.0), weak);
-                ui.ctx().request_repaint_after(std::time::Duration::from_millis(30));
+                painter.text(
+                    text_rect.right_top() + egui::vec2(-8.0, 4.0),
+                    Align2::RIGHT_TOP,
+                    crate::app::i18n::tr("Loading…"),
+                    FontId::proportional(13.0),
+                    weak,
+                );
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(30));
             } else if doc.view.first_paint.is_none() && !rows.is_empty() {
                 doc.view.first_paint = Some(std::time::Instant::now());
             }
@@ -795,7 +1184,12 @@ fn indent_unit(doc: &mut Document) -> u32 {
     if let Some((_, unit)) = doc.view.indent_unit.filter(|&(v, _)| v == doc.version) {
         return unit;
     }
-    let Some(head) = doc.buf.read(0..doc.buf.len().min(super::indent::GUESS_BYTES)) else { return 4 };
+    let Some(head) = doc
+        .buf
+        .read(0..doc.buf.len().min(super::indent::GUESS_BYTES))
+    else {
+        return 4;
+    };
     let unit = super::indent::guess_unit(&head);
     doc.view.indent_unit = Some((doc.version, unit));
     unit
@@ -814,7 +1208,16 @@ struct Shown<'a> {
 /// in the file, starting in state `st`), with placeholder glyphs (controls, invalid bytes)
 /// always dimmed.
 #[allow(clippy::too_many_arguments)]
-fn build_job(job: &mut LayoutJob, shown: &Shown, lang: super::highlight::Lang, st: super::highlight::State, font: &FontId, normal: Color32, weak: Color32, look: &Look) {
+fn build_job(
+    job: &mut LayoutJob,
+    shown: &Shown,
+    lang: super::highlight::Lang,
+    st: super::highlight::State,
+    font: &FontId,
+    normal: Color32,
+    weak: Color32,
+    look: &Look,
+) {
     let text = shown.run;
     if text.is_empty() {
         return;
@@ -846,12 +1249,28 @@ fn build_job(job: &mut LayoutJob, shown: &Shown, lang: super::highlight::Lang, s
     let mut cur = colors[0];
     for (i, _) in text.char_indices().skip(1) {
         if colors[i] != cur {
-            job.append(&text[start..i], 0.0, TextFormat { font_id: font.clone(), color: cur, ..Default::default() });
+            job.append(
+                &text[start..i],
+                0.0,
+                TextFormat {
+                    font_id: font.clone(),
+                    color: cur,
+                    ..Default::default()
+                },
+            );
             start = i;
             cur = colors[i];
         }
     }
-    job.append(&text[start..], 0.0, TextFormat { font_id: font.clone(), color: cur, ..Default::default() });
+    job.append(
+        &text[start..],
+        0.0,
+        TextFormat {
+            font_id: font.clone(),
+            color: cur,
+            ..Default::default()
+        },
+    );
 }
 
 fn control_glyph(c: char) -> char {
@@ -863,14 +1282,30 @@ fn control_glyph(c: char) -> char {
     }
 }
 
-pub(crate) fn vertical_scrollbar(ui: &mut Ui, doc: &mut Document, id: egui::Id, bar: Rect, rows: &[Row], wrap: Option<usize>) {
+pub(crate) fn vertical_scrollbar(
+    ui: &mut Ui,
+    doc: &mut Document,
+    id: egui::Id,
+    bar: Rect,
+    rows: &[Row],
+    wrap: Option<usize>,
+) {
     let len = doc.buf.len().max(1);
-    let visible = rows.last().map(|r| r.seg.next.max(r.end)).unwrap_or(doc.view.top).saturating_sub(doc.view.top).max(1);
+    let visible = rows
+        .last()
+        .map(|r| r.seg.next.max(r.end))
+        .unwrap_or(doc.view.top)
+        .saturating_sub(doc.view.top)
+        .max(1);
     let track_h = bar.height();
-    let thumb_h = (track_h * (visible as f64 / len as f64) as f32).clamp(24.0_f32.min(track_h), track_h);
+    let thumb_h =
+        (track_h * (visible as f64 / len as f64) as f32).clamp(24.0_f32.min(track_h), track_h);
     let frac = doc.view.top as f64 / len as f64;
     let thumb_y = bar.top() + (track_h - thumb_h) * frac as f32;
-    let thumb = Rect::from_min_max(pos2(bar.left() + 2.0, thumb_y), pos2(bar.right() - 2.0, thumb_y + thumb_h));
+    let thumb = Rect::from_min_max(
+        pos2(bar.left() + 2.0, thumb_y),
+        pos2(bar.right() - 2.0, thumb_y + thumb_h),
+    );
     let r = ui.interact(bar, id.with("vbar"), Sense::click_and_drag());
     ui.ctx().accesskit_node_builder(r.id, |b| {
         use egui::accesskit;
@@ -883,23 +1318,43 @@ pub(crate) fn vertical_scrollbar(ui: &mut Ui, doc: &mut Document, id: egui::Id, 
     let painter = ui.painter_at(bar);
     let v = ui.visuals();
     painter.rect_filled(bar, 0.0, v.faint_bg_color);
-    let color = if r.dragged() || r.hovered() { v.widgets.hovered.bg_fill } else { v.widgets.inactive.bg_fill };
+    let color = if r.dragged() || r.hovered() {
+        v.widgets.hovered.bg_fill
+    } else {
+        v.widgets.inactive.bg_fill
+    };
     painter.rect_filled(thumb, 4.0, color);
     paint_marks(&painter, doc, bar, v.dark_mode);
     if r.dragged() || r.is_pointer_button_down_on() {
         if let Some(p) = r.interact_pointer_pos() {
-            let f = ((p.y - bar.top() - thumb_h / 2.0) / (track_h - thumb_h).max(1.0)).clamp(0.0, 1.0) as f64;
+            let f = ((p.y - bar.top() - thumb_h / 2.0) / (track_h - thumb_h).max(1.0))
+                .clamp(0.0, 1.0) as f64;
             let target = (f * len as f64) as u64;
             if let Ok(row) = rows::row_at(&doc.buf, target.min(doc.buf.len()), wrap) {
                 doc.view.top = row.start;
             }
             // Where the drag is: "~Ln 45,357,933 · 48 %" next to the pointer.
             let (line, exact) = doc.buf.line_of(doc.view.top);
-            let text = format!("{}Ln {} · {:.0} %", if exact { "" } else { "~" }, crate::app::filter_panel::fmt_count(line + 1), doc.view.top as f64 * 100.0 / len as f64);
-            let tip = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, id.with("vbar-tip")));
+            let text = format!(
+                "{}Ln {} · {:.0} %",
+                if exact { "" } else { "~" },
+                crate::app::filter_panel::fmt_count(line + 1),
+                doc.view.top as f64 * 100.0 / len as f64
+            );
+            let tip = ui.ctx().layer_painter(egui::LayerId::new(
+                egui::Order::Tooltip,
+                id.with("vbar-tip"),
+            ));
             let galley = tip.layout_no_wrap(text, egui::FontId::proportional(13.0), v.text_color());
-            let at = pos2(bar.left() - 12.0 - galley.size().x, p.y - galley.size().y / 2.0);
-            tip.rect_filled(Rect::from_min_size(at, galley.size()).expand(4.0), 4.0, v.window_fill());
+            let at = pos2(
+                bar.left() - 12.0 - galley.size().x,
+                p.y - galley.size().y / 2.0,
+            );
+            tip.rect_filled(
+                Rect::from_min_size(at, galley.size()).expand(4.0),
+                4.0,
+                v.window_fill(),
+            );
             tip.galley(at, galley, v.text_color());
         }
     }
@@ -938,11 +1393,21 @@ fn paint_marks(painter: &egui::Painter, doc: &mut Document, bar: Rect, dark: boo
     let ptr = |o: Option<usize>| o.unwrap_or(0);
     let results = doc.results.as_ref().filter(|r| r.version == doc.version);
     let filter = doc.filter.as_ref().filter(|r| r.version == doc.version);
-    let key = (doc.version, len, h, ptr(results.map(|r| std::sync::Arc::as_ptr(&r.data) as usize)), ptr(filter.map(|r| std::sync::Arc::as_ptr(&r.data) as usize)));
+    let key = (
+        doc.version,
+        len,
+        h,
+        ptr(results.map(|r| std::sync::Arc::as_ptr(&r.data) as usize)),
+        ptr(filter.map(|r| std::sync::Arc::as_ptr(&r.data) as usize)),
+    );
     let mut m = std::mem::take(&mut doc.view.scroll_marks);
     let other = (doc.bookmarks.len(), doc.diff_marks.len());
     if m.key != key || m.other != other {
-        m = ScrollMarks { key, rows: vec![0; h as usize], ..Default::default() };
+        m = ScrollMarks {
+            key,
+            rows: vec![0; h as usize],
+            ..Default::default()
+        };
         m.other = other;
         let row = |off: u64| ((off as f64 / len as f64) * h as f64).min(h as f64 - 1.0) as usize;
         for &b in &doc.bookmarks {
@@ -973,9 +1438,45 @@ fn paint_marks(painter: &egui::Painter, doc: &mut Document, bar: Rect, dark: boo
     // Lanes from the left: diff, filter, search, bookmarks across the whole width.
     let lane = (bar.width() - 4.0) / 3.0;
     let colors = [
-        (MARK_DIFF, 0.0, role(if dark { Color32::from_rgb(220, 90, 90) } else { Color32::from_rgb(200, 50, 50) }, Tone::Bad, dark)),
-        (MARK_FILTER, 1.0, role(if dark { Color32::from_rgb(90, 160, 240) } else { Color32::from_rgb(40, 110, 220) }, Tone::Info, dark)),
-        (MARK_FOUND, 2.0, role(if dark { Color32::from_rgb(230, 180, 30) } else { Color32::from_rgb(220, 150, 0) }, Tone::Found, dark)),
+        (
+            MARK_DIFF,
+            0.0,
+            role(
+                if dark {
+                    Color32::from_rgb(220, 90, 90)
+                } else {
+                    Color32::from_rgb(200, 50, 50)
+                },
+                Tone::Bad,
+                dark,
+            ),
+        ),
+        (
+            MARK_FILTER,
+            1.0,
+            role(
+                if dark {
+                    Color32::from_rgb(90, 160, 240)
+                } else {
+                    Color32::from_rgb(40, 110, 220)
+                },
+                Tone::Info,
+                dark,
+            ),
+        ),
+        (
+            MARK_FOUND,
+            2.0,
+            role(
+                if dark {
+                    Color32::from_rgb(230, 180, 30)
+                } else {
+                    Color32::from_rgb(220, 150, 0)
+                },
+                Tone::Found,
+                dark,
+            ),
+        ),
     ];
     for (y, &bits) in m.rows.iter().enumerate() {
         if bits == 0 {
@@ -985,20 +1486,49 @@ fn paint_marks(painter: &egui::Painter, doc: &mut Document, bar: Rect, dark: boo
         for &(bit, i, c) in &colors {
             if bits & bit != 0 {
                 let x = bar.left() + 2.0 + i * lane;
-                painter.rect_filled(Rect::from_min_max(pos2(x, top), pos2(x + lane, top + 2.0)), 0.0, c);
+                painter.rect_filled(
+                    Rect::from_min_max(pos2(x, top), pos2(x + lane, top + 2.0)),
+                    0.0,
+                    c,
+                );
             }
         }
         if bits & MARK_BOOKMARK != 0 {
-            painter.rect_filled(Rect::from_min_max(pos2(bar.left() + 1.0, top), pos2(bar.right() - 1.0, top + 2.0)), 0.0, role(if dark { Color32::from_rgb(120, 200, 255) } else { Color32::from_rgb(30, 120, 200) }, Tone::Caret, dark));
+            painter.rect_filled(
+                Rect::from_min_max(
+                    pos2(bar.left() + 1.0, top),
+                    pos2(bar.right() - 1.0, top + 2.0),
+                ),
+                0.0,
+                role(
+                    if dark {
+                        Color32::from_rgb(120, 200, 255)
+                    } else {
+                        Color32::from_rgb(30, 120, 200)
+                    },
+                    Tone::Caret,
+                    dark,
+                ),
+            );
         }
     }
     doc.view.scroll_marks = m;
 }
 
-fn horizontal_scrollbar(ui: &mut Ui, doc: &mut Document, id: egui::Id, bar: Rect, m: Metrics, text_w: f32) {
+fn horizontal_scrollbar(
+    ui: &mut Ui,
+    doc: &mut Document,
+    id: egui::Id,
+    bar: Rect,
+    m: Metrics,
+    text_w: f32,
+) {
     let content = doc.view.max_cells as f32 * m.cw + 4.0 * m.cw;
     let max_scroll = (content - text_w).max(0.0);
-    doc.view.scroll_x = doc.view.scroll_x.clamp(0.0, max_scroll.max(doc.view.scroll_x.min(max_scroll + text_w)));
+    doc.view.scroll_x = doc.view.scroll_x.clamp(
+        0.0,
+        max_scroll.max(doc.view.scroll_x.min(max_scroll + text_w)),
+    );
     let painter = ui.painter_at(bar);
     let v = ui.visuals();
     painter.rect_filled(bar, 0.0, v.faint_bg_color);
@@ -1008,19 +1538,34 @@ fn horizontal_scrollbar(ui: &mut Ui, doc: &mut Document, id: egui::Id, bar: Rect
     let track_w = bar.width();
     let thumb_w = (track_w * text_w / content).clamp(24.0_f32.min(track_w), track_w);
     let x = bar.left() + (track_w - thumb_w) * (doc.view.scroll_x / max_scroll).clamp(0.0, 1.0);
-    let thumb = Rect::from_min_max(pos2(x, bar.top() + 2.0), pos2(x + thumb_w, bar.bottom() - 2.0));
+    let thumb = Rect::from_min_max(
+        pos2(x, bar.top() + 2.0),
+        pos2(x + thumb_w, bar.bottom() - 2.0),
+    );
     let r = ui.interact(bar, id.with("hbar"), Sense::click_and_drag());
-    let color = if r.dragged() || r.hovered() { v.widgets.hovered.bg_fill } else { v.widgets.inactive.bg_fill };
+    let color = if r.dragged() || r.hovered() {
+        v.widgets.hovered.bg_fill
+    } else {
+        v.widgets.inactive.bg_fill
+    };
     painter.rect_filled(thumb, 4.0, color);
     if r.dragged() || r.is_pointer_button_down_on() {
         if let Some(p) = r.interact_pointer_pos() {
-            let f = ((p.x - bar.left() - thumb_w / 2.0) / (track_w - thumb_w).max(1.0)).clamp(0.0, 1.0);
+            let f =
+                ((p.x - bar.left() - thumb_w / 2.0) / (track_w - thumb_w).max(1.0)).clamp(0.0, 1.0);
             doc.view.scroll_x = f * max_scroll;
         }
     }
 }
 
-fn handle_wheel(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, m: Metrics, wrap: Option<usize>, env: &mut ViewEnv) {
+fn handle_wheel(
+    ui: &mut Ui,
+    doc: &mut Document,
+    resp: &egui::Response,
+    m: Metrics,
+    wrap: Option<usize>,
+    env: &mut ViewEnv,
+) {
     if !resp.hovered() {
         return;
     }
@@ -1047,7 +1592,13 @@ fn handle_wheel(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, m: Metri
 }
 
 /// The row under `pos` and the nearest cell boundary.
-fn hit_cell(doc: &Document, rows: &[Row], text_rect: Rect, m: Metrics, pos: Pos2) -> Option<(Row, u32)> {
+fn hit_cell(
+    doc: &Document,
+    rows: &[Row],
+    text_rect: Rect,
+    m: Metrics,
+    pos: Pos2,
+) -> Option<(Row, u32)> {
     if rows.is_empty() {
         return None;
     }
@@ -1058,23 +1609,43 @@ fn hit_cell(doc: &Document, rows: &[Row], text_rect: Rect, m: Metrics, pos: Pos2
         let i = (ri as usize).min(rows.len() - 1);
         rows[i]
     };
-    let col = ((pos.x - text_rect.left() + doc.view.scroll_x) / m.cw).round().max(0.0) as u32;
+    let col = ((pos.x - text_rect.left() + doc.view.scroll_x) / m.cw)
+        .round()
+        .max(0.0) as u32;
     Some((row, col))
 }
 
 /// Under the mouse, a Unix time (`1714573925`, `1714573925123`) shows as a date and time.
-fn epoch_tooltip(ui: &Ui, doc: &Document, resp: &egui::Response, text_rect: Rect, m: Metrics, rows: &[Row]) {
-    let Some(pos) = resp.hover_pos().filter(|p| text_rect.contains(*p)) else { return };
+fn epoch_tooltip(
+    ui: &Ui,
+    doc: &Document,
+    resp: &egui::Response,
+    text_rect: Rect,
+    m: Metrics,
+    rows: &[Row],
+) {
+    let Some(pos) = resp.hover_pos().filter(|p| text_rect.contains(*p)) else {
+        return;
+    };
     if doc.buf.codec.unit() != 1 || ui.input(|i| i.pointer.any_down()) {
         return;
     }
     let ri = ((pos.y - text_rect.top()) / m.rh).floor() as usize;
     let Some(row) = rows.get(ri) else { return };
     // The character under the pointer, not the nearest boundary.
-    let col = ((pos.x - text_rect.left() + doc.view.scroll_x) / m.cw).floor().max(0.0) as u32;
-    let Ok(off) = rows::offset_at_cell(&doc.buf, row, col) else { return };
-    let (from, to) = (off.saturating_sub(24).max(row.start), (off + 24).min(row.end));
-    let Some(b) = doc.buf.read(from..to) else { return };
+    let col = ((pos.x - text_rect.left() + doc.view.scroll_x) / m.cw)
+        .floor()
+        .max(0.0) as u32;
+    let Ok(off) = rows::offset_at_cell(&doc.buf, row, col) else {
+        return;
+    };
+    let (from, to) = (
+        off.saturating_sub(24).max(row.start),
+        (off + 24).min(row.end),
+    );
+    let Some(b) = doc.buf.read(from..to) else {
+        return;
+    };
     let i = (off - from) as usize;
     let num = |c: &u8| c.is_ascii_digit() || *c == b'.';
     if !b.get(i).is_some_and(u8::is_ascii_digit) {
@@ -1094,7 +1665,16 @@ fn hit_test(doc: &Document, rows: &[Row], text_rect: Rect, m: Metrics, pos: Pos2
 }
 
 #[allow(clippy::too_many_arguments)]
-fn handle_mouse(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, text_rect: Rect, m: Metrics, wrap: Option<usize>, rows: &[Row], active_pane: bool) {
+fn handle_mouse(
+    ui: &mut Ui,
+    doc: &mut Document,
+    resp: &egui::Response,
+    text_rect: Rect,
+    m: Metrics,
+    wrap: Option<usize>,
+    rows: &[Row],
+    active_pane: bool,
+) {
     let (pressed, down, mods, pos, dbl, tpl) = ui.input(|i| {
         (
             i.pointer.primary_pressed(),
@@ -1143,8 +1723,14 @@ fn handle_mouse(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, text_rec
             }
             ui.ctx().request_repaint();
         }
-        let clamped = pos2(pos.x.max(text_rect.left()), pos.y.clamp(text_rect.top(), text_rect.bottom() - 1.0));
-        if let (Some((row, col)), Some(b)) = (hit_cell(doc, rows, text_rect, m, clamped), doc.view.block.as_mut()) {
+        let clamped = pos2(
+            pos.x.max(text_rect.left()),
+            pos.y.clamp(text_rect.top(), text_rect.bottom() - 1.0),
+        );
+        if let (Some((row, col)), Some(b)) = (
+            hit_cell(doc, rows, text_rect, m, clamped),
+            doc.view.block.as_mut(),
+        ) {
             b.caret = row.start;
             b.caret_cell = col;
             if let Ok(off) = rows::offset_at_cell(&doc.buf, &row, col) {
@@ -1181,13 +1767,17 @@ fn handle_mouse(ui: &mut Ui, doc: &mut Document, resp: &egui::Response, text_rec
             if pos.y < text_rect.top() || pos.y > text_rect.bottom() {
                 let n = if pos.y < text_rect.top() { -1 } else { 1 };
                 if let Ok(top) = rows::row_at(&doc.buf, doc.view.top, wrap) {
-                    if let Ok(r) = super::folds::step_rows(&doc.buf, top, n, wrap, &doc.view.folds) {
+                    if let Ok(r) = super::folds::step_rows(&doc.buf, top, n, wrap, &doc.view.folds)
+                    {
                         doc.view.top = r.start;
                     }
                 }
                 ui.ctx().request_repaint();
             }
-            let clamped = pos2(pos.x.max(text_rect.left()), pos.y.clamp(text_rect.top(), text_rect.bottom() - 1.0));
+            let clamped = pos2(
+                pos.x.max(text_rect.left()),
+                pos.y.clamp(text_rect.top(), text_rect.bottom() - 1.0),
+            );
             if let Some(off) = hit_test(doc, rows, text_rect, m, clamped) {
                 doc.view.caret = off.clamp(doc.min_caret(), doc.buf.len());
             }
@@ -1200,17 +1790,27 @@ fn is_word_char(c: char) -> bool {
 }
 
 pub(crate) fn select_word(doc: &mut Document, off: u64, wrap: Option<usize>) {
-    let Ok(row) = rows::row_at(&doc.buf, off, wrap) else { return };
+    let Ok(row) = rows::row_at(&doc.buf, off, wrap) else {
+        return;
+    };
     let lo = off.saturating_sub(1024).max(row.seg.start);
     let hi = (off + 1024).min(row.seg.content_end);
-    let Some(bytes) = doc.buf.read(lo..hi) else { return };
+    let Some(bytes) = doc.buf.read(lo..hi) else {
+        return;
+    };
     let codec = doc.buf.codec;
     let mut chars: Vec<(u64, u64, char)> = Vec::new();
     rows::for_each_cell(&codec, &bytes, lo, |c| {
         chars.push((c.off, c.off + c.len as u64, c.ch));
         true
     });
-    let Some(i) = chars.iter().position(|&(s, e, _)| off >= s && off < e).or_else(|| chars.len().checked_sub(1)) else { return };
+    let Some(i) = chars
+        .iter()
+        .position(|&(s, e, _)| off >= s && off < e)
+        .or_else(|| chars.len().checked_sub(1))
+    else {
+        return;
+    };
     let word = is_word_char(chars[i].2);
     let mut a = i;
     while a > 0 && is_word_char(chars[a - 1].2) == word && word {
@@ -1227,11 +1827,19 @@ pub(crate) fn select_word(doc: &mut Document, off: u64, wrap: Option<usize>) {
 /// Turns on the input method with its window at `caret`. egui-winit places the window by
 /// `rect`, so that is the caret too, not the whole text area (the window would go below it).
 fn ime_output(ui: &mut Ui, doc: &mut Document, caret: Rect, interrupt: bool) {
-    let to_global = ui.ctx().layer_transform_to_global(ui.layer_id()).unwrap_or_default();
+    let to_global = ui
+        .ctx()
+        .layer_transform_to_global(ui.layer_id())
+        .unwrap_or_default();
     let rect = to_global * caret;
     doc.view.ime_rect = Some(rect);
     ui.ctx().output_mut(|o| {
-        o.ime = Some(egui::output::IMEOutput { purpose: egui::IMEPurpose::Normal, rect, cursor_rect: rect, should_interrupt_composition: interrupt });
+        o.ime = Some(egui::output::IMEOutput {
+            purpose: egui::IMEPurpose::Normal,
+            rect,
+            cursor_rect: rect,
+            should_interrupt_composition: interrupt,
+        });
     });
 }
 
@@ -1242,7 +1850,10 @@ fn ime_output(ui: &mut Ui, doc: &mut Document, caret: Rect, interrupt: bool) {
 fn advance(ctx: &egui::Context, font: &FontId, text: &str) -> f32 {
     ctx.fonts_mut(|f| {
         let galley = f.layout_no_wrap(text.to_owned(), font.clone(), Color32::PLACEHOLDER);
-        galley.rows.first().map_or(0.0, |r| r.row.glyphs.iter().map(|g| g.advance_width).sum())
+        galley
+            .rows
+            .first()
+            .map_or(0.0, |r| r.row.glyphs.iter().map(|g| g.advance_width).sum())
     })
 }
 
@@ -1272,11 +1883,21 @@ fn cluster_starts(cells: &[rows::Cell]) -> Vec<usize> {
     // A sign that stacks the next consonant under the one before (Myanmar, Khmer, Kannada…)
     // joins their clusters, which Unicode's rules leave apart for these scripts: shaped apart,
     // each would get a dotted circle.
-    let stacks = |c: char| matches!(c as u32, 0x0A4D | 0x0CCD | 0x1039 | 0x17D2 | 0x1A60 | 0x1B44 | 0x1BAB | 0xA9C0);
+    let stacks = |c: char| {
+        matches!(
+            c as u32,
+            0x0A4D | 0x0CCD | 0x1039 | 0x17D2 | 0x1A60 | 0x1B44 | 0x1BAB | 0xA9C0
+        )
+    };
     // Vowel signs the rules leave out of their syllable (Myanmar ာ, Tai Tham…), likewise.
     let vowel = |c: char| matches!(c as u32, 0x102B | 0x102C | 0x1038 | 0x1062..=0x1064 | 0x1067..=0x106D | 0x1083 | 0x1087..=0x108C | 0x108F | 0x109A..=0x109C | 0x1A61 | 0x1A63 | 0x1A64 | 0xAA7B | 0xAA7D);
     (0..cells.len())
-        .filter(|&i| i == 0 || (breaks[i] && !stacks(cells[i - 1].ch) && !vowel(cells[i].ch)) || cells[i].kind != CellKind::Normal || cells[i - 1].kind != CellKind::Normal)
+        .filter(|&i| {
+            i == 0
+                || (breaks[i] && !stacks(cells[i - 1].ch) && !vowel(cells[i].ch))
+                || cells[i].kind != CellKind::Normal
+                || cells[i - 1].kind != CellKind::Normal
+        })
         .collect()
 }
 
@@ -1285,10 +1906,18 @@ fn cluster_starts(cells: &[rows::Cell]) -> Vec<usize> {
 /// spaced out to their cells; each is centred in its cells, and one much wider than them (a
 /// Tamil letter, a circled number) is made smaller to fit. Colours come from the row's `job`;
 /// `fh` is the font's line height.
-fn loose_jobs(loose: &[Loose], job: &LayoutJob, font: &FontId, cw: f32, fh: f32) -> Vec<(u32, egui::Vec2, LayoutJob)> {
+fn loose_jobs(
+    loose: &[Loose],
+    job: &LayoutJob,
+    font: &FontId,
+    cw: f32,
+    fh: f32,
+) -> Vec<(u32, egui::Vec2, LayoutJob)> {
     let color_at = |at: usize| {
         let i = job.sections.partition_point(|s| s.byte_range.end.0 <= at);
-        job.sections.get(i).map_or(Color32::PLACEHOLDER, |s| s.format.color)
+        job.sections
+            .get(i)
+            .map_or(Color32::PLACEHOLDER, |s| s.format.color)
     };
     let mut out = Vec::new();
     let mut i = 0;
@@ -1299,7 +1928,12 @@ fn loose_jobs(loose: &[Loose], job: &LayoutJob, font: &FontId, cw: f32, fh: f32)
         let mut j = i + 1;
         while let Some(b) = loose.get(j).filter(|_| !a.alone) {
             let prev = &loose[j - 1];
-            if b.alone || b.cell != prev.cell + prev.width || b.width != a.width || (b.adv - a.adv).abs() > 0.01 || color_at(b.at) != color {
+            if b.alone
+                || b.cell != prev.cell + prev.width
+                || b.width != a.width
+                || (b.adv - a.adv).abs() > 0.01
+                || color_at(b.at) != color
+            {
                 break;
             }
             text.push_str(&b.text);
@@ -1307,13 +1941,26 @@ fn loose_jobs(loose: &[Loose], job: &LayoutJob, font: &FontId, cw: f32, fh: f32)
         }
         let slot = a.width as f32 * cw;
         // A little wider may stick out; much wider shrinks, to no less than 60 %.
-        let scale = if a.adv > slot * 1.15 { (slot / a.adv).max(0.6) } else { 1.0 };
+        let scale = if a.adv > slot * 1.15 {
+            (slot / a.adv).max(0.6)
+        } else {
+            1.0
+        };
         // The spacing goes between glyphs, not before the first.
         let gap = slot - a.adv * scale;
         let spacing = if j - i > 1 { gap } else { 0.0 };
         let font_id = FontId::new(font.size * scale, font.family.clone());
         let mut lj = LayoutJob::default();
-        lj.append(&text, 0.0, TextFormat { font_id, color, extra_letter_spacing: spacing, ..Default::default() });
+        lj.append(
+            &text,
+            0.0,
+            TextFormat {
+                font_id,
+                color,
+                extra_letter_spacing: spacing,
+                ..Default::default()
+            },
+        );
         out.push((a.cell, egui::vec2(gap / 2.0, fh * (1.0 - scale) / 2.0), lj));
         i = j;
     }
@@ -1323,7 +1970,9 @@ fn loose_jobs(loose: &[Loose], job: &LayoutJob, font: &FontId, cw: f32, fh: f32)
 /// Input while a block selection is active. Returns true if the event was used; keys that
 /// move the caret or edit normally end the block first.
 fn handle_block_event(ui: &mut Ui, doc: &mut Document, ev: &Event) -> bool {
-    let Some(mut b) = doc.view.block else { return false };
+    let Some(mut b) = doc.view.block else {
+        return false;
+    };
     let used = match ev {
         Event::Text(t) if !t.chars().all(|c| c.is_control()) => {
             edit_block(doc, &mut b, BlockEdit::Insert(t.clone()));
@@ -1336,7 +1985,11 @@ fn handle_block_event(ui: &mut Ui, doc: &mut Document, ev: &Event) -> bool {
         Event::Paste(s) => {
             let lines: Vec<String> = s.lines().map(str::to_string).collect();
             let n = block_rows(doc, &b).map(|r| r.len()).unwrap_or(0);
-            let e = if n > 1 && lines.len() == n { BlockEdit::PerRow(lines) } else { BlockEdit::Insert(s.replace(['\r', '\n'], " ")) };
+            let e = if n > 1 && lines.len() == n {
+                BlockEdit::PerRow(lines)
+            } else {
+                BlockEdit::Insert(s.replace(['\r', '\n'], " "))
+            };
             edit_block(doc, &mut b, e);
             true
         }
@@ -1349,23 +2002,53 @@ fn handle_block_event(ui: &mut Ui, doc: &mut Document, ev: &Event) -> bool {
             }
             true
         }
-        Event::Key { key: Key::Backspace, pressed: true, modifiers, .. } if !modifiers.command => {
+        Event::Key {
+            key: Key::Backspace,
+            pressed: true,
+            modifiers,
+            ..
+        } if !modifiers.command => {
             edit_block(doc, &mut b, BlockEdit::Backspace);
             true
         }
-        Event::Key { key: Key::Delete, pressed: true, modifiers, .. } if !modifiers.command => {
+        Event::Key {
+            key: Key::Delete,
+            pressed: true,
+            modifiers,
+            ..
+        } if !modifiers.command => {
             edit_block(doc, &mut b, BlockEdit::Delete);
             true
         }
-        Event::Key { key: Key::Tab, pressed: true, modifiers, .. } if !modifiers.command && !modifiers.shift => {
+        Event::Key {
+            key: Key::Tab,
+            pressed: true,
+            modifiers,
+            ..
+        } if !modifiers.command && !modifiers.shift => {
             edit_block(doc, &mut b, BlockEdit::Insert("\t".into()));
             true
         }
-        Event::Key { key, pressed: true, modifiers, .. } => {
+        Event::Key {
+            key,
+            pressed: true,
+            modifiers,
+            ..
+        } => {
             let ends = matches!(
                 key,
-                Key::ArrowLeft | Key::ArrowRight | Key::ArrowUp | Key::ArrowDown | Key::Home | Key::End | Key::PageUp | Key::PageDown | Key::Escape | Key::Enter
-            ) || (modifiers.command && matches!(key, Key::Z | Key::Y | Key::A | Key::D | Key::K));
+                Key::ArrowLeft
+                    | Key::ArrowRight
+                    | Key::ArrowUp
+                    | Key::ArrowDown
+                    | Key::Home
+                    | Key::End
+                    | Key::PageUp
+                    | Key::PageDown
+                    | Key::Escape
+                    | Key::Enter
+            ) || (modifiers.command
+                && matches!(key, Key::Z | Key::Y | Key::A | Key::D | Key::K));
             if ends {
                 doc.view.block = None;
                 if *key == Key::Escape {
@@ -1386,22 +2069,53 @@ fn handle_block_event(ui: &mut Ui, doc: &mut Document, ev: &Event) -> bool {
 /// systems): make or grow a column block from the keyboard.
 fn block_key(doc: &mut Document, ev: &Event, wrap: Option<usize>) -> bool {
     use bigtext::text::rows;
-    let Event::Key { key, pressed: true, modifiers: m, .. } = ev else { return false };
-    if !(m.alt && m.shift) || wrap.is_some() || !matches!(key, Key::ArrowLeft | Key::ArrowRight | Key::ArrowUp | Key::ArrowDown | Key::Home | Key::End | Key::PageUp | Key::PageDown) {
+    let Event::Key {
+        key,
+        pressed: true,
+        modifiers: m,
+        ..
+    } = ev
+    else {
+        return false;
+    };
+    if !(m.alt && m.shift)
+        || wrap.is_some()
+        || !matches!(
+            key,
+            Key::ArrowLeft
+                | Key::ArrowRight
+                | Key::ArrowUp
+                | Key::ArrowDown
+                | Key::Home
+                | Key::End
+                | Key::PageUp
+                | Key::PageDown
+        )
+    {
         return false;
     }
     let buf = &doc.buf;
     let mut b = match doc.view.block {
         Some(b) => b,
         None => {
-            let Ok(row) = rows::row_at(buf, doc.view.caret, None) else { return true };
-            let Ok(cell) = rows::cell_of_offset(buf, &row, doc.view.caret) else { return true };
+            let Ok(row) = rows::row_at(buf, doc.view.caret, None) else {
+                return true;
+            };
+            let Ok(cell) = rows::cell_of_offset(buf, &row, doc.view.caret) else {
+                return true;
+            };
             crate::view::block::Block::at(row.start, cell)
         }
     };
-    let Ok(row) = rows::row_at(buf, b.caret, None) else { return true };
+    let Ok(row) = rows::row_at(buf, b.caret, None) else {
+        return true;
+    };
     let page = doc.view.rows_on_screen.saturating_sub(1).max(1) as i64;
-    let to_row = |n: i64| rows::step_rows(buf, row, n, None).map(|r| r.start).unwrap_or(row.start);
+    let to_row = |n: i64| {
+        rows::step_rows(buf, row, n, None)
+            .map(|r| r.start)
+            .unwrap_or(row.start)
+    };
     match key {
         Key::ArrowLeft => b.caret_cell = b.caret_cell.saturating_sub(1),
         Key::ArrowRight => b.caret_cell += 1,
@@ -1409,8 +2123,16 @@ fn block_key(doc: &mut Document, ev: &Event, wrap: Option<usize>) -> bool {
         Key::ArrowDown => b.caret = to_row(1),
         Key::PageUp => b.caret = to_row(-page),
         Key::PageDown => b.caret = to_row(page),
-        Key::Home if m.command => b.caret = rows::row_at(buf, doc.min_caret(), None).map(|r| r.start).unwrap_or(0),
-        Key::End if m.command => b.caret = rows::row_at(buf, buf.len(), None).map(|r| r.start).unwrap_or(b.caret),
+        Key::Home if m.command => {
+            b.caret = rows::row_at(buf, doc.min_caret(), None)
+                .map(|r| r.start)
+                .unwrap_or(0)
+        }
+        Key::End if m.command => {
+            b.caret = rows::row_at(buf, buf.len(), None)
+                .map(|r| r.start)
+                .unwrap_or(b.caret)
+        }
         Key::Home => b.caret_cell = 0,
         _ => b.caret_cell = rows::cell_of_offset(buf, &row, row.end).unwrap_or(b.caret_cell),
     }
@@ -1430,26 +2152,53 @@ fn handle_keys(ui: &mut Ui, doc: &mut Document, wrap: Option<usize>, env: &mut V
     let events = ui.input(|i| i.events.clone());
     for ev in events {
         match &ev {
-            Event::Ime(egui::ImeEvent::Preedit { text, active_range_chars }) => {
+            Event::Ime(egui::ImeEvent::Preedit {
+                text,
+                active_range_chars,
+            }) => {
                 let shown = doc.editable() && !text.is_empty();
-                doc.view.preedit = if shown { Preedit { text: text.clone(), cursor: active_range_chars.as_ref().map(|r| r.end), at: doc.view.caret } } else { Preedit::default() };
+                doc.view.preedit = if shown {
+                    Preedit {
+                        text: text.clone(),
+                        cursor: active_range_chars.as_ref().map(|r| r.end),
+                        at: doc.view.caret,
+                    }
+                } else {
+                    Preedit::default()
+                };
                 continue;
             }
             Event::Ime(egui::ImeEvent::Commit(_)) => doc.view.preedit = Preedit::default(),
             _ => {}
         }
-        if block_key(doc, &ev, wrap) || handle_block_event(ui, doc, &ev) || crate::view::multi::handle_event(ui, doc, &ev, wrap) {
+        if block_key(doc, &ev, wrap)
+            || handle_block_event(ui, doc, &ev)
+            || crate::view::multi::handle_event(ui, doc, &ev, wrap)
+        {
             continue;
         }
         match ev {
             Event::Text(t) => {
-                if doc.editable() && !t.chars().all(|c| c.is_control()) && !super::pairs::typed(doc, &t, env.lang) {
+                if doc.editable()
+                    && !t.chars().all(|c| c.is_control())
+                    && !super::pairs::typed(doc, &t, env.lang)
+                {
                     doc.insert_text(&t);
                 }
             }
             // Brackets and quotes in code: an empty pair goes at once, Enter opens a block.
-            Event::Key { key: Key::Backspace, pressed: true, modifiers, .. } if modifiers.is_none() && super::pairs::backspace(doc, env.lang) => {}
-            Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if modifiers.is_none() && {
+            Event::Key {
+                key: Key::Backspace,
+                pressed: true,
+                modifiers,
+                ..
+            } if modifiers.is_none() && super::pairs::backspace(doc, env.lang) => {}
+            Event::Key {
+                key: Key::Enter,
+                pressed: true,
+                modifiers,
+                ..
+            } if modifiers.is_none() && {
                 let unit = " ".repeat(doc.view.indent_unit.map_or(4, |u| u.1 as usize));
                 super::pairs::enter(doc, env.lang, &unit)
             } => {}
@@ -1469,8 +2218,17 @@ fn handle_keys(ui: &mut Ui, doc: &mut Document, wrap: Option<usize>, env: &mut V
                     paste(doc, &s);
                 }
             }
-            Event::Key { key: Key::Escape, pressed: true, .. } if !doc.has_selection() => env.actions.push(ViewAction::Escape),
-            Event::Key { key, pressed: true, modifiers, .. } => handle_key(doc, key, modifiers, wrap),
+            Event::Key {
+                key: Key::Escape,
+                pressed: true,
+                ..
+            } if !doc.has_selection() => env.actions.push(ViewAction::Escape),
+            Event::Key {
+                key,
+                pressed: true,
+                modifiers,
+                ..
+            } => handle_key(doc, key, modifiers, wrap),
             _ => {}
         }
     }
@@ -1508,7 +2266,9 @@ pub fn paste(doc: &mut Document, s: &str) {
 
 fn move_horizontal(doc: &Document, wrap: Option<usize>, right: bool, word: bool) -> u64 {
     let c = doc.view.caret;
-    let Ok(row) = rows::row_at(&doc.buf, c, wrap) else { return c };
+    let Ok(row) = rows::row_at(&doc.buf, c, wrap) else {
+        return c;
+    };
     if right {
         if c >= row.seg.content_end && row.is_last_in_seg() {
             return row.seg.next.min(doc.buf.len()).max(c);
@@ -1531,8 +2291,14 @@ fn move_horizontal(doc: &Document, wrap: Option<usize>, right: bool, word: bool)
 }
 
 fn word_boundary(doc: &Document, c: u64, limit: u64, right: bool) -> u64 {
-    let (lo, hi) = if right { (c, limit.min(c + 4096)) } else { (limit.max(c.saturating_sub(4096)), c) };
-    let Some(bytes) = doc.buf.read(lo..hi) else { return c };
+    let (lo, hi) = if right {
+        (c, limit.min(c + 4096))
+    } else {
+        (limit.max(c.saturating_sub(4096)), c)
+    };
+    let Some(bytes) = doc.buf.read(lo..hi) else {
+        return c;
+    };
     let mut chars: Vec<(u64, char)> = Vec::new();
     rows::for_each_cell(&doc.buf.codec, &bytes, lo, |x| {
         chars.push((x.off, x.ch));
@@ -1561,12 +2327,16 @@ fn word_boundary(doc: &Document, c: u64, limit: u64, right: bool) -> u64 {
 
 fn move_vertical(doc: &mut Document, n: i64, extend: bool, wrap: Option<usize>) {
     let c = doc.view.caret;
-    let Ok(row) = rows::row_at(&doc.buf, c, wrap) else { return };
+    let Ok(row) = rows::row_at(&doc.buf, c, wrap) else {
+        return;
+    };
     let cell = match doc.view.desired_cell {
         Some(x) => x,
         None => rows::cell_of_offset(&doc.buf, &row, c).unwrap_or(0),
     };
-    let Ok(target) = super::folds::step_rows(&doc.buf, row, n, wrap, &doc.view.folds) else { return };
+    let Ok(target) = super::folds::step_rows(&doc.buf, row, n, wrap, &doc.view.folds) else {
+        return;
+    };
     let off = if target.start == row.start {
         if n < 0 {
             row.start
@@ -1590,7 +2360,9 @@ fn move_vertical(doc: &mut Document, n: i64, extend: bool, wrap: Option<usize>) 
 
 fn smart_home(doc: &Document, wrap: Option<usize>) -> u64 {
     let c = doc.view.caret;
-    let Ok(row) = rows::row_at(&doc.buf, c, wrap) else { return c };
+    let Ok(row) = rows::row_at(&doc.buf, c, wrap) else {
+        return c;
+    };
     let mut first = row.start;
     if let Some(bytes) = doc.buf.read(row.start..row.end.min(row.start + 4096)) {
         rows::for_each_cell(&doc.buf.codec, &bytes, row.start, |x| {
@@ -1631,7 +2403,11 @@ fn handle_key(doc: &mut Document, key: Key, m: Modifiers, wrap: Option<usize>) {
         Key::PageUp => move_vertical(doc, -page, shift, wrap),
         Key::PageDown => move_vertical(doc, page, shift, wrap),
         Key::Home => {
-            let c = if cmd { doc.min_caret() } else { smart_home(doc, wrap) };
+            let c = if cmd {
+                doc.min_caret()
+            } else {
+                smart_home(doc, wrap)
+            };
             doc.set_caret(c, shift);
             doc.view.desired_cell = None;
         }
@@ -1639,7 +2415,9 @@ fn handle_key(doc: &mut Document, key: Key, m: Modifiers, wrap: Option<usize>) {
             let c = if cmd {
                 doc.buf.len()
             } else {
-                rows::row_at(&doc.buf, doc.view.caret, wrap).map(|r| r.end).unwrap_or(doc.view.caret)
+                rows::row_at(&doc.buf, doc.view.caret, wrap)
+                    .map(|r| r.end)
+                    .unwrap_or(doc.view.caret)
             };
             doc.set_caret(c, shift);
             doc.view.desired_cell = None;
@@ -1686,13 +2464,20 @@ fn handle_key(doc: &mut Document, key: Key, m: Modifiers, wrap: Option<usize>) {
     }
 }
 
-fn ensure_caret_visible(doc: &mut Document, wrap: Option<usize>, center: bool, m: Metrics, text_w: f32) -> Result<(), Pending> {
+fn ensure_caret_visible(
+    doc: &mut Document,
+    wrap: Option<usize>,
+    center: bool,
+    m: Metrics,
+    text_w: f32,
+) -> Result<(), Pending> {
     let n = doc.view.rows_on_screen.max(1);
     let buf = &doc.buf;
     let crow = rows::row_at(buf, doc.view.caret, wrap)?;
     let top_row = rows::row_at(buf, doc.view.top, wrap)?;
     if center {
-        doc.view.top = super::folds::step_rows(buf, crow, -((n / 2) as i64), wrap, &doc.view.folds)?.start;
+        doc.view.top =
+            super::folds::step_rows(buf, crow, -((n / 2) as i64), wrap, &doc.view.folds)?.start;
     } else if crow.start < top_row.start {
         doc.view.top = crow.start;
     } else {
@@ -1711,7 +2496,8 @@ fn ensure_caret_visible(doc: &mut Document, wrap: Option<usize>, center: bool, m
             }
         }
         if !visible {
-            doc.view.top = super::folds::step_rows(buf, crow, -((n as i64) - 1), wrap, &doc.view.folds)?.start;
+            doc.view.top =
+                super::folds::step_rows(buf, crow, -((n as i64) - 1), wrap, &doc.view.folds)?.start;
         }
     }
     if h_scroll(&doc.view) {

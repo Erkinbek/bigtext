@@ -42,8 +42,16 @@ impl FollowSummary {
         if let (Some(a), Some(b)) = (self.first, self.last) {
             parts.push(trf("first {time}", &[("time", &key(a))]));
             parts.push(trf("last {time}", &[("time", &key(b))]));
-            let ms = if a.tz.is_some() && b.tz.is_some() { b.utc_ms() - a.utc_ms() } else { b.ms - a.ms };
-            parts.push(timestamp::format_delta(ms).trim_start_matches('+').to_string());
+            let ms = if a.tz.is_some() && b.tz.is_some() {
+                b.utc_ms() - a.utc_ms()
+            } else {
+                b.ms - a.ms
+            };
+            parts.push(
+                timestamp::format_delta(ms)
+                    .trim_start_matches('+')
+                    .to_string(),
+            );
         }
         parts.push(match self.errors {
             0 => tr("no errors").to_string(),
@@ -56,7 +64,11 @@ impl FollowSummary {
 impl BigTextApp {
     /// The keys whose values are ids (Search → Id patterns…).
     fn id_finder(&mut self) -> Arc<IdFinder> {
-        let keys = self.settings.id_keys.clone().unwrap_or_else(|| DEFAULT_KEYS.iter().map(|k| k.to_string()).collect());
+        let keys = self
+            .settings
+            .id_keys
+            .clone()
+            .unwrap_or_else(|| DEFAULT_KEYS.iter().map(|k| k.to_string()).collect());
         if let Some((k, f)) = &self.ids.finder {
             if *k == keys {
                 return f.clone();
@@ -71,18 +83,27 @@ impl BigTextApp {
     /// The ids on the caret's line (cached while the caret stays on it).
     pub(crate) fn caret_ids(&mut self) -> Vec<FoundId> {
         let finder = self.id_finder();
-        let Some(d) = self.docs.get(self.active) else { return Vec::new() };
+        let Some(d) = self.docs.get(self.active) else {
+            return Vec::new();
+        };
         if !d.is_ready() || d.hex {
             return Vec::new();
         }
-        let Some((ls, le, _)) = d.line_bounds(d.view.caret, 64 * 1024) else { return Vec::new() };
+        let Some((ls, le, _)) = d.line_bounds(d.view.caret, 64 * 1024) else {
+            return Vec::new();
+        };
         let key = (d.id, d.version, ls);
         if let Some((k, v)) = &self.ids.cache {
             if *k == key {
                 return v.clone();
             }
         }
-        let Some(b) = d.buf.read(ls.max(d.buf.codec.bom_len as u64)..le.min(ls + LINE_MAX)) else { return Vec::new() };
+        let Some(b) = d
+            .buf
+            .read(ls.max(d.buf.codec.bom_len as u64)..le.min(ls + LINE_MAX))
+        else {
+            return Vec::new();
+        };
         let ids = finder.find(&d.buf.codec.decode_lossy(&b), CHIPS);
         self.ids.cache = Some((key, ids.clone()));
         ids
@@ -90,12 +111,20 @@ impl BigTextApp {
 
     /// Filters the active document to the lines with `id` (whole log entries).
     pub(crate) fn follow_id(&mut self, id: &str) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         if !d.is_ready() || id.is_empty() {
             return;
         }
         let word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_');
-        let q = Query { pattern: id.to_string(), regex: false, case_sensitive: true, whole_word: word(id.chars().next()) && word(id.chars().last()), dot_all: false };
+        let q = Query {
+            pattern: id.to_string(),
+            regex: false,
+            case_sensitive: true,
+            whole_word: word(id.chars().next()) && word(id.chars().last()),
+            dot_all: false,
+        };
         let m = match Matcher::new(&q, d.buf.codec) {
             Ok(m) => Arc::new(m),
             Err(e) => {
@@ -106,14 +135,27 @@ impl BigTextApp {
         self.search.query = q.clone();
         self.search.invert = false;
         self.search.remember();
-        let spec = FilterSpec { entries: true, ..Default::default() };
-        let req = super::filter_panel::FilterRequest { query: q, m, spec, levels: None, follow: Some(id.to_string()), terms: Vec::new(), json: None };
+        let spec = FilterSpec {
+            entries: true,
+            ..Default::default()
+        };
+        let req = super::filter_panel::FilterRequest {
+            query: q,
+            m,
+            spec,
+            levels: None,
+            follow: Some(id.to_string()),
+            terms: Vec::new(),
+            json: None,
+        };
         self.run_filter_req(req, None);
     }
 
     /// Follows the selected text, or else the first id on the caret's line.
     pub(crate) fn follow_id_at_caret(&mut self) {
-        let Some(d) = self.docs.get(self.active) else { return };
+        let Some(d) = self.docs.get(self.active) else {
+            return;
+        };
         let (a, b) = d.selection();
         if b > a && b - a <= 256 {
             if let Some(t) = d.buf.read(a..b).map(|x| d.buf.codec.decode_lossy(&x)) {
@@ -127,13 +169,19 @@ impl BigTextApp {
         }
         match self.caret_ids().into_iter().next() {
             Some(f) => self.follow_id(&f.value),
-            None => self.notify(tr("No id on this line (select one, or add its key in Search → Id patterns…)").into(), None),
+            None => self.notify(
+                tr("No id on this line (select one, or add its key in Search → Id patterns…)")
+                    .into(),
+                None,
+            ),
         }
     }
 
     /// Search → Id patterns…: the keys whose values are ids, one per line.
     pub(super) fn id_patterns_window(&mut self, ctx: &egui::Context) {
-        let Some(text) = self.ids.editor.as_mut() else { return };
+        let Some(text) = self.ids.editor.as_mut() else {
+            return;
+        };
         let mut open = true;
         let (mut apply, mut reset) = (false, false);
         egui::Window::new(tr("Id patterns")).open(&mut open).collapsible(false).resizable(true).default_width(320.0).show(ctx, |ui| {
@@ -150,7 +198,12 @@ impl BigTextApp {
             *text = DEFAULT_KEYS.join("\n");
         }
         if apply {
-            let keys: Vec<String> = text.lines().map(str::trim).filter(|k| !k.is_empty() && !k.contains(',')).map(String::from).collect();
+            let keys: Vec<String> = text
+                .lines()
+                .map(str::trim)
+                .filter(|k| !k.is_empty() && !k.contains(','))
+                .map(String::from)
+                .collect();
             let defaults: Vec<String> = DEFAULT_KEYS.iter().map(|k| k.to_string()).collect();
             self.settings.id_keys = (keys != defaults).then_some(keys);
             self.persist_state();
@@ -162,7 +215,11 @@ impl BigTextApp {
     }
 
     pub(crate) fn open_id_patterns(&mut self) {
-        let keys = self.settings.id_keys.clone().unwrap_or_else(|| DEFAULT_KEYS.iter().map(|k| k.to_string()).collect());
+        let keys = self
+            .settings
+            .id_keys
+            .clone()
+            .unwrap_or_else(|| DEFAULT_KEYS.iter().map(|k| k.to_string()).collect());
         self.ids.editor = Some(keys.join("\n"));
     }
 }
@@ -171,8 +228,17 @@ impl BigTextApp {
 pub(super) fn id_chips(ui: &mut egui::Ui, ids: &[FoundId]) -> Option<String> {
     let mut clicked = None;
     for f in ids {
-        let short: String = if f.value.chars().count() > 24 { f.value.chars().take(23).chain(['…']).collect() } else { f.value.clone() };
-        let resp = ui.small_button(format!("{}: {short}", f.key)).on_hover_text(trf("Follow {id}: show only its lines and log entries (Ctrl+Shift+I)", &[("id", &f.value)]));
+        let short: String = if f.value.chars().count() > 24 {
+            f.value.chars().take(23).chain(['…']).collect()
+        } else {
+            f.value.clone()
+        };
+        let resp = ui
+            .small_button(format!("{}: {short}", f.key))
+            .on_hover_text(trf(
+                "Follow {id}: show only its lines and log entries (Ctrl+Shift+I)",
+                &[("id", &f.value)],
+            ));
         if resp.clicked() {
             clicked = Some(f.value.clone());
         }

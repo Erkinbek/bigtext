@@ -112,7 +112,10 @@ impl LineIndex {
     pub fn avg_line_len(&self) -> f64 {
         let (bytes, lines) = {
             let cp = self.cp.read().unwrap();
-            (((cp.len() as u64 - 1) * BLOCK).min(self.len), *cp.last().unwrap())
+            (
+                ((cp.len() as u64 - 1) * BLOCK).min(self.len),
+                *cp.last().unwrap(),
+            )
         };
         if bytes == 0 {
             80.0
@@ -140,7 +143,13 @@ impl LineIndex {
     }
 
     /// Estimated newlines in `[0, off)` (exact when indexed).
-    pub fn nl_before_est(&self, src: &Source, codec: &Codec, blocking: bool, off: u64) -> (u64, bool) {
+    pub fn nl_before_est(
+        &self,
+        src: &Source,
+        codec: &Codec,
+        blocking: bool,
+        off: u64,
+    ) -> (u64, bool) {
         if let Some(n) = self.nl_before(src, codec, blocking, off) {
             return (n, true);
         }
@@ -152,7 +161,13 @@ impl LineIndex {
 
     /// Exact start offset of 0-based `line`, if the index covers it. `None` also when the line
     /// does not exist (beyond the last line of a fully indexed file).
-    pub fn line_start(&self, src: &Source, codec: &Codec, blocking: bool, line: u64) -> Option<u64> {
+    pub fn line_start(
+        &self,
+        src: &Source,
+        codec: &Codec,
+        blocking: bool,
+        line: u64,
+    ) -> Option<u64> {
         if line == 0 {
             return Some(0);
         }
@@ -173,7 +188,13 @@ impl LineIndex {
 
     /// Start offset of `line`: exact if indexed, otherwise an estimate (not necessarily a line
     /// start; callers snap it).
-    pub fn line_start_est(&self, src: &Source, codec: &Codec, blocking: bool, line: u64) -> (u64, bool) {
+    pub fn line_start_est(
+        &self,
+        src: &Source,
+        codec: &Codec,
+        blocking: bool,
+        line: u64,
+    ) -> (u64, bool) {
         if let Some(off) = self.line_start(src, codec, blocking, line) {
             return (off, true);
         }
@@ -244,7 +265,13 @@ pub fn spawn_indexer(
 /// Indexes synchronously (tests and benchmarks).
 pub fn build_blocking(src: &Arc<Source>, codec: Codec) -> Arc<LineIndex> {
     let index = LineIndex::new(src.len());
-    let h = spawn_indexer(src.clone(), codec, index.clone(), CancelToken::new(), jobs::noop_waker());
+    let h = spawn_indexer(
+        src.clone(),
+        codec,
+        index.clone(),
+        CancelToken::new(),
+        jobs::noop_waker(),
+    );
     let _ = h.join();
     index
 }
@@ -300,10 +327,17 @@ mod tests {
         let starts = naive_line_starts(&data);
         assert_eq!(idx.total_lines(), Some(starts.len() as u64));
         for (line, &s) in starts.iter().enumerate().step_by(97) {
-            assert_eq!(idx.line_start(&src, &codec, true, line as u64), Some(s), "line {line}");
+            assert_eq!(
+                idx.line_start(&src, &codec, true, line as u64),
+                Some(s),
+                "line {line}"
+            );
             assert_eq!(idx.nl_before(&src, &codec, true, s), Some(line as u64));
         }
-        assert_eq!(idx.line_start(&src, &codec, true, starts.len() as u64), None);
+        assert_eq!(
+            idx.line_start(&src, &codec, true, starts.len() as u64),
+            None
+        );
         assert!(idx.memory_bytes() < 1024);
     }
 
@@ -318,7 +352,9 @@ mod tests {
         assert_eq!(idx.total_lines(), Some(20_001));
         let off = idx.line_start(&src, &codec, true, 12_345).unwrap();
         let line_bytes = src.read(off..off + 40).unwrap();
-        assert!(codec.decode_lossy(&line_bytes).starts_with("строка 12345\n"));
+        assert!(codec
+            .decode_lossy(&line_bytes)
+            .starts_with("строка 12345\n"));
     }
 
     #[test]
@@ -340,6 +376,9 @@ mod tests {
         let (est, exact) = idx.line_start_est(&src, &Codec::utf8(), true, 50_000);
         assert!(!exact);
         let real = 50_000u64 * 11;
-        assert!((est as i64 - real as i64).abs() < 1000, "estimate {est} vs {real}");
+        assert!(
+            (est as i64 - real as i64).abs() < 1000,
+            "estimate {est} vs {real}"
+        );
     }
 }

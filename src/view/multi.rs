@@ -19,7 +19,10 @@ pub enum MultiEdit {
 /// Every selection as (start, end, primary), in text order, with overlapping ones merged.
 pub fn selections(doc: &Document) -> Vec<(u64, u64, bool)> {
     let v = &doc.view;
-    let mut all: Vec<(u64, u64, bool)> = std::iter::once((v.anchor, v.caret, true)).chain(v.extra.iter().map(|&(a, c)| (a, c, false))).map(|(a, c, p)| (a.min(c), a.max(c), p)).collect();
+    let mut all: Vec<(u64, u64, bool)> = std::iter::once((v.anchor, v.caret, true))
+        .chain(v.extra.iter().map(|&(a, c)| (a, c, false)))
+        .map(|(a, c, p)| (a.min(c), a.max(c), p))
+        .collect();
     all.sort_by_key(|x| (x.0, x.1));
     let mut out: Vec<(u64, u64, bool)> = Vec::with_capacity(all.len());
     for (s, e, p) in all {
@@ -45,7 +48,9 @@ fn set_cursors(doc: &mut Document, cursors: Vec<(u64, u64, bool)>) {
             extra.push((a, c));
         }
     }
-    let (a, c) = primary.or_else(|| extra.pop()).unwrap_or((doc.view.anchor, doc.view.caret));
+    let (a, c) = primary
+        .or_else(|| extra.pop())
+        .unwrap_or((doc.view.anchor, doc.view.caret));
     doc.view.anchor = a;
     doc.view.caret = c;
     doc.view.extra = extra;
@@ -55,7 +60,10 @@ fn set_cursors(doc: &mut Document, cursors: Vec<(u64, u64, bool)>) {
 /// Adds a cursor (or selection), keeping the current one as an extra cursor.
 pub fn add_cursor(doc: &mut Document, anchor: u64, caret: u64) {
     let len = doc.buf.len();
-    let (anchor, caret) = (anchor.clamp(doc.min_caret(), len), caret.clamp(doc.min_caret(), len));
+    let (anchor, caret) = (
+        anchor.clamp(doc.min_caret(), len),
+        caret.clamp(doc.min_caret(), len),
+    );
     if doc.view.extra.is_empty() {
         doc.view.extra_version = doc.version;
     }
@@ -115,11 +123,16 @@ pub fn edit_all(doc: &mut Document, e: MultiEdit) -> bool {
 
 /// Moves every cursor with `f(anchor, caret) -> (anchor, caret)`.
 fn move_all(doc: &mut Document, f: impl Fn(&Document, u64, u64) -> (u64, u64)) {
-    let v: Vec<(u64, u64, bool)> = std::iter::once((doc.view.anchor, doc.view.caret, true)).chain(doc.view.extra.iter().map(|&(a, c)| (a, c, false))).collect();
-    let moved: Vec<(u64, u64, bool)> = v.into_iter().map(|(a, c, p)| {
-        let (a, c) = f(doc, a, c);
-        (a, c, p)
-    }).collect();
+    let v: Vec<(u64, u64, bool)> = std::iter::once((doc.view.anchor, doc.view.caret, true))
+        .chain(doc.view.extra.iter().map(|&(a, c)| (a, c, false)))
+        .collect();
+    let moved: Vec<(u64, u64, bool)> = v
+        .into_iter()
+        .map(|(a, c, p)| {
+            let (a, c) = f(doc, a, c);
+            (a, c, p)
+        })
+        .collect();
     // Cursors that meet become one.
     let mut out: Vec<(u64, u64, bool)> = Vec::with_capacity(moved.len());
     for m in moved {
@@ -134,7 +147,11 @@ fn move_all(doc: &mut Document, f: impl Fn(&Document, u64, u64) -> (u64, u64)) {
 
 /// The selected texts, top to bottom, one per line.
 fn selected_text(doc: &Document) -> String {
-    let eol = if doc.line_ending == bigtext::encoding::LineEnding::CrLf { "\r\n" } else { "\n" };
+    let eol = if doc.line_ending == bigtext::encoding::LineEnding::CrLf {
+        "\r\n"
+    } else {
+        "\n"
+    };
     selections(doc)
         .into_iter()
         .filter(|(s, e, _)| e > s && e - s <= 1 << 20)
@@ -158,7 +175,11 @@ pub fn handle_event(ui: &Ui, doc: &mut Document, ev: &Event, wrap: Option<usize>
         Event::Paste(s) => {
             let lines: Vec<String> = s.lines().map(str::to_string).collect();
             let n = selections(doc).len();
-            let e = if n > 1 && lines.len() == n { MultiEdit::PerCursor(lines) } else { MultiEdit::Insert(s.clone()) };
+            let e = if n > 1 && lines.len() == n {
+                MultiEdit::PerCursor(lines)
+            } else {
+                MultiEdit::Insert(s.clone())
+            };
             edit_all(doc, e);
         }
         Event::Copy | Event::Cut => {
@@ -167,7 +188,12 @@ pub fn handle_event(ui: &Ui, doc: &mut Document, ev: &Event, wrap: Option<usize>
                 edit_all(doc, MultiEdit::Insert(String::new()));
             }
         }
-        Event::Key { key, pressed: true, modifiers: m, .. } => {
+        Event::Key {
+            key,
+            pressed: true,
+            modifiers: m,
+            ..
+        } => {
             let (shift, cmd) = (m.shift, m.command);
             match key {
                 Key::Backspace if !cmd => {
@@ -177,7 +203,10 @@ pub fn handle_event(ui: &Ui, doc: &mut Document, ev: &Event, wrap: Option<usize>
                     edit_all(doc, MultiEdit::Delete);
                 }
                 Key::Enter => {
-                    let nl = doc.buf.codec.decode_lossy(&doc.buf.codec.line_break(doc.line_ending));
+                    let nl = doc
+                        .buf
+                        .codec
+                        .decode_lossy(&doc.buf.codec.line_break(doc.line_ending));
                     edit_all(doc, MultiEdit::Insert(nl));
                 }
                 Key::Tab if !shift && !cmd => {
@@ -190,7 +219,11 @@ pub fn handle_event(ui: &Ui, doc: &mut Document, ev: &Event, wrap: Option<usize>
                             let p = if right { a.max(c) } else { a.min(c) };
                             return (p, p);
                         }
-                        let n = if right { rows::next_stop(&d.buf, c) } else { rows::prev_stop(&d.buf, c).max(d.min_caret()) };
+                        let n = if right {
+                            rows::next_stop(&d.buf, c)
+                        } else {
+                            rows::prev_stop(&d.buf, c).max(d.min_caret())
+                        };
                         (if shift { a } else { n }, n)
                     });
                 }
@@ -228,7 +261,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("t.txt");
         std::fs::write(&path, text).unwrap();
-        let src = std::sync::Arc::new(bigtext::file::Source::open(&path, bigtext::file::OpenMode::Auto).unwrap());
+        let src = std::sync::Arc::new(
+            bigtext::file::Source::open(&path, bigtext::file::OpenMode::Auto).unwrap(),
+        );
         let det = bigtext::encoding::detect(&src.read(0..src.len()).unwrap(), true);
         let mut d = Document::loading(1, path);
         d.install(src, det, None, bigtext::jobs::noop_waker());
@@ -248,7 +283,10 @@ mod tests {
         add_cursor(&mut d, 15, 15);
         assert!(edit_all(&mut d, MultiEdit::Insert("!".into())));
         assert_eq!(text(&d), "foo! x foo! y foo!\n");
-        assert_eq!(selections(&d).iter().map(|x| x.0).collect::<Vec<_>>(), vec![4, 11, 18]);
+        assert_eq!(
+            selections(&d).iter().map(|x| x.0).collect::<Vec<_>>(),
+            vec![4, 11, 18]
+        );
         assert!(edit_all(&mut d, MultiEdit::Backspace));
         assert!(edit_all(&mut d, MultiEdit::Backspace));
         assert_eq!(text(&d), "fo x fo y fo\n");
@@ -267,7 +305,10 @@ mod tests {
         add_cursor(&mut d, 6, 8);
         add_cursor(&mut d, 6, 8);
         assert_eq!(selections(&d).len(), 2);
-        assert!(edit_all(&mut d, MultiEdit::PerCursor(vec!["1".into(), "2".into()])));
+        assert!(edit_all(
+            &mut d,
+            MultiEdit::PerCursor(vec!["1".into(), "2".into()])
+        ));
         assert_eq!(text(&d), "1 bb 2 bb\n");
         assert!(edit_all(&mut d, MultiEdit::Delete));
         assert_eq!(text(&d), "1bb 2bb\n");

@@ -53,7 +53,10 @@ impl Kind {
     fn decoder<'a, R: BufRead + 'a>(self, input: R) -> io::Result<Box<dyn Read + 'a>> {
         Ok(match self {
             Kind::Gzip => Box::new(flate2::bufread::MultiGzDecoder::new(input)),
-            Kind::Zstd => Box::new(ZstdFrames { input: Some(input), frame: None }),
+            Kind::Zstd => Box::new(ZstdFrames {
+                input: Some(input),
+                frame: None,
+            }),
             // Dictionaries up to 1 GB (xz -9 uses 64 MB).
             Kind::Xz => Box::new(lzma_rust2::XzReader::new_mem_limit(input, true, 1 << 20)),
             Kind::Bzip2 => Box::new(bzip2::bufread::MultiBzDecoder::new(input)),
@@ -79,17 +82,28 @@ impl<R: BufRead> Read for ZstdFrames<R> {
                 // The frame is done: take the input back for the next one.
                 self.input = self.frame.take().map(|f| f.into_inner());
             }
-            let Some(mut input) = self.input.take() else { return Ok(0) };
+            let Some(mut input) = self.input.take() else {
+                return Ok(0);
+            };
             if input.fill_buf()?.is_empty() {
                 self.input = Some(input);
                 return Ok(0);
             }
-            self.frame = Some(ruzstd::decoding::StreamingDecoder::new(input).map_err(io::Error::other)?);
+            self.frame =
+                Some(ruzstd::decoding::StreamingDecoder::new(input).map_err(io::Error::other)?);
         }
     }
 }
 
-const EXTENSIONS: [(&str, Kind); 7] = [("gz", Kind::Gzip), ("gzip", Kind::Gzip), ("zst", Kind::Zstd), ("zstd", Kind::Zstd), ("xz", Kind::Xz), ("bz2", Kind::Bzip2), ("bzip2", Kind::Bzip2)];
+const EXTENSIONS: [(&str, Kind); 7] = [
+    ("gz", Kind::Gzip),
+    ("gzip", Kind::Gzip),
+    ("zst", Kind::Zstd),
+    ("zstd", Kind::Zstd),
+    ("xz", Kind::Xz),
+    ("bz2", Kind::Bzip2),
+    ("bzip2", Kind::Bzip2),
+];
 
 fn head(path: &Path, n: usize) -> Option<Vec<u8>> {
     let mut b = vec![0u8; n];
@@ -119,7 +133,9 @@ pub fn detect(path: &Path) -> Option<Kind> {
 
 /// The name of the unpacked file: `app.log.gz` → `app.log`.
 pub fn inner_name(path: &Path) -> String {
-    path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "unpacked".into())
+    path.file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "unpacked".into())
 }
 
 /// A file of files.
@@ -148,7 +164,8 @@ pub fn detect_archive(path: &Path) -> Option<Archive> {
     let name = path.file_name()?.to_string_lossy().to_ascii_lowercase();
     if name.ends_with(".zip") {
         let h = head(path, 4)?;
-        return (h.starts_with(b"PK\x03\x04") || h.starts_with(b"PK\x05\x06")).then_some(Archive::Zip);
+        return (h.starts_with(b"PK\x03\x04") || h.starts_with(b"PK\x05\x06"))
+            .then_some(Archive::Zip);
     }
     let kind = TARS.iter().find(|(s, _)| name.ends_with(s))?.1;
     match kind {
@@ -186,14 +203,28 @@ fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
 fn zip_time(t: zip::DateTime) -> Option<SystemTime> {
     let days = days_from_civil(t.year() as i64, t.month() as u32, t.day() as u32);
     let secs = days * 86_400 + t.hour() as i64 * 3600 + t.minute() as i64 * 60 + t.second() as i64;
-    u64::try_from(secs).ok().map(|s| UNIX_EPOCH + Duration::from_secs(s))
+    u64::try_from(secs)
+        .ok()
+        .map(|s| UNIX_EPOCH + Duration::from_secs(s))
 }
 
 /// The input of a tar archive, unpacked as it is read.
-fn tar_input<'a>(path: &Path, kind: Option<Kind>, cancel: &'a CancelToken, progress: &'a Progress) -> io::Result<Box<dyn Read + 'a>> {
+fn tar_input<'a>(
+    path: &Path,
+    kind: Option<Kind>,
+    cancel: &'a CancelToken,
+    progress: &'a Progress,
+) -> io::Result<Box<dyn Read + 'a>> {
     let file = File::open(path)?;
     progress.set_total(file.metadata()?.len());
-    let input = BufReader::with_capacity(1 << 20, Counting { inner: file, progress, cancel });
+    let input = BufReader::with_capacity(
+        1 << 20,
+        Counting {
+            inner: file,
+            progress,
+            cancel,
+        },
+    );
     match kind {
         None => Ok(Box::new(input)),
         Some(k) => k.decoder(input),
@@ -205,12 +236,18 @@ fn damaged(what: &str, e: impl std::fmt::Display) -> io::Error {
 }
 
 /// The regular files of an archive (at most [`MEMBERS_MAX`]). `None` when cancelled.
-pub fn list_members(path: &Path, archive: Archive, cancel: &CancelToken, progress: &Progress) -> io::Result<Option<Vec<Member>>> {
+pub fn list_members(
+    path: &Path,
+    archive: Archive,
+    cancel: &CancelToken,
+    progress: &Progress,
+) -> io::Result<Option<Vec<Member>>> {
     let mut out = Vec::new();
     let r = (|| -> io::Result<()> {
         match archive {
             Archive::Zip => {
-                let mut z = zip::ZipArchive::new(File::open(path)?).map_err(|e| damaged("zip", e))?;
+                let mut z =
+                    zip::ZipArchive::new(File::open(path)?).map_err(|e| damaged("zip", e))?;
                 progress.set_total(z.len() as u64);
                 for i in 0..z.len().min(MEMBERS_MAX) {
                     if cancel.is_cancelled() {
@@ -219,7 +256,11 @@ pub fn list_members(path: &Path, archive: Archive, cancel: &CancelToken, progres
                     let f = z.by_index_raw(i).map_err(|e| damaged("zip", e))?;
                     if f.is_file() {
                         let name = f.name().map_err(|e| damaged("zip", e))?.into_owned();
-                        out.push(Member { name, size: f.size(), modified: f.last_modified().and_then(zip_time) });
+                        out.push(Member {
+                            name,
+                            size: f.size(),
+                            modified: f.last_modified().and_then(zip_time),
+                        });
                     }
                     progress.set_done(i as u64 + 1);
                 }
@@ -231,7 +272,11 @@ pub fn list_members(path: &Path, archive: Archive, cancel: &CancelToken, progres
                     let h = e.header();
                     if h.entry_type().is_file() {
                         let name = e.path()?.to_string_lossy().into_owned();
-                        out.push(Member { name, size: e.size(), modified: h.mtime().ok().map(|s| UNIX_EPOCH + Duration::from_secs(s)) });
+                        out.push(Member {
+                            name,
+                            size: e.size(),
+                            modified: h.mtime().ok().map(|s| UNIX_EPOCH + Duration::from_secs(s)),
+                        });
                         if out.len() >= MEMBERS_MAX {
                             break;
                         }
@@ -250,8 +295,20 @@ pub fn list_members(path: &Path, archive: Archive, cancel: &CancelToken, progres
 
 /// The last part of a member's path, safe as a file name.
 pub fn member_file_name(member: &str) -> String {
-    let base = member.rsplit(['/', '\\']).find(|s| !s.is_empty()).unwrap_or("");
-    let clean: String = base.chars().map(|c| if c.is_control() || "<>:\"|?*".contains(c) { '_' } else { c }).collect();
+    let base = member
+        .rsplit(['/', '\\'])
+        .find(|s| !s.is_empty())
+        .unwrap_or("");
+    let clean: String = base
+        .chars()
+        .map(|c| {
+            if c.is_control() || "<>:\"|?*".contains(c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
     if clean.is_empty() || clean == "." || clean == ".." {
         "member".into()
     } else {
@@ -261,7 +318,13 @@ pub fn member_file_name(member: &str) -> String {
 
 /// Unpacks the archive's file `member` into a new temporary file: its path, or `None` when
 /// cancelled.
-pub fn unpack_member(path: &Path, archive: Archive, member: &str, cancel: &CancelToken, progress: &Progress) -> io::Result<Option<PathBuf>> {
+pub fn unpack_member(
+    path: &Path,
+    archive: Archive,
+    member: &str,
+    cancel: &CancelToken,
+    progress: &Progress,
+) -> io::Result<Option<PathBuf>> {
     let target = temp_file(&member_file_name(member));
     if let Some(dir) = target.parent() {
         fs::create_dir_all(dir)?;
@@ -270,10 +333,18 @@ pub fn unpack_member(path: &Path, archive: Archive, member: &str, cancel: &Cance
         let mut w = io::BufWriter::with_capacity(8 << 20, File::create(&target)?);
         let found = match archive {
             Archive::Zip => {
-                let mut z = zip::ZipArchive::new(File::open(path)?).map_err(|e| damaged("zip", e))?;
+                let mut z =
+                    zip::ZipArchive::new(File::open(path)?).map_err(|e| damaged("zip", e))?;
                 let f = z.by_name(member).map_err(|e| damaged("zip", e))?;
                 progress.set_total(f.size());
-                io::copy(&mut Counting { inner: f, progress, cancel }, &mut w)?;
+                io::copy(
+                    &mut Counting {
+                        inner: f,
+                        progress,
+                        cancel,
+                    },
+                    &mut w,
+                )?;
                 true
             }
             Archive::Tar(kind) => {
@@ -297,7 +368,10 @@ pub fn unpack_member(path: &Path, archive: Archive, member: &str, cancel: &Cance
         Ok(true) => Ok(Some(target)),
         Ok(false) => {
             remove_temp(&target);
-            Err(io::Error::new(io::ErrorKind::NotFound, format!("{member} is not in the archive")))
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("{member} is not in the archive"),
+            ))
         }
         Err(_) if cancel.is_cancelled() => {
             remove_temp(&target);
@@ -378,8 +452,13 @@ pub fn temp_path_for(path: &Path) -> PathBuf {
 /// A fresh path for a temporary file named `name`, in its own folder in [`temp_dir`] (which
 /// [`remove_temp`] deletes with it, and [`cleanup_old`] after a crash).
 pub fn temp_file(name: &str) -> PathBuf {
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-    temp_dir().join(format!("{}-{nanos:x}", std::process::id())).join(name)
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    temp_dir()
+        .join(format!("{}-{nanos:x}", std::process::id()))
+        .join(name)
 }
 
 /// Removes unpacked copies left behind (by a crash) more than two days ago. Files still open
@@ -391,9 +470,14 @@ pub fn cleanup_old() {
         folders.push(temp_dir());
     }
     for folder in folders {
-        let Ok(dirs) = fs::read_dir(folder) else { continue };
+        let Ok(dirs) = fs::read_dir(folder) else {
+            continue;
+        };
         for d in dirs.flatten() {
-            if d.metadata().and_then(|m| m.modified()).is_ok_and(|t| t < limit) {
+            if d.metadata()
+                .and_then(|m| m.modified())
+                .is_ok_and(|t| t < limit)
+            {
                 let _ = fs::remove_dir_all(d.path());
             }
         }
@@ -436,7 +520,10 @@ pub const ZSTD_FRAME: usize = 8 << 20;
 
 impl<W: Write> ZstdPacker<W> {
     fn frame(&mut self) -> io::Result<()> {
-        let packed = ruzstd::encoding::compress_to_vec(&self.buf[..], ruzstd::encoding::CompressionLevel::Fastest);
+        let packed = ruzstd::encoding::compress_to_vec(
+            &self.buf[..],
+            ruzstd::encoding::CompressionLevel::Fastest,
+        );
         self.inner.write_all(&packed)?;
         self.buf.clear();
         self.frames += 1;
@@ -473,10 +560,23 @@ impl<W: Write> Packer<W> {
     pub fn new(inner: W, kind: Option<Kind>) -> io::Result<Packer<W>> {
         Ok(match kind {
             None => Packer::Plain(inner),
-            Some(Kind::Gzip) => Packer::Gzip(flate2::write::GzEncoder::new(inner, flate2::Compression::default())),
-            Some(Kind::Zstd) => Packer::Zstd(ZstdPacker { inner, buf: Vec::new(), frames: 0 }),
-            Some(Kind::Xz) => Packer::Xz(Box::new(lzma_rust2::XzWriter::new(inner, lzma_rust2::XzOptions::with_preset(3))?)),
-            Some(Kind::Bzip2) => Packer::Bzip2(bzip2::write::BzEncoder::new(inner, bzip2::Compression::default())),
+            Some(Kind::Gzip) => Packer::Gzip(flate2::write::GzEncoder::new(
+                inner,
+                flate2::Compression::default(),
+            )),
+            Some(Kind::Zstd) => Packer::Zstd(ZstdPacker {
+                inner,
+                buf: Vec::new(),
+                frames: 0,
+            }),
+            Some(Kind::Xz) => Packer::Xz(Box::new(lzma_rust2::XzWriter::new(
+                inner,
+                lzma_rust2::XzOptions::with_preset(3),
+            )?)),
+            Some(Kind::Bzip2) => Packer::Bzip2(bzip2::write::BzEncoder::new(
+                inner,
+                bzip2::Compression::default(),
+            )),
         })
     }
 
@@ -530,7 +630,10 @@ impl<W: Write + Seek> Seek for Packer<W> {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         match self {
             Packer::Plain(w) => w.seek(pos),
-            _ => Err(io::Error::new(io::ErrorKind::Unsupported, "this kind of file cannot be written compressed")),
+            _ => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "this kind of file cannot be written compressed",
+            )),
         }
     }
 }
@@ -570,24 +673,48 @@ impl<W: Write> Write for Output<'_, W> {
 }
 
 /// Unpacks `src` into `out`. Returns the unpacked size, or `None` when cancelled.
-pub fn unpack_to<W: Write>(src: &Path, kind: Kind, out: &mut W, cancel: &CancelToken, progress: &Progress) -> io::Result<Option<u64>> {
+pub fn unpack_to<W: Write>(
+    src: &Path,
+    kind: Kind,
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: &Progress,
+) -> io::Result<Option<u64>> {
     let file = File::open(src)?;
     progress.set_total(file.metadata()?.len());
-    let input = BufReader::with_capacity(1 << 20, Counting { inner: file, progress, cancel });
-    let mut out = Output { inner: out, failed: false };
+    let input = BufReader::with_capacity(
+        1 << 20,
+        Counting {
+            inner: file,
+            progress,
+            cancel,
+        },
+    );
+    let mut out = Output {
+        inner: out,
+        failed: false,
+    };
     let out = &mut out;
     let r = kind.decoder(input).and_then(|mut d| io::copy(&mut d, out));
     match r {
         Ok(n) => Ok(Some(n)),
         Err(_) if cancel.is_cancelled() => Ok(None),
         Err(e) if out.failed => Err(e),
-        Err(e) => Err(io::Error::new(io::ErrorKind::InvalidData, format!("The {} data is damaged or incomplete ({e}).", kind.name()))),
+        Err(e) => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("The {} data is damaged or incomplete ({e}).", kind.name()),
+        )),
     }
 }
 
 /// Unpacks `src` into a new temporary file. Returns its path, or `None` when cancelled (the
 /// partial file is removed).
-pub fn unpack(src: &Path, kind: Kind, cancel: &CancelToken, progress: &Progress) -> io::Result<Option<PathBuf>> {
+pub fn unpack(
+    src: &Path,
+    kind: Kind,
+    cancel: &CancelToken,
+    progress: &Progress,
+) -> io::Result<Option<PathBuf>> {
     let target = temp_path_for(src);
     if let Some(dir) = target.parent() {
         fs::create_dir_all(dir)?;
@@ -617,7 +744,14 @@ pub const LIVE_READY: u64 = 1 << 20;
 /// Unpacks `src` into `target` like [`unpack`], calling `ready` once the first megabyte is
 /// written out, so the copy can be opened while the rest is unpacked. `Ok(None)` when cancelled;
 /// the caller removes `target`.
-pub fn unpack_live(src: &Path, kind: Kind, target: &Path, cancel: &CancelToken, progress: &Progress, ready: impl FnOnce()) -> io::Result<Option<u64>> {
+pub fn unpack_live(
+    src: &Path,
+    kind: Kind,
+    target: &Path,
+    cancel: &CancelToken,
+    progress: &Progress,
+    ready: impl FnOnce(),
+) -> io::Result<Option<u64>> {
     struct Live<W, F> {
         inner: W,
         written: u64,
@@ -643,7 +777,11 @@ pub fn unpack_live(src: &Path, kind: Kind, target: &Path, cancel: &CancelToken, 
         fs::create_dir_all(dir)?;
     }
     // A small buffer: what is unpacked shows up in the file soon.
-    let mut w = Live { inner: io::BufWriter::with_capacity(1 << 20, File::create(target)?), written: 0, ready: Some(ready) };
+    let mut w = Live {
+        inner: io::BufWriter::with_capacity(1 << 20, File::create(target)?),
+        written: 0,
+        ready: Some(ready),
+    };
     let n = unpack_to(src, kind, &mut w, cancel, progress)?;
     w.flush()?;
     Ok(n)
@@ -656,20 +794,41 @@ mod tests {
     #[test]
     fn live_unpacking_says_when_the_start_is_there() {
         let dir = tempfile::tempdir().unwrap();
-        let data: Vec<u8> = (0..300_000).flat_map(|i| format!("line {i}\n").into_bytes()).collect();
+        let data: Vec<u8> = (0..300_000)
+            .flat_map(|i| format!("line {i}\n").into_bytes())
+            .collect();
         let src = dir.path().join("a.log.gz");
         fs::write(&src, gz(&data)).unwrap();
         let target = dir.path().join("out").join("a.log");
         let mut seen = None;
-        let n = unpack_live(&src, Kind::Gzip, &target, &CancelToken::new(), &Progress::default(), || seen = Some(fs::metadata(&target).unwrap().len())).unwrap();
+        let n = unpack_live(
+            &src,
+            Kind::Gzip,
+            &target,
+            &CancelToken::new(),
+            &Progress::default(),
+            || seen = Some(fs::metadata(&target).unwrap().len()),
+        )
+        .unwrap();
         assert_eq!(n, Some(data.len() as u64));
-        assert!(seen.is_some_and(|s| s >= LIVE_READY && s < data.len() as u64), "{seen:?}");
+        assert!(
+            seen.is_some_and(|s| s >= LIVE_READY && s < data.len() as u64),
+            "{seen:?}"
+        );
         assert_eq!(fs::read(&target).unwrap(), data);
         // Smaller than a megabyte: never ready, but whole.
         let small = dir.path().join("b.gz");
         fs::write(&small, gz(b"x\n")).unwrap();
         let mut called = false;
-        unpack_live(&small, Kind::Gzip, &dir.path().join("b"), &CancelToken::new(), &Progress::default(), || called = true).unwrap();
+        unpack_live(
+            &small,
+            Kind::Gzip,
+            &dir.path().join("b"),
+            &CancelToken::new(),
+            &Progress::default(),
+            || called = true,
+        )
+        .unwrap();
         assert!(!called);
     }
 
@@ -689,7 +848,15 @@ mod tests {
         fs::write(&p, packed).unwrap();
         let kind = detect(&p).expect("detected");
         let mut out = Vec::new();
-        unpack_to(&p, kind, &mut out, &CancelToken::new(), &Progress::default()).unwrap().unwrap();
+        unpack_to(
+            &p,
+            kind,
+            &mut out,
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap()
+        .unwrap();
         out
     }
 
@@ -699,7 +866,10 @@ mod tests {
         let b = b"second part\n".repeat(1000);
         let mut two_gz = gz(&a);
         two_gz.extend(gz(&b));
-        assert_eq!(roundtrip("app.log.gz", &two_gz), [a.clone(), b.clone()].concat());
+        assert_eq!(
+            roundtrip("app.log.gz", &two_gz),
+            [a.clone(), b.clone()].concat()
+        );
         let mut two_zst = zst(&a);
         two_zst.extend(zst(&b));
         assert_eq!(roundtrip("app.log.zst", &two_zst), [a, b].concat());
@@ -718,11 +888,15 @@ mod tests {
         // A compressed tar is an archive, not a compressed file.
         let tgz = dir.path().join("backup.tgz");
         fs::write(&tgz, gz(b"x")).unwrap();
-        assert_eq!((detect(&tgz), detect_archive(&tgz)), (None, Some(Archive::Tar(Some(Kind::Gzip)))));
+        assert_eq!(
+            (detect(&tgz), detect_archive(&tgz)),
+            (None, Some(Archive::Tar(Some(Kind::Gzip))))
+        );
     }
 
     fn xz(data: &[u8]) -> Vec<u8> {
-        let mut w = lzma_rust2::XzWriter::new(Vec::new(), lzma_rust2::XzOptions::with_preset(1)).unwrap();
+        let mut w =
+            lzma_rust2::XzWriter::new(Vec::new(), lzma_rust2::XzOptions::with_preset(1)).unwrap();
         w.write_all(data).unwrap();
         w.finish().unwrap()
     }
@@ -736,13 +910,25 @@ mod tests {
     #[test]
     fn packing_round_trips() {
         let dir = tempfile::tempdir().unwrap();
-        let data: Vec<u8> = (0..300_000).flat_map(|i: u32| format!("line {i} of the log\n").into_bytes()).collect();
-        for name in ["out.txt.gz", "out.txt.zst", "out.txt.xz", "out.txt.bz2", "empty.zst"] {
+        let data: Vec<u8> = (0..300_000)
+            .flat_map(|i: u32| format!("line {i} of the log\n").into_bytes())
+            .collect();
+        for name in [
+            "out.txt.gz",
+            "out.txt.zst",
+            "out.txt.xz",
+            "out.txt.bz2",
+            "empty.zst",
+        ] {
             let p = dir.path().join(name);
             let kind = target_kind(&p);
             assert!(kind.is_some(), "{name}");
             let mut w = Packer::new(Vec::new(), kind).unwrap();
-            let body: &[u8] = if name.starts_with("empty") { b"" } else { &data };
+            let body: &[u8] = if name.starts_with("empty") {
+                b""
+            } else {
+                &data
+            };
             // Small writes and one large one.
             w.write_all(&body[..body.len().min(10)]).unwrap();
             w.write_all(&body[body.len().min(10)..]).unwrap();
@@ -752,7 +938,15 @@ mod tests {
             fs::write(&p, &packed).unwrap();
             assert_eq!(detect(&p), kind, "{name}");
             let mut out = Vec::new();
-            unpack_to(&p, kind.unwrap(), &mut out, &CancelToken::new(), &Progress::default()).unwrap().unwrap();
+            unpack_to(
+                &p,
+                kind.unwrap(),
+                &mut out,
+                &CancelToken::new(),
+                &Progress::default(),
+            )
+            .unwrap()
+            .unwrap();
             assert!(out == body, "{name}");
         }
         assert_eq!(target_kind(Path::new("lines.txt")), None);
@@ -782,9 +976,18 @@ mod tests {
         fs::write(&x, &packed).unwrap();
         assert_eq!(estimate_unpacked(&x, Kind::Xz), packed.len() as u64 * 12);
         // Single-segment, 1-byte and 2-byte sizes.
-        assert_eq!(zstd_content_size(&[0x28, 0xB5, 0x2F, 0xFD, 0x20, 200]), Some(200));
-        assert_eq!(zstd_content_size(&[0x28, 0xB5, 0x2F, 0xFD, 0x40, 0x58, 0x00, 0x10]), Some(0x1000 + 256));
-        assert_eq!(zstd_content_size(&[0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x58]), None);
+        assert_eq!(
+            zstd_content_size(&[0x28, 0xB5, 0x2F, 0xFD, 0x20, 200]),
+            Some(200)
+        );
+        assert_eq!(
+            zstd_content_size(&[0x28, 0xB5, 0x2F, 0xFD, 0x40, 0x58, 0x00, 0x10]),
+            Some(0x1000 + 256)
+        );
+        assert_eq!(
+            zstd_content_size(&[0x28, 0xB5, 0x2F, 0xFD, 0x00, 0x58]),
+            None
+        );
     }
 
     #[test]
@@ -798,17 +1001,26 @@ mod tests {
         let p = dir.path().join("cut.log.xz");
         let packed = xz(&a);
         fs::write(&p, &packed[..packed.len() / 2]).unwrap();
-        let err = unpack_to(&p, Kind::Xz, &mut Vec::new(), &CancelToken::new(), &Progress::default()).unwrap_err();
+        let err = unpack_to(
+            &p,
+            Kind::Xz,
+            &mut Vec::new(),
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("xz"), "{err}");
     }
 
     fn zip_of(files: &[(&str, &[u8])]) -> Vec<u8> {
         let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         for (name, data) in files {
-            z.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            z.start_file(*name, zip::write::SimpleFileOptions::default())
+                .unwrap();
             z.write_all(data).unwrap();
         }
-        z.add_directory("empty/", zip::write::SimpleFileOptions::default()).unwrap();
+        z.add_directory("empty/", zip::write::SimpleFileOptions::default())
+            .unwrap();
         z.finish().unwrap().into_inner()
     }
 
@@ -828,27 +1040,84 @@ mod tests {
     #[test]
     fn archives_list_and_unpack_members() {
         let dir = tempfile::tempdir().unwrap();
-        let files: [(&str, &[u8]); 2] = [("logs/app.log", b"one\ntwo\n"), ("logs/old/app.log.gz", &gz(b"packed\n"))];
-        let cases = [("bundle.zip", zip_of(&files), Archive::Zip), ("bundle.tar", tar_of(&files), Archive::Tar(None)), ("bundle.tar.gz", gz(&tar_of(&files)), Archive::Tar(Some(Kind::Gzip))), ("bundle.tar.xz", xz(&tar_of(&files)), Archive::Tar(Some(Kind::Xz)))];
+        let files: [(&str, &[u8]); 2] = [
+            ("logs/app.log", b"one\ntwo\n"),
+            ("logs/old/app.log.gz", &gz(b"packed\n")),
+        ];
+        let cases = [
+            ("bundle.zip", zip_of(&files), Archive::Zip),
+            ("bundle.tar", tar_of(&files), Archive::Tar(None)),
+            (
+                "bundle.tar.gz",
+                gz(&tar_of(&files)),
+                Archive::Tar(Some(Kind::Gzip)),
+            ),
+            (
+                "bundle.tar.xz",
+                xz(&tar_of(&files)),
+                Archive::Tar(Some(Kind::Xz)),
+            ),
+        ];
         for (name, bytes, kind) in cases {
             let p = dir.path().join(name);
             fs::write(&p, &bytes).unwrap();
             assert_eq!(detect_archive(&p), Some(kind), "{name}");
-            let m = list_members(&p, kind, &CancelToken::new(), &Progress::default()).unwrap().unwrap();
+            let m = list_members(&p, kind, &CancelToken::new(), &Progress::default())
+                .unwrap()
+                .unwrap();
             let names: Vec<&str> = m.iter().map(|m| m.name.as_str()).collect();
             assert_eq!(names, ["logs/app.log", "logs/old/app.log.gz"], "{name}");
             assert_eq!(m[0].size, 8);
-            let out = unpack_member(&p, kind, "logs/app.log", &CancelToken::new(), &Progress::default()).unwrap().unwrap();
-            assert_eq!((fs::read(&out).unwrap(), out.file_name().unwrap().to_string_lossy().into_owned()), (b"one\ntwo\n".to_vec(), "app.log".to_string()));
+            let out = unpack_member(
+                &p,
+                kind,
+                "logs/app.log",
+                &CancelToken::new(),
+                &Progress::default(),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(
+                (
+                    fs::read(&out).unwrap(),
+                    out.file_name().unwrap().to_string_lossy().into_owned()
+                ),
+                (b"one\ntwo\n".to_vec(), "app.log".to_string())
+            );
             remove_temp(&out);
             // A compressed file inside is unpacked as it is; it is then a .gz like any other.
-            let inner = unpack_member(&p, kind, "logs/old/app.log.gz", &CancelToken::new(), &Progress::default()).unwrap().unwrap();
+            let inner = unpack_member(
+                &p,
+                kind,
+                "logs/old/app.log.gz",
+                &CancelToken::new(),
+                &Progress::default(),
+            )
+            .unwrap()
+            .unwrap();
             assert_eq!(detect(&inner), Some(Kind::Gzip));
             remove_temp(&inner);
-            assert!(unpack_member(&p, kind, "nope.txt", &CancelToken::new(), &Progress::default()).is_err());
+            assert!(unpack_member(
+                &p,
+                kind,
+                "nope.txt",
+                &CancelToken::new(),
+                &Progress::default()
+            )
+            .is_err());
         }
-        let t = list_members(&dir.path().join("bundle.tar"), Archive::Tar(None), &CancelToken::new(), &Progress::default()).unwrap().unwrap();
-        assert_eq!(t[0].modified, Some(UNIX_EPOCH + Duration::from_secs(1_700_000_000)));
+        let t = list_members(
+            &dir.path().join("bundle.tar"),
+            Archive::Tar(None),
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            t[0].modified,
+            Some(UNIX_EPOCH + Duration::from_secs(1_700_000_000))
+        );
         let plain = dir.path().join("fake.zip");
         fs::write(&plain, b"not a zip").unwrap();
         assert_eq!(detect_archive(&plain), None);
@@ -863,11 +1132,21 @@ mod tests {
         let p = dir.path().join("cut.log.gz");
         let packed = gz(&b"some log line\n".repeat(10_000));
         fs::write(&p, &packed[..packed.len() / 2]).unwrap();
-        let err = unpack_to(&p, Kind::Gzip, &mut Vec::new(), &CancelToken::new(), &Progress::default()).unwrap_err();
+        let err = unpack_to(
+            &p,
+            Kind::Gzip,
+            &mut Vec::new(),
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("gzip"), "{err}");
         fs::write(&p, &packed).unwrap();
         let c = CancelToken::new();
         c.cancel();
-        assert_eq!(unpack(&p, Kind::Gzip, &c, &Progress::default()).unwrap(), None);
+        assert_eq!(
+            unpack(&p, Kind::Gzip, &c, &Progress::default()).unwrap(),
+            None
+        );
     }
 }

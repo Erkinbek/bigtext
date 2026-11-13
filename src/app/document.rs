@@ -50,7 +50,10 @@ pub enum DocState {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Banner {
     Binary,
-    ChangedOnDisk { deleted: bool, grown: bool },
+    ChangedOnDisk {
+        deleted: bool,
+        grown: bool,
+    },
     /// Following went on in a new file after the log was rotated (to this file, when known).
     Rotated(Option<std::path::PathBuf>),
     Info(String),
@@ -311,7 +314,10 @@ impl PaneView {
 
 /// .csv and .tsv files open as a table.
 pub fn table_by_default(path: &std::path::Path) -> bool {
-    matches!(crate::view::highlight::Lang::from_path(Some(path)), crate::view::highlight::Lang::Csv(_))
+    matches!(
+        crate::view::highlight::Lang::from_path(Some(path)),
+        crate::view::highlight::Lang::Csv(_)
+    )
 }
 
 impl Document {
@@ -328,14 +334,21 @@ impl Document {
             self.follow = true;
             let len = self.buf.len();
             self.set_caret(len, false);
-            if let Some(r) = self.restore.as_mut().filter(|r| r.line.is_none() && r.select.is_none()) {
+            if let Some(r) = self
+                .restore
+                .as_mut()
+                .filter(|r| r.line.is_none() && r.select.is_none())
+            {
                 r.end = true;
             }
         }
     }
 
     pub fn loading(id: u64, path: PathBuf) -> Document {
-        let title = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| file::display_path(&path));
+        let title = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| file::display_path(&path));
         let table = table_by_default(&path);
         let src = Arc::new(Source::empty());
         let idx = LineIndex::new(0);
@@ -435,7 +448,13 @@ impl Document {
         self.view.anchor = self.view.caret;
     }
 
-    pub fn install(&mut self, source: Arc<Source>, det: Detected, prefix: Option<Vec<u64>>, waker: Waker) {
+    pub fn install(
+        &mut self,
+        source: Arc<Source>,
+        det: Detected,
+        prefix: Option<Vec<u64>>,
+        waker: Waker,
+    ) {
         self.index_cancel.cancel();
         self.index_cancel = CancelToken::new();
         source.set_waker(waker.clone());
@@ -446,7 +465,13 @@ impl Document {
         // A remote file read in parts is not indexed: that would download all of it. Line
         // numbers past the prefix it came with are estimates.
         if !index.is_done() && !source.is_remote() {
-            index::spawn_indexer(source.clone(), det.codec, index.clone(), self.index_cancel.clone(), waker);
+            index::spawn_indexer(
+                source.clone(),
+                det.codec,
+                index.clone(),
+                self.index_cancel.clone(),
+                waker,
+            );
         }
         self.buf = TextBuf::new(source, index, det.codec);
         self.line_ending = det.line_ending;
@@ -466,7 +491,11 @@ impl Document {
         self.view.caret = self.view.caret.clamp(min, self.buf.len());
         self.view.anchor = self.view.caret;
         self.view.top = self.view.top.min(self.buf.len());
-        let head = self.buf.read(0..self.buf.len().min(16 * 1024)).map(|b| self.buf.codec.decode_lossy(&b)).unwrap_or_default();
+        let head = self
+            .buf
+            .read(0..self.buf.len().min(16 * 1024))
+            .map(|b| self.buf.codec.decode_lossy(&b))
+            .unwrap_or_default();
         self.sniffed_lang = crate::view::highlight::Lang::sniff(&head);
         self.state = DocState::Ready;
     }
@@ -550,7 +579,13 @@ impl Document {
         source.set_waker(waker.clone());
         let index = LineIndex::new(source.len());
         if !source.is_remote() {
-            index::spawn_indexer(source.clone(), self.buf.codec, index.clone(), self.index_cancel.clone(), waker);
+            index::spawn_indexer(
+                source.clone(),
+                self.buf.codec,
+                index.clone(),
+                self.index_cancel.clone(),
+                waker,
+            );
         }
         self.buf = self.buf.with_source(source, index);
         self.last_indexed = 0;
@@ -588,7 +623,10 @@ impl Document {
 
     /// Called every frame: lets line counts catch up with the background indexer.
     pub fn tick(&mut self) -> bool {
-        if self.is_ready() && (self.buf.index.failed() || self.buf.source.has_io_error()) && self.banner.is_none() {
+        if self.is_ready()
+            && (self.buf.index.failed() || self.buf.source.has_io_error())
+            && self.banner.is_none()
+        {
             self.banner = Some(Banner::Error(super::i18n::tr("Reading the file failed (was it removed, truncated or is the drive unavailable?). Display may be incomplete.").into()));
         }
         let idx = self.buf.index.indexed_bytes();
@@ -605,7 +643,13 @@ impl Document {
     // ------------------------------------------------------------------------------------------
     // Editing.
 
-    fn push_undo(&mut self, swaps: Vec<Swap>, sel_before: (u64, u64), sel_after: (u64, u64), kind: EditKind) {
+    fn push_undo(
+        &mut self,
+        swaps: Vec<Swap>,
+        sel_before: (u64, u64),
+        sel_after: (u64, u64),
+        kind: EditKind,
+    ) {
         self.redo.clear();
         let now = Instant::now();
         let state_before = self.content_state;
@@ -624,7 +668,15 @@ impl Document {
                 return;
             }
         }
-        self.undo.push(UndoGroup { swaps, sel_before, sel_after, kind, at: now, state_before, state_after: self.content_state });
+        self.undo.push(UndoGroup {
+            swaps,
+            sel_before,
+            sel_after,
+            kind,
+            at: now,
+            state_before,
+            state_after: self.content_state,
+        });
         if self.undo.len() > 10_000 {
             self.undo.remove(0);
         }
@@ -661,7 +713,11 @@ impl Document {
     pub fn insert_text(&mut self, text: &str) {
         let (s, e) = self.selection();
         let bytes = self.buf.codec.encode(text);
-        let kind = if text.chars().count() <= 2 && !text.contains('\n') { EditKind::Typing } else { EditKind::Other };
+        let kind = if text.chars().count() <= 2 && !text.contains('\n') {
+            EditKind::Typing
+        } else {
+            EditKind::Other
+        };
         self.edit(s..e, &bytes, kind);
     }
 
@@ -749,7 +805,9 @@ impl Document {
 
     /// Toggles a bookmark on the line containing the caret.
     pub fn toggle_bookmark(&mut self) {
-        let Some((ls, _, _)) = self.line_bounds(self.view.caret, LINE_CMD_LIMIT) else { return };
+        let Some((ls, _, _)) = self.line_bounds(self.view.caret, LINE_CMD_LIMIT) else {
+            return;
+        };
         match self.bookmarks.binary_search(&ls) {
             Ok(i) => {
                 self.bookmarks.remove(i);
@@ -766,11 +824,17 @@ impl Document {
         if n == 0 {
             return None;
         }
-        let here = self.line_bounds(self.view.caret, 64 * 1024).map(|b| b.0).unwrap_or(self.view.caret);
+        let here = self
+            .line_bounds(self.view.caret, 64 * 1024)
+            .map(|b| b.0)
+            .unwrap_or(self.view.caret);
         let i = if forward {
             self.diff_marks.iter().position(|&o| o > here).unwrap_or(0)
         } else {
-            self.diff_marks.iter().rposition(|&o| o < here).unwrap_or(n - 1)
+            self.diff_marks
+                .iter()
+                .rposition(|&o| o < here)
+                .unwrap_or(n - 1)
         };
         let len = self.buf.len();
         self.set_caret(self.diff_marks[i].min(len).max(self.min_caret()), false);
@@ -783,11 +847,23 @@ impl Document {
             return;
         }
         let c = self.view.caret;
-        let line_start = self.line_bounds(c, LINE_CMD_LIMIT).map(|b| b.0).unwrap_or(c);
+        let line_start = self
+            .line_bounds(c, LINE_CMD_LIMIT)
+            .map(|b| b.0)
+            .unwrap_or(c);
         let target = if forward {
-            self.bookmarks.iter().copied().find(|&b| b > line_start).unwrap_or(self.bookmarks[0])
+            self.bookmarks
+                .iter()
+                .copied()
+                .find(|&b| b > line_start)
+                .unwrap_or(self.bookmarks[0])
         } else {
-            self.bookmarks.iter().rev().copied().find(|&b| b < line_start).unwrap_or(*self.bookmarks.last().unwrap())
+            self.bookmarks
+                .iter()
+                .rev()
+                .copied()
+                .find(|&b| b < line_start)
+                .unwrap_or(*self.bookmarks.last().unwrap())
         };
         self.set_caret(target, false);
         self.view.center();
@@ -839,9 +915,16 @@ impl Document {
         if self.buf.codec.encode(&text) != *bytes {
             return None;
         }
-        let at = self.buf.codec.decode_lossy(&bytes[..(caret - start) as usize]).len();
+        let at = self
+            .buf
+            .codec
+            .decode_lossy(&bytes[..(caret - start) as usize])
+            .len();
         let stop = |c: char| c.is_whitespace() || "\"'<>`".contains(c);
-        let lo = text[..at].rfind(stop).map(|i| i + text[i..].chars().next().map_or(1, char::len_utf8)).unwrap_or(0);
+        let lo = text[..at]
+            .rfind(stop)
+            .map(|i| i + text[i..].chars().next().map_or(1, char::len_utf8))
+            .unwrap_or(0);
         let hi = text[at..].find(stop).map(|i| at + i).unwrap_or(text.len());
         if lo >= hi {
             return None;
@@ -871,7 +954,10 @@ impl Document {
                 let nl = off + i as u64;
                 let cr = codec.cr_unit();
                 let mut ce = nl;
-                if codec.nl == bigtext::encoding::NlByte::Lf && i >= cr.len() && &after[i - cr.len()..i] == cr {
+                if codec.nl == bigtext::encoding::NlByte::Lf
+                    && i >= cr.len()
+                    && &after[i - cr.len()..i] == cr
+                {
                     ce -= cr.len() as u64;
                 }
                 (ce, nl + unit)
@@ -897,7 +983,13 @@ impl Document {
         let chars = match self.sel_chars.get() {
             Some((k, n)) if k == key => n,
             _ => {
-                let n = (e - s <= SEL_CHARS_MAX).then(|| self.buf.read(s..e).map(|bytes| self.buf.codec.decode_lossy(&bytes).chars().count() as u64)).flatten();
+                let n = (e - s <= SEL_CHARS_MAX)
+                    .then(|| {
+                        self.buf
+                            .read(s..e)
+                            .map(|bytes| self.buf.codec.decode_lossy(&bytes).chars().count() as u64)
+                    })
+                    .flatten();
                 if n.is_some() {
                     self.sel_chars.set(Some((key, n)));
                 }
@@ -917,7 +1009,10 @@ impl Document {
         if a == b {
             return None;
         }
-        let (x, y) = (bigtext::timestamp::stamp_at(&self.buf, a)?, bigtext::timestamp::stamp_at(&self.buf, b)?);
+        let (x, y) = (
+            bigtext::timestamp::stamp_at(&self.buf, a)?,
+            bigtext::timestamp::stamp_at(&self.buf, b)?,
+        );
         (x.has_date == y.has_date).then_some(y.ms - x.ms)
     }
 
@@ -941,7 +1036,9 @@ impl Document {
             return;
         }
         let Some((ls, _ce, next)) = self.line_bounds(self.view.caret, LINE_CMD_LIMIT) else {
-            self.banner = Some(Banner::Info(super::i18n::tr("Line is too long to duplicate").into()));
+            self.banner = Some(Banner::Info(
+                super::i18n::tr("Line is too long to duplicate").into(),
+            ));
             return;
         };
         let caret = self.view.caret;
@@ -970,7 +1067,11 @@ impl Document {
     fn ends_with_nl(&self) -> bool {
         let len = self.buf.len();
         let u = self.buf.codec.nl_unit();
-        len >= u.len() as u64 && self.buf.read(len - u.len() as u64..len).is_some_and(|b| *b == *u)
+        len >= u.len() as u64
+            && self
+                .buf
+                .read(len - u.len() as u64..len)
+                .is_some_and(|b| *b == *u)
     }
 
     pub fn delete_line(&mut self) {
@@ -978,12 +1079,17 @@ impl Document {
             return;
         }
         let Some((ls, _ce, next)) = self.line_bounds(self.view.caret, LINE_CMD_LIMIT) else {
-            self.banner = Some(Banner::Info(super::i18n::tr("Line is too long to delete with this command; select it instead").into()));
+            self.banner = Some(Banner::Info(
+                super::i18n::tr("Line is too long to delete with this command; select it instead")
+                    .into(),
+            ));
             return;
         };
         let start = if next == self.buf.len() && ls > 0 && !self.ends_with_nl() {
             // Last line: also remove the preceding line break.
-            self.crlf_before(ls).map(|n| ls - n).unwrap_or(ls.saturating_sub(self.buf.codec.unit() as u64))
+            self.crlf_before(ls)
+                .map(|n| ls - n)
+                .unwrap_or(ls.saturating_sub(self.buf.codec.unit() as u64))
         } else {
             ls
         };
@@ -995,13 +1101,20 @@ impl Document {
     /// Edit → Toggle comment: the selected lines (or the caret's) commented out with `c`, or
     /// uncommented when they all are, as one undo step. Selected lines stay selected; a caret
     /// keeps its place in the text.
-    pub fn toggle_comment(&mut self, c: crate::view::highlight::Comment) -> Result<(), &'static str> {
+    pub fn toggle_comment(
+        &mut self,
+        c: crate::view::highlight::Comment,
+    ) -> Result<(), &'static str> {
         if !self.editable() {
             return Err("The document is read-only (Edit → Read-only).");
         }
         let (s, e) = self.selection();
         // A selection ending at the start of a line leaves that line out.
-        let last = if e > s { self.buf.prev_char(e).max(s) } else { e };
+        let last = if e > s {
+            self.buf.prev_char(e).max(s)
+        } else {
+            e
+        };
         let too_long = "Line is too long to comment with this command";
         let (ls, _, _) = self.line_bounds(s, LINE_CMD_LIMIT).ok_or(too_long)?;
         let (_, end, _) = self.line_bounds(last, LINE_CMD_LIMIT).ok_or(too_long)?;
@@ -1045,12 +1158,16 @@ impl Document {
 
     /// Leading whitespace of the line containing `off` (for auto-indent).
     pub fn indent_of_line(&self, off: u64) -> Vec<u8> {
-        let Ok(seg) = rows::seg_containing(&self.buf, off) else { return Vec::new() };
+        let Ok(seg) = rows::seg_containing(&self.buf, off) else {
+            return Vec::new();
+        };
         if !seg.line_start {
             return Vec::new();
         }
         let end = off.min(seg.content_end).min(seg.start + 256);
-        let Some(b) = self.buf.read(seg.start..end) else { return Vec::new() };
+        let Some(b) = self.buf.read(seg.start..end) else {
+            return Vec::new();
+        };
         let codec = self.buf.codec;
         let mut out = Vec::new();
         let mut i = 0;
@@ -1093,10 +1210,16 @@ impl Document {
             Some(x) => x,
             None => {
                 let (n, _) = self.buf.line_count();
-                self.buf.line_start(n.saturating_sub(1)).unwrap_or((self.buf.len(), false))
+                self.buf
+                    .line_start(n.saturating_sub(1))
+                    .unwrap_or((self.buf.len(), false))
             }
         };
-        let off = if exact { off } else { rows::seg_start(&self.buf, off).unwrap_or(off) };
+        let off = if exact {
+            off
+        } else {
+            rows::seg_start(&self.buf, off).unwrap_or(off)
+        };
         let off = off.max(self.min_caret());
         self.set_caret(off, false);
         self.view.center();

@@ -79,7 +79,13 @@ struct Reader<'a> {
 
 impl<'a> Reader<'a> {
     fn new(buf: &'a TextBuf, at: u64, cancel: &'a CancelToken) -> Reader<'a> {
-        Reader { buf, data: Vec::new(), start: at, i: 0, cancel }
+        Reader {
+            buf,
+            data: Vec::new(),
+            start: at,
+            i: 0,
+            cancel,
+        }
     }
 
     fn pos(&self) -> u64 {
@@ -98,14 +104,22 @@ impl<'a> Reader<'a> {
             return Ok(false);
         }
         let to = (at + CHUNK).min(self.buf.len());
-        self.data = self.buf.read(at..to).ok_or("could not read the file")?.to_vec();
+        self.data = self
+            .buf
+            .read(at..to)
+            .ok_or("could not read the file")?
+            .to_vec();
         self.start = at;
         self.i = 0;
         Ok(true)
     }
 
     fn peek(&mut self) -> Result<Option<u8>, String> {
-        Ok(if self.fill()? { Some(self.data[self.i]) } else { None })
+        Ok(if self.fill()? {
+            Some(self.data[self.i])
+        } else {
+            None
+        })
     }
 
     fn bump(&mut self) {
@@ -129,7 +143,12 @@ impl<'a> Reader<'a> {
                 self.bump();
                 Ok(())
             }
-            Some(x) => Err(format!("expected '{}' at byte {}, found '{}'", b as char, self.pos(), x as char)),
+            Some(x) => Err(format!(
+                "expected '{}' at byte {}, found '{}'",
+                b as char,
+                self.pos(),
+                x as char
+            )),
             None => Err(format!("expected '{}' at the end of the file", b as char)),
         }
     }
@@ -140,7 +159,9 @@ impl<'a> Reader<'a> {
         let mut raw = Vec::new();
         let mut esc = false;
         loop {
-            let Some(b) = self.peek()? else { return Err("unterminated string".into()) };
+            let Some(b) = self.peek()? else {
+                return Err("unterminated string".into());
+            };
             self.bump();
             if esc {
                 esc = false;
@@ -160,7 +181,9 @@ impl<'a> Reader<'a> {
     /// Skips one value; stops early (returning false) once past `stop`.
     fn skip_value(&mut self, stop: u64) -> Result<bool, String> {
         self.skip_ws()?;
-        let Some(first) = self.peek()? else { return Err("expected a value at the end of the file".into()) };
+        let Some(first) = self.peek()? else {
+            return Err("expected a value at the end of the file".into());
+        };
         match first {
             b'{' | b'[' => {
                 let (mut depth, mut s, mut esc) = (0u64, false, false);
@@ -211,7 +234,9 @@ impl<'a> Reader<'a> {
                 self.bump();
                 let mut esc = false;
                 loop {
-                    let Some(c) = self.peek()? else { return Err("unterminated string".into()) };
+                    let Some(c) = self.peek()? else {
+                        return Err("unterminated string".into());
+                    };
                     self.bump();
                     if esc {
                         esc = false;
@@ -235,7 +260,11 @@ impl<'a> Reader<'a> {
                     n += 1;
                 }
                 if n == 0 {
-                    return Err(format!("unexpected '{}' at byte {}", first as char, self.pos()));
+                    return Err(format!(
+                        "unexpected '{}' at byte {}",
+                        first as char,
+                        self.pos()
+                    ));
                 }
                 Ok(true)
             }
@@ -247,12 +276,18 @@ impl<'a> Reader<'a> {
     fn copy_value(&mut self, out: &mut dyn std::io::Write) -> Result<(), String> {
         let werr = |e: std::io::Error| e.to_string();
         self.skip_ws()?;
-        let Some(first) = self.peek()? else { return Err("expected a value at the end of the file".into()) };
+        let Some(first) = self.peek()? else {
+            return Err("expected a value at the end of the file".into());
+        };
         let (mut depth, mut s, mut esc) = (0u64, false, false);
         let scalar = !matches!(first, b'{' | b'[' | b'"');
         loop {
             if !self.fill()? {
-                return if scalar { Ok(()) } else { Err("unexpected end of the file inside a value".into()) };
+                return if scalar {
+                    Ok(())
+                } else {
+                    Err("unexpected end of the file inside a value".into())
+                };
             }
             let data = &self.data[self.i..];
             let (mut k, mut seg) = (0, 0);
@@ -311,7 +346,13 @@ impl<'a> Reader<'a> {
 /// Writes each item of the array at `at` (an offset from [`root`] or [`resolve`]) on a line of
 /// its own, without white space (JSON Lines). Returns the number of items, or `None` when
 /// cancelled.
-pub fn array_to_lines<W: std::io::Write>(buf: &TextBuf, at: u64, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> Result<Option<u64>, String> {
+pub fn array_to_lines<W: std::io::Write>(
+    buf: &TextBuf,
+    at: u64,
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> Result<Option<u64>, String> {
     if buf.codec.unit() != 1 {
         return Err("JSON must be UTF-8".into());
     }
@@ -338,7 +379,13 @@ pub fn array_to_lines<W: std::io::Write>(buf: &TextBuf, at: u64, out: &mut W, ca
             match r.peek()? {
                 Some(b',') => r.bump(),
                 Some(b']') => return Ok(n),
-                Some(c) => return Err(format!("expected ',' or ']' at byte {}, found '{}'", r.pos(), c as char)),
+                Some(c) => {
+                    return Err(format!(
+                        "expected ',' or ']' at byte {}, found '{}'",
+                        r.pos(),
+                        c as char
+                    ))
+                }
                 None => return Err("the array does not end".into()),
             }
         }
@@ -374,7 +421,12 @@ pub fn find_array(buf: &TextBuf, cancel: &CancelToken) -> Result<(u64, String), 
 
 /// Writes JSON Lines as one JSON array, an item per line. Returns the number of items, or
 /// `None` when cancelled.
-pub fn lines_to_array<W: std::io::Write>(buf: &TextBuf, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> std::io::Result<Option<u64>> {
+pub fn lines_to_array<W: std::io::Write>(
+    buf: &TextBuf,
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> std::io::Result<Option<u64>> {
     if let Some(p) = progress {
         p.set_total(buf.len());
     }
@@ -433,7 +485,11 @@ pub fn unescape(raw: &[u8]) -> String {
                 // A surrogate pair.
                 if (0xD800..0xDC00).contains(&code) {
                     let rest: String = it.clone().take(6).collect();
-                    if let Some(lo) = rest.strip_prefix("\\u").and_then(|h| u32::from_str_radix(h, 16).ok()).filter(|l| (0xDC00..0xE000).contains(l)) {
+                    if let Some(lo) = rest
+                        .strip_prefix("\\u")
+                        .and_then(|h| u32::from_str_radix(h, 16).ok())
+                        .filter(|l| (0xDC00..0xE000).contains(l))
+                    {
                         it.by_ref().take(6).for_each(drop);
                         code = 0x10000 + ((code - 0xD800) << 10) + (lo - 0xDC00);
                     }
@@ -458,7 +514,13 @@ pub fn root(buf: &TextBuf, cancel: &CancelToken) -> Result<u64, String> {
 }
 
 /// Up to `max` children of the object or array at `at` (or from where `resume` left off).
-pub fn children(buf: &TextBuf, at: u64, resume: Option<Resume>, max: usize, cancel: &CancelToken) -> Result<Page, String> {
+pub fn children(
+    buf: &TextBuf,
+    at: u64,
+    resume: Option<Resume>,
+    max: usize,
+    cancel: &CancelToken,
+) -> Result<Page, String> {
     let mut page = Page::default();
     let (mut r, object, mut index) = match resume {
         Some(x) => (Reader::new(buf, x.at, cancel), x.object, x.index),
@@ -484,7 +546,11 @@ pub fn children(buf: &TextBuf, at: u64, resume: Option<Resume>, max: usize, canc
             _ => {}
         }
         if page.items.len() == max {
-            page.resume = Some(Resume { at: r.pos(), index, object });
+            page.resume = Some(Resume {
+                at: r.pos(),
+                index,
+                object,
+            });
             return Ok(page);
         }
         let key = if object {
@@ -498,7 +564,13 @@ pub fn children(buf: &TextBuf, at: u64, resume: Option<Resume>, max: usize, canc
         let start = r.pos();
         let kind = Kind::of(r.peek()?.unwrap_or(b' '));
         r.skip_value(u64::MAX)?;
-        page.items.push(Child { key, index, start, end: r.pos(), kind });
+        page.items.push(Child {
+            key,
+            index,
+            start,
+            end: r.pos(),
+            kind,
+        });
         index += 1;
     }
 }
@@ -514,12 +586,23 @@ pub fn parse_path(text: &str) -> Result<Vec<Step>, String> {
         match b[i] {
             b'.' => i += 1,
             b'[' => {
-                let close = t[i..].find(']').ok_or_else(|| format!("missing ] after {}", &t[..i]))? + i;
+                let close = t[i..]
+                    .find(']')
+                    .ok_or_else(|| format!("missing ] after {}", &t[..i]))?
+                    + i;
                 let inner = t[i + 1..close].trim();
-                if let Some(q) = inner.strip_prefix('"').and_then(|x| x.strip_suffix('"')).or_else(|| inner.strip_prefix('\'').and_then(|x| x.strip_suffix('\''))) {
+                if let Some(q) = inner
+                    .strip_prefix('"')
+                    .and_then(|x| x.strip_suffix('"'))
+                    .or_else(|| inner.strip_prefix('\'').and_then(|x| x.strip_suffix('\'')))
+                {
                     steps.push(Step::Key(q.to_string()));
                 } else {
-                    steps.push(Step::Index(inner.parse().map_err(|_| format!("not an index: [{inner}]"))?));
+                    steps.push(Step::Index(
+                        inner
+                            .parse()
+                            .map_err(|_| format!("not an index: [{inner}]"))?,
+                    ));
                 }
                 i = close + 1;
                 continue;
@@ -545,7 +628,11 @@ pub fn format_path(steps: &[Step]) -> String {
     for st in steps {
         match st {
             Step::Index(i) => s.push_str(&format!("[{i}]")),
-            Step::Key(k) if !k.is_empty() && k.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') => {
+            Step::Key(k)
+                if !k.is_empty()
+                    && k.chars()
+                        .all(|c| c.is_alphanumeric() || c == '_' || c == '-') =>
+            {
                 s.push('.');
                 s.push_str(k);
             }
@@ -563,7 +650,17 @@ pub fn resolve(buf: &TextBuf, path: &[Step], cancel: &CancelToken) -> Result<(u6
         let object = match (r.peek()?, step) {
             (Some(b'{'), Step::Key(_)) => true,
             (Some(b'['), Step::Index(_)) => false,
-            _ => return Err(format!("{} is not {}", format_path(&path[..n]), if matches!(step, Step::Key(_)) { "an object" } else { "an array" })),
+            _ => {
+                return Err(format!(
+                    "{} is not {}",
+                    format_path(&path[..n]),
+                    if matches!(step, Step::Key(_)) {
+                        "an object"
+                    } else {
+                        "an array"
+                    }
+                ))
+            }
         };
         r.bump();
         let mut index = 0;
@@ -604,8 +701,14 @@ pub fn resolve(buf: &TextBuf, path: &[Step], cancel: &CancelToken) -> Result<(u6
 
 /// The path of the value at `off` (reading the text up to it once).
 pub fn path_at(buf: &TextBuf, off: u64, cancel: &CancelToken) -> Result<Vec<Step>, String> {
-    let start = Checkpoint { pos: buf.codec.bom_len as u64, stack: Vec::new() };
-    Ok(path_at_from(buf, &start, off, cancel)?.into_iter().map(|x| x.0).collect())
+    let start = Checkpoint {
+        pos: buf.codec.bom_len as u64,
+        stack: Vec::new(),
+    };
+    Ok(path_at_from(buf, &start, off, cancel)?
+        .into_iter()
+        .map(|x| x.0)
+        .collect())
 }
 
 /// An open object or array met by the scan.
@@ -632,7 +735,12 @@ pub struct Checkpoint {
 
 /// The containers open at `off`, scanning from `r` with `stack` open; `mark` is called between
 /// tokens (with the position) and may record checkpoints.
-fn scan(r: &mut Reader, stack: &mut Vec<Frame>, off: u64, mut mark: impl FnMut(u64, &[Frame])) -> Result<(), String> {
+fn scan(
+    r: &mut Reader,
+    stack: &mut Vec<Frame>,
+    off: u64,
+    mut mark: impl FnMut(u64, &[Frame]),
+) -> Result<(), String> {
     loop {
         r.skip_ws()?;
         let Some(b) = r.peek()? else { break };
@@ -641,14 +749,24 @@ fn scan(r: &mut Reader, stack: &mut Vec<Frame>, off: u64, mut mark: impl FnMut(u
             break;
         }
         mark(pos, stack);
-        if let Some(f) = stack.last_mut().filter(|f| !f.object && f.elem_pending && !matches!(b, b']' | b',')) {
+        if let Some(f) = stack
+            .last_mut()
+            .filter(|f| !f.object && f.elem_pending && !matches!(b, b']' | b','))
+        {
             f.child_at = pos;
             f.elem_pending = false;
         }
         match b {
             b'{' | b'[' => {
                 r.bump();
-                stack.push(Frame { object: b == b'{', key: None, index: 0, expect_key: b == b'{', child_at: pos, elem_pending: b == b'[' });
+                stack.push(Frame {
+                    object: b == b'{',
+                    key: None,
+                    index: 0,
+                    expect_key: b == b'{',
+                    child_at: pos,
+                    elem_pending: b == b'[',
+                });
             }
             b'}' | b']' => {
                 r.bump();
@@ -693,18 +811,40 @@ fn scan(r: &mut Reader, stack: &mut Vec<Frame>, off: u64, mut mark: impl FnMut(u
 
 /// The path at `off`, scanning from checkpoint `from` (at or before `off`): each step with where
 /// its key or element starts, so a breadcrumb can jump to any parent.
-pub fn path_at_from(buf: &TextBuf, from: &Checkpoint, off: u64, cancel: &CancelToken) -> Result<Vec<(Step, u64)>, String> {
+pub fn path_at_from(
+    buf: &TextBuf,
+    from: &Checkpoint,
+    off: u64,
+    cancel: &CancelToken,
+) -> Result<Vec<(Step, u64)>, String> {
     let mut stack = from.stack.clone();
     let mut r = Reader::new(buf, from.pos, cancel);
     scan(&mut r, &mut stack, off, |_, _| ())?;
-    Ok(stack.into_iter().filter_map(|f| if f.object { f.key.map(|k| (Step::Key(k), f.child_at)) } else { Some((Step::Index(f.index), f.child_at)) }).collect())
+    Ok(stack
+        .into_iter()
+        .filter_map(|f| {
+            if f.object {
+                f.key.map(|k| (Step::Key(k), f.child_at))
+            } else {
+                Some((Step::Index(f.index), f.child_at))
+            }
+        })
+        .collect())
 }
 
 /// Checkpoints about every `every` bytes through the whole document, so the path at any offset
 /// is found by scanning from the one before it rather than from the start.
-pub fn checkpoints(buf: &TextBuf, every: u64, cancel: &CancelToken, progress: Option<&Progress>) -> Result<Vec<Checkpoint>, String> {
+pub fn checkpoints(
+    buf: &TextBuf,
+    every: u64,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> Result<Vec<Checkpoint>, String> {
     let start = buf.codec.bom_len as u64;
-    let mut out = vec![Checkpoint { pos: start, stack: Vec::new() }];
+    let mut out = vec![Checkpoint {
+        pos: start,
+        stack: Vec::new(),
+    }];
     let mut next = start + every;
     let mut stack = Vec::new();
     let mut r = Reader::new(buf, start, cancel);
@@ -713,7 +853,10 @@ pub fn checkpoints(buf: &TextBuf, every: u64, cancel: &CancelToken, progress: Op
     }
     let scanned = scan(&mut r, &mut stack, u64::MAX, |pos, stack| {
         if pos >= next {
-            out.push(Checkpoint { pos, stack: stack.to_vec() });
+            out.push(Checkpoint {
+                pos,
+                stack: stack.to_vec(),
+            });
             next = pos + every;
             if let Some(p) = progress {
                 p.set_done(pos);
@@ -779,7 +922,9 @@ pub fn object_fields(b: &[u8]) -> Option<Vec<(String, Range<usize>)>> {
             }
             _ => {
                 let mut k = i;
-                while k < b.len() && !matches!(b[k], b',' | b'}' | b']' | b' ' | b'\t' | b'\r' | b'\n') {
+                while k < b.len()
+                    && !matches!(b[k], b',' | b'}' | b']' | b' ' | b'\t' | b'\r' | b'\n')
+                {
                     k += 1;
                 }
                 (k > i).then_some(k)
@@ -840,7 +985,12 @@ fn csv_field(s: &str) -> String {
 
 /// Writes JSON Lines as CSV: a column per key (from the first [`JSONL_SAMPLE`] lines, in the
 /// order first seen), strings unescaped, other values as written. Returns `None` if cancelled.
-pub fn jsonl_to_csv<W: Write>(buf: &TextBuf, out: &mut W, cancel: &CancelToken, progress: Option<&Progress>) -> io::Result<Option<JsonlStats>> {
+pub fn jsonl_to_csv<W: Write>(
+    buf: &TextBuf,
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<JsonlStats>> {
     if buf.codec.unit() != 1 {
         return Err(io::Error::other("JSON Lines must be UTF-8"));
     }
@@ -865,8 +1015,20 @@ pub fn jsonl_to_csv<W: Write>(buf: &TextBuf, out: &mut W, cancel: &CancelToken, 
         }
     }
     stats.columns = columns.len();
-    let index: std::collections::HashMap<&str, usize> = columns.iter().enumerate().map(|(i, k)| (k.as_str(), i)).collect();
-    writeln!(out, "{}", columns.iter().map(|c| csv_field(c)).collect::<Vec<_>>().join(","))?;
+    let index: std::collections::HashMap<&str, usize> = columns
+        .iter()
+        .enumerate()
+        .map(|(i, k)| (k.as_str(), i))
+        .collect();
+    writeln!(
+        out,
+        "{}",
+        columns
+            .iter()
+            .map(|c| csv_field(c))
+            .collect::<Vec<_>>()
+            .join(",")
+    )?;
     let mut row = vec![String::new(); columns.len()];
     let mut write_row = |out: &mut W, l: &[u8], stats: &mut JsonlStats| -> io::Result<()> {
         let Some(fields) = object_fields(l) else {
@@ -882,7 +1044,14 @@ pub fn jsonl_to_csv<W: Write>(buf: &TextBuf, out: &mut W, cancel: &CancelToken, 
                 None => stats.late_keys += 1,
             }
         }
-        writeln!(out, "{}", row.iter().map(|c| csv_field(c)).collect::<Vec<_>>().join(","))?;
+        writeln!(
+            out,
+            "{}",
+            row.iter()
+                .map(|c| csv_field(c))
+                .collect::<Vec<_>>()
+                .join(",")
+        )?;
         stats.rows += 1;
         Ok(())
     };
@@ -925,15 +1094,22 @@ mod convert_tests {
 
     #[test]
     fn array_and_lines() {
-        let (_f, t) = buf(b"[\n  {\"a\": 1, \"s\": \"x y\\\" ]\"},\n  [1, 2],\n  \"text\", 42, null\n]\n");
+        let (_f, t) =
+            buf(b"[\n  {\"a\": 1, \"s\": \"x y\\\" ]\"},\n  [1, 2],\n  \"text\", 42, null\n]\n");
         let c = CancelToken::new();
         let at = root(&t, &c).unwrap();
         let mut out = Vec::new();
         assert_eq!(array_to_lines(&t, at, &mut out, &c, None).unwrap(), Some(5));
-        assert_eq!(String::from_utf8(out.clone()).unwrap(), "{\"a\":1,\"s\":\"x y\\\" ]\"}\n[1,2]\n\"text\"\n42\nnull\n");
+        assert_eq!(
+            String::from_utf8(out.clone()).unwrap(),
+            "{\"a\":1,\"s\":\"x y\\\" ]\"}\n[1,2]\n\"text\"\n42\nnull\n"
+        );
         let (_g, lines) = buf(&out);
         let mut back = Vec::new();
-        assert_eq!(lines_to_array(&lines, &mut back, &c, None).unwrap(), Some(5));
+        assert_eq!(
+            lines_to_array(&lines, &mut back, &c, None).unwrap(),
+            Some(5)
+        );
         assert!(String::from_utf8(back).unwrap().starts_with("[\n{\"a\":1,"));
         // An array under a key of the top-level object.
         let (_h, o) = buf(b"{\"meta\": {\"n\": 2}, \"events\": [{\"id\": 1}, {\"id\": 2}]}");
@@ -974,16 +1150,29 @@ mod tests {
         let root = root(&b, &c).unwrap();
         let p = children(&b, root, None, 10, &c).unwrap();
         let keys: Vec<Option<String>> = p.items.iter().map(|x| x.key.clone()).collect();
-        assert_eq!(keys, vec![Some("name".into()), Some("items".into()), Some("a b".into())]);
+        assert_eq!(
+            keys,
+            vec![
+                Some("name".into()),
+                Some("items".into()),
+                Some("a b".into())
+            ]
+        );
         assert_eq!(p.items[1].kind, Kind::Array);
-        assert_eq!(&DOC[p.items[0].start as usize..p.items[0].end as usize], "\"x\"");
+        assert_eq!(
+            &DOC[p.items[0].start as usize..p.items[0].end as usize],
+            "\"x\""
+        );
         // The array, two items at a time.
         let arr = p.items[1].start;
         let p1 = children(&b, arr, None, 2, &c).unwrap();
         assert_eq!(p1.items.len(), 2);
         let p2 = children(&b, arr, p1.resume, 2, &c).unwrap();
         assert_eq!((p2.items.len(), p2.items[0].index, p2.resume), (1, 2, None));
-        assert_eq!(&DOC[p2.items[0].start as usize..p2.items[0].end as usize], r#"{"id": 3, "s": "q\"}"}"#);
+        assert_eq!(
+            &DOC[p2.items[0].start as usize..p2.items[0].end as usize],
+            r#"{"id": 3, "s": "q\"}"}"#
+        );
     }
 
     #[test]
@@ -991,19 +1180,47 @@ mod tests {
         let (_d, b) = buf(DOC);
         let c = CancelToken::new();
         let steps = parse_path("$.items[2].s").unwrap();
-        assert_eq!(steps, vec![Step::Key("items".into()), Step::Index(2), Step::Key("s".into())]);
+        assert_eq!(
+            steps,
+            vec![
+                Step::Key("items".into()),
+                Step::Index(2),
+                Step::Key("s".into())
+            ]
+        );
         let (s, e) = resolve(&b, &steps, &c).unwrap();
         assert_eq!(&DOC[s as usize..e as usize], r#""q\"}""#);
-        assert_eq!(parse_path("items[1][\"id\"]").unwrap(), vec![Step::Key("items".into()), Step::Index(1), Step::Key("id".into())]);
-        assert_eq!(resolve(&b, &parse_path("$[\"a b\"]").unwrap(), &c).map(|r| DOC[r.0 as usize..r.1 as usize].to_string()), Ok("null".into()));
-        assert!(resolve(&b, &parse_path("$.items[7]").unwrap(), &c).unwrap_err().contains("not found"));
-        assert!(resolve(&b, &parse_path("$.name.x").unwrap(), &c).unwrap_err().contains("not an object"));
+        assert_eq!(
+            parse_path("items[1][\"id\"]").unwrap(),
+            vec![
+                Step::Key("items".into()),
+                Step::Index(1),
+                Step::Key("id".into())
+            ]
+        );
+        assert_eq!(
+            resolve(&b, &parse_path("$[\"a b\"]").unwrap(), &c)
+                .map(|r| DOC[r.0 as usize..r.1 as usize].to_string()),
+            Ok("null".into())
+        );
+        assert!(resolve(&b, &parse_path("$.items[7]").unwrap(), &c)
+            .unwrap_err()
+            .contains("not found"));
+        assert!(resolve(&b, &parse_path("$.name.x").unwrap(), &c)
+            .unwrap_err()
+            .contains("not an object"));
         // The path at an offset: inside "b]" of the first item's tags.
         let off = DOC.find("b]").unwrap() as u64;
-        assert_eq!(format_path(&path_at(&b, off, &c).unwrap()), "$.items[0].tags[1]");
+        assert_eq!(
+            format_path(&path_at(&b, off, &c).unwrap()),
+            "$.items[0].tags[1]"
+        );
         let off = DOC.find("\"a b\"").unwrap() as u64 + 2;
         assert_eq!(format_path(&path_at(&b, off, &c).unwrap()), "$[\"a b\"]");
-        assert_eq!(format_path(&path_at(&b, DOC.find("2}").unwrap() as u64, &c).unwrap()), "$.items[1].id");
+        assert_eq!(
+            format_path(&path_at(&b, DOC.find("2}").unwrap() as u64, &c).unwrap()),
+            "$.items[1].id"
+        );
     }
 
     #[test]
@@ -1011,7 +1228,10 @@ mod tests {
         // Nested objects and arrays, with strings holding brackets, over a few hundred bytes.
         let mut text = String::from("{\"items\": [");
         for i in 0..40 {
-            text.push_str(&format!("{}{{\"id\": {i}, \"tags\": [\"a]\", \"b{{\"], \"sub\": {{\"k\": [1, [2, 3]]}}}}", if i > 0 { ", " } else { "" }));
+            text.push_str(&format!(
+                "{}{{\"id\": {i}, \"tags\": [\"a]\", \"b{{\"], \"sub\": {{\"k\": [1, [2, 3]]}}}}",
+                if i > 0 { ", " } else { "" }
+            ));
         }
         text.push_str("], \"end\": true}");
         let (_d, b) = buf(&text);
@@ -1021,14 +1241,24 @@ mod tests {
         for off in (0..text.len() as u64).step_by(7) {
             let plain = path_at(&b, off, &c).unwrap();
             let from = checkpoint_before(&points, off).unwrap();
-            let fast: Vec<Step> = path_at_from(&b, from, off, &c).unwrap().into_iter().map(|x| x.0).collect();
+            let fast: Vec<Step> = path_at_from(&b, from, off, &c)
+                .unwrap()
+                .into_iter()
+                .map(|x| x.0)
+                .collect();
             assert_eq!(fast, plain, "at {off}");
         }
         // Each step knows where its key or element starts.
         let off = text.find("[2, 3]").unwrap() as u64 + 4;
         let steps = path_at_from(&b, &points[0], off, &c).unwrap();
-        assert_eq!(format_path(&steps.iter().map(|x| x.0.clone()).collect::<Vec<_>>()), "$.items[0].sub.k[1][1]");
-        let at: Vec<&str> = steps.iter().map(|x| &text[x.1 as usize..x.1 as usize + 3]).collect();
+        assert_eq!(
+            format_path(&steps.iter().map(|x| x.0.clone()).collect::<Vec<_>>()),
+            "$.items[0].sub.k[1][1]"
+        );
+        let at: Vec<&str> = steps
+            .iter()
+            .map(|x| &text[x.1 as usize..x.1 as usize + 3])
+            .collect();
         assert_eq!(at, ["\"it", "{\"i", "\"su", "\"k\"", "[2,", "3]]"]);
     }
 
@@ -1046,9 +1276,22 @@ mod tests {
         let text = "{\"id\": 1, \"msg\": \"hi, \\\"you\\\"\"}\nnot json\n{\"msg\": \"x\", \"id\": 2, \"extra\": {\"a\": [1]}}\n\n";
         let (_d, b) = buf(text);
         let mut out = Vec::new();
-        let st = jsonl_to_csv(&b, &mut out, &CancelToken::new(), None).unwrap().unwrap();
-        assert_eq!(String::from_utf8(out).unwrap(), "id,msg,extra\n1,\"hi, \"\"you\"\"\",\n2,x,\"{\"\"a\"\": [1]}\"\n");
-        assert_eq!(st, JsonlStats { rows: 2, columns: 3, skipped: 1, late_keys: 0 });
+        let st = jsonl_to_csv(&b, &mut out, &CancelToken::new(), None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "id,msg,extra\n1,\"hi, \"\"you\"\"\",\n2,x,\"{\"\"a\"\": [1]}\"\n"
+        );
+        assert_eq!(
+            st,
+            JsonlStats {
+                rows: 2,
+                columns: 3,
+                skipped: 1,
+                late_keys: 0
+            }
+        );
     }
 
     #[test]
