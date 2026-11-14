@@ -295,7 +295,7 @@ impl BigTextApp {
                 }
                 if ui.button(tr("Save as…")).clicked() {
                     if g.times {
-                        let t = |s: &str| if s.trim().is_empty() { Ok(None) } else { bigtext::timestamp::parse(s).map(Some).ok_or(()) };
+                        let t = |s: &str| if s.trim().is_empty() { Ok(None) } else { bigtext::timestamp::parse_input(s).map(Some).ok_or(()) };
                         match (t(&g.from_time), t(&g.to_time)) {
                             (Ok(a), Ok(b)) if a.is_some() || b.is_some() => go_times = Some((a, b)),
                             _ => g.error = Some(tr("Enter a time like 2024-05-01 14:00:00 or 14:30.").into()),

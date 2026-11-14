@@ -51,6 +51,7 @@ bigtext-cli format FILE --json pretty|minify                   JSON formatting, 
 bigtext-cli stats FILE...                                      size, lines, encoding, first/last time
 bigtext-cli merge FILE FILE... [-o OUT]                        logs merged by time
 bigtext-cli convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]  tables (JSON Lines, logfmt, web and syslog logs → CSV)
+bigtext-cli query FILE -q '.status >= 500 and .method = POST'   lines that meet a field query (JSON, logfmt, web, syslog)
 bigtext-cli report FILE [--urls | --minutes | --slow] [--top N]  web log: top URLs, 5xx per minute, slowest
 bigtext-cli redact FILE [-o OUT] [--ips] [--pattern RE]...    secrets and e-mails hidden, to share it
 bigtext-cli sqldump FILE [tables | extract TABLE[,TABLE] | split] [-o OUT] [--out-dir DIR]  SQL dump tables

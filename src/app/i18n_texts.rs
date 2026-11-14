@@ -871,11 +871,7 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Click: the rows of this bar", "Щелчок: строки этого столбика", "Bosish: shu ustunchaning qatorlari"],
     ["Chart…", "Диаграмма…", "Diagramma…"],
     // JSON Lines field queries.
-    [
-        "Filter JSON Lines by fields: .level == \"error\" and .duration > 500 (also ==, !=, <, >, contains, ~ regex, exists, missing)",
-        "Фильтр JSON Lines по полям: .level == \"error\" and .duration > 500 (также ==, !=, <, >, contains, ~ регулярное выражение, exists, missing)",
-        "JSON Lines ni maydonlar bo'yicha filtrlash: .level == \"error\" and .duration > 500 (yana ==, !=, <, >, contains, ~ regex, exists, missing)",
-    ],
+    ["Filter by fields: JSON Lines, logfmt (key=value), or the columns of web server and syslog logs. .status >= 500 and (.method = POST or .time >= 10:00); also ==, !=, <, in (a, b), contains, ~ regex, exists, missing, not", "Фильтр по полям: JSON Lines, logfmt (key=value) или столбцы логов веб-сервера и syslog. .status >= 500 and (.method = POST or .time >= 10:00); также ==, !=, <, in (a, b), contains, ~ регулярное выражение, exists, missing, not", "Maydonlar bo'yicha filtr: JSON Lines, logfmt (key=value) yoki veb-server va syslog loglarining ustunlari. .status >= 500 and (.method = POST or .time >= 10:00); yana ==, !=, <, in (a, b), contains, ~ regex, exists, missing, not"],
     ["Field queries need a UTF-8 file", "Запросам по полям нужен файл в UTF-8", "Maydon so'rovlari uchun UTF-8 fayl kerak"],
     ["lines not where", "строк, где не", "shart bajarilmagan satrlar:"],
     ["lines where", "строк, где", "shart bajarilgan satrlar:"],

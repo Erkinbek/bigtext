@@ -360,8 +360,15 @@ keyboard shortcuts.
 - **JSON path in the status bar**: `$ › items › [1234] › city` for the value at the caret, live
   as it moves; a part jumps to that parent, a right-click copies the path. Deep in multi-GB files
   it is found from checkpoints one background pass records every 8 MB.
-- **Field queries over JSON Lines** (the search bar's **{}**): `.level == "error" and
-  .duration > 500` in the filter view (`bigtext-cli jsonl -q`).
+- **Field queries** (the search bar's **{}**): one query for every structured log, in the filter
+  view — JSON Lines by their keys (`.level == "error" and .duration > 500`, `.user.id = 42`),
+  logfmt (`key=value`) lines the same way, and web server and syslog logs by their columns
+  (`.status >= 500 and .method = POST`). Conditions: `==`, `!=`, `<`, `>`, `<=`, `>=` (as numbers
+  when both sides are numbers, as times when the value is a time: one without a date compares
+  with the time of day, so `.time >= 10:00 and .time < 11:00` is an hour), `in (a, b, "c d")`,
+  `contains`, `~` (a regular expression), `exists` and `missing`, joined with `and`, `or`,
+  `not` and parentheses (`and` binds tighter). A mistake is shown with the character it is at
+  (`bigtext-cli query FILE -q …`, also as `jsonl`).
 - **SQL dump tables** (File → SQL dump tables…): a mysqldump (MySQL, MariaDB), a pg_dump in
   plain format or an SQLite `.dump`, read in one pass (about 1 GB a second): its tables with
   their rows (INSERT rows or COPY lines) and sizes, in the dump's order or largest first. A

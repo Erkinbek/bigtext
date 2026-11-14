@@ -563,7 +563,7 @@ impl BigTextApp {
             }
             ui.separator();
             ui.toggle_value(&mut self.search.invert, RichText::new("!").monospace()).on_hover_text(tr("Filter: keep the lines WITHOUT a match"));
-            ui.toggle_value(&mut self.search.fields, RichText::new("{}").monospace()).on_hover_text(tr("Filter JSON Lines by fields: .level == \"error\" and .duration > 500 (also ==, !=, <, >, contains, ~ regex, exists, missing)"));
+            ui.toggle_value(&mut self.search.fields, RichText::new("{}").monospace()).on_hover_text(tr("Filter by fields: JSON Lines, logfmt (key=value), or the columns of web server and syslog logs. .status >= 500 and (.method = POST or .time >= 10:00); also ==, !=, <, in (a, b), contains, ~ regex, exists, missing, not"));
             if ui.button(tr("Filter")).on_hover_text(tr("Show only the lines with a match (Ctrl+Shift+F)")).clicked() {
                 do_filter = true;
             }

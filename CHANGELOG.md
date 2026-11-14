@@ -5,6 +5,21 @@ All notable changes to BigText. Each release on
 
 ## Unreleased
 
+### One query for every structured log
+
+- **Field queries** (the search bar's **{}**) read logfmt lines and, by their columns, web
+  server and syslog logs, besides JSON Lines: `.status >= 500 and .method = POST` on an nginx
+  log. Conditions now join with `or`, `not` and parentheses as well as `and`; `in (a, b)` checks
+  a list; a time value compares as a time, and one without a date with the time of day
+  (`.time >= 10:00 and .time < 11:00`). A mistake is reported with the character it is at.
+  `bigtext-cli query FILE -q …` (also `jsonl`) does the same.
+
+### Fixed
+
+- Times typed without seconds (`14:30`), dates alone (`2024-05-01`) and dates with such a time are
+  accepted by the time range, Go to time and Export lines by time, as their hints said; before,
+  only times with seconds were.
+
 ### Share safely
 
 - **File → Share safely…** hides secrets and personal data in the selection (or the whole

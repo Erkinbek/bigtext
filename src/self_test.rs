@@ -6930,6 +6930,32 @@ impl SelfTest {
         );
         s("open access.log", open_step("access.log"));
         s(
+            "filter a web server log by its columns with a field query",
+            Box::new(|app, c| {
+                if c.first() {
+                    app.search.query.pattern = ".status = 502 and .time >= 10:01".into();
+                    app.search.fields = true;
+                    app.start_filter();
+                    return Step::Wait;
+                }
+                let Some(r) = doc(app).filter.as_ref() else {
+                    return Step::Fail(format!("no filter ({})", app.search.status));
+                };
+                let g = r.data.lock().unwrap();
+                if !g.done {
+                    return Step::Wait;
+                }
+                let n = g.lines.len();
+                drop(g);
+                app.search.fields = false;
+                if let Some(r) = doc(app).filter.take() {
+                    r.cancel.cancel();
+                }
+                // 502 on every seventh line from the fourth; from 10:01 on, 17 of them.
+                check(n == 17, format!("{n} lines ({})", app.search.status))
+            }),
+        );
+        s(
             "web log report: top URLs, 5xx per minute, slowest requests",
             Box::new(|app, c| {
                 if c.first() {

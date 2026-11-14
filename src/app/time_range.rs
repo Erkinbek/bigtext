@@ -55,7 +55,7 @@ fn parse(t: &str) -> Result<Option<Stamp>, String> {
     if t.is_empty() {
         return Ok(None);
     }
-    timestamp::parse(t)
+    timestamp::parse_input(t)
         .map(Some)
         .ok_or_else(|| trf("Not a time: {text}", &[("text", t)]))
 }

@@ -1907,7 +1907,7 @@ impl BigTextApp {
                     });
                 });
             if submit && g.busy.is_none() && g.mode == GotoMode::Time {
-                match bigtext::timestamp::parse(g.text.trim()) {
+                match bigtext::timestamp::parse_input(g.text.trim()) {
                     Some(st) => {
                         g.error = None;
                         let cancel = CancelToken::new();

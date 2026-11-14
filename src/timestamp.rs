@@ -191,6 +191,27 @@ pub fn parse(text: &str) -> Option<Stamp> {
     parse_ascii(&b[..n])
 }
 
+/// A time someone typed: anything [`parse`] reads, and also one without seconds (`14:30`), a
+/// date alone (`2024-05-01`, its midnight) and a date with such a time (`2024-05-01 14:30`).
+pub fn parse_input(text: &str) -> Option<Stamp> {
+    let t = text.trim();
+    if t.is_empty() {
+        return None;
+    }
+    if let Some(s) = parse(t) {
+        return Some(s);
+    }
+    // Only digits and separators get the missing parts, so a word with a time after it is not
+    // read as that time.
+    if !t
+        .chars()
+        .all(|c| c.is_ascii_digit() || "-/.: T".contains(c))
+    {
+        return None;
+    }
+    parse(&format!("{t}:00")).or_else(|| parse(&format!("{t} 00:00:00")))
+}
+
 /// Like [`parse`], for the bytes of a line in an ASCII-compatible encoding (UTF-8, the Windows
 /// and ISO code pages), without decoding it.
 pub fn parse_bytes(line: &[u8]) -> Option<Stamp> {
@@ -658,6 +679,19 @@ pub fn find_time_utc(buf: &TextBuf, target: Stamp, cancel: &CancelToken) -> Resu
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn typed_times_without_seconds_or_time() {
+        let t = super::parse_input("14:30").unwrap();
+        assert!(!t.has_date);
+        assert_eq!(t.time_of_day(), (14 * 60 + 30) * 60_000);
+        let d = super::parse_input("2024-05-01").unwrap();
+        assert!(d.has_date && d.time_of_day() == 0);
+        let dt = super::parse_input(" 2024-05-01 14:30 ").unwrap();
+        assert!(dt.has_date && dt.time_of_day() == t.time_of_day());
+        assert_eq!(super::parse_input("14:32:05"), super::parse("14:32:05"));
+        assert!(super::parse_input("error").is_none() && super::parse_input("").is_none());
+    }
+
     #[test]
     fn civil_dates_round_trip_and_keys_format() {
         for (y, m, d) in [

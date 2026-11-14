@@ -67,9 +67,13 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         rows with the same key (COL: a header name or a 1-based number), as
         CSV; rows without a match get empty fields, or are left out (--inner).
   jsonl FILE [-q QUERY] [-v] [--fields a,b.c] [--to jsonl|csv] [--count] [-o OUT]
-        JSON Lines that meet a field query (.level == error and .ms > 500;
-        ==, !=, <, >, <=, >=, contains, ~ regex, exists, missing), as they
-        are, only some fields (--fields), or as CSV; --count prints how many.
+  query FILE -q QUERY ... (the same)
+        Lines that meet a field query: JSON Lines, logfmt (key=value), or a web
+        server or syslog log by its columns (.status >= 500 and .method = POST).
+        ==, !=, <, >, <=, >=, in (a, b), contains, ~ regex, exists, missing,
+        joined with and, or, not and parentheses; a time value without a date
+        compares with the time of day (.time >= 10:00). As they are, only some
+        fields (--fields), or as CSV; --count prints how many.
   jsondiff A B
         Two JSON files compared by structure, whatever the key order and the
         formatting: path: old -> new, path: added, path: removed. Exit code 0
@@ -198,7 +202,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 34] = [
+const COMMANDS: [&str; 35] = [
     "filter",
     "levels",
     "count",
@@ -218,6 +222,7 @@ const COMMANDS: [&str; 34] = [
     "pivot",
     "derive",
     "jsonl",
+    "query",
     "jsondiff",
     "diff",
     "only-in",
@@ -2114,6 +2119,17 @@ fn cmd_jsonl(args: &[String], out: &mut dyn Write) -> Res<i32> {
     if buf.codec.unit() != 1 {
         return fail("JSON Lines must be UTF-8");
     }
+    // A web server or syslog log is queried by its columns; JSON Lines and logfmt by their keys.
+    let head = buf
+        .read(0..buf.len().min(4096))
+        .map(|b| b.to_vec())
+        .unwrap_or_default();
+    let format = if head.trim_ascii_start().starts_with(b"{") {
+        None
+    } else {
+        crate::logformat::detect(&buf)?
+    };
+    let q = q.map(|q| q.for_document(format, false));
     let quote = |s: &str| {
         if s.contains([',', '"', '\n', '\r']) {
             format!("\"{}\"", s.replace('"', "\"\""))
@@ -2912,7 +2928,7 @@ fn run_command(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32
         "join" => cmd_join(rest, out),
         "pivot" => cmd_pivot(rest, out),
         "derive" => cmd_derive(rest, out),
-        "jsonl" => cmd_jsonl(rest, out),
+        "jsonl" | "query" => cmd_jsonl(rest, out),
         "jsondiff" => cmd_jsondiff(rest, out),
         "diff" => cmd_diff(rest, out),
         "only-in" => cmd_only_in(rest, out),

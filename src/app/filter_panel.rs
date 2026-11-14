@@ -178,13 +178,14 @@ impl BigTextApp {
         self.run_filter(self.search.query.clone(), m, spec, None);
     }
 
-    /// Filters JSON Lines by a field query (`.level == "error" and .duration > 500`).
+    /// Filters by a field query (`.level == "error" and .duration > 500`): JSON Lines, logfmt,
+    /// or a web server or syslog log by its columns (`.status >= 500`).
     pub(crate) fn start_field_filter(&mut self, text: &str) {
         let Some(d) = self.docs.get(self.active) else {
             return;
         };
         let q = match FieldQuery::parse(text) {
-            Ok(q) => Arc::new(q),
+            Ok(q) => q,
             Err(e) => {
                 self.search.status = e;
                 self.open_search(false);
@@ -195,6 +196,21 @@ impl BigTextApp {
             self.search.status = tr("Field queries need a UTF-8 file").into();
             return;
         }
+        // JSON Lines and logfmt name their fields; in a web server or syslog log the columns
+        // are the fields.
+        let head = d
+            .buf
+            .read(0..d.buf.len().min(4096))
+            .map(|b| b.to_vec())
+            .unwrap_or_default();
+        let json = head.trim_ascii_start().starts_with(b"{");
+        let format = if json {
+            None
+        } else {
+            bigtext::logformat::detect(&d.buf).ok().flatten()
+        };
+        let logfmt = !json && format.is_none();
+        let q = Arc::new(q.for_document(format, logfmt));
         let hl = Query {
             pattern: q.highlight(),
             regex: false,
