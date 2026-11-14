@@ -28,9 +28,7 @@ T = {
     "features_h2": "Tudo o que você precisa para arquivos gigantes",
     "features_intro": "Feito para logs, dumps CSV e SQL, exportações JSON e qualquer arquivo de texto que trava outros editores.",
     "features": [
-        ("Abre arquivos de qualquer tamanho", "Só a parte visível é lida, por janelas mapeadas na memória. O trabalho em "
-         "segundo plano processa o resto, e unidades de rede ou USB passam para leituras em blocos com cache, então um "
-         "disco lento nunca trava a janela."),
+        ("Abre arquivos de qualquer tamanho", "Só a parte visível é lida: no Windows por janelas mapeadas na memória, no Linux e no macOS em blocos quando necessário. O trabalho em segundo plano processa o resto, e unidades de rede ou USB passam para leituras em blocos com cache, então um disco lento nunca trava a janela."),
         ("Vá para uma linha na hora", "Um índice de linhas esparso (8 bytes a cada 64 KB) é criado em segundo plano a "
          "2,5 GB/s. Ir para a linha e a barra de rolagem funcionam de imediato, mesmo antes de a indexação terminar."),
         ("Pesquisa rápida e regex", "Texto simples a 2,5 GB/s e expressões regulares em tempo linear, com opções de "
@@ -57,8 +55,7 @@ T = {
          "lê algumas centenas de kilobytes de um log de 50 GB. Selecione linhas para ver o tempo entre elas."),
         ("Logs compactados e pipes", "Abra arquivos .gz e .zst diretamente, envie um comando ao BigText por pipe "
          "(journalctl -f | bigtext -) ou abra app.log:120 numa linha pela linha de comando."),
-        ("Tabelas CSV", "Arquivos CSV e TSV abrem como uma tabela que rola tão rápido quanto texto. Ordene por uma "
-         "coluna, veja estatísticas da coluna, filtre por uma coluna e renomeie, mova, exporte ou exclua colunas."),
+        ("Tabelas CSV", "Arquivos CSV e TSV abrem como uma tabela que rola tão rápido quanto texto. Ordene por uma coluna, veja estatísticas da coluna, filtre por uma coluna e renomeie, mova, exporte ou exclua colunas. Um registro com quebras de linha entre aspas é uma linha só."),
         ("Ferramentas de texto", "Ordene, remova duplicatas e inverta linhas, mude maiúsculas, apare espaços, formate ou "
          "minifique JSON e edite muitas linhas de uma vez com uma seleção de coluna por Alt+arrastar."),
         ("Do seu jeito", "Uma paleta de comandos (Ctrl+Shift+P), atalhos que você pode mudar, qualquer fonte monoespaçada "
@@ -110,8 +107,7 @@ T = {
     "how_intro": "Os editores comuns leem o arquivo inteiro antes de mostrar qualquer coisa. O BigText lê só o que está "
     "na tela e faz todo o resto em threads de segundo plano, então a janela responde em menos de 3 ms.",
     "how": [
-        ("Janelas mapeadas na memória", "O arquivo é mapeado em janelas de 256 MB e só os bytes que você olha são "
-         "tocados. Pesquisa, indexação e salvamento usam leituras em streaming separadas."),
+        ("Janelas mapeadas na memória", "O arquivo é mapeado em janelas de 256 MB e só os bytes que você olha são tocados. Pesquisa, indexação e salvamento usam leituras em streaming separadas. No Linux e no macOS a tela lê blocos de 64 KB, então um arquivo truncado enquanto está aberto não derruba o programa."),
         ("Índice de linhas esparso", "Um ponto de controle de 8 bytes a cada 64 KB: 8 MB de índice para um arquivo de "
          "50 GB. As posições de linha entre pontos de controle são contadas sob demanda com SIMD."),
         ("Piece table", "As edições ficam guardadas como pequenos pedaços sobre o arquivo original, então inserir uma "
@@ -239,10 +235,7 @@ GUIDES = [
              "valores vazios e distintos, soma, média, mínimo, máximo e os valores mais frequentes), filtrar linhas por "
              "essa coluna, “Agrupar linhas por esta coluna…” com somas de outra coluna e “Tabela dinâmica por esta "
              "coluna…”. Ordenar funciona em arquivos de até 1 GB."),
-            ("Ou ajuste para o Excel", "Arquivo → Dividir arquivo… corta o CSV em {{name.part001.csv}}, "
-             "{{name.part002.csv}}… com um número de linhas definido, como 1.000.000, sempre em quebras de linha. O "
-             "cabeçalho fica só na primeira parte; copie-o para as outras se a sua ferramenta precisar. Para ficar só "
-             "com algumas linhas, filtre-as (“Filtrar linhas por condições…”) e salve o resultado como um CSV novo e menor."),
+            ("Ou ajuste para o Excel", "Arquivo → Dividir arquivo… corta o CSV em {{name.part001.csv}}, {{name.part002.csv}}… com um número de linhas definido, como 1.000.000, sempre entre registros (um campo entre aspas com quebras de linha fica inteiro), e “Repetir a linha de cabeçalho em cada parte” põe os nomes das colunas no início de cada uma. Para ficar só com algumas linhas, filtre-as (“Filtrar linhas por condições…”) e salve o resultado como um CSV novo e menor."),
         ],
         "tips": [
             "Exibir → Verificar linhas da tabela… lista os registros com o número errado de campos, uma aspa solta ou "

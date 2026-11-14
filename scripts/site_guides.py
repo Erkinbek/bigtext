@@ -60,10 +60,7 @@ GUIDES = {
                 ("Analyse it without Excel", "Right-click a column header: Statistics… (rows, empty and distinct "
                  "values, sum, mean, min, max and the most frequent values), Filter rows by this column, Group rows by "
                  "this column… with sums of another column, and Pivot by this column…. Sorting works on files up to 1 GB."),
-                ("Or make it fit Excel", "File → Split file… cuts the CSV into {{name.part001.csv}}, "
-                 "{{name.part002.csv}}… of a given number of lines, say 1,000,000, always at line breaks. The header "
-                 "row is only in the first part, so copy it to the others if your tool needs it. To keep only some "
-                 "rows, filter them (Filter rows by conditions…) and save the result as a new, smaller CSV."),
+                ("Or make it fit Excel", "File → Split file… cuts the CSV into {{name.part001.csv}}, {{name.part002.csv}}… of a given number of lines, say 1,000,000, always between records (a quoted field with line breaks stays whole), and Repeat the header row in every part puts the column names at the top of each one. To keep only some rows, filter them (Filter rows by conditions…) and save the result as a new, smaller CSV."),
             ],
             "tips": [
                 "View → Check table rows… lists the records with the wrong number of fields, a stray quote or text in "
@@ -171,11 +168,7 @@ GUIDES = {
                  "пустые и различные значения, сумма, среднее, минимум, максимум и частые значения), фильтр строк по "
                  "столбцу, «Сгруппировать строки по этому столбцу…» с суммами другого столбца и сводная таблица. Сортировка "
                  "работает для файлов до 1 ГБ."),
-                ("Или подгоните под Excel", "«Файл → Разделить файл…» режет CSV на {{name.part001.csv}}, "
-                 "{{name.part002.csv}}… по заданному числу строк, например 1 000 000, всегда по границе строки. "
-                 "Строка заголовка есть только в первой части — скопируйте её в остальные, если она нужна. Чтобы "
-                 "оставить только часть строк, отфильтруйте их («Фильтр строк по условиям…») и сохраните результат "
-                 "как новый, меньший CSV."),
+                ("Или подгоните под Excel", "«Файл → Разделить файл…» режет CSV на {{name.part001.csv}}, {{name.part002.csv}}… по заданному числу строк, например 1 000 000, всегда между записями (поле в кавычках с переводами строк не разрывается), а «Повторять строку заголовка в каждой части» ставит названия столбцов в начало каждой. Чтобы оставить только часть строк, отфильтруйте их («Фильтр строк по условиям…») и сохраните результат как новый, меньший CSV."),
             ],
             "tips": [
                 "«Вид → Проверить строки таблицы…» находит записи с неверным числом полей, лишней кавычкой или "
@@ -283,11 +276,7 @@ GUIDES = {
                  "va turli qiymatlar, yig'indi, o'rtacha, eng kichik, eng katta va eng ko'p uchraydigan qiymatlar), "
                  "ustun bo'yicha filtr, boshqa ustun yig'indisi bilan guruhlash va pivot jadval. Saralash 1 GB "
                  "gacha bo'lgan fayllarda ishlaydi."),
-                ("Yoki Excel'ga moslang", "«Fayl → Faylni bo'lish…» CSV'ni {{name.part001.csv}}, "
-                 "{{name.part002.csv}}… bo'laklarga, masalan har biri 1 000 000 qatordan, doim qator chegarasida "
-                 "bo'ladi. Sarlavha qatori faqat birinchi bo'lakda bo'ladi, kerak bo'lsa uni boshqalariga ham "
-                 "ko'chiring. Faqat ayrim qatorlar kerak bo'lsa, ularni filtrlang («Qatorlarni shartlar bo'yicha filtrlash…») va "
-                 "natijani yangi, kichikroq CSV qilib saqlang."),
+                ("Yoki Excel'ga moslang", "«Fayl → Faylni bo'lish…» CSV'ni {{name.part001.csv}}, {{name.part002.csv}}… bo'laklarga, masalan har biri 1 000 000 qatordan, doim yozuvlar orasida bo'ladi (ichida satr oxiri bor qo'shtirnoqli maydon bo'linmaydi), «Sarlavha qatorini har bir qismda takrorlash» esa ustun nomlarini har bir bo'lak boshiga qo'yadi. Faqat ayrim qatorlar kerak bo'lsa, ularni filtrlang («Qatorlarni shartlar bo'yicha filtrlash…») va natijani yangi, kichikroq CSV qilib saqlang."),
             ],
             "tips": [
                 "«Ko'rinish → Jadval qatorlarini tekshirish…» maydonlar soni noto'g'ri, ortiqcha qo'shtirnoqli yoki "

@@ -28,9 +28,7 @@ T = {
     "features_h2": "Alles, was Sie für riesige Dateien brauchen",
     "features_intro": "Gemacht für Logs, CSV- und SQL-Dumps, JSON-Exporte und jede Textdatei, an der andere Editoren hängen bleiben.",
     "features": [
-        ("Öffnet Dateien jeder Größe", "Gelesen wird nur der sichtbare Teil, über speichergemappte Fenster. Arbeit im "
-         "Hintergrund streamt den Rest, und Netzwerk- oder USB-Laufwerke weichen auf zwischengespeicherte, blockweise "
-         "Lesevorgänge aus, damit eine langsame Platte das Fenster nie blockiert."),
+        ("Öffnet Dateien jeder Größe", "Gelesen wird nur der sichtbare Teil: unter Windows über speichergemappte Fenster, unter Linux und macOS in Blöcken bei Bedarf. Arbeit im Hintergrund streamt den Rest, und Netzwerk- oder USB-Laufwerke weichen auf zwischengespeicherte, blockweise Lesevorgänge aus, damit eine langsame Platte das Fenster nie blockiert."),
         ("Sofort zu jeder Zeile", "Ein dünn besetzter Zeilenindex (8 Byte pro 64 KB) entsteht im Hintergrund mit "
          "2,5 GB/s. Gehe zu Zeile und die Bildlaufleiste funktionieren sofort, schon bevor die Indizierung fertig ist."),
         ("Schnelle Suche und reguläre Ausdrücke", "Klartext mit 2,5 GB/s und reguläre Ausdrücke in linearer Zeit, mit "
@@ -59,9 +57,7 @@ T = {
          "binäre Suche liest wenige hundert Kilobyte eines 50-GB-Logs. Zeilen markieren, um die Zeit zwischen ihnen zu sehen."),
         ("Komprimierte Logs und Pipes", ".gz- und .zst-Dateien direkt öffnen, einen Befehl in BigText leiten "
          "(journalctl -f | bigtext -) oder app.log:120 von der Kommandozeile an einer Zeile öffnen."),
-        ("CSV-Tabellen", "CSV- und TSV-Dateien öffnen sich als Tabelle, die so schnell scrollt wie Text. Nach einer "
-         "Spalte sortieren, Spaltenstatistiken, nach einer Spalte filtern und Spalten umbenennen, verschieben, "
-         "exportieren oder löschen."),
+        ("CSV-Tabellen", "CSV- und TSV-Dateien öffnen sich als Tabelle, die so schnell scrollt wie Text. Nach einer Spalte sortieren, Spaltenstatistiken, nach einer Spalte filtern und Spalten umbenennen, verschieben, exportieren oder löschen. Ein Datensatz mit Zeilenumbrüchen in Anführungszeichen ist eine Zeile."),
         ("Textwerkzeuge", "Zeilen sortieren, Duplikate entfernen und umkehren, Groß-/Kleinschreibung ändern, Leerraum "
          "entfernen, JSON formatieren oder minimieren und viele Zeilen auf einmal mit einer Spaltenauswahl per Alt+Ziehen "
          "bearbeiten."),
@@ -116,8 +112,7 @@ T = {
     "how_intro": "Gewöhnliche Editoren lesen die ganze Datei, bevor sie etwas zeigen. BigText liest nur, was auf dem "
     "Bildschirm ist, und erledigt alles andere in Hintergrund-Threads, darum antwortet das Fenster in unter 3 ms.",
     "how": [
-        ("Speichergemappte Fenster", "Die Datei wird in 256-MB-Fenstern gemappt, und nur die Bytes, die Sie ansehen, "
-         "werden berührt. Suche, Indizierung und Speichern lesen getrennt als Stream."),
+        ("Speichergemappte Fenster", "Die Datei wird in 256-MB-Fenstern gemappt, und nur die Bytes, die Sie ansehen, werden berührt. Suche, Indizierung und Speichern lesen getrennt als Stream. Unter Linux und macOS liest die Anzeige stattdessen 64-KB-Blöcke, darum kann eine Datei, die gekürzt wird, während sie offen ist, das Programm nicht abstürzen lassen."),
         ("Dünn besetzter Zeilenindex", "Ein 8-Byte-Kontrollpunkt pro 64 KB: 8 MB Index für eine 50-GB-Datei. "
          "Zeilenpositionen zwischen den Kontrollpunkten werden bei Bedarf mit SIMD gezählt."),
         ("Piece Table", "Änderungen werden als kleine Stücke über der Originaldatei gespeichert, sodass das Einfügen "
@@ -248,11 +243,7 @@ GUIDES = [
              "verschiedene Werte, Summe, Mittelwert, Minimum, Maximum und die häufigsten Werte), Filter nach dieser "
              "Spalte, „Zeilen nach dieser Spalte gruppieren…“ mit Summen einer anderen Spalte und „Pivot nach dieser "
              "Spalte…“. Sortieren funktioniert bei Dateien bis 1 GB."),
-            ("Oder passend für Excel machen", "Datei → Datei aufteilen… schneidet die CSV-Datei in {{name.part001.csv}}, "
-             "{{name.part002.csv}}… mit einer festen Zeilenzahl, etwa 1.000.000, immer an Zeilengrenzen. Die Kopfzeile "
-             "steht nur im ersten Teil; kopieren Sie sie in die anderen, wenn Ihr Programm sie braucht. Für nur einige "
-             "Zeilen filtern Sie sie („Zeilen nach Bedingungen filtern…“) und speichern das Ergebnis als neue, kleinere "
-             "CSV-Datei."),
+            ("Oder passend für Excel machen", "Datei → Datei aufteilen… schneidet die CSV-Datei in {{name.part001.csv}}, {{name.part002.csv}}… mit einer festen Zeilenzahl, etwa 1.000.000, immer zwischen Datensätzen (ein Feld in Anführungszeichen mit Zeilenumbrüchen bleibt ganz), und „Kopfzeile in jedem Teil wiederholen“ setzt die Spaltennamen an den Anfang jedes Teils. Für nur einige Zeilen filtern Sie sie („Zeilen nach Bedingungen filtern…“) und speichern das Ergebnis als neue, kleinere CSV-Datei."),
         ],
         "tips": [
             "Ansicht → Tabellenzeilen prüfen… listet Datensätze mit falscher Feldanzahl, einem verirrten "

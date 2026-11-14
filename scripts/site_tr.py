@@ -28,9 +28,7 @@ T = {
     "features_h2": "Dev dosyalar için ihtiyacınız olan her şey",
     "features_intro": "Loglar, CSV ve SQL dökümleri, JSON dışa aktarımları ve diğer düzenleyicileri kilitleyen her metin dosyası için yapıldı.",
     "features": [
-        ("Her boyutta dosyayı açar", "Yalnızca görünen kısım, belleğe eşlenmiş pencereler üzerinden okunur. Arka plandaki "
-         "iş geri kalanını akış olarak işler; ağ veya USB sürücüler önbellekli parça okumalara geçer, böylece yavaş bir "
-         "disk pencereyi asla kilitlemez."),
+        ("Her boyutta dosyayı açar", "Yalnızca görünen kısım okunur: Windows'ta belleğe eşlenmiş pencereler üzerinden, Linux ve macOS'ta gerektikçe bloklar halinde. Arka plandaki iş geri kalanını akış olarak işler; ağ veya USB sürücüler önbellekli parça okumalara geçer, böylece yavaş bir disk pencereyi asla kilitlemez."),
         ("Anında satıra git", "Seyrek bir satır indeksi (her 64 KB için 8 bayt) arka planda 2,5 GB/s hızla oluşturulur. "
          "Satıra git ve kaydırma çubuğu, indeksleme bitmeden bile hemen çalışır."),
         ("Hızlı arama ve regex", "Düz metin 2,5 GB/s hızla, düzenli ifadeler doğrusal sürede; büyük/küçük harf, tam "
@@ -55,9 +53,7 @@ T = {
          "birkaç yüz kilobaytını okur. Aralarındaki süreyi görmek için satırları seçin."),
         ("Sıkıştırılmış loglar ve borular", ".gz ve .zst dosyalarını doğrudan açın, bir komutu BigText'e borulayın "
          "(journalctl -f | bigtext -) ya da komut satırından app.log:120 ile bir satırda açın."),
-        ("CSV tabloları", "CSV ve TSV dosyaları metin kadar hızlı kayan bir tablo olarak açılır. Bir sütuna göre sıralayın, "
-         "sütun istatistiklerini görün, bir sütuna göre filtreleyin; sütunları yeniden adlandırın, taşıyın, dışa aktarın "
-         "veya silin."),
+        ("CSV tabloları", "CSV ve TSV dosyaları metin kadar hızlı kayan bir tablo olarak açılır. Bir sütuna göre sıralayın, sütun istatistiklerini görün, bir sütuna göre filtreleyin; sütunları yeniden adlandırın, taşıyın, dışa aktarın veya silin. Tırnak içinde satır sonu olan bir kayıt tek satırdır."),
         ("Metin araçları", "Satırları sıralayın, tekrarları kaldırın ve ters çevirin, büyük/küçük harfi değiştirin, boşlukları "
          "kırpın, JSON'u biçimlendirin veya küçültün ve Alt+sürükle sütun seçimiyle birçok satırı aynı anda düzenleyin."),
         ("Kendi tarzınızda", "Bir komut paleti (Ctrl+Shift+P), değiştirilebilir kısayollar, herhangi bir eş aralıklı yazı "
@@ -107,8 +103,7 @@ T = {
     "how_intro": "Sıradan düzenleyiciler bir şey göstermeden önce dosyanın tamamını okur. BigText yalnızca ekrandakini okur "
     "ve geri kalan her şeyi arka plan iş parçacıklarında yapar, bu yüzden pencere 3 ms'den kısa sürede yanıt verir.",
     "how": [
-        ("Belleğe eşlenmiş pencereler", "Dosya 256 MB'lık pencerelerle eşlenir ve yalnızca baktığınız baytlara dokunulur. "
-         "Arama, indeksleme ve kaydetme ayrı akış okumaları kullanır."),
+        ("Belleğe eşlenmiş pencereler", "Dosya 256 MB'lık pencerelerle eşlenir ve yalnızca baktığınız baytlara dokunulur. Arama, indeksleme ve kaydetme ayrı akış okumaları kullanır. Linux ve macOS'ta ekran bunun yerine 64 KB'lık bloklar okur; açıkken kısaltılan bir dosya programı çökertemez."),
         ("Seyrek satır indeksi", "Her 64 KB için 8 baytlık bir kontrol noktası: 50 GB'lık bir dosya için 8 MB indeks. "
          "Kontrol noktaları arasındaki satır konumları gerektiğinde SIMD ile sayılır."),
         ("Piece table", "Düzenlemeler orijinal dosyanın üzerinde küçük parçalar olarak saklanır; 50 GB'lık bir dosyaya bir "
@@ -235,10 +230,7 @@ GUIDES = [
              "değerler, toplam, ortalama, en küçük, en büyük ve en sık değerler), bu sütuna göre satır filtresi, başka bir "
              "sütunun toplamlarıyla “Satırları bu sütuna göre grupla…” ve “Bu sütuna göre pivotla…”. Sıralama 1 GB'a kadar "
              "dosyalarda çalışır."),
-            ("Ya da Excel'e uydurun", "Dosya → Dosyayı böl… CSV'yi {{name.part001.csv}}, {{name.part002.csv}}… gibi, "
-             "örneğin 1.000.000'er satırlık parçalara, her zaman satır sonlarında böler. Başlık satırı yalnızca ilk "
-             "parçadadır; aracınız gerektiriyorsa diğerlerine kopyalayın. Yalnızca bazı satırlar gerekiyorsa onları "
-             "filtreleyin (“Satırları koşullara göre filtrele…”) ve sonucu yeni, daha küçük bir CSV olarak kaydedin."),
+            ("Ya da Excel'e uydurun", "Dosya → Dosyayı böl… CSV'yi {{name.part001.csv}}, {{name.part002.csv}}… gibi, örneğin 1.000.000'er satırlık parçalara, her zaman kayıtların arasından böler (satır sonu içeren tırnaklı alan bölünmez); “Başlık satırını her parçada tekrarla” sütun adlarını her parçanın başına koyar. Yalnızca bazı satırlar gerekiyorsa onları filtreleyin (“Satırları koşullara göre filtrele…”) ve sonucu yeni, daha küçük bir CSV olarak kaydedin."),
         ],
         "tips": [
             "Görünüm → Tablo satırlarını denetle…, alan sayısı yanlış, fazladan tırnaklı veya sayı sütununda metin olan "

@@ -3,7 +3,25 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
-## Unreleased
+## 0.11.0 — 2026-11-14
+
+### CSV records with line breaks
+
+- **One row per record**: in the table view, a record whose quoted fields hold line breaks is
+  one row, with the line it starts on in the gutter, instead of a row per line. A background
+  pass (about 1 GB a second, one byte of memory per 64 KB) finds where records start, so
+  scrolling, jumping and the scrollbar work from any point of a huge file.
+- The delimiter, the lines before the table and the header row are detected from records
+  too, so a file whose first records hold line breaks no longer takes its header for a title.
+- **Split file…** cuts a CSV shown as a table only between records, so no part ends inside a
+  quoted field, and a number of lines counts records; **Repeat the header row in every part**
+  (on by default for a table with a header) starts each part with the column names, as Excel
+  needs. `bigtext-cli split` does this for `.csv` and `.tsv` files (or with `--csv`;
+  `--repeat-header` for the header). Column names, the Add column preview and the
+  header that Row checks writes with the problem rows read the first record, not the first
+  line.
+- **Filter by a column** reads records: a match counts in the field it is in, also on the
+  second line of a record, and a kept record keeps all its lines.
 
 ### Files truncated while open (Linux, macOS)
 
@@ -29,24 +47,6 @@ All notable changes to BigText. Each release on
   endings on save** offers **Lone CR characters become line breaks too**: converting to LF or
   CRLF then turns every CR without an LF after it into a line break, so one save makes such
   a file regular. Without it lone CRs stay as they are, as before.
-
-### CSV records with line breaks
-
-- **One row per record**: in the table view, a record whose quoted fields hold line breaks is
-  one row, with the line it starts on in the gutter, instead of a row per line. A background
-  pass (about 1 GB a second, one byte of memory per 64 KB) finds where records start, so
-  scrolling, jumping and the scrollbar work from any point of a huge file.
-- The delimiter, the lines before the table and the header row are detected from records
-  too, so a file whose first records hold line breaks no longer takes its header for a title.
-- **Split file…** cuts a CSV shown as a table only between records, so no part ends inside a
-  quoted field, and a number of lines counts records; **Repeat the header row in every part**
-  (on by default for a table with a header) starts each part with the column names, as Excel
-  needs. `bigtext-cli split` does this for `.csv` and `.tsv` files (or with `--csv`;
-  `--repeat-header` for the header). Column names, the Add column preview and the
-  header that Row checks writes with the problem rows read the first record, not the first
-  line.
-- **Filter by a column** reads records: a match counts in the field it is in, also on the
-  second line of a record, and a kept record keeps all its lines.
 
 ## 0.10.0 — 2026-11-13
 

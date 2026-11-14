@@ -29,7 +29,7 @@ DOCS = ROOT / "docs"
 BASE = "https://erkinbek.github.io/bigtext/"
 REPO = "https://github.com/Erkinbek/bigtext"
 RELEASES = REPO + "/releases/latest"
-VERSION = "0.10.0"
+VERSION = "0.11.0"
 # When the demo animation (docs/img/demo.mp4) was last recorded.
 DEMO_DATE = "2026-11-12"
 UPDATED = "2026-10-24"
@@ -87,9 +87,7 @@ T = {
         "features_h2": "Everything you need for giant files",
         "features_intro": "Made for logs, CSV and SQL dumps, JSON exports and any text file that makes other editors hang.",
         "features": [
-            ("Opens files of any size", "Only the visible part is read, through memory-mapped windows. Background work "
-             "streams the rest, and network or USB drives fall back to cached chunked reads, so a slow disk never "
-             "blocks the window."),
+            ("Opens files of any size", "Only the visible part is read: through memory-mapped windows on Windows, in blocks read on demand on Linux and macOS. Background work streams the rest, and network or USB drives fall back to cached chunked reads, so a slow disk never blocks the window."),
             ("Instant go to line", "A sparse line index (8 bytes per 64 KB) is built in the background at 2.5 GB/s. "
              "Go to line and the scrollbar work immediately, even before indexing finishes."),
             ("Fast search and regex", "Plain text at 2.5 GB/s and linear-time regular expressions with case, whole-word "
@@ -109,7 +107,7 @@ T = {
             ("Filter and highlight", "Show only the lines that match, or only those that don't, like grep over the whole file, and save them to a new file. Paint patterns such as ERROR in their own colours and see on the scrollbar where the matches cluster."),
             ("Jump to a time", "Type 14:32:05 and land on the first log line at that time: a binary search reads a few hundred kilobytes of a 50 GB log. Select lines to see the time between them."),
             ("Compressed logs and pipes", "Open .gz and .zst files directly, pipe a command into BigText (journalctl -f | bigtext -), or open app.log:120 at a line from the command line."),
-            ("CSV tables", "CSV and TSV files open as a table that scrolls as fast as text. Sort by a column, get column statistics, filter by a column, and rename, move, export or delete columns."),
+            ("CSV tables", "CSV and TSV files open as a table that scrolls as fast as text. Sort by a column, get column statistics, filter by a column, and rename, move, export or delete columns. A record whose quoted fields hold line breaks is one row."),
             ("Text tools", "Sort, de-duplicate and reverse lines, change case, trim whitespace, pretty-print or minify JSON, and edit many lines at once with an Alt+drag column selection."),
             ("Your way", "A command palette (Ctrl+Shift+P), shortcuts you can change, any monospaced font, and an interface in English, Russian, Uzbek, Chinese, Spanish, Portuguese, German or Turkish."),
             ("Log analysis", "A level bar with ERROR, WARN, INFO and DEBUG filters and F8 to the next error, a time histogram, log fields, message patterns, top values, time gaps, and the lines around each match or with the same request id."),
@@ -138,8 +136,7 @@ T = {
         "how_intro": "Ordinary editors read the entire file before they show anything. BigText reads only what is on "
         "screen and does everything else on background threads, so the window answers in under 3 ms.",
         "how": [
-            ("Memory-mapped windows", "The file is mapped in 256 MB windows and only the bytes you look at are touched. "
-             "Search, indexing and saving use separate streaming reads."),
+            ("Memory-mapped windows", "The file is mapped in 256 MB windows and only the bytes you look at are touched. Search, indexing and saving use separate streaming reads. On Linux and macOS the screen reads 64 KB blocks instead, so a file truncated while open cannot crash the program."),
             ("Sparse line index", "One 8-byte checkpoint per 64 KB: 8 MB of index for a 50 GB file. Line positions "
              "between checkpoints are counted on demand with SIMD."),
             ("Piece table", "Edits are stored as small pieces over the original file, so inserting a line into a 50 GB "
@@ -253,9 +250,7 @@ T = {
         "features_h2": "Всё для работы с гигантскими файлами",
         "features_intro": "Для логов, дампов CSV и SQL, выгрузок JSON и любых текстовых файлов, на которых другие редакторы зависают.",
         "features": [
-            ("Файлы любого размера", "Читается только видимая часть — через окна отображения файла в память. Фоновые "
-             "задачи читают остальное потоком, а для сетевых и USB-дисков есть кэшированное чтение блоками, поэтому "
-             "медленный диск не блокирует окно."),
+            ("Файлы любого размера", "Читается только видимая часть: в Windows — через окна отображения файла в память, в Linux и macOS — блоками по запросу. Фоновые задачи читают остальное потоком, а для сетевых и USB-дисков есть кэшированное чтение блоками, поэтому медленный диск не блокирует окно."),
             ("Мгновенный переход к строке", "Разреженный индекс строк (8 байт на 64 КБ) строится в фоне со скоростью "
              "2,5 ГБ/с. Переход к строке и полоса прокрутки работают сразу, ещё до конца индексации."),
             ("Быстрый поиск и регулярные выражения", "Обычный текст — 2,5 ГБ/с, регулярные выражения за линейное время, "
@@ -276,7 +271,7 @@ T = {
             ("Фильтр и подсветка", "Показывайте только строки с совпадениями или, наоборот, без них, как grep по всему файлу, и сохраняйте их в новый файл. Подсвечивайте шаблоны вроде ERROR своими цветами и смотрите на полосе прокрутки, где скапливаются совпадения."),
             ("Переход ко времени", "Введите 14:32:05 и окажетесь на первой строке лога с этим временем: двоичный поиск читает несколько сотен килобайт из лога на 50 ГБ. Выделите строки, чтобы увидеть время между ними."),
             ("Сжатые логи и конвейеры", "Открывайте файлы .gz и .zst напрямую, передавайте BigText вывод команды (journalctl -f | bigtext -) или открывайте app.log:120 сразу на нужной строке из командной строки."),
-            ("Таблицы CSV", "CSV и TSV открываются таблицей, которая прокручивается так же быстро, как текст. Сортировка по столбцу, статистика столбца, фильтр по столбцу, переименование, перемещение, экспорт и удаление столбцов."),
+            ("Таблицы CSV", "CSV и TSV открываются таблицей, которая прокручивается так же быстро, как текст. Сортировка по столбцу, статистика столбца, фильтр по столбцу, переименование, перемещение, экспорт и удаление столбцов. Запись, в кавычках которой есть переводы строк, — одна строка таблицы."),
             ("Инструменты для текста", "Сортировка, удаление повторов и разворот строк, смена регистра, удаление пробелов, форматирование и сжатие JSON, правка многих строк сразу выделением столбцом (Alt+перетаскивание)."),
             ("Как вам удобно", "Палитра команд (Ctrl+Shift+P), настраиваемые сочетания клавиш, любой моноширинный шрифт и интерфейс на английском, русском, узбекском, китайском, испанском, португальском, немецком или турецком."),
             ("Анализ логов", "Панель уровней с фильтрами ERROR, WARN, INFO и DEBUG и F8 к следующей ошибке, гистограмма по времени, поля логов, шаблоны сообщений, частые значения, разрывы во времени, а также строки вокруг каждого совпадения или с тем же id запроса."),
@@ -305,8 +300,7 @@ T = {
         "how_intro": "Обычные редакторы читают весь файл, прежде чем что-то показать. BigText читает только то, что "
         "на экране, а всё остальное делает в фоновых потоках, поэтому окно отвечает быстрее чем за 3 мс.",
         "how": [
-            ("Окна отображения в память", "Файл отображается окнами по 256 МБ, и читаются только байты, которые вы "
-             "видите. Поиск, индексация и сохранение используют отдельное потоковое чтение."),
+            ("Окна отображения в память", "Файл отображается окнами по 256 МБ, и читаются только байты, которые вы видите. Поиск, индексация и сохранение используют отдельное потоковое чтение. В Linux и macOS экран читает блоки по 64 КБ, поэтому файл, урезанный во время работы, не может уронить программу."),
             ("Разреженный индекс строк", "Одна 8-байтовая контрольная точка на 64 КБ: 8 МБ индекса для файла на 50 ГБ. "
              "Строки между точками считаются по запросу с помощью SIMD."),
             ("Таблица фрагментов", "Правки хранятся как небольшие фрагменты поверх исходного файла: вставка строки "
@@ -421,9 +415,7 @@ T = {
         "features_h2": "Ulkan fayllar bilan ishlash uchun hamma narsa",
         "features_intro": "Loglar, CSV va SQL damplar, JSON eksportlar va boshqa muharrirlarni qotiradigan har qanday matn fayli uchun.",
         "features": [
-            ("Istalgan hajmdagi fayllar", "Faqat ko'rinib turgan qism xotiraga akslantirilgan oynalar orqali o'qiladi. "
-             "Fon vazifalari qolganini oqim bilan o'qiydi, tarmoq va USB disklar uchun esa keshli bloklab o'qish bor — "
-             "sekin disk oynani hech qachon to'xtatmaydi."),
+            ("Istalgan hajmdagi fayllar", "Faqat ko'rinib turgan qism o'qiladi: Windows'da xotiraga akslantirilgan oynalar orqali, Linux va macOS'da kerak bo'lganda bloklab. Fon vazifalari qolganini oqim bilan o'qiydi, tarmoq va USB disklar uchun esa keshli bloklab o'qish bor — sekin disk oynani hech qachon to'xtatmaydi."),
             ("Satrga bir zumda o'tish", "Siyrak satr indeksi (har 64 KB ga 8 bayt) fonda 2,5 GB/s tezlikda quriladi. "
              "Satrga o'tish va aylantirish paneli indekslash tugashidan oldin ham darhol ishlaydi."),
             ("Tezkor qidiruv va regex", "Oddiy matn 2,5 GB/s, chiziqli vaqtli muntazam ifodalar, katta-kichik harf, "
@@ -444,7 +436,7 @@ T = {
             ("Filtr va ajratish", "Faqat mosligi bor satrlarni yoki, aksincha, mosligi yo'qlarini butun fayl bo'ylab grep kabi ko'rsating va yangi faylga saqlang. ERROR kabi shablonlarni o'z rangida ajrating va mosliklar qayerda to'planganini aylantirish chizig'ida ko'ring."),
             ("Vaqtga o'tish", "14:32:05 ni yozing va logdagi shu vaqtli birinchi satrga o'tasiz: ikkilik qidiruv 50 GB logning bir necha yuz kilobaytinigina o'qiydi. Satrlarni belgilab, ular orasidagi vaqtni ko'ring."),
             ("Siqilgan loglar va konveyer", ".gz va .zst fayllarni to'g'ridan-to'g'ri oching, buyruq chiqishini BigText ga uzating (journalctl -f | bigtext -) yoki buyruq qatoridan app.log:120 ni kerakli satrda oching."),
-            ("CSV jadvallar", "CSV va TSV fayllar matn kabi tez aylanadigan jadval bo'lib ochiladi. Ustun bo'yicha saralash, ustun statistikasi, ustun bo'yicha filtr, ustunlarni qayta nomlash, surish, eksport qilish va o'chirish."),
+            ("CSV jadvallar", "CSV va TSV fayllar matn kabi tez aylanadigan jadval bo'lib ochiladi. Ustun bo'yicha saralash, ustun statistikasi, ustun bo'yicha filtr, ustunlarni qayta nomlash, surish, eksport qilish va o'chirish. Qo'shtirnoq ichida satr oxiri bo'lgan yozuv jadvalda bitta qator bo'ladi."),
             ("Matn vositalari", "Satrlarni saralash, takrorlarini olib tashlash va teskari tartiblash, harf registrini o'zgartirish, bo'shliqlarni tozalash, JSON ni formatlash va ixchamlash, Alt+sudrash bilan ustunli belgilab ko'p satrni birdaniga tahrirlash."),
             ("O'zingizga qulay", "Buyruqlar palitrasi (Ctrl+Shift+P), o'zgartiriladigan tezkor tugmalar, istalgan bir xil kenglikdagi shrift va ingliz, rus, o'zbek, xitoy, ispan, portugal, nemis yoki turk tilidagi interfeys."),
             ("Loglarni tahlil qilish", "ERROR, WARN, INFO va DEBUG filtrli darajalar paneli va F8 bilan keyingi xatoga o'tish, vaqt gistogrammasi, log maydonlari, xabar shablonlari, eng ko'p uchraydigan qiymatlar, vaqtdagi uzilishlar, har bir moslik atrofidagi yoki bir xil so'rov id'li satrlar."),
@@ -473,8 +465,7 @@ T = {
         "how_intro": "Oddiy muharrirlar biror narsa ko'rsatishdan oldin butun faylni o'qiydi. BigText faqat ekrandagini "
         "o'qiydi, qolgan hamma ishni fon oqimlarida bajaradi, shuning uchun oyna 3 ms dan tez javob beradi.",
         "how": [
-            ("Xotiraga akslantirilgan oynalar", "Fayl 256 MB lik oynalar bilan akslantiriladi va faqat siz ko'rayotgan "
-             "baytlar o'qiladi. Qidiruv, indekslash va saqlash alohida oqimli o'qishdan foydalanadi."),
+            ("Xotiraga akslantirilgan oynalar", "Fayl 256 MB lik oynalar bilan akslantiriladi va faqat siz ko'rayotgan baytlar o'qiladi. Qidiruv, indekslash va saqlash alohida oqimli o'qishdan foydalanadi. Linux va macOS'da ekran 64 KB lik bloklarni o'qiydi, shuning uchun ochiq turgan fayl qisqartirilsa ham dastur yiqilmaydi."),
             ("Siyrak satr indeksi", "Har 64 KB ga bitta 8 baytli nazorat nuqtasi: 50 GB fayl uchun 8 MB indeks. "
              "Nuqtalar orasidagi satrlar kerak bo'lganda SIMD bilan sanaladi."),
             ("Bo'laklar jadvali", "Tahrirlar asl fayl ustidagi kichik bo'laklar sifatida saqlanadi: 50 GB faylga satr "
