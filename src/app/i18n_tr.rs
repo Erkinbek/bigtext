@@ -1357,4 +1357,23 @@ pub static TR: &[(&str, &str)] = &[
     // Lone CRs on save.
     ("Lone CR characters become line breaks too", "Tek başına CR karakterleri de satır sonu olsun"),
     ("Otherwise a CR not followed by LF (shown as ←) stays as it is", "Aksi halde ardından LF gelmeyen CR (← olarak gösterilir) olduğu gibi kalır"),
+    // Share safely.
+    ("Share safely…", "Güvenli paylaş…"),
+    ("Share safely", "Güvenli paylaş"),
+    ("The selection ({size})", "Seçim ({size})"),
+    ("The whole document ({size})", "Belgenin tamamı ({size})"),
+    ("Tokens, Authorization and Cookie headers", "Token'lar, Authorization ve Cookie başlıkları"),
+    ("Secrets in URLs", "URL'lerdeki gizli değerler"),
+    ("Named secrets (password=, \"secret\":)", "Adlandırılmış gizli değerler (password=, \"secret\":)"),
+    ("E-mail addresses", "E-posta adresleri"),
+    ("IP addresses", "IP adresleri"),
+    ("More patterns (regular expressions, one per line; the first group is hidden):", "Ek desenler (düzenli ifadeler, satır başına bir tane; ilk grup gizlenir):"),
+    ("Nothing hidden in the preview.", "Önizlemede hiçbir şey gizlenmedi."),
+    ("Hidden in the preview: {list}", "Önizlemede gizlenen: {list}"),
+    ("The rules find common secrets, not every one: look at the preview before you share.", "Kurallar yaygın gizli değerleri bulur, hepsini değil: paylaşmadan önce önizlemeye bakın."),
+    ("Too large to copy; save it to a file instead.", "Kopyalamak için çok büyük; bunun yerine bir dosyaya kaydedin."),
+    ("Copied with {n} values hidden.", "{n} değer gizlenerek kopyalandı."),
+    ("Save safely as", "Güvenli farklı kaydet"),
+    ("Hiding secrets", "Gizli değerler gizleniyor"),
+    ("Saved to {file}; {n} values hidden.", "{file} dosyasına kaydedildi; {n} değer gizlendi."),
 ];

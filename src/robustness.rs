@@ -306,3 +306,40 @@ fn queries_and_expressions_survive_any_text() {
         let _ = crate::timestamp::parse(&text);
     }
 }
+
+#[test]
+fn redaction_survives_any_line() {
+    let pieces: &[&[u8]] = &[
+        b"token=",
+        b"Bearer ",
+        b"@",
+        b"example.com",
+        b"\"password\": \"",
+        b"\"",
+        b"?key=",
+        b"&",
+        b"10.0.0.",
+        b"::",
+        b"eyJ",
+        b".",
+        b" ",
+        b"Cookie: ",
+        "\u{171}".as_bytes(),
+        b"\\",
+        b"Authorization: ",
+        b"a",
+        b"1",
+    ];
+    let opts = crate::redact::Options {
+        ips: true,
+        custom: vec![r"(\d+)".into()],
+        ..Default::default()
+    };
+    let mut r = crate::redact::Redactor::new(&opts, [9; 16]).unwrap();
+    for seed in 1..=rounds(500) {
+        let mut rng = Rng(seed * 0x51ED_2701);
+        let line = noise_upto(&mut rng, pieces, 400);
+        let mut out = Vec::new();
+        r.line(&line, &mut out);
+    }
+}

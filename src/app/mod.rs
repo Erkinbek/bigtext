@@ -63,6 +63,7 @@ pub mod run_command;
 pub mod saved_searches;
 pub mod search_panel;
 pub mod sessions;
+pub mod share;
 pub mod shell;
 pub mod sql_dump;
 pub mod status_bar;
@@ -440,6 +441,7 @@ pub struct BigTextApp {
     pub log_sources: log_sources::SourcesUi,
     pub alerts: alerts::AlertsUi,
     pub sql_dump: sql_dump::DumpUi,
+    pub share: share::ShareUi,
     pub nav: nav::NavHistory,
     pub values: Option<match_values::ValuesDialog>,
     pub problems: problems_panel::ProblemsUi,
@@ -872,6 +874,7 @@ impl BigTextApp {
             log_sources: log_sources::SourcesUi::default(),
             alerts: alerts::AlertsUi::default(),
             sql_dump: sql_dump::DumpUi::default(),
+            share: share::ShareUi::default(),
             nav: nav::NavHistory::default(),
             values: None,
             problems: problems_panel::ProblemsUi::default(),
@@ -2988,6 +2991,7 @@ impl eframe::App for BigTextApp {
         self.log_sources_window(&ctx);
         self.alerts_window(&ctx);
         self.sql_dump_window(&ctx);
+        self.share_window(&ctx);
         self.symbols_window(&ctx);
         self.shortcuts_window(&ctx);
         self.fonts_window(&ctx);

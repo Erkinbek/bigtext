@@ -73,7 +73,7 @@ fn write_range(
 
 impl BigTextApp {
     /// File name the outputs are named after.
-    fn output_base_name(&self) -> String {
+    pub(crate) fn output_base_name(&self) -> String {
         match self.docs.get(self.active) {
             Some(d) => match (&d.unpacked_from, &d.path) {
                 (Some(p), _) => bigtext::decompress::inner_name(p),

@@ -1354,4 +1354,23 @@ pub static ZH: &[(&str, &str)] = &[
     // Lone CRs on save.
     ("Lone CR characters become line breaks too", "单独的 CR 也转换为换行"),
     ("Otherwise a CR not followed by LF (shown as ←) stays as it is", "否则，后面没有 LF 的 CR（显示为 ←）保持不变"),
+    // Share safely.
+    ("Share safely…", "安全分享…"),
+    ("Share safely", "安全分享"),
+    ("The selection ({size})", "所选内容（{size}）"),
+    ("The whole document ({size})", "整个文档（{size}）"),
+    ("Tokens, Authorization and Cookie headers", "令牌、Authorization 和 Cookie 标头"),
+    ("Secrets in URLs", "URL 中的机密"),
+    ("Named secrets (password=, \"secret\":)", "命名的机密（password=、\"secret\":）"),
+    ("E-mail addresses", "电子邮件地址"),
+    ("IP addresses", "IP 地址"),
+    ("More patterns (regular expressions, one per line; the first group is hidden):", "更多模式（正则表达式，每行一个；隐藏第一个分组）："),
+    ("Nothing hidden in the preview.", "预览中没有隐藏任何内容。"),
+    ("Hidden in the preview: {list}", "预览中已隐藏：{list}"),
+    ("The rules find common secrets, not every one: look at the preview before you share.", "这些规则能找出常见的机密，但不是全部：分享前请查看预览。"),
+    ("Too large to copy; save it to a file instead.", "内容太大，无法复制；请改为保存到文件。"),
+    ("Copied with {n} values hidden.", "已复制，隐藏了 {n} 个值。"),
+    ("Save safely as", "安全另存为"),
+    ("Hiding secrets", "正在隐藏机密"),
+    ("Saved to {file}; {n} values hidden.", "已保存到 {file}；隐藏了 {n} 个值。"),
 ];

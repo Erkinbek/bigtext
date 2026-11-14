@@ -1534,4 +1534,23 @@ pub static TEXTS: &[[&str; 3]] = &[
     // Lone CRs on save.
     ["Lone CR characters become line breaks too", "Одиночные CR тоже становятся переводами строк", "Yakka CR belgilari ham satr oxiriga aylansin"],
     ["Otherwise a CR not followed by LF (shown as ←) stays as it is", "Иначе CR без LF после него (показан как ←) остаётся как есть", "Aks holda ortidan LF kelmagan CR (← bilan ko'rsatiladi) o'zgarmay qoladi"],
+    // Share safely.
+    ["Share safely…", "Поделиться безопасно…", "Xavfsiz ulashish…"],
+    ["Share safely", "Поделиться безопасно", "Xavfsiz ulashish"],
+    ["The selection ({size})", "Выделение ({size})", "Tanlangan qism ({size})"],
+    ["The whole document ({size})", "Весь документ ({size})", "Butun hujjat ({size})"],
+    ["Tokens, Authorization and Cookie headers", "Токены, заголовки Authorization и Cookie", "Tokenlar, Authorization va Cookie sarlavhalari"],
+    ["Secrets in URLs", "Секреты в URL", "URL'dagi maxfiy qiymatlar"],
+    ["Named secrets (password=, \"secret\":)", "Именованные секреты (password=, \"secret\":)", "Nomli maxfiy qiymatlar (password=, \"secret\":)"],
+    ["E-mail addresses", "Адреса электронной почты", "Elektron pochta manzillari"],
+    ["IP addresses", "IP-адреса", "IP manzillar"],
+    ["More patterns (regular expressions, one per line; the first group is hidden):", "Ещё шаблоны (регулярные выражения, по одному в строке; скрывается первая группа):", "Qo'shimcha naqshlar (muntazam ifodalar, har satrda bittadan; birinchi guruh yashiriladi):"],
+    ["Nothing hidden in the preview.", "В предпросмотре ничего не скрыто.", "Oldindan ko'rishda hech narsa yashirilmadi."],
+    ["Hidden in the preview: {list}", "Скрыто в предпросмотре: {list}", "Oldindan ko'rishda yashirildi: {list}"],
+    ["The rules find common secrets, not every one: look at the preview before you share.", "Правила находят распространённые секреты, но не все: просмотрите результат, прежде чем делиться.", "Qoidalar keng tarqalgan maxfiy qiymatlarni topadi, lekin hammasini emas: ulashishdan oldin natijani ko'rib chiqing."],
+    ["Too large to copy; save it to a file instead.", "Слишком много для копирования; сохраните в файл.", "Nusxalash uchun juda katta; uning o'rniga faylga saqlang."],
+    ["Copied with {n} values hidden.", "Скопировано, скрыто значений: {n}.", "Nusxalandi, {n} ta qiymat yashirildi."],
+    ["Save safely as", "Сохранить безопасно как", "Xavfsiz saqlash"],
+    ["Hiding secrets", "Скрытие секретов", "Maxfiy qiymatlar yashirilmoqda"],
+    ["Saved to {file}; {n} values hidden.", "Сохранено в {file}; скрыто значений: {n}.", "{file} ga saqlandi; {n} ta qiymat yashirildi."],
 ];

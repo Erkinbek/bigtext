@@ -244,6 +244,17 @@ keyboard shortcuts.
   from every row, after a confirmation that names them. Files up to 64 MB change as one undoable
   edit (Ctrl+Z); larger files are rewritten on disk like Replace All (temp file, atomic swap,
   optional `.bak`) in one streaming pass with bounded memory.
+- **Share safely** (File menu): the selection, or the whole document, with secrets and personal
+  data hidden before it goes into an issue or a ticket: tokens (Bearer, Basic, JWT),
+  Authorization, API key and Cookie headers, secrets in URLs (`?token=`, `&sig=`), named
+  secrets (`password=`, `"secret": "…"`; the name stays), e-mail addresses, and on request IP
+  addresses and your own regular expressions (the first group, or the match). Each value
+  becomes a label like `<email-3f9a2c>`: the same for the same value within one export, so
+  lines can still be followed, and made from a hash with a random salt, so it cannot be turned
+  back. A preview shows the first lines exactly as they will be written, with how many values
+  of each kind were hidden; then **Copy** (up to 4 MB) or **Save as…** (any size, streamed with
+  progress). The rules find common secrets, not every one: look at the preview before you
+  share (`bigtext-cli redact`).
 - **Export and split** (File menu): **Export lines…** writes a line range (say 100,000–200,000)
   to a new file, **Save selection as…** writes the selection, and **Split file…** cuts the
   document into `name.part001.ext`, `name.part002.ext`, … of a given size in MB or number of

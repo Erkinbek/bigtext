@@ -3,6 +3,20 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## Unreleased
+
+### Share safely
+
+- **File → Share safely…** hides secrets and personal data in the selection (or the whole
+  document) before you paste it into an issue or a ticket: tokens (Bearer, Basic, JWT),
+  Authorization, API key and Cookie headers, secrets in URLs (`?token=`, `&sig=`), named secrets
+  (`password=`, `"secret": "…"`), e-mail addresses, and on request IP addresses and your own
+  patterns. Each value becomes a label like `<email-3f9a2c>`, the same for the same value in one
+  export and not reversible. A preview shows the first lines exactly as they will be written,
+  with counts; then **Copy** (up to 4 MB) or **Save as…** (any size, streamed). The rules find
+  common secrets, not every one, so look before you share. `bigtext-cli redact FILE` does the
+  same in scripts.
+
 ## 0.11.0 — 2026-11-14
 
 ### CSV records with line breaks

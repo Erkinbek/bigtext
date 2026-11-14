@@ -35,6 +35,7 @@ pub enum Cmd {
     Exit,
     ExportLines,
     SaveSelection,
+    ShareSafely,
     SplitFile,
     Compare,
     CompareSideBySide,
@@ -179,7 +180,7 @@ const CTRL_ALT: Modifiers = Modifiers {
 };
 
 impl Cmd {
-    pub const ALL: [Cmd; 125] = [
+    pub const ALL: [Cmd; 126] = [
         Cmd::New,
         Cmd::Open,
         Cmd::OpenFolder,
@@ -198,6 +199,7 @@ impl Cmd {
         Cmd::Exit,
         Cmd::ExportLines,
         Cmd::SaveSelection,
+        Cmd::ShareSafely,
         Cmd::SplitFile,
         Cmd::Compare,
         Cmd::CompareSideBySide,
@@ -368,6 +370,7 @@ impl Cmd {
             Cmd::Exit => "Exit",
             Cmd::ExportLines => "Export lines…",
             Cmd::SaveSelection => "Save selection as…",
+            Cmd::ShareSafely => "Share safely…",
             Cmd::SplitFile => "Split file…",
             Cmd::Compare => "Compare with…",
             Cmd::CompareSideBySide => "Compare side by side",
@@ -506,6 +509,7 @@ impl Cmd {
             | Cmd::Exit
             | Cmd::ExportLines
             | Cmd::SaveSelection
+            | Cmd::ShareSafely
             | Cmd::SplitFile
             | Cmd::Compare
             | Cmd::CompareSaved
@@ -843,6 +847,7 @@ impl BigTextApp {
             Cmd::Exit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             Cmd::ExportLines => self.open_export_lines(),
             Cmd::SaveSelection => self.save_selection_as(),
+            Cmd::ShareSafely => self.open_share(),
             Cmd::SplitFile => self.open_split(),
             Cmd::Compare => self.compare_dialog(),
             Cmd::CompareSaved => self.start_diff_with(super::extras::DiffOther::Saved),
@@ -1389,7 +1394,13 @@ impl BigTextApp {
                     });
                 });
                 ui.separator();
-                for c in [Cmd::ExportLines, Cmd::SaveSelection, Cmd::SplitFile, Cmd::Compare] {
+                for c in [
+                    Cmd::ExportLines,
+                    Cmd::SaveSelection,
+                    Cmd::ShareSafely,
+                    Cmd::SplitFile,
+                    Cmd::Compare,
+                ] {
                     run = run.or(self.item(ui, c));
                 }
                 // The other open files, to compare with in one click.

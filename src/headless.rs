@@ -159,6 +159,15 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         N); or one of them in full as CSV: --urls (requests, 4xx, 5xx, bytes
         and times per URL), --minutes (requests, 4xx and 5xx per minute),
         --slow (the 1,000 slowest requests with their line numbers).
+  redact FILE [-o OUT] [--ips] [--pattern RE]... [--no-tokens] [--no-urls] [--no-keys]
+          [--no-emails]
+        The file with secrets and personal data hidden, to share it: tokens,
+        Authorization and Cookie headers, secrets in URLs, password= and
+        \"secret\": values, e-mail addresses, with --ips IP addresses, with
+        --pattern more (its first group, or the match). Each becomes a label
+        like <email-3f9a2c>, the same for the same value in one run. What was
+        hidden is counted on stderr. The rules find common secrets, not every
+        one: look at the result before you share it.
   sqldump FILE [tables | extract TABLE[,TABLE...] | split] [-o OUT] [--out-dir DIR]
           [--no-settings]
         A SQL dump (mysqldump, pg_dump's plain format, SQLite's .dump), read in
@@ -189,7 +198,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 Exit codes: 0 done, 1 nothing matched, 2 error.
 ";
 
-const COMMANDS: [&str; 33] = [
+const COMMANDS: [&str; 34] = [
     "filter",
     "levels",
     "count",
@@ -199,6 +208,7 @@ const COMMANDS: [&str; 33] = [
     "convert",
     "report",
     "sqldump",
+    "redact",
     "values",
     "gaps",
     "patterns",
@@ -1107,6 +1117,56 @@ fn cmd_report(args: &[String], out: &mut dyn Write) -> Res<i32> {
         Ok(())
     })?;
     Ok(if r.requests > 0 { 0 } else { 1 })
+}
+
+fn cmd_redact(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    let a = Args::parse(
+        args,
+        &[
+            "--ips",
+            "--no-tokens",
+            "--no-urls",
+            "--no-keys",
+            "--no-emails",
+        ],
+        &["-o", "--output", "--pattern"],
+    )?;
+    let [file] = &a.rest[..] else {
+        return fail("needs FILE");
+    };
+    let opts = crate::redact::Options {
+        tokens: !a.flag(&["--no-tokens"]),
+        urls: !a.flag(&["--no-urls"]),
+        keys: !a.flag(&["--no-keys"]),
+        emails: !a.flag(&["--no-emails"]),
+        ips: a.flag(&["--ips"]),
+        custom: a
+            .all(&["--pattern"])
+            .into_iter()
+            .map(String::from)
+            .collect(),
+    };
+    let mut r = crate::redact::Redactor::new(&opts, crate::redact::random_salt()).map_err(Fail)?;
+    let (buf, _) = open(Path::new(file))?;
+    with_output(a.opt(&["-o", "--output"]), out, |w| {
+        crate::redact::redact_to(&buf, 0..buf.len(), &mut r, w, &CancelToken::new(), None)?;
+        Ok(())
+    })?;
+    let hidden: Vec<String> = crate::redact::KINDS
+        .iter()
+        .zip(r.counts())
+        .filter(|(_, n)| *n > 0)
+        .map(|(k, n)| format!("{k} {n}"))
+        .collect();
+    eprintln!(
+        "hidden: {}",
+        if hidden.is_empty() {
+            "nothing".to_string()
+        } else {
+            hidden.join(", ")
+        }
+    );
+    Ok(0)
 }
 
 fn cmd_sqldump(args: &[String], out: &mut dyn Write) -> Res<i32> {
@@ -2838,6 +2898,7 @@ fn run_command(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32
         "count" => cmd_filter(rest, out, true),
         "levels" => cmd_levels(rest, out),
         "split" => cmd_split(rest, out),
+        "redact" => cmd_redact(rest, out),
         "stats" => cmd_stats(rest, out),
         "merge" => cmd_merge(rest, out),
         "convert" => cmd_convert(rest, out),

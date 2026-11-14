@@ -45,6 +45,7 @@ pub mod merge;
 pub mod patch;
 pub mod patterns;
 pub mod pipe;
+pub mod redact;
 pub mod remote;
 pub mod replace;
 #[cfg(test)]

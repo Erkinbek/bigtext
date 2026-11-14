@@ -225,6 +225,7 @@ mod tests {
         "app" / "log_report.rs",
         "app" / "log_sources.rs",
         "app" / "alerts.rs",
+        "app" / "share.rs",
         "app" / "sql_dump.rs",
         "app" / "pivot.rs",
         "app" / "portable.rs",

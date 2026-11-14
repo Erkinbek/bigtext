@@ -84,6 +84,8 @@ pub struct SelfTest {
 
 const ORIGINAL: &str =
     "alpha beta gamma\n    indented line\nthird line here\nfoo bar foo baz\nlast line\n";
+/// Secrets to hide in Share safely.
+const SECRETS_LOG: &str = "2026-11-13 10:00:00 INFO login user=ann@example.com\n2026-11-13 10:00:01 DEBUG GET /api?token=abc123 Authorization: Bearer xyz.789\n2026-11-13 10:00:02 INFO {\"password\":\"hunter2\",\"ok\":true}\n";
 /// Records whose quoted fields hold line breaks: each is one row of the table.
 const MULTILINE_CSV: &str =
     "id,note,qty\n1,\"first\nsecond line\",5\n2,plain,6\n3,\"a,\"\"b\"\"\nc\nd\",7\n4,last,8\n";
@@ -409,6 +411,7 @@ fn setup_files(dir: &Path) -> std::io::Result<()> {
     )?;
     std::fs::write(dir.join("table.csv"), CSV)?;
     std::fs::write(dir.join("multiline.csv"), MULTILINE_CSV)?;
+    std::fs::write(dir.join("secrets.log"), SECRETS_LOG)?;
     std::fs::write(
         dir.join("data.json"),
         "{\"name\": \"bigtext\", \"size\": 42, \"ok\": true}\n",
@@ -4578,6 +4581,61 @@ impl SelfTest {
                 if shot.is_some_and(|p| !p.exists()) && c.waited() < Duration::from_secs(3) {
                     return Step::Wait;
                 }
+                Step::Next
+            }),
+        );
+        s(
+            "share safely: the preview hides the e-mail, the token and the password",
+            Box::new(|app, c| {
+                if c.first() {
+                    app.open_path(c.file("secrets.log"));
+                    return Step::Wait;
+                }
+                if c.mark == 0 {
+                    if !wait_ready(app) {
+                        return Step::Wait;
+                    }
+                    c.key(Key::A, CTRL);
+                    c.mark = 1;
+                    return Step::Wait;
+                }
+                if c.mark == 1 {
+                    let Some(ctx) = app.test_ctx() else {
+                        return Step::Fail("no context".into());
+                    };
+                    app.run(&ctx, crate::app::commands::Cmd::ShareSafely);
+                    c.mark = 2;
+                    return Step::Wait;
+                }
+                let shot = c.shot.clone().map(|d| d.join("selftest-share.png"));
+                if c.mark == 2 {
+                    let p = app.share.preview().to_string();
+                    if p.is_empty() {
+                        return Step::Wait;
+                    }
+                    let hidden = !p.contains("ann@example.com")
+                        && !p.contains("abc123")
+                        && !p.contains("hunter2");
+                    if !(hidden && p.contains("<email-") && p.contains("\"password\":")) {
+                        return Step::Fail(format!("preview {p:?}"));
+                    }
+                    // When the preview was ready, in tenths of a second: the shot waits for the
+                    // window to fade in.
+                    c.mark = 100 + c.waited().as_millis() as u64 / 100;
+                    return Step::Wait;
+                }
+                if c.mark >= 100 {
+                    if (c.waited().as_millis() as u64 / 100) < c.mark - 100 + 6 {
+                        return Step::Wait;
+                    }
+                    c.pending_shot = shot;
+                    c.mark = 3;
+                    return Step::Wait;
+                }
+                if shot.is_some_and(|p| !p.exists()) && c.waited() < Duration::from_secs(10) {
+                    return Step::Wait;
+                }
+                app.share.open = false;
                 Step::Next
             }),
         );

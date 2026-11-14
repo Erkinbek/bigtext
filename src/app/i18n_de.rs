@@ -1357,4 +1357,23 @@ pub static DE: &[(&str, &str)] = &[
     // Lone CRs on save.
     ("Lone CR characters become line breaks too", "Einzelne CR werden ebenfalls zu Zeilenumbrüchen"),
     ("Otherwise a CR not followed by LF (shown as ←) stays as it is", "Sonst bleibt ein CR ohne folgendes LF (als ← gezeigt) unverändert"),
+    // Share safely.
+    ("Share safely…", "Sicher teilen…"),
+    ("Share safely", "Sicher teilen"),
+    ("The selection ({size})", "Die Auswahl ({size})"),
+    ("The whole document ({size})", "Das ganze Dokument ({size})"),
+    ("Tokens, Authorization and Cookie headers", "Tokens, Authorization- und Cookie-Header"),
+    ("Secrets in URLs", "Geheimnisse in URLs"),
+    ("Named secrets (password=, \"secret\":)", "Benannte Geheimnisse (password=, \"secret\":)"),
+    ("E-mail addresses", "E-Mail-Adressen"),
+    ("IP addresses", "IP-Adressen"),
+    ("More patterns (regular expressions, one per line; the first group is hidden):", "Weitere Muster (reguläre Ausdrücke, einer pro Zeile; die erste Gruppe wird verborgen):"),
+    ("Nothing hidden in the preview.", "In der Vorschau wurde nichts verborgen."),
+    ("Hidden in the preview: {list}", "In der Vorschau verborgen: {list}"),
+    ("The rules find common secrets, not every one: look at the preview before you share.", "Die Regeln finden gängige Geheimnisse, nicht alle: Sehen Sie sich die Vorschau an, bevor Sie teilen."),
+    ("Too large to copy; save it to a file instead.", "Zu groß zum Kopieren; speichern Sie es stattdessen in eine Datei."),
+    ("Copied with {n} values hidden.", "Kopiert, {n} Werte verborgen."),
+    ("Save safely as", "Sicher speichern unter"),
+    ("Hiding secrets", "Geheimnisse werden verborgen"),
+    ("Saved to {file}; {n} values hidden.", "In {file} gespeichert; {n} Werte verborgen."),
 ];
