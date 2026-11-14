@@ -77,6 +77,10 @@ With a package manager:
 
 Or build it yourself (see [Building](CONTRIBUTING.md#building)).
 
+Since 0.11.0 every release file has a signed build provenance: `gh attestation verify FILE --repo
+Erkinbek/bigtext` checks that it was built by this repository's workflow from the tagged source, and
+`bigtext-sbom.cdx.json` lists the Rust libraries inside (CycloneDX).
+
 ## How it compares
 
 Notepad++ and VS Code read the whole file into memory, so a 10 GB log needs at least 10 GB of

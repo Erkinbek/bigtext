@@ -41,6 +41,12 @@ All notable changes to BigText. Each release on
   which could swap the colours of strings and code. 200–700 MB a second, about 40 bytes of
   memory per 64 KB.
 
+### Release files you can check
+
+- Every release file has a signed build provenance (SLSA): `gh attestation verify FILE --repo
+  Erkinbek/bigtext` checks that it was built by this repository's workflow from the tagged
+  source. `bigtext-sbom.cdx.json` lists the Rust libraries inside BigText (CycloneDX).
+
 ### Lone CRs
 
 - In a file that mixes lone CRs into LF line breaks (the status bar says Mixed), **Line
