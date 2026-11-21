@@ -32,7 +32,19 @@ RELEASES = REPO + "/releases/latest"
 VERSION = "0.11.0"
 # When the demo animation (docs/img/demo.mp4) was last recorded.
 DEMO_DATE = "2026-11-12"
-UPDATED = "2026-10-24"
+
+
+def last_release_date():
+    """Date of the newest numbered CHANGELOG heading: the site's text changes with releases."""
+    text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    m = re.search(r"^## \d+\.\d+\.\d+ — (\d{4}-\d{2}-\d{2})$", text, re.M)
+    if not m:
+        sys.exit("CHANGELOG.md has no '## X.Y.Z — YYYY-MM-DD' heading")
+    return m.group(1)
+
+
+# sitemap lastmod and dateModified: a fixed date here stayed at 2026-10-24 for weeks of changes.
+UPDATED = last_release_date()
 LANGS = ["en", "ru", "uz"]
 LOCALE = {"en": "en_US", "ru": "ru_RU", "uz": "uz_UZ"}
 LANG_NAME = {"en": "English", "ru": "Русский", "uz": "O'zbekcha"}
