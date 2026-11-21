@@ -591,8 +591,14 @@ for _l in LANGS:
         assert set(_g) == set(_ge), (_l, _g["slug"])
 
 AUTHOR = "Erkin Pardayev"
-# Google Search Console ownership check for https://erkinbek.github.io/bigtext/.
-GOOGLE_SITE_VERIFICATION = "QgL5syO4K_1FI8hLvYGe4zgqZoO_Q0rM3lbszdY8FUE"
+# Google Search Console ownership checks (one tag each, on every page). Google re-checks them,
+# so removing one drops that owner's access. The first is the https://erkinbek.github.io/bigtext/
+# property; the second was given on 2026-11-21 for the property made after the HTML-file check
+# failed (the same token is on the root page, repo Erkinbek/Erkinbek.github.io).
+GOOGLE_SITE_VERIFICATION = (
+    "QgL5syO4K_1FI8hLvYGe4zgqZoO_Q0rM3lbszdY8FUE",
+    "u9xSue2rCFNYZuBsctyCtK7TwA5MpZ6w2ruZRhiGHj8",
+)
 AUTHOR_LINKS = [
     ("GitHub", "https://github.com/Erkinbek"),
     ("Telegram", "https://t.me/ErkinPardayev"),
@@ -617,6 +623,7 @@ def head(lang, t, path_prefix, canonical, noindex=False, alternates=None, og_typ
         links = f'  <link rel="canonical" href="{canonical}">\n'
         links += "".join(f'  <link rel="alternate" hreflang="{l}" href="{alternates[l]}">\n' for l in LANGS)
         links += f'  <link rel="alternate" hreflang="x-default" href="{alternates["en"]}">\n'
+    verify = "".join(f'  <meta name="google-site-verification" content="{v}">\n' for v in GOOGLE_SITE_VERIFICATION)
     return f"""<!doctype html>
 <html lang="{lang}">
 <head>
@@ -627,8 +634,7 @@ def head(lang, t, path_prefix, canonical, noindex=False, alternates=None, og_typ
 {links}  <meta name="theme-color" content="#0b0f17">
   <meta name="color-scheme" content="dark light">
   <meta name="author" content="{AUTHOR}">
-  <meta name="google-site-verification" content="{GOOGLE_SITE_VERIFICATION}">
-  <meta property="og:type" content="{og_type}">
+{verify}  <meta property="og:type" content="{og_type}">
   <meta property="og:site_name" content="BigText">
   <meta property="og:title" content="{e(t['og_title'])}">
   <meta property="og:description" content="{e(t['description'])}">
