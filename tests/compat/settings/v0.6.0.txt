@@ -1,0 +1,28 @@
+# BigText settings
+font_size=14
+dark=1
+theme=dark
+cvd=1
+scale=125
+backup_on_save=1
+syntax=1
+show_ws=0
+show_ws_code=1
+level_bar=1
+status=offset,selection,time,legend,path
+gutter=1
+wrap_column=0
+ruler=0
+json_crumb=1
+font=C:\Windows\Fonts\consola.ttf
+lang=en
+mark=1|0|rc|user=(\w+)|uid=\d+
+mark=0|3||ERROR
+mark=1|5|cw|таймаут
+saved=Timeouts / refused|rc|0||(timeout|refused) after \d+ms
+saved=Not healthcheck|c|1|2|healthcheck=ok
+saved=Ошибки входа|w|0||login=failed
+key=goto_time=ctrl+alt+T
+key=find_all=none
+key=theme.hc-dark=ctrl+shift+F12
+active=0

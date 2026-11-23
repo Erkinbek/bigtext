@@ -7,6 +7,8 @@ pub mod column_chart;
 pub mod column_editor;
 pub mod columns;
 pub mod commands;
+#[cfg(test)]
+mod compat_tests;
 pub mod convert;
 pub mod copy_as;
 pub mod csv_tools;

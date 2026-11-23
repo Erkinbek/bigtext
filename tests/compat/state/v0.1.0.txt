@@ -1,0 +1,12 @@
+# BigText session state
+font_size=16
+dark=1
+backup_on_save=0
+syntax=1
+recent=D:\Отчёты\журнал_2026.log
+recent=/var/log/syslog
+recent=C:\logs\app.log
+tab=48213|48100|0|0,1520,48213|C:\logs\app.log
+tab=0|0|1||/var/log/syslog
+tab=9000000000|8999999950|0|9000000000|D:\Отчёты\журнал_2026.log
+active=2

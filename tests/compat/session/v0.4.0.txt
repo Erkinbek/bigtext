@@ -1,0 +1,19 @@
+# BigText session
+tab=48213|48100|0|0,1520,48213|C:\logs\app.log
+pinned=0
+filter=0|3|0|rc|level=(ERROR|WARN)
+filterterm=0|1|c|healthcheck
+filterterm=0|0|r|user=\d+
+tab=0|0|1||/var/log/syslog
+filter=1||1|w|CRON
+tab=9000000000|8999999950|0|9000000000|D:\Отчёты\журнал_2026.log
+pinned=2
+tab=120|0|0||D:\archives\logs-2026-10.zipapp/server.log
+tab=0|0|0||C:\ProgramData\App\service.conf
+fileopt=Windows-1251|Log|fr||C:\logs\app.log
+fileopt=||w||/var/log/syslog
+fileopt=|INI / TOML / YAML|||C:\ProgramData\App\service.conf
+mark=1|0|rc|user=(\w+)|uid=\d+
+mark=0|3||ERROR
+mark=1|5|cw|таймаут
+active=3

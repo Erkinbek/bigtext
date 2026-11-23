@@ -239,7 +239,9 @@ pub(super) fn parse_file_opts(v: &str) -> Option<FileOpts> {
             .find(|e| e.name() == enc),
         lang: crate::view::highlight::Lang::ALL
             .into_iter()
-            .find(|l| l.name() == lang),
+            .find(|l| l.name() == lang)
+            // 0.4-0.6 called it "INI / TOML / YAML" (0.7 moved YAML to a language of its own).
+            .or((lang == "INI / TOML / YAML").then_some(crate::view::highlight::Lang::Ini)),
         table: flags.contains('t'),
         hex: flags.contains('h'),
         follow: flags.contains('f'),
