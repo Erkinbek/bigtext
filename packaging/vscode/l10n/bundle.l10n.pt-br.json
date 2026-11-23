@@ -5,6 +5,6 @@
   "Could not start BigText: {0}": "Não foi possível iniciar o BigText: {0}",
   "Open in BigText": "Abrir no BigText",
   "Don't ask again": "Não perguntar novamente",
-  "{0} is {1}. BigText opens it at once and never loads it into memory.": "{0} tem {1}. O BigText abre na hora e nunca o carrega na memória.",
+  "{0} is {1}. BigText opens it without loading it into memory.": "{0} tem {1}. O BigText o abre sem carregá-lo na memória.",
   "Open a file that is on disk first.": "Abra primeiro um arquivo que esteja no disco."
 }

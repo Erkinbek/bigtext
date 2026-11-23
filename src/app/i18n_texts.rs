@@ -1373,7 +1373,7 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Solarized Dark", "Solarized Dark", "Solarized Dark"],
     ["Solarized Light", "Solarized Light", "Solarized Light"],
     // The page over an empty start.
-    ["A text editor for huge files: it opens 1–50+ GB at once and never freezes.", "Редактор для огромных файлов: открывает 1–50+ ГБ сразу и никогда не зависает.", "Ulkan fayllar uchun matn muharriri: 1–50+ GB faylni darhol ochadi va hech qachon qotib qolmaydi."],
+    ["A text editor for huge files: it opens 1–50+ GB without loading them into memory.", "Редактор для огромных файлов: открывает 1–50+ ГБ, не загружая их в память.", "Ulkan fayllar uchun matn muharriri: 1–50+ GB faylni xotiraga yuklamasdan ochadi."],
     ["No big file at hand? BigText can write a 1 GB sample log to try it on.", "Нет под рукой большого файла? BigText может записать пробный лог на 1 ГБ, чтобы попробовать.", "Qo'lingizda katta fayl yo'qmi? BigText sinab ko'rish uchun 1 GB namunaviy log yozib bera oladi."],
     ["Create a 1 GB sample log", "Создать пробный лог на 1 ГБ", "1 GB namunaviy log yaratish"],
     ["It goes to {dir} and opens when it is written.", "Он сохранится в {dir} и откроется, когда будет записан.", "U {dir} papkasiga yoziladi va tayyor bo'lgach ochiladi."],

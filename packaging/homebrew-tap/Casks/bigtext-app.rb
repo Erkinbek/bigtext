@@ -9,7 +9,7 @@ cask "bigtext-app" do
 
   url "https://github.com/Erkinbek/bigtext/releases/download/v#{version}/bigtext-macos-#{arch}.app.zip"
   name "BigText"
-  desc "Text editor for huge files that never freezes"
+  desc "Text editor for huge files that never loads them into memory"
   homepage "https://erkinbek.github.io/bigtext/"
 
   livecheck do

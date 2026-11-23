@@ -7,7 +7,7 @@
 pkgname=bigtext-bin
 pkgver=0.7.0
 pkgrel=1
-pkgdesc='Fast text editor for huge files (1-50+ GB) that never freezes'
+pkgdesc='Text editor for huge files (1-50+ GB) that never loads them into memory'
 arch=('x86_64')
 url='https://github.com/Erkinbek/bigtext'
 license=('MIT')

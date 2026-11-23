@@ -299,7 +299,7 @@ impl BigTextApp {
                     ui.label(RichText::new("BigText").size(26.0).strong());
                     ui.weak(Version::current().to_string());
                 });
-                ui.label(tr("A text editor for huge files: it opens 1–50+ GB at once and never freezes."));
+                ui.label(tr("A text editor for huge files: it opens 1–50+ GB without loading them into memory."));
                 ui.add_space(10.0);
                 ui.horizontal_wrapped(|ui| {
                     for c in [Cmd::Open, Cmd::OpenFolder, Cmd::OpenRemote] {

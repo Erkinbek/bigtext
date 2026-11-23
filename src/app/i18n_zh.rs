@@ -1197,7 +1197,7 @@ pub static ZH: &[(&str, &str)] = &[
     ("{name} or {3} is a column; + - * / on numbers, & joins text, = <> < > compare, and / or / not; upper, lower, trim, len, substr(t, start, n), replace(t, a, b), regex(t, \"id=([0-9]+)\"), if(c, a, b), num, abs, round(x, digits).", "{name} 或 {3} 表示一列；数字可用 + - * /，& 连接文本，= <> < > 比较，and / or / not；upper、lower、trim、len、substr(t, start, n)、replace(t, a, b)、regex(t, \"id=([0-9]+)\")、if(c, a, b)、num、abs、round(x, digits)。"),
     ("Filter by fields: JSON Lines, logfmt (key=value), or the columns of web server and syslog logs. .status >= 500 and (.method = POST or .time >= 10:00); also ==, !=, <, in (a, b), contains, ~ regex, exists, missing, not", "按字段筛选：JSON Lines、logfmt（key=value），或 Web 服务器和 syslog 日志的列。.status >= 500 and (.method = POST or .time >= 10:00)；还有 ==、!=、<、in (a, b)、contains、~ 正则表达式、exists、missing、not"),
     ("No JSON objects found: one per line (JSON Lines), or the items of a JSON array.", "未找到 JSON 对象：应每行一个（JSON Lines），或为 JSON 数组的元素。"),
-    ("A text editor for huge files: it opens 1–50+ GB at once and never freezes.", "专为超大文件打造的文本编辑器：1–50+ GB 的文件即刻打开，从不卡顿。"),
+    ("A text editor for huge files: it opens 1–50+ GB without loading them into memory.", "专为超大文件打造的文本编辑器：无需载入内存即可打开 1–50+ GB 的文件。"),
     ("No big file at hand? BigText can write a 1 GB sample log to try it on.", "手边没有大文件？BigText 可以写一个 1 GB 的示例日志供你试用。"),
     ("Create a 1 GB sample log", "创建 1 GB 示例日志"),
     ("It goes to {dir} and opens when it is written.", "它会保存在 {dir}，写完后自动打开。"),

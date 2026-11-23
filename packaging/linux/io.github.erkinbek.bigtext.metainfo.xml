@@ -6,7 +6,7 @@
 <component type="desktop-application">
   <id>io.github.erkinbek.bigtext</id>
   <name>BigText</name>
-  <summary>Text editor for huge files that never freezes</summary>
+  <summary>Text editor for huge files that never loads them into memory</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <!-- developer_name and no vcs-browser link: appstreamcli on Ubuntu 22.04, where the AppImage
@@ -14,9 +14,9 @@
   <developer_name>Erkin Pardayev</developer_name>
   <description>
     <p>
-      BigText opens text files of any size at once, from 1 to 50 GB and more, because it never
-      loads a whole file into memory: a 50 GB log takes about 100 MB of RAM. Scrolling, jumping
-      to a line, searching and saving work in the background, so the window never freezes.
+      BigText opens text files of any size, from 1 to 50 GB and more, without loading them into
+      memory: a 50 GB log takes about 100 MB of RAM. Scrolling, jumping
+      to a line, searching and saving work in the background, so the window keeps responding.
     </p>
     <ul>
       <li>Search with regular expressions at a few GB/s, Find All with a list of matches, and Replace All through the whole file</li>

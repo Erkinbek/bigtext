@@ -2,7 +2,7 @@
 Type=Application
 Name=BigText
 GenericName=Text Editor
-Comment=Text editor for huge files (1–50+ GB) that never freezes
+Comment=Text editor for huge files (1–50+ GB) that never loads them into memory
 Exec=bigtext %F
 Icon=bigtext
 Terminal=false

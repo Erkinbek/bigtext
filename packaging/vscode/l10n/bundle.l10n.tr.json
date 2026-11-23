@@ -5,6 +5,6 @@
   "Could not start BigText: {0}": "BigText başlatılamadı: {0}",
   "Open in BigText": "BigText'te aç",
   "Don't ask again": "Bir daha sorma",
-  "{0} is {1}. BigText opens it at once and never loads it into memory.": "{0} boyutu {1}. BigText onu anında açar ve asla belleğe yüklemez.",
+  "{0} is {1}. BigText opens it without loading it into memory.": "{0} boyutu {1}. BigText onu belleğe yüklemeden açar.",
   "Open a file that is on disk first.": "Önce diskteki bir dosyayı açın."
 }

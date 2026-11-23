@@ -1,6 +1,6 @@
 {
   "displayName": "Open in BigText",
-  "description": "Riesige Dateien und Logs aus VS Code in BigText öffnen, dem kostenlosen Editor, der 50 GB sofort öffnet.",
+  "description": "Riesige Dateien und Logs aus VS Code in BigText öffnen, dem kostenlosen Editor, der 50-GB-Dateien öffnet, ohne sie in den Speicher zu laden.",
   "command.open": "In BigText öffnen",
   "command.openFolder": "Ordner in BigText öffnen",
   "config.path": "Pfad zum Programm BigText (`bigtext.exe` unter Windows). Leer lassen, um das installierte zu finden.",

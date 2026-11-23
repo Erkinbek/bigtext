@@ -39,7 +39,7 @@ Installed-Size: $size_kb
 Maintainer: Erkin Pardayev <erkin.pardayev@gmail.com>
 Homepage: https://github.com/Erkinbek/bigtext
 Description: Text editor for huge files
- BigText opens 1-50+ GB files instantly and never freezes: streaming search,
+ BigText opens 1-50+ GB files without loading them into memory: streaming search,
  replace and atomic saves, log tools (levels, time histogram, merging logs),
  CSV tables and JSON tools. Includes bigtext-cli for scripts.
 EOF

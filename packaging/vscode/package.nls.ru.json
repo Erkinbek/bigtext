@@ -1,6 +1,6 @@
 {
   "displayName": "Open in BigText",
-  "description": "Открывайте огромные файлы и логи из VS Code в BigText — бесплатном редакторе, который сразу открывает 50 ГБ.",
+  "description": "Открывайте огромные файлы и логи из VS Code в BigText — бесплатном редакторе, который открывает файлы на 50 ГБ, не загружая их в память.",
   "command.open": "Открыть в BigText",
   "command.openFolder": "Открыть папку в BigText",
   "config.path": "Путь к программе BigText (`bigtext.exe` в Windows). Оставьте пустым, чтобы найти установленную.",

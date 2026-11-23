@@ -69,7 +69,7 @@ async function offer(tab) {
   const open = vscode.l10n.t("Open in BigText");
   const never = vscode.l10n.t("Don't ask again");
   const pick = await vscode.window.showInformationMessage(
-    vscode.l10n.t("{0} is {1}. BigText opens it at once and never loads it into memory.", path.basename(uri.fsPath), humanSize(size)),
+    vscode.l10n.t("{0} is {1}. BigText opens it without loading it into memory.", path.basename(uri.fsPath), humanSize(size)),
     open,
     never,
   );

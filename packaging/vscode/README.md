@@ -1,8 +1,7 @@
 # Open in BigText
 
 Open huge files and logs from VS Code in [BigText](https://erkinbek.github.io/bigtext/), the
-free, open-source editor that opens 1–50+ GB text files at once and never loads them into
-memory.
+free, open-source editor that opens 1–50+ GB text files without loading them into memory.
 
 VS Code is great for code, but a multi-gigabyte log, CSV export or SQL dump is either refused
 ("the file is not displayed in the text editor because it is very large") or loaded into

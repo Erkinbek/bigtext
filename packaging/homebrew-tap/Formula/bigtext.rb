@@ -2,7 +2,7 @@
 # quarantine a formula's downloads, so macOS opens them without the unsigned-app warning. The
 # tap's update workflow keeps `version` and the checksums at the latest release.
 class Bigtext < Formula
-  desc "Text editor for huge files that never freezes"
+  desc "Text editor for huge files that never loads them into memory"
   homepage "https://erkinbek.github.io/bigtext/"
   version "0.7.0"
   license "MIT"
