@@ -5,6 +5,12 @@ All notable changes to BigText. Each release on
 
 ## Unreleased
 
+### Fixed: an idle window used a third of a CPU core
+
+- With nothing happening, BigText repainted its window as fast as it could (about 725 frames a
+  second, 33–53 % of one core), because it sent the window title to the system on every frame.
+  An idle window now uses no CPU, which matters most on a laptop's battery.
+
 ### Fixed: data safety (found by an audit before 1.0)
 
 - Closing the window while a save was running exited without asking about unsaved changes. It

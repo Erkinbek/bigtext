@@ -193,11 +193,38 @@ Both on the same PC, in the same way. The 0.1.0 reports were not kept; from this
 
 ## Comparing with other editors
 
-Not done yet. A fair comparison needs the same machine, files and cache state for every editor,
-each editor's version, the same definition of "opened" for all of them (text visible on the
-monitor, timed from a screen recording, since other editors have no benchmark mode), several runs,
-and the raw data published. Until then, BigText's documents make no speed claims about other
-editors.
+A first comparison ran on 24 November 2026 on the same PC (Intel Core Ultra 9 285, 191 GB,
+Windows 11, files in the OS cache), 3 runs per editor and file, with
+[`scripts/compare-editors.py`](scripts/compare-editors.py). Raw data:
+[`bench/2026-11-24-compare/`](bench/2026-11-24-compare/). The files are `random-lines-1g.txt` and
+`-10g.txt` with 120 lines of full blocks in front, so a look at the window shows whether the
+file's text is on screen.
+
+What is measured, the same way for every editor, from outside: **busy** is the time from
+starting the editor with the file until its processes together used under 3 % of one core for
+2 s (it finished loading or indexing the file, or stopped at a question), and **memory** is the
+private memory of all its processes then.
+
+| Editor | 1 GB file | 10 GB file |
+|---|---|---|
+| BigText (main, `ce05f24`) | text shown; busy 1.1–2.4 s; 93–95 MB | text shown; busy 4.4–4.7 s; 92–95 MB |
+| klogg 22.06 | text shown; busy 1.6–1.8 s; 91–95 MB | text shown; busy 10.0 s; 283–284 MB |
+| Notepad++ 8.9.9.1 (64-bit, portable) | loaded whole (9,069,793 lines); busy 2.4–3.9 s; 1,177–1,178 MB | stops at "Opening huge file warning" before loading |
+| VS Code 1.147 (new profile, no extensions) | "not displayed … because it is very large", **Open Anyway** button; 1,424–1,682 MB | the same message; 1,449–1,474 MB |
+
+- **This is not a first-screen time.** BigText shows its first screen long before it is idle:
+  its busy time is mostly the background line index, which other editors also do (klogg) or
+  replace by loading the whole file (Notepad++). Timing when text first appears needs a screen
+  recording of each editor: capturing windows was tried and is not reliable (BigText's OpenGL
+  window comes out blank, half-painted windows fool a pixel test), so no first-screen times are
+  published for other editors, and the summary's 22–26 ms stays BigText's own measurement.
+- **VS Code and Notepad++ were left at their defaults.** VS Code's limit can be raised and
+  Notepad++'s warning answered; then they load the file into memory, which these runs did not
+  measure. VS Code's memory above is its own, with the file not loaded.
+- The editors ran with settings of their own (a new VS Code profile, Notepad++'s portable
+  folder, BigText without saved state; klogg's settings were put back after), one at a time,
+  with every process ended after each run.
+- Frames of each editor's window at the end of each run were checked by eye and not kept.
 
 ## Not measured yet
 

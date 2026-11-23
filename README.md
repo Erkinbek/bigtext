@@ -110,7 +110,9 @@ free RAM. The editors built for huge files are paid or read-only: EmEditor Profe
 subscription (its free edition is for home and school use and has no large file controller or
 filter), UltraEdit is sold as a subscription or a perpetual licence, and klogg views and searches
 files without editing them. BigText opens, searches **and edits** files of any size on Windows,
-Linux and macOS, and it is free and open source.
+Linux and macOS, and it is free and open source. How much memory klogg, Notepad++, VS Code and
+BigText kept for a 1 GB and a 10 GB file on one PC, and how long each worked on it, is in
+[BENCHMARKS.md](BENCHMARKS.md#comparing-with-other-editors).
 
 | Editor | Price | Open source | Platforms | A 10 GB file | Editing huge files |
 | --- | --- | --- | --- | --- | --- |
@@ -119,7 +121,7 @@ Linux and macOS, and it is free and open source.
 | UltraEdit | Paid (subscription or perpetual licence) | ❌ | Windows, Linux, macOS | ✅ | ✅ |
 | klogg | Free | ✅ GPL-3.0 | Windows, Linux, macOS | ✅ | ❌ Views and searches only |
 | Notepad++ | Free | ✅ GPL | Windows | ⚠️ Loads the whole file into RAM; the 32-bit build refuses files over 2 GB | ⚠️ Only what fits in RAM |
-| VS Code | Free | ✅ MIT (Code - OSS) | Windows, Linux, macOS | ⚠️ Loads the whole file into RAM | ⚠️ Only what fits in RAM |
+| VS Code | Free | ✅ MIT (Code - OSS) | Windows, Linux, macOS | ⚠️ Loads the whole file into RAM; by default 1.147 did not show a 1 GB file (it offers "Open Anyway") | ⚠️ Only what fits in RAM |
 
 <sub>Checked on 23 November 2026 against each project's own pages:
 [EmEditor](https://www.emeditor.com/), [EmEditor Free](https://www.emeditor.com/text-editor-features/emeditor-free/),

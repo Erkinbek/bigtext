@@ -1,0 +1,17 @@
+{
+  "date": "2026-11-24T01:10",
+  "os": "Windows-11-10.0.26300-SP0",
+  "cpu": "Intel(R) Core(TM) Ultra 9 285",
+  "ram_gb": 191,
+  "editors": {
+    "BigText": "main ce05f24",
+    "Notepad++": "8.9.9.1",
+    "VS Code": "1.147.0",
+    "klogg": "22.06.0.1289"
+  },
+  "files": {
+    "1g": "compare-1g.txt (1073763674 bytes)",
+    "10g": "compare-10g.txt (10737440081 bytes)"
+  },
+  "method": "Opens the same big files in several editors and measures, from outside and the same way for\nall of them, how long each works on the file and how much memory it keeps (Windows only).\n\n    python scripts/compare-editors.py [--runs 3] [--sizes 1g,10g] [--out bench/DATE-compare]\n                                      [--only BigText,klogg] [--save-frames DIR]\n\nHow it measures (BENCHMARKS.md, \"Comparing with other editors\"):\n- The test files are testdata/random-lines-1g.txt and -10g.txt with 120 lines of full blocks\n  in front (written once as testdata/compare-1g.txt and compare-10g.txt), so a look at the\n  window shows at once whether the file's text is on screen.\n- Each editor is started with the file. \"Busy\" is the time from the start until its processes\n  together used under 3 % of one core for 2 s, counted from when its first window appeared: it\n  has finished loading or indexing the file, or gave up. The memory is the private memory of\n  all its processes at that moment; the peak is the highest seen before. The titles of its\n  windows are kept (a \"file too big\" message is one).\n- What each editor showed is checked by eye: with --save-frames DIR, its window is captured\n  once at that moment with PrintWindow (only that window; it does not work for OpenGL windows\n  such as BigText's, which come out blank).\n- This does not time the first screen: that needs a screen recording of each editor, and the\n  window captures tried for it were not reliable (blank OpenGL windows, half-painted windows).\n- Editors run with settings of their own (VS Code: a new profile folder; Notepad++: its\n  portable folder; BigText: BIGTEXT_NO_STATE; klogg's settings files are put back after), and\n  every process is ended after each run.\n"
+}
