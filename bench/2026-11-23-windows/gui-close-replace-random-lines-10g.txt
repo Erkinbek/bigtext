@@ -1,0 +1,12 @@
+BigText GUI benchmark
+file: testdata\random-lines-10g.txt
+size: 10.00 GB (10737418241 bytes), backing: mmap, encoding: UTF-8
+lines: ~90709452
+startup -> first frame: 138.3 ms
+open + detect (worker): 1.1 ms
+open request -> first screen of text: 24.3 ms
+go-to line before indexing (frame time incl. jump+layout): n/a
+page-down frames while indexing: n/a
+go-to line after indexing (frame time): n/a
+page-down frames after indexing: n/a
+closing at 5% of the replace

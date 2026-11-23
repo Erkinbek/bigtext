@@ -1,0 +1,13 @@
+BigText GUI benchmark
+file: testdata\random-lines-10g.txt
+size: 10.00 GB (10737418241 bytes), backing: mmap, encoding: UTF-8
+lines: 90713192
+startup -> first frame: 140.0 ms
+open + detect (worker): 1.2 ms
+open request -> first screen of text: 21.9 ms
+go-to line before indexing (frame time incl. jump+layout): n=10 avg=1.53 ms p99=2.49 ms max=2.49 ms
+page-down frames while indexing: n=600 avg=1.09 ms p99=1.44 ms max=1.89 ms
+background index: 3.98 s (2573 MB/s), index memory 2.03 MB
+go-to line after indexing (frame time): n=30 avg=1.13 ms p99=1.48 ms max=1.48 ms
+page-down frames after indexing: n=300 avg=1.06 ms p99=1.40 ms max=2.06 ms
+idle private memory: 103.91 MB

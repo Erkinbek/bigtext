@@ -1,0 +1,4 @@
+Drive write speed right after the core runs, for the Replace All numbers (Git Bash, same drive):
+dd if=testdata/random-lines-10g.txt of=testdata/ddcopy.tmp bs=8M conv=fsync
+run 1: 10737418241 bytes (11 GB, 10 GiB) copied, 14.6759 s, 732 MB/s
+run 2: 10737418241 bytes (11 GB, 10 GiB) copied, 31.7417 s, 338 MB/s

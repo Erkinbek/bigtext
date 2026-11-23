@@ -1,0 +1,16 @@
+file: testdata/single-line-2g.txt
+private memory at start: 588.00 KB
+private memory right after open (mapping created, nothing read): 1.14 MB
+size: 2.00 GB (2147483648 bytes), backing: mmap, encoding: UTF-8, line endings: —
+open + detect: 0.97 ms
+first screen (60 rows, 24000 chars): 1.195 ms  => open-to-first-screen 2.17 ms
+go-to line before indexing (estimate + layout of 50 rows): avg 1.038 ms, max 1.317 ms
+index: 0.80 s (2560 MB/s), 1 lines, index memory 260.00 KB (0.0124% of file)
+private memory with file open + index: 4.48 MB
+go-to line after indexing (exact=true, + layout of 50 rows): avg 0.040 ms, max 0.286 ms
+literal "timeout connection": 0 matches in 0.53 s = 3871 MB/s (3.78 GB/s) [memmem]
+literal (ignore case) "timeout connection": 0 matches in 0.64 s = 3187 MB/s (3.11 GB/s) [regex]
+regex "id=99\\d{4} ": 0 matches in 0.54 s = 3798 MB/s (3.71 GB/s) [regex]
+regex "ERROR\\] id=\\d+ timeout": 0 matches in 0.63 s = 3261 MB/s (3.18 GB/s) [regex]
+replace all "timeout" -> "TIMEOUT!": 0 replacements, wrote 2.00 GB in 3.89 s = 527 MB/s (incl. fsync); private memory before 4.82 MB peak 44.95 MB
+private memory at end (file open, idle): 4.82 MB

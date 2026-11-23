@@ -4,7 +4,9 @@
 //! gen-testfiles [--out DIR] [--only a,b,...] [--skip-big] [--force]
 //! ```
 //! Files: random-lines-1g.txt, random-lines-10g.txt, single-line-2g.txt, utf16le.txt,
-//! cp1251.txt, binary.bin, mixed-eol.txt, short-lines-100m.txt and a handful of small edge cases.
+//! cp1251.txt, binary.bin, mixed-eol.txt, short-lines-100m.txt and a handful of small edge cases;
+//! random-lines-50g.txt only with `--only random-lines-50g`. Every file comes from a fixed seed,
+//! so the same command makes the same bytes on any machine.
 
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
@@ -313,7 +315,7 @@ fn main() -> io::Result<()> {
     gen_small(&out)?;
 
     type Gen = fn(&Path, u64) -> io::Result<u64>;
-    let jobs: Vec<(&str, u64, Gen, bool)> = vec![
+    let mut jobs: Vec<(&str, u64, Gen, bool)> = vec![
         ("random-lines-1g.txt", GIB, gen_random_lines, false),
         ("single-line-2g.txt", 2 * GIB, gen_single_line, true),
         ("utf16le.txt", 64 * MIB, gen_utf16le, false),
@@ -323,6 +325,16 @@ fn main() -> io::Result<()> {
         ("short-lines-100m.txt", 100_000_000, gen_short_lines, false),
         ("random-lines-10g.txt", 10 * GIB, gen_random_lines, true),
     ];
+    // The 50 GB file of BENCHMARKS.md is made only when asked for by name
+    // (`--only random-lines-50g`), so a plain run does not fill the disk.
+    const HUGE: &str = "random-lines-50g.txt";
+    if only
+        .iter()
+        .flatten()
+        .any(|o| o.starts_with("random-lines-50g"))
+    {
+        jobs.push((HUGE, 50 * GIB, gen_random_lines, true));
+    }
     for (name, size, f, big) in jobs {
         if let Some(only) = &only {
             if !only

@@ -7,8 +7,9 @@
 
 **Open, search and edit 1 GB, 10 GB and 50 GB text and log files without waiting for them to
 load.** BigText is a free, open-source editor for **huge files** — logs, CSV exports, SQL dumps,
-JSON — that never loads a whole file into memory: a 50 GB file shows its first screen in about
-50 ms (from the OS cache) and the window keeps responding while the file is indexed and searched.
+JSON — that never loads a whole file into memory: the first screen of a 50 GB file is drawn about
+25 ms after you open it (from the OS cache) and the window keeps responding while the file is
+indexed and searched.
 A free alternative to EmEditor and UltraEdit, for Windows, Linux and macOS. Written in Rust, it
 is one self-contained binary with no runtime to install.
 
@@ -37,10 +38,11 @@ OS cache; how they were measured is under [Measured performance](#measured-perfo
 
 ## Highlights
 
-- **Any size opens without waiting.** A 50 GB file shows its first screen in under 50 ms and
-  stays at about 100 MB of memory. The line index builds in the background, and go to line works
+- **Any size opens without waiting.** The first screen of a 50 GB file is drawn in about 25 ms,
+  and the file stays at about 110 MB of memory. The line index builds in the background, and go to line works
   before it finishes.
-- **Search at 2.5 GB/s** (on a file in the OS cache). Plain text or regex, Find All, a filter
+- **Search at over 3 GB/s** (plain text and simple regular expressions, on a file in the OS
+  cache). Plain text or regex, Find All, a filter
   view that works like `grep`, and Replace All streamed through a 10 GB file with bounded memory.
 - **Real editing, safe saving.** Undo, multiple cursors, column selection, and sorting and text
   operations on files of any size. Saves write a temporary file and replace the original
@@ -155,51 +157,53 @@ The full command line, every `bigtext-cli` command and the keyboard shortcuts ar
 
 ## Measured performance
 
-Measured with BigText 0.1.0 on 24 October 2026 on Windows 11 Pro, Intel Core Ultra 9 285
-(24 cores), 191 GB RAM, release build, files already in the OS page cache ("cached data" as in
-the targets). Reading a file from a cold disk was not measured. A re-run with 0.4.1 on
-10 November 2026 on the same PC gave a first screen of 31–35 ms and literal search at
-4.0–4.3 GB/s for the 50 GB file; the tables keep the older, slower numbers. GUI numbers come from
-`bigtext --bench-ui` (frame time = CPU time of one egui frame including our layout); core numbers
-from `bigtext-bench`. Raw reports: `scripts/bench.ps1` reproduces them.
+Measured with BigText 0.12.0 on 23 November 2026 on Windows 11 Pro, Intel Core Ultra 9 285
+(24 cores), 191 GB RAM, NVMe SSD, release build, with the files in the OS page cache; each figure
+is the range over 3 runs. A cold disk, Linux and macOS were not measured. GUI numbers come from
+`bigtext --bench-ui` (frame time = CPU time of one egui frame including our layout), core numbers
+from `bigtext-bench`. **[BENCHMARKS.md](BENCHMARKS.md)** has the method, the definitions, the test
+file generator and how to repeat the run; the raw reports are in
+[`bench/2026-11-23-windows/`](bench/2026-11-23-windows/).
 
 ### Targets
 
 | Target | Goal | Measured | |
 |---|---|---|---|
-| Open → first screen of text | < 200 ms | 41–46 ms in the GUI (1 GB … 50 GB, incl. waiting for the next frame); open + detect on the worker 1.2–2.4 ms; first-screen layout 0.03 ms | ✅ |
-| Jump to line, indexed (10 GB / 50 GB) | < 50 ms | frame incl. jump + layout: avg 0.86 / 0.88 ms, max 1.31 / 1.22 ms; core lookup + 50-row layout avg 0.07 ms | ✅ |
-| Jump to line before indexing (estimate) | < 500 ms | frame avg 1.40 / 1.60 ms, max 1.82 / 2.01 ms (refined automatically when the index arrives) | ✅ |
-| UI frame time while indexing / scrolling | < 16 ms | page-down every frame while indexing 50 GB: avg 0.83 ms, p99 1.16 ms, max 1.88 ms (600 frames); 2 GB single line: max 2.68 ms | ✅ |
-| Literal search throughput | ≥ 1 GB/s | 2.4–2.5 GB/s (10 GB, 50 GB), 4.4 GB/s (2 GB line), case-insensitive 1.7–2.1 GB/s | ✅ |
-| Simple regex throughput | ≥ 200 MB/s | `id=99\d{4} ` 2.3–2.8 GB/s, `ERROR\] id=\d+ timeout` 2.3 GB/s, no-literal `[a-z]{9,} [a-z]{9,}` 672 MB/s; decoded UTF-16 / cp1251 regex 390 / 248 MB/s | ✅ |
-| Replace All on 10 GB, private memory | < 300 MB | 22.2 M replacements, 10 GB written in 11.3 s (904 MB/s incl. fsync), peak private 46 MB | ✅ |
-| Idle private memory, 50 GB file open | < 200 MB | 107 MB in the GUI after indexing (≈95 MB of it is the GUI/GL baseline); core process 12 MB | ✅ |
-| Startup → first paint | < 300 ms | 159–185 ms (process start → end of first frame) | ✅ |
+| Open → first screen of text | < 200 ms | 21.9–25.5 ms in the GUI to draw it (1 GB … 50 GB); presenting that first frame takes about 80 ms more on this PC, so it is on the monitor in about 0.1 s ([why](BENCHMARKS.md#summary)); open + detect on the worker 0.9–1.1 ms | ✅ |
+| Jump to line, indexed (1 / 10 / 50 GB) | < 50 ms | frame incl. jump + layout: avg 1.11–1.20 ms, max 1.52 ms; core lookup + 50-row layout avg 0.03–0.05 ms | ✅ |
+| Jump to line before indexing (estimate) | < 500 ms | frame avg 1.42–1.72 ms, max 2.49 ms (refined automatically when the index arrives) | ✅ |
+| UI frame time while indexing / scrolling | < 16 ms | page-down every frame while indexing 50 GB: avg 1.10–1.13 ms, p99 1.40–1.52 ms, max 2.05 ms (600 frames); 2 GB single line: max 3.70 ms | ✅ |
+| Literal search throughput | ≥ 1 GB/s | 3.58–4.11 GB/s (10 GB), 3.72–4.32 GB/s (50 GB), 3.10–4.25 GB/s (2 GB line); case-insensitive 2.38–2.85 GB/s | ✅ |
+| Simple regex throughput | ≥ 200 MB/s | `id=99\d{4} ` 3.15–4.17 GB/s, `ERROR\] id=\d+ timeout` 2.85–3.73 GB/s; decoded UTF-16 / cp1251 regex 0.69–0.72 / 0.50–0.52 GB/s | ✅ |
+| Replace All on 10 GB, private memory | < 300 MB | 22.2 M replacements, peak private 46.5–62.5 MB; 10 GB written in 16.8–28.9 s, the drive's own write speed at the time (see [BENCHMARKS.md](BENCHMARKS.md#summary)) | ✅ |
+| Idle private memory, 50 GB file open | < 200 MB | 108 MB in the GUI after indexing (≈95 MB of it is the GUI/GL baseline); core process 12 MB | ✅ |
+| Startup → first paint | < 300 ms | 138–150 ms (process start → end of first frame) | ✅ |
 
 ### Details
 
 | File | Index time (throughput) | Index memory | Lines |
 |---|---|---|---|
-| random-lines-1g.txt | 0.45 s (2.3 GB/s) | 130 KB | 9,069,553 |
-| random-lines-10g.txt | 4.1–4.3 s (2.4–2.5 GB/s) | 2.0 MB | 90,713,192 |
-| random-lines-50g.txt | 19.2–23.1 s (2.2–2.7 GB/s) | 8.1 MB (0.016 % of file) | 453,565,956 |
-| single-line-2g.txt | 0.76 s (2.7 GB/s) | 260 KB | 1 |
-| short-lines-100m.txt | 0.18 s (2.6 GB/s) | 65 KB | 100,000,001 |
-| utf16le.txt (64 MB) | 0.02 s | 8 KB | 690,320 |
+| random-lines-1g.txt | 0.41–0.42 s (2.40–2.46 GB/s) | 130 KB | 9,069,553 |
+| random-lines-10g.txt | 3.77–3.90 s (2.57–2.65 GB/s) | 2.0 MB | 90,713,192 |
+| random-lines-50g.txt | 18.6–19.3 s (2.59–2.70 GB/s) | 8.1 MB (0.016 % of file) | 453,592,927 |
+| single-line-2g.txt | 0.76–0.80 s (2.50–2.62 GB/s) | 260 KB | 1 |
+| short-lines-100m.txt | 0.18–0.20 s (2.28–2.53 GB/s) | 65 KB | 100,000,001 |
+| utf16le.txt (64 MB) | 0.02–0.03 s | 8 KB | 690,320 |
 | cp1251.txt (64 MB) | 0.03 s | 8 KB | 1,091,711 |
 
-- Chunked fallback (forced, 1 GB): first screen 3.1 ms, search 3.0–3.6 GB/s, private memory
-  67 MB (64 MB block cache).
-- 2 GB single line: page-down frames avg 1.87 ms, go-to 0.45 ms, search finds the marker in the
-  middle at 4.4 GB/s.
-- Save of an edited 1 GB file (edit at the top while indexing was still running): 0.9–1.1 s for
-  write + fsync + atomic replace + reopen.
+- Chunked fallback (forced, 1 GB): first screen 1.4–1.5 ms in the core, search 3.27–3.61 GB/s,
+  private memory 63–68 MB (64 MB block cache).
+- 2 GB single line: page-down frames avg 1.98–2.07 ms, go-to 0.44 ms after indexing.
+- Closing the window during a Find All or a Replace All on 10 GB exits at once and leaves the file
+  unchanged, with no temporary file behind.
+- Not re-measured since 0.1.0 (24 October 2026): saving an edited 1 GB file (edit at the top while
+  indexing was still running) took 0.9–1.1 s for write + fsync + atomic replace + reopen, and the
+  no-literal regex `[a-z]{9,} [a-z]{9,}` ran at 672 MB/s.
 - Memory design note: mapping a whole 50 GB file on Windows commits ~100 MB up front (file
   size / 512), so the UI maps a small LRU cache of 288 MB views and workers stream with
   positional reads into reused buffers. That keeps memory flat, and makes indexing faster than
-  first-touch page faults (2.4 vs 1.6 GB/s); repeated searches run at ~2.4 GB/s instead of the
-  ~10 GB/s an already-faulted full mapping would allow.
+  first-touch page faults (2.4 vs 1.6 GB/s when measured with 0.1.0); repeated searches run at
+  ~4 GB/s instead of the ~10 GB/s an already-faulted full mapping would allow.
 
 ## Documentation
 
