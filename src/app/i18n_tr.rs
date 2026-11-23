@@ -1380,4 +1380,7 @@ pub static TR: &[(&str, &str)] = &[
     ("Copied. The document changed meanwhile, so nothing was cut.", "Kopyalandı. Belge bu arada değiştiği için hiçbir şey kesilmedi."),
     ("This is a temporary copy (unpacked, standard input or remote). Save it as a file first (File → Save As), then do this in that file.", "Bu geçici bir kopya (açılmış arşiv, standart girdi veya uzak dosya). Önce bir dosya olarak kaydedin (Dosya → Farklı kaydet), sonra bunu o dosyada yapın."),
     ("BigText could not read its settings file, so it starts with the default settings and does not save over the file in this session.", "BigText ayar dosyasını okuyamadı; bu yüzden varsayılan ayarlarla başlıyor ve bu oturumda dosyanın üzerine yazmıyor."),
+    ("File changed on disk", "Dosya diskte değişti"),
+    ("{file} changed on disk after it was opened (another program wrote to it). Saving replaces it with the text shown here, and what the other program wrote is lost.", "{file} açıldıktan sonra diskte değişti (başka bir program ona yazdı). Kaydetmek onu burada gösterilen metinle değiştirir ve diğer programın yazdıkları kaybolur."),
+    ("Save anyway", "Yine de kaydet"),
 ];

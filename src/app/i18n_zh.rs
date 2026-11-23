@@ -1377,4 +1377,7 @@ pub static ZH: &[(&str, &str)] = &[
     ("Copied. The document changed meanwhile, so nothing was cut.", "已复制。文档在此期间已更改，因此没有剪切任何内容。"),
     ("This is a temporary copy (unpacked, standard input or remote). Save it as a file first (File → Save As), then do this in that file.", "这是一个临时副本（解压的、标准输入或远程文件）。请先将其另存为文件（文件 → 另存为），然后在该文件中执行此操作。"),
     ("BigText could not read its settings file, so it starts with the default settings and does not save over the file in this session.", "BigText 无法读取其设置文件，因此以默认设置启动，并且在本次会话中不会覆盖该文件。"),
+    ("File changed on disk", "文件已在磁盘上更改"),
+    ("{file} changed on disk after it was opened (another program wrote to it). Saving replaces it with the text shown here, and what the other program wrote is lost.", "{file} 在打开后已在磁盘上更改（另一个程序写入了它）。保存会用此处显示的文本替换它，另一个程序写入的内容将丢失。"),
+    ("Save anyway", "仍然保存"),
 ];

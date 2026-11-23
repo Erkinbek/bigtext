@@ -315,6 +315,10 @@ struct Confirm {
 enum ConfirmAction {
     CloseTab(u64),
     Exit,
+    /// Save over a file another program changed since it was opened.
+    SaveOverChanged {
+        doc: u64,
+    },
     CopyLarge {
         doc: u64,
         cut: bool,
@@ -2002,6 +2006,7 @@ impl BigTextApp {
                     }
                     let primary = match c.action {
                         ConfirmAction::CloseTab(_) | ConfirmAction::Exit => "Discard",
+                        ConfirmAction::SaveOverChanged { .. } => "Save anyway",
                         ConfirmAction::ReplaceOnDisk { .. } => "Replace on disk",
                         ConfirmAction::CopyLarge { .. } => "Copy",
                         ConfirmAction::DeleteColumns { .. } => "Delete",
@@ -2111,6 +2116,7 @@ impl BigTextApp {
                 }
             }
             (1, ConfirmAction::CloseTab(id)) => self.close_tab(id, true),
+            (1, ConfirmAction::SaveOverChanged { doc }) => self.save_unchecked(doc),
             (1, ConfirmAction::Exit) => {
                 // The edits are discarded: so are their journals.
                 self.end_recovery();

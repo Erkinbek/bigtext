@@ -116,6 +116,26 @@ pub struct Finalized {
     pub elapsed: Duration,
 }
 
+/// What a save writes: the text as it is, with other line breaks, or in another encoding.
+fn save_spec(d: &super::document::Document, encoding: Option<(Encoding, bool)>) -> WriteSpec {
+    match (encoding, d.eol_on_save) {
+        (Some((enc, bom)), eol) => WriteSpec::Transcode { enc, bom, eol },
+        (None, Some(le)) => WriteSpec::Eol(le, d.eol_lone_cr),
+        (None, None) => WriteSpec::Identity,
+    }
+}
+
+/// Whether the document's file is no longer the one it was opened from (another length or
+/// change time). A file that is gone is not "changed": saving brings it back.
+fn changed_on_disk(d: &super::document::Document) -> bool {
+    let Some(p) = &d.path else { return false };
+    let Ok(m) = std::fs::metadata(p) else {
+        return false;
+    };
+    let src = &d.buf.source;
+    m.len() != src.len() || src.modified().is_some_and(|t| m.modified().ok() != Some(t))
+}
+
 impl BigTextApp {
     pub(crate) fn save(&mut self, save_as: bool) {
         self.save_with(save_as, None);
@@ -157,12 +177,34 @@ impl BigTextApp {
                 }
             }
         };
-        let spec = match (encoding, d.eol_on_save) {
-            (Some((enc, bom)), eol) => WriteSpec::Transcode { enc, bom, eol },
-            (None, Some(le)) => WriteSpec::Eol(le, d.eol_lone_cr),
-            (None, None) => WriteSpec::Identity,
-        };
         let id = d.id;
+        let same = d.path.as_deref().is_some_and(|p| same_path(p, &target));
+        // Another program wrote to the file (a log that grew): saving would drop what it wrote,
+        // so that is asked first.
+        if same && changed_on_disk(d) {
+            let file = d.title.clone();
+            self.confirm = Some(super::Confirm {
+                title: tr("File changed on disk").into(),
+                message: trf("{file} changed on disk after it was opened (another program wrote to it). Saving replaces it with the text shown here, and what the other program wrote is lost.", &[("file", &file)]),
+                action: super::ConfirmAction::SaveOverChanged { doc: id },
+                checkbox: None,
+            });
+            return;
+        }
+        let spec = save_spec(d, encoding);
+        let backup = self.settings.backup_on_save;
+        self.start_write(id, target, spec, backup);
+    }
+
+    /// Saves the document to its file without asking whether the file changed on disk.
+    pub(super) fn save_unchecked(&mut self, id: u64) {
+        let Some(d) = self.docs.iter().find(|d| d.id == id) else {
+            return;
+        };
+        let (Some(target), true) = (d.path.clone(), d.is_ready() && !d.temporary) else {
+            return;
+        };
+        let spec = save_spec(d, None);
         let backup = self.settings.backup_on_save;
         self.start_write(id, target, spec, backup);
     }

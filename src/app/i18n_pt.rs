@@ -1380,4 +1380,7 @@ pub static PT: &[(&str, &str)] = &[
     ("Copied. The document changed meanwhile, so nothing was cut.", "Copiado. O documento mudou nesse meio-tempo, então nada foi recortado."),
     ("This is a temporary copy (unpacked, standard input or remote). Save it as a file first (File → Save As), then do this in that file.", "Esta é uma cópia temporária (descompactada, entrada padrão ou remota). Salve-a primeiro como arquivo (Arquivo → Salvar como) e depois faça isso nesse arquivo."),
     ("BigText could not read its settings file, so it starts with the default settings and does not save over the file in this session.", "O BigText não conseguiu ler o arquivo de configurações, então começa com as configurações padrão e não grava por cima do arquivo nesta sessão."),
+    ("File changed on disk", "O arquivo mudou no disco"),
+    ("{file} changed on disk after it was opened (another program wrote to it). Saving replaces it with the text shown here, and what the other program wrote is lost.", "{file} mudou no disco depois de aberto (outro programa gravou nele). Salvar o substitui pelo texto mostrado aqui, e o que o outro programa gravou se perde."),
+    ("Save anyway", "Salvar mesmo assim"),
 ];
