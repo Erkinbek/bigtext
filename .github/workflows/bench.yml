@@ -1,0 +1,107 @@
+name: bench
+
+# Runs the core benchmarks of BENCHMARKS.md (bigtext-bench, no window) with the published release
+# binaries on GitHub-hosted runners: Linux x64, macOS arm64, macOS x64 (Intel) and Windows x64.
+# Started by hand from the Actions tab; the reports are uploaded as artifacts and copied into
+# bench/<date>-ci-<platform>/. Runners are shared virtual machines with little memory and disk,
+# so their numbers vary between runs and are lower than a desktop's: BENCHMARKS.md keeps them
+# apart from the desktop run. The GUI benchmark needs a real display and GPU and is not run here.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v0.12.0 (empty: the latest release)"
+        required: false
+      runs:
+        description: "Runs per file"
+        required: false
+        default: "3"
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x64, os: ubuntu-latest, asset: bigtext-linux-x64.tar.gz }
+          - { name: macos-arm64, os: macos-latest, asset: bigtext-macos-arm64.tar.gz }
+          - { name: macos-x64, os: macos-15-intel, asset: bigtext-macos-x64.tar.gz }
+          - { name: windows-x64, os: windows-latest, asset: bigtext-windows-x64.zip }
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download the release binaries
+        run: |
+          tag="${{ inputs.tag }}"
+          [ -n "$tag" ] || tag="$(gh release view -R "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          gh release download "$tag" -R "$GITHUB_REPOSITORY" -p "${{ matrix.asset }}" -D dl
+          cd dl
+          case "${{ matrix.asset }}" in
+            *.zip) unzip -q "${{ matrix.asset }}" ;;
+            *) tar -xzf "${{ matrix.asset }}" ;;
+          esac
+          echo "BIN=$PWD/bigtext-${{ matrix.name }}" >> "$GITHUB_ENV"
+
+      - name: Machine
+        run: |
+          mkdir -p out
+          {
+            echo "BigText $TAG, release binaries (${{ matrix.asset }})"
+            echo "runner: ${{ matrix.os }} ($RUNNER_OS $RUNNER_ARCH), image ${ImageOS:-?} ${ImageVersion:-?}"
+            date -u +"date: %Y-%m-%d %H:%M UTC"
+            case "$RUNNER_OS" in
+              Linux)
+                lscpu | grep -E '^(Model name|CPU\(s\))'
+                free -h | head -2
+                ;;
+              macOS)
+                echo "CPU: $(sysctl -n machdep.cpu.brand_string), $(sysctl -n hw.ncpu) cores"
+                echo "RAM: $(( $(sysctl -n hw.memsize) / 1073741824 )) GiB"
+                ;;
+              Windows)
+                powershell -NoProfile -Command '$c = Get-CimInstance Win32_ComputerSystem; "CPU: " + (Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name) + ", " + $c.NumberOfLogicalProcessors + " logical"; "RAM: " + [math]::Round($c.TotalPhysicalMemory / 1GB, 1) + " GiB"'
+                ;;
+            esac
+            df -h . | tail -1
+          } | tee out/machine.txt
+
+      # The 10 GB file only when the disk has room for it (macOS runners have little).
+      - name: Generate the test files
+        run: |
+          "$BIN/gen-testfiles" --out testdata --only random-lines-1g,single-line-2g,short-lines-100m,utf16le,cp1251
+          free_gb=$(df -Pk testdata | awk 'NR == 2 { print int($4 / 1048576) }')
+          echo "free disk after the small files: ${free_gb} GB" | tee -a out/machine.txt
+          if [ "$free_gb" -ge 20 ]; then
+            "$BIN/gen-testfiles" --out testdata --only random-lines-10g
+          else
+            echo "random-lines-10g.txt: skipped, not enough disk" | tee -a out/machine.txt
+          fi
+
+      # As scripts/bench.sh, but without Replace All on 10 GB (it would write another 10 GB).
+      - name: Benchmarks
+        run: |
+          for run in $(seq 1 "${{ inputs.runs || '3' }}"); do
+            for f in random-lines-1g.txt single-line-2g.txt short-lines-100m.txt utf16le.txt cp1251.txt; do
+              "$BIN/bigtext-bench" "testdata/$f" > "out/core-$f-run$run.txt"
+            done
+            if [ -f testdata/random-lines-10g.txt ]; then
+              "$BIN/bigtext-bench" testdata/random-lines-10g.txt --no-replace > "out/core-random-lines-10g.txt-run$run.txt"
+            fi
+          done
+          tail -n +1 out/*.txt
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: bench-${{ matrix.name }}
+          path: out
