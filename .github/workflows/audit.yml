@@ -1,0 +1,28 @@
+name: audit
+
+# Checks Cargo.lock against the RustSec advisory database (https://rustsec.org): every Monday,
+# whenever Cargo.toml or Cargo.lock changes on main, and by hand from the Actions tab. A known
+# vulnerability fails the run, and GitHub emails the owner about a failed scheduled run.
+# "Unmaintained" and "unsound" notices are printed but do not fail it: some come from crates
+# BigText does not use directly (zbus on Linux, through egui) and have no fixed version.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  push:
+    branches: [main]
+    paths: [Cargo.toml, Cargo.lock]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: cargo audit
+        run: cargo audit

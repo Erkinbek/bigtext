@@ -80,6 +80,11 @@ per-user install (`/VERYSILENT /CURRENTUSER`): files, "Open with" and Explorer c
 entries and the Start-menu shortcut are created, the installed exe runs, and the uninstaller
 removes all of it.
 
+[.github/workflows/audit.yml](.github/workflows/audit.yml) checks `Cargo.lock` against the
+[RustSec advisory database](https://rustsec.org) every Monday and whenever `Cargo.toml` or
+`Cargo.lock` changes. Run the same check locally with `cargo install cargo-audit` and
+`cargo audit`.
+
 ## Architecture
 
 BigText is written in Rust with a custom virtualized text view on top of `egui`/`eframe` (glow
