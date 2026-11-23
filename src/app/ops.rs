@@ -534,12 +534,7 @@ impl BigTextApp {
                     Ok(o) => d.rebind(o.source, waker.clone()),
                     // Text that is all typed (an untitled document) needs no file: it stays
                     // editable, so the user can save it somewhere else.
-                    Err(_)
-                        if d.buf
-                            .pieces()
-                            .iter()
-                            .all(|p| p.buf == bigtext::text::Buf::Add) =>
-                    {
+                    Err(_) if d.buf.pieces().all(|p| p.buf == bigtext::text::Buf::Add) => {
                         d.state = DocState::Ready;
                     }
                     Err(e) => d.state = DocState::Failed(format!("{msg}\n{e}")),

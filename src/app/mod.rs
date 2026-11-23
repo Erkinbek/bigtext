@@ -2228,7 +2228,7 @@ impl BigTextApp {
                             "index {} ({:.4}% of file)  pieces {}",
                             human_bytes(d.buf.index.memory_bytes() as u64),
                             d.buf.index.memory_bytes() as f64 * 100.0 / d.buf.len().max(1) as f64,
-                            d.buf.pieces().len()
+                            d.buf.piece_count()
                         ));
                         if let (Some(o), Some(fp)) = (d.open_elapsed, d.view.first_paint) {
                             ui.monospace(format!(
