@@ -137,7 +137,9 @@ pub enum Msg {
     Copied {
         doc: u64,
         result: Result<String, String>,
-        cut: bool,
+        /// For a cut: the range copied and the document version then, so only that text is
+        /// deleted, and only if the document did not change meanwhile.
+        cut: Option<(std::ops::Range<u64>, u64)>,
     },
     Found {
         doc: u64,
@@ -925,6 +927,13 @@ impl BigTextApp {
         app.search.query.case_sensitive = true;
         if persist {
             let mut state = extras::load();
+            if state.unreadable {
+                // Saving the defaults now would lose every saved search, key and highlight.
+                app.persist = false;
+                app.error = Some(
+                    i18n::tr("BigText could not read its settings file, so it starts with the default settings and does not save over the file in this session.").into(),
+                );
+            }
             // Until a theme is chosen, the system's dark or light mode.
             app.settings.theme_system = true;
             app.update.restore(&state);
@@ -1387,6 +1396,16 @@ impl BigTextApp {
                         let unpacking = d.unpacking.take();
                         let reload = std::mem::take(&mut d.reloading);
                         match result {
+                            // Edits were typed while the file was being opened again: they stay,
+                            // and the banner says the file changed instead of the text being
+                            // replaced by it (with no undo and no prompt on close).
+                            Ok(o) if reload && d.is_modified() => {
+                                d.reload_prefix = None;
+                                d.banner = Some(Banner::ChangedOnDisk {
+                                    deleted: false,
+                                    grown: o.source.len() > d.buf.source.len(),
+                                });
+                            }
                             Ok(o) => {
                                 d.open_elapsed = Some(o.elapsed);
                                 d.read_only = d.read_only || o.read_only;
@@ -1571,9 +1590,19 @@ impl BigTextApp {
                         if let Some(ctx) = ctx {
                             ctx.copy_text(text);
                         }
-                        if cut {
-                            if let Some(d) = self.doc_mut(doc) {
-                                d.delete_selection();
+                        if let Some((range, version)) = cut {
+                            let cut_done = self.doc_mut(doc).is_some_and(|d| {
+                                let ok = d.version == version && d.editable();
+                                if ok {
+                                    d.edit(range, &[], document::EditKind::Other);
+                                }
+                                ok
+                            });
+                            if !cut_done {
+                                self.notify(
+                                    i18n::tr("Copied. The document changed meanwhile, so nothing was cut.").into(),
+                                    None,
+                                );
                             }
                         }
                     }
@@ -1717,6 +1746,7 @@ impl BigTextApp {
             return;
         };
         let (s, e) = d.selection();
+        let cut = cut.then_some((s..e, d.version));
         let snap = d.buf.snapshot();
         let tx = self.tx.clone();
         let waker = self.waker.clone();
@@ -2215,8 +2245,10 @@ impl BigTextApp {
 
     fn handle_close_request(&mut self, ctx: &egui::Context) {
         if self.exit_after_jobs && !self.writes_in_progress() {
+            // Ask again, now through the unsaved-changes check below: a save cancelled by the
+            // close leaves its document modified, and other tabs may have edits too. An exit
+            // the user already confirmed has `exit_confirmed` set and goes straight through.
             self.exit_after_jobs = false;
-            self.exit_confirmed = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }

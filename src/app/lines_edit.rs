@@ -151,7 +151,9 @@ impl BigTextApp {
         let Some(d) = self.docs.iter_mut().find(|d| d.id == l.doc) else {
             return;
         };
-        if d.version != l.version || d.buf.add_len() != l.add_len {
+        // A save that started meanwhile installs the saved file when it ends: an edit made now
+        // would be lost.
+        if d.version != l.version || d.buf.add_len() != l.add_len || d.save_job.is_some() {
             self.search.status = tr("The document changed meanwhile; no line was deleted.").into();
             return;
         }

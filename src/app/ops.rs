@@ -192,6 +192,23 @@ impl BigTextApp {
                 r.cancel.cancel();
             }
         }
+        let Some((busy, temporary)) = self.docs.iter().find(|d| d.id == id).map(|d| {
+            let same = d.path.as_deref().is_some_and(|p| same_path(p, &target));
+            (d.save_job.is_some(), d.temporary && same)
+        }) else {
+            return;
+        };
+        // One write at a time: a second one (Ctrl+S while a "replace on disk" question was
+        // open) could end up on disk instead of the first.
+        if busy {
+            return;
+        }
+        // An unpacked copy, standard input or a remote file is a file in the temp folder that
+        // goes with its tab: a result written there would be thrown away on close.
+        if temporary {
+            self.error = Some(tr("This is a temporary copy (unpacked, standard input or remote). Save it as a file first (File → Save As), then do this in that file.").into());
+            return;
+        }
         let Some(d) = self.docs.iter_mut().find(|d| d.id == id) else {
             return;
         };
@@ -473,6 +490,16 @@ impl BigTextApp {
             Err((msg, reopened)) => {
                 match reopened {
                     Ok(o) => d.rebind(o.source, waker.clone()),
+                    // Text that is all typed (an untitled document) needs no file: it stays
+                    // editable, so the user can save it somewhere else.
+                    Err(_)
+                        if d.buf
+                            .pieces()
+                            .iter()
+                            .all(|p| p.buf == bigtext::text::Buf::Add) =>
+                    {
+                        d.state = DocState::Ready;
+                    }
                     Err(e) => d.state = DocState::Failed(format!("{msg}\n{e}")),
                 }
                 d.close_after_save = false;

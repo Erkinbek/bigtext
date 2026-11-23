@@ -717,9 +717,13 @@ impl TextBuf {
         let mut out: Vec<Piece> = Vec::with_capacity(self.pieces.len() + edits.len() * 2);
         let mut add_bytes = Vec::new();
         let base = self.add.len() as u64;
+        let len = self.len();
         let mut pos = 0u64;
+        // Ranges past the end are cut to it: walking pieces beyond the last one would never
+        // reach `to`.
         let push_range = |out: &mut Vec<Piece>, from: u64, to: u64| {
             let mut p = from;
+            let to = to.min(len);
             while p < to {
                 let k = self.piece_at(p);
                 let pc = self.pieces[k];
@@ -730,7 +734,7 @@ impl TextBuf {
             }
         };
         for (r, text) in edits {
-            let s = r.start.max(pos);
+            let s = r.start.max(pos).min(len);
             push_range(&mut out, pos, s);
             if !text.is_empty() {
                 let start = base + add_bytes.len() as u64;
@@ -744,9 +748,9 @@ impl TextBuf {
                     exact: true,
                 });
             }
-            pos = r.end.max(s);
+            pos = r.end.max(s).min(len);
         }
-        push_range(&mut out, pos, self.len());
+        push_range(&mut out, pos, len);
         (out, add_bytes)
     }
 

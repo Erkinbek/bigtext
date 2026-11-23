@@ -723,7 +723,7 @@ impl BigTextApp {
                 let _ = tx.send(Msg::Copied {
                     doc: id,
                     result,
-                    cut: false,
+                    cut: None,
                 });
                 waker();
             });
@@ -765,7 +765,7 @@ impl BigTextApp {
             let _ = tx.send(Msg::Copied {
                 doc: id,
                 result,
-                cut: false,
+                cut: None,
             });
             waker();
         });

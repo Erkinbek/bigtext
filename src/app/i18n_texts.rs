@@ -1068,7 +1068,7 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Keep a recovery journal of unsaved edits", "Вести журнал несохранённых правок", "Saqlanmagan tahrirlar jurnalini yuritish"],
     ["After a crash or a power cut, the next start offers to put the edits back", "После сбоя или отключения питания следующий запуск предложит вернуть правки", "Ilova yiqilgan yoki tok o'chgan bo'lsa, keyingi ishga tushishda tahrirlarni qaytarish taklif qilinadi"],
     ["The journal is damaged; nothing could be restored.", "Журнал повреждён; ничего не восстановлено.", "Jurnal buzilgan; hech narsa tiklanmadi."],
-    ["{file} changed on disk after these edits were made; putting them back would scramble it. Save the edited text as a new file instead.", "{file} изменился на диске после этих правок; их возврат испортил бы его. Сохраните текст с правками в новый файл.", "{file} bu tahrirlardan keyin diskda o'zgargan; ularni qaytarish faylni buzadi. Tahrirlangan matnni yangi faylga saqlang."],
+    ["{file} changed on disk after these edits were made; putting them back would scramble it. Save text as… keeps the text you typed.", "{file} изменился на диске после этих правок; их возврат испортил бы его. «Сохранить текст как…» сохранит набранный вами текст.", "{file} bu tahrirlardan keyin diskda o'zgargan; ularni qaytarish faylni buzadi. \"Matnni saqlash…\" siz yozgan matnni saqlab qoladi."],
     ["The document changed before the edits could be put back; nothing was restored.", "Документ изменился до возврата правок; ничего не восстановлено.", "Tahrirlar qaytarilguncha hujjat o'zgardi; hech narsa tiklanmadi."],
     ["Unsaved edits from the last session were put back. Save to keep them.", "Несохранённые правки прошлого сеанса возвращены. Сохраните, чтобы их не потерять.", "Oldingi seansning saqlanmagan tahrirlari qaytarildi. Ularni saqlab qo'ying."],
     ["Save text as", "Сохранить текст как", "Matnni saqlash"],
@@ -1077,7 +1077,7 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Unsaved edits from the last session", "Несохранённые правки прошлого сеанса", "Oldingi seansning saqlanmagan tahrirlari"],
     ["BigText did not close properly. These documents had edits that were not saved:", "BigText закрылся некорректно. В этих документах были несохранённые правки:", "BigText to'g'ri yopilmadi. Bu hujjatlarda saqlanmagan tahrirlar bor edi:"],
     ["Restore", "Восстановить", "Tiklash"],
-    ["The file changed on disk since; save the edited text as a new file instead.", "С тех пор файл изменился на диске; сохраните текст с правками в новый файл.", "O'shandan beri fayl diskda o'zgargan; tahrirlangan matnni yangi faylga saqlang."],
+    ["The file changed on disk since; Save text as… keeps the text you typed.", "С тех пор файл изменился на диске; «Сохранить текст как…» сохранит набранный вами текст.", "Shundan beri fayl diskda o'zgargan; \"Matnni saqlash…\" siz yozgan matnni saqlab qoladi."],
     ["Save text as…", "Сохранить текст как…", "Matnni saqlash…"],
     // Deleting filtered lines.
     ["Keep only these", "Оставить только эти", "Faqat shularni qoldirish"],
@@ -1549,4 +1549,8 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Save safely as", "Сохранить безопасно как", "Xavfsiz saqlash"],
     ["Hiding secrets", "Скрытие секретов", "Maxfiy qiymatlar yashirilmoqda"],
     ["Saved to {file}; {n} values hidden.", "Сохранено в {file}; скрыто значений: {n}.", "{file} ga saqlandi; {n} ta qiymat yashirildi."],
+    ["{file} changed on disk, so only the text you typed was saved, to {target}.", "{file} изменился на диске, поэтому в {target} сохранён только набранный вами текст.", "{file} diskda o'zgargani uchun {target} ga faqat siz yozgan matn saqlandi."],
+    ["Copied. The document changed meanwhile, so nothing was cut.", "Скопировано. Документ тем временем изменился, поэтому ничего не вырезано.", "Nusxalandi. Hujjat shu orada o'zgargani uchun hech narsa kesilmadi."],
+    ["This is a temporary copy (unpacked, standard input or remote). Save it as a file first (File → Save As), then do this in that file.", "Это временная копия (распакованная, стандартный ввод или удалённый файл). Сначала сохраните её в файл (Файл → Сохранить как), затем сделайте это в том файле.", "Bu vaqtinchalik nusxa (ochilgan arxiv, standart kirish yoki masofaviy fayl). Avval uni faylga saqlang (Fayl → Boshqacha saqlash), keyin buni o'sha faylda qiling."],
+    ["BigText could not read its settings file, so it starts with the default settings and does not save over the file in this session.", "BigText не смог прочитать файл настроек, поэтому запущен с настройками по умолчанию и в этом сеансе не будет записывать поверх файла.", "BigText sozlamalar faylini o'qiy olmadi, shuning uchun standart sozlamalar bilan ishga tushdi va bu seansda fayl ustidan yozmaydi."],
 ];

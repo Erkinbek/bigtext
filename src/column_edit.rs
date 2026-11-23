@@ -89,7 +89,8 @@ pub fn column_edit_to(
     if let Some(p) = progress {
         p.set_total(len);
     }
-    let from = from.min(len);
+    // Lines are read from after a byte order mark: it goes out with the text before `from`.
+    let from = from.max(codec.bom_len as u64).min(len);
     let mut err = None;
     buf.for_each_chunk(0..from, |_, b| match out.write_all(b) {
         Ok(()) => true,
@@ -110,7 +111,14 @@ pub fn column_edit_to(
             break;
         };
         let total = r.taken() - before;
+        if off + total <= from {
+            continue;
+        }
         if off < from {
+            // `from` is inside this line (a row of a long line): its start is written above,
+            // the rest goes out as it is.
+            let rest = buf.read(from..off + total).ok_or_else(read_err)?;
+            out.write_all(&rest)?;
             continue;
         }
         let lo = cell_offset(&codec, &line, off, cells.0);
@@ -185,6 +193,50 @@ mod tests {
         assert_eq!(
             String::from_utf8(out).unwrap(),
             "keep\r\nab1cd\r\nx2\r\nlo3 line\r\nla4"
+        );
+    }
+
+    fn fill(text: &[u8], codec: Codec, from: u64) -> Vec<u8> {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut f, text).unwrap();
+        let s = Arc::new(Source::open(f.path(), OpenMode::Auto).unwrap());
+        let buf = TextBuf::new(s.clone(), LineIndex::new(s.len()), codec);
+        let mut out = Vec::new();
+        column_edit_to(
+            &buf,
+            from,
+            (0, 0),
+            &ColumnGen::Text("|".into()),
+            &mut out,
+            &CancelToken::new(),
+            None,
+        )
+        .unwrap()
+        .unwrap();
+        out
+    }
+
+    /// From the first row of a file with a byte order mark, the mark stays in front.
+    #[test]
+    fn down_to_the_end_keeps_a_byte_order_mark() {
+        let codec = Codec::new(
+            crate::encoding::Encoding::Utf8,
+            crate::encoding::NlByte::Lf,
+            3,
+        );
+        assert_eq!(
+            fill(b"\xEF\xBB\xBFab\ncd\n", codec, 0),
+            b"\xEF\xBB\xBF|ab\n|cd\n"
+        );
+    }
+
+    /// From a row that starts inside a long line, nothing of that line is lost: it stays as it
+    /// is and the lines after it are filled.
+    #[test]
+    fn down_to_the_end_from_inside_a_line_loses_nothing() {
+        assert_eq!(
+            fill(b"abcdefghij\nxy\n", Codec::utf8(), 5),
+            b"abcdefghij\n|xy\n"
         );
     }
 }

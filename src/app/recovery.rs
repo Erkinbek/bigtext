@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -160,6 +161,66 @@ fn rebuild(dir: &Path, j: &Journal, source: Arc<Source>) -> Option<TextBuf> {
     TextBuf::with_pieces(source, index, j.codec, &j.pieces, add)
 }
 
+/// Writes a journal: the typed bytes first (only the new ones when `append`), synced, then the
+/// piece list through a synced temporary file and a rename, so that a crash or a power cut
+/// leaves the old journal or the new one. Stops before the rename when `cancel` is set.
+fn write_journal(
+    dir: &Path,
+    j: &Journal,
+    append: bool,
+    delta: &[u8],
+    cancel: &AtomicBool,
+) -> io::Result<()> {
+    let temp = dir.join(format!("{}.pieces.tmp", j.id));
+    let r = (|| {
+        let mut f = File::options()
+            .create(true)
+            .write(true)
+            .append(append)
+            .truncate(!append)
+            .open(add_path(dir, &j.id))?;
+        f.write_all(delta)?;
+        f.sync_data()?;
+        let mut f = File::create(&temp)?;
+        f.write_all(format(j).as_bytes())?;
+        f.sync_all()?;
+        drop(f);
+        if cancel.load(Ordering::Relaxed) {
+            return Err(io::Error::other("journal dropped"));
+        }
+        fs::rename(&temp, pieces_path(dir, &j.id))
+    })();
+    if r.is_err() {
+        let _ = fs::remove_file(&temp);
+    }
+    r
+}
+
+/// The text typed into a journal's document, piece after piece in document order, each on
+/// lines of its own: all that can be saved of edits whose file changed on disk since.
+fn typed_text(dir: &Path, j: &Journal) -> Option<Vec<u8>> {
+    let add = fs::read(add_path(dir, &j.id)).ok()?;
+    let nl = j.codec.encode("\n");
+    let mut out = Vec::new();
+    for &(b, start, len) in &j.pieces {
+        if b != Buf::Add {
+            continue;
+        }
+        let s = usize::try_from(start).ok()?;
+        let e = s.checked_add(usize::try_from(len).ok()?)?;
+        out.extend_from_slice(add.get(s..e)?);
+        if !out.ends_with(&nl) {
+            out.extend_from_slice(&nl);
+        }
+    }
+    Some(out)
+}
+
+/// Whether the journal's document has bytes of its file in it (an untitled one has none).
+fn uses_file(j: &Journal) -> bool {
+    j.path.is_some() && j.pieces.iter().any(|p| p.0 == Buf::Orig)
+}
+
 /// Whether the file is still the one the edits were made to.
 fn unchanged(j: &Journal) -> bool {
     let Some(p) = &j.path else { return true };
@@ -181,6 +242,29 @@ pub struct Entry {
     writing: bool,
     /// Journaled at all (so there are files to delete).
     exists: bool,
+    /// A write failed part way: the next one writes both files whole.
+    rewrite: bool,
+    /// The journal is no longer wanted but a write is still running: its files go when it ends.
+    drop_pending: bool,
+    /// Set when the journal is dropped, so a write still running does not leave files behind.
+    cancel: Arc<AtomicBool>,
+}
+
+/// Stops journaling a document: its files go now, or when the write in flight ends (a write
+/// finishing after the files were deleted would bring them back).
+fn drop_journal(entries: &mut HashMap<u64, Entry>, dir: &Path, doc: u64) {
+    let Some(e) = entries.get_mut(&doc) else {
+        return;
+    };
+    e.cancel.store(true, Ordering::Relaxed);
+    if e.writing {
+        e.drop_pending = true;
+        return;
+    }
+    if e.exists {
+        remove(dir, &RecoveryState::id(doc));
+    }
+    entries.remove(&doc);
 }
 
 #[derive(Default)]
@@ -194,6 +278,9 @@ pub struct RecoveryState {
     pub offered: Vec<Journal>,
     /// The journal waiting for its document to open.
     pending: HashMap<u64, Journal>,
+    /// Restored journals (by the document they went into), deleted once that document's own
+    /// journal is written or no longer needed: a crash right after a restore keeps them.
+    superseded: HashMap<u64, String>,
 }
 
 impl RecoveryState {
@@ -207,6 +294,25 @@ impl RecoveryState {
 
     fn id(doc: u64) -> String {
         format!("{}-{doc}", std::process::id())
+    }
+}
+
+/// Journals named after this process's id when it starts were left by an earlier BigText that
+/// had the same id and crashed. They get a name of their own (`<pid>.<time>-<doc>`), so that
+/// they are offered rather than skipped as this instance's, and this instance's own journals
+/// do not overwrite them.
+fn keep_reused_pid_journals(dir: &Path) {
+    let prefix = format!("{}-", std::process::id());
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    for e in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if let Some(rest) = name.strip_prefix(&prefix) {
+            let pid = std::process::id();
+            let _ = fs::rename(e.path(), dir.join(format!("{pid}.{stamp}-{rest}")));
+        }
     }
 }
 
@@ -226,6 +332,9 @@ impl BigTextApp {
         let Some(dir) = dir else { return };
         if fs::create_dir_all(&dir).is_err() {
             return;
+        }
+        if self.recovery.dir.is_none() {
+            keep_reused_pid_journals(&dir);
         }
         let lock = File::create(dir.join(format!("{}.lock", std::process::id())))
             .ok()
@@ -247,7 +356,10 @@ impl BigTextApp {
                 continue;
             };
             let pid = id.split('-').next().unwrap_or("");
-            if pid == mine || running(&dir, pid) {
+            if pid == mine
+                || running(&dir, pid)
+                || self.recovery.superseded.values().any(|s| s == id)
+            {
                 continue;
             }
             if let Some(mut j) = fs::read_to_string(e.path())
@@ -258,7 +370,8 @@ impl BigTextApp {
                 found.push(j);
             }
         }
-        // Lock files of instances that are gone.
+        // Lock files of instances that are gone, and what a crash left of their journals
+        // without a piece list: typed bytes or a half-written piece list are no journal.
         for e in fs::read_dir(&dir).into_iter().flatten().flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
             if let Some(pid) = name.strip_suffix(".lock") {
@@ -266,6 +379,16 @@ impl BigTextApp {
                     && !running(&dir, pid)
                     && !found.iter().any(|j| j.id.starts_with(&format!("{pid}-")))
                 {
+                    let _ = fs::remove_file(e.path());
+                }
+                continue;
+            }
+            let id = name
+                .strip_suffix(".add")
+                .or_else(|| name.strip_suffix(".pieces.tmp"));
+            if let Some(id) = id {
+                let pid = id.split('-').next().unwrap_or("");
+                if pid != mine && !running(&dir, pid) && !pieces_path(&dir, id).exists() {
                     let _ = fs::remove_file(e.path());
                 }
             }
@@ -290,29 +413,44 @@ impl BigTextApp {
             .filter(|id| !ids.contains(id))
             .collect();
         for id in gone {
-            if let Some(e) = self.recovery.entries.remove(&id) {
-                if e.exists {
-                    remove(&dir, &RecoveryState::id(id));
-                }
+            drop_journal(&mut self.recovery.entries, &dir, id);
+        }
+        let superseded: Vec<u64> = self
+            .recovery
+            .superseded
+            .keys()
+            .copied()
+            .filter(|id| {
+                !self
+                    .docs
+                    .iter()
+                    .any(|d| d.id == *id && d.is_modified() && !d.temporary)
+            })
+            .collect();
+        for id in superseded {
+            if let Some(old) = self.recovery.superseded.remove(&id) {
+                remove(&dir, &old);
             }
         }
         for d in &self.docs {
-            let wanted = self.recovery.enabled
-                && d.is_ready()
+            let keep = self.recovery.enabled
                 && d.is_modified()
                 && !d.temporary
-                && d.save_job.is_none()
-                && !matches!(d.state, DocState::Finalizing(_))
                 && d.buf.add_len() as usize <= ADD_MAX;
-            if !wanted {
-                if let Some(e) = self.recovery.entries.remove(&d.id) {
-                    if e.exists {
-                        remove(&dir, &RecoveryState::id(d.id));
-                    }
-                }
+            if !keep {
+                drop_journal(&mut self.recovery.entries, &dir, d.id);
+                continue;
+            }
+            // While a save runs (or after it failed and left the document in an error state)
+            // the last journal stays as it is: it goes once the document is saved and so no
+            // longer modified, and a crash or a failed save in between still has it.
+            if !d.is_ready() || d.save_job.is_some() || matches!(d.state, DocState::Finalizing(_)) {
                 continue;
             }
             let e = self.recovery.entries.entry(d.id).or_default();
+            if e.drop_pending {
+                continue;
+            }
             if e.seen != d.version {
                 e.seen = d.version;
                 e.changed_at = Some(now);
@@ -329,7 +467,7 @@ impl BigTextApp {
             e.writing = true;
             let add = d.buf.add_bytes();
             // Only the new typed bytes are appended; a smaller add buffer is written again.
-            let (append, delta) = if add.len() as u64 >= e.add_written && e.exists {
+            let (append, delta) = if !e.rewrite && e.exists && add.len() as u64 >= e.add_written {
                 (true, add[e.add_written as usize..].to_vec())
             } else {
                 (false, add.to_vec())
@@ -350,27 +488,20 @@ impl BigTextApp {
                 add_len: add.len() as u64,
                 saved: None,
             };
-            let (doc, version, dir, tx, waker) = (
+            let (doc, version, dir, tx, waker, cancel) = (
                 d.id,
                 d.version,
                 dir.clone(),
                 self.tx.clone(),
                 self.waker.clone(),
+                e.cancel.clone(),
             );
             jobs::spawn("journal", move || {
-                let r = (|| -> io::Result<()> {
-                    let mut f = File::options()
-                        .create(true)
-                        .write(true)
-                        .append(append)
-                        .truncate(!append)
-                        .open(add_path(&dir, &j.id))?;
-                    f.write_all(&delta)?;
-                    f.sync_data()?;
-                    let temp = dir.join(format!("{}.pieces.tmp", j.id));
-                    fs::write(&temp, format(&j))?;
-                    fs::rename(&temp, pieces_path(&dir, &j.id))
-                })();
+                let r = write_journal(&dir, &j, append, &delta, &cancel);
+                if cancel.load(Ordering::Relaxed) {
+                    // Dropped while this ran (saved, closed, exit): nothing may stay behind.
+                    remove(&dir, &j.id);
+                }
                 let _ = tx.send(Msg::Journaled {
                     doc,
                     version,
@@ -383,15 +514,37 @@ impl BigTextApp {
     }
 
     pub(super) fn on_journaled(&mut self, doc: u64, version: u64, add_len: u64, ok: bool) {
+        let Some(dir) = self.recovery.dir.clone() else {
+            return;
+        };
         let Some(e) = self.recovery.entries.get_mut(&doc) else {
             return;
         };
         e.writing = false;
+        if e.drop_pending {
+            remove(&dir, &RecoveryState::id(doc));
+            self.recovery.entries.remove(&doc);
+            return;
+        }
         if ok {
             e.written = version;
             e.add_written = add_len;
             e.exists = true;
+            e.rewrite = false;
             e.waiting_since = None;
+            // The document's own journal is there now: the one it was restored from can go.
+            if let Some(old) = self.recovery.superseded.remove(&doc) {
+                remove(&dir, &old);
+            }
+        } else {
+            // The files may be half written (an append that went through and a rename that did
+            // not would leave typed bytes in twice): the next write, after the usual pause,
+            // writes both whole.
+            let now = Instant::now();
+            e.exists = true;
+            e.rewrite = true;
+            e.changed_at = Some(now);
+            e.waiting_since = Some(now);
         }
     }
 
@@ -401,9 +554,13 @@ impl BigTextApp {
             return;
         };
         for (id, e) in self.recovery.entries.drain() {
-            if e.exists {
+            e.cancel.store(true, Ordering::Relaxed);
+            if e.exists || e.writing {
                 remove(&dir, &RecoveryState::id(id));
             }
+        }
+        for (_, old) in self.recovery.superseded.drain() {
+            remove(&dir, &old);
         }
         self.recovery.lock = None;
         let _ = fs::remove_file(dir.join(format!("{}.lock", std::process::id())));
@@ -426,15 +583,18 @@ impl BigTextApp {
                         Some(tr("The journal is damaged; nothing could be restored.").into());
                     return;
                 };
-                if let Some(d) = self.docs.get_mut(self.active) {
-                    d.restore_edits(buf);
-                    d.title = j.title.clone();
+                match self.docs.get_mut(self.active) {
+                    Some(d) => {
+                        d.restore_edits(buf);
+                        d.title = j.title.clone();
+                        self.recovery.superseded.insert(d.id, j.id.clone());
+                    }
+                    None => remove(&dir, &j.id),
                 }
-                remove(&dir, &j.id);
             }
             Some(p) => {
                 if !unchanged(&j) {
-                    self.error = Some(trf("{file} changed on disk after these edits were made; putting them back would scramble it. Save the edited text as a new file instead.", &[("file", &bigtext::file::display_path(p))]));
+                    self.error = Some(trf("{file} changed on disk after these edits were made; putting them back would scramble it. Save text as… keeps the text you typed.", &[("file", &bigtext::file::display_path(p))]));
                     self.recovery.offered.insert(i, j);
                     return;
                 }
@@ -479,7 +639,7 @@ impl BigTextApp {
                         tr("Unsaved edits from the last session were put back. Save to keep them.")
                             .into(),
                     ));
-                    remove(&dir, &j.id);
+                    self.recovery.superseded.insert(id, j.id.clone());
                 }
                 None => {
                     self.error =
@@ -514,6 +674,34 @@ impl BigTextApp {
         self.spawn_task(
             tr("Saving the recovered text").into(),
             move |progress, cancel| {
+                // The edits are positions in the file as it was: over a file that changed since
+                // they would scramble it, so only the typed text is saved then.
+                if uses_file(&j) && !unchanged(&j) {
+                    let Some(text) = typed_text(&dir, &j) else {
+                        return TaskOutcome::Failed(
+                            tr("The journal is damaged; nothing could be restored.").into(),
+                        );
+                    };
+                    let file = j
+                        .path
+                        .as_deref()
+                        .map(bigtext::file::display_path)
+                        .unwrap_or_default();
+                    let out = tasks::write_via_temp(&target, |w| {
+                        w.write_all(&text)?;
+                        Ok(Some(trf(
+                            "{file} changed on disk, so only the text you typed was saved, to {target}.",
+                            &[
+                                ("file", &file),
+                                ("target", &super::filter_panel::file_name(&target)),
+                            ],
+                        )))
+                    });
+                    if matches!(out, TaskOutcome::Done { .. }) {
+                        remove(&dir, &j.id);
+                    }
+                    return out;
+                }
                 let source = match &j.path {
                     Some(p) => match Source::open(p, OpenMode::Auto) {
                         Ok(s) => Arc::new(s),
@@ -575,7 +763,7 @@ impl BigTextApp {
                 });
                 ui.horizontal(|ui| {
                     let ok = unchanged(j);
-                    if ui.add_enabled(ok, egui::Button::new(tr("Restore"))).on_disabled_hover_text(tr("The file changed on disk since; save the edited text as a new file instead.")).clicked() {
+                    if ui.add_enabled(ok, egui::Button::new(tr("Restore"))).on_disabled_hover_text(tr("The file changed on disk since; Save text as… keeps the text you typed.")).clicked() {
                         restore = Some(i);
                     }
                     if ui.button(tr("Save text as…")).clicked() {
@@ -629,5 +817,111 @@ mod tests {
         };
         assert_eq!(parse("12-3", &format(&untitled)), Some(untitled));
         assert_eq!(parse("x", "not a journal\n"), None);
+    }
+
+    fn untitled(id: &str, pieces: Vec<(Buf, u64, u64)>, add_len: u64) -> Journal {
+        Journal {
+            id: id.into(),
+            title: "Untitled".into(),
+            path: None,
+            len: 0,
+            mtime: None,
+            codec: Codec::utf8(),
+            pieces,
+            add_len,
+            saved: None,
+        }
+    }
+
+    fn text_of(dir: &Path, id: &str) -> Option<String> {
+        let j = parse(id, &fs::read_to_string(pieces_path(dir, id)).ok()?)?;
+        let buf = rebuild(dir, &j, Arc::new(Source::empty()))?;
+        Some(String::from_utf8(buf.read(0..buf.len())?.to_vec()).unwrap())
+    }
+
+    /// A write that fails after appending its typed bytes must not leave them in twice: the
+    /// next write (the one after a failure writes both files whole) restores the right text.
+    #[test]
+    fn a_failed_journal_write_is_written_whole_next_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let no = AtomicBool::new(false);
+        let j1 = untitled("1-2", vec![(Buf::Add, 0, 3)], 3);
+        write_journal(d, &j1, false, b"abc", &no).unwrap();
+        assert_eq!(text_of(d, "1-2").as_deref(), Some("abc"));
+        // The piece list cannot be written: the typed bytes went in, the rename did not.
+        fs::create_dir(d.join("1-2.pieces.tmp")).unwrap();
+        let j2 = untitled("1-2", vec![(Buf::Add, 0, 6)], 6);
+        assert!(write_journal(d, &j2, true, b"def", &no).is_err());
+        assert_eq!(fs::read(add_path(d, "1-2")).unwrap(), b"abcdef");
+        fs::remove_dir(d.join("1-2.pieces.tmp")).unwrap();
+        // Appending again, as before the fix, would give "abcdefdefgh".
+        let j3 = untitled("1-2", vec![(Buf::Add, 0, 8)], 8);
+        write_journal(d, &j3, false, b"abcdefgh", &no).unwrap();
+        assert_eq!(text_of(d, "1-2").as_deref(), Some("abcdefgh"));
+    }
+
+    #[test]
+    fn a_dropped_journal_write_leaves_no_piece_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let j = untitled("1-3", vec![(Buf::Add, 0, 2)], 2);
+        assert!(write_journal(d, &j, false, b"hi", &AtomicBool::new(true)).is_err());
+        assert!(!pieces_path(d, "1-3").exists());
+        assert!(!d.join("1-3.pieces.tmp").exists());
+    }
+
+    #[test]
+    fn typed_text_of_edits_to_a_changed_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        fs::write(add_path(d, "1-4"), b"FIRST\nsecond").unwrap();
+        let j = Journal {
+            path: Some(d.join("gone.log")),
+            len: 1000,
+            pieces: vec![
+                (Buf::Orig, 0, 10),
+                (Buf::Add, 0, 6),
+                (Buf::Orig, 10, 500),
+                (Buf::Add, 6, 6),
+                (Buf::Orig, 510, 490),
+            ],
+            ..untitled("1-4", vec![], 12)
+        };
+        assert!(uses_file(&j));
+        assert!(!unchanged(&j));
+        assert_eq!(typed_text(d, &j).unwrap(), b"FIRST\nsecond\n");
+        // A piece outside the typed bytes is a damaged journal, not a panic.
+        let bad = Journal {
+            pieces: vec![(Buf::Add, 10, 5)],
+            ..j
+        };
+        assert_eq!(typed_text(d, &bad), None);
+    }
+
+    #[test]
+    fn journals_of_an_earlier_process_with_this_id_are_kept_apart() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = dir.path();
+        let pid = std::process::id();
+        let j = untitled(&format!("{pid}-2"), vec![(Buf::Add, 0, 2)], 2);
+        write_journal(d, &j, false, b"ok", &AtomicBool::new(false)).unwrap();
+        fs::write(d.join(format!("{}-2.pieces", pid + 1)), "other").unwrap();
+        keep_reused_pid_journals(d);
+        let names: Vec<String> = fs::read_dir(d)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(!names.contains(&format!("{pid}-2.pieces")), "{names:?}");
+        let moved = names
+            .iter()
+            .find_map(|n| {
+                n.strip_suffix(".pieces")
+                    .filter(|id| id.starts_with(&format!("{pid}.")))
+            })
+            .unwrap_or_else(|| panic!("{names:?}"));
+        assert_eq!(text_of(d, moved).as_deref(), Some("ok"));
+        assert!(names.contains(&format!("{}-2.pieces", pid + 1)));
     }
 }

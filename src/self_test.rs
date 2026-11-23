@@ -2005,6 +2005,100 @@ impl SelfTest {
             }),
         );
         s(
+            "closing the window while a save runs still asks about unsaved edits",
+            Box::new(|app, c| {
+                // An untitled tab with text keeps something unsaved whether the save of
+                // edit.txt finishes or is cancelled by the close.
+                if c.first() {
+                    return Step::Wait;
+                }
+                if c.mark == 0 {
+                    // The previous step leaves its "Y" typed (its Ctrl+Z goes to the closed
+                    // prompt): take it back first.
+                    if doc(app).is_modified() {
+                        doc(app).undo();
+                        return Step::Wait;
+                    }
+                    if text(app) != format!("{ORIGINAL}X") {
+                        return if c.waited() > Duration::from_secs(5) {
+                            Step::Fail(format!("start text {:?}", text(app)))
+                        } else {
+                            Step::Wait
+                        };
+                    }
+                    let back = app.active;
+                    app.new_doc();
+                    doc(app).insert_text("unsaved");
+                    app.active = back;
+                    let d = doc(app);
+                    let len = d.buf.len();
+                    d.set_caret(len, false);
+                    d.insert_text("Q");
+                    app.save(false);
+                    if doc(app).save_job.is_none() {
+                        return Step::Fail("the save did not start".into());
+                    }
+                    if let Some(ctx) = app.test_ctx() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                    c.mark = 1;
+                    return Step::Wait;
+                }
+                if c.mark == 1 {
+                    if !app.test_has_confirm() {
+                        return if c.waited() > Duration::from_secs(5) {
+                            Step::Fail("no unsaved-changes prompt".into())
+                        } else {
+                            Step::Wait
+                        };
+                    }
+                    c.key(Key::Escape, NONE);
+                    c.mark = 2;
+                    return Step::Wait;
+                }
+                if app.test_has_confirm() || doc(app).save_job.is_some() {
+                    return Step::Wait;
+                }
+                if let Some(id) = app
+                    .docs
+                    .iter()
+                    .find(|d| d.path.is_none() && d.is_modified())
+                    .map(|d| d.id)
+                {
+                    app.close_tab(id, true);
+                }
+                if let Some(i) = app.docs.iter().position(|d| d.title == "edit.txt") {
+                    app.active = i;
+                }
+                // Back to the text the next steps expect: without the Q, saved (the save may
+                // have finished before the close, and then there is no undo).
+                let d = doc(app);
+                if d.save_job.is_some() || !d.is_ready() {
+                    return Step::Wait;
+                }
+                if text(app).ends_with('Q') {
+                    let d = doc(app);
+                    let len = d.buf.len();
+                    d.select(len - 1, len);
+                    d.delete_selection();
+                    return Step::Wait;
+                }
+                if doc(app).is_modified() {
+                    app.save(false);
+                    return Step::Wait;
+                }
+                let disk = std::fs::read_to_string(c.file("edit.txt")).unwrap_or_default();
+                if c.waited() > Duration::from_secs(10) {
+                    return Step::Fail(format!("disk {disk:?}"));
+                }
+                if disk != format!("{ORIGINAL}X") {
+                    return Step::Wait;
+                }
+                c.mark = 0;
+                Step::Next
+            }),
+        );
+        s(
             "Alt+Z word wrap, hex view, F12 overlay",
             Box::new(|app, c| {
                 if c.first() {
@@ -3167,6 +3261,18 @@ impl SelfTest {
                     app.restore_journal(i);
                     return Step::Wait;
                 }
+                let exists = dir.join("999999-7.pieces").exists();
+                if c.mark == 1 {
+                    // Closed without saving: the restored journal is not needed any more.
+                    if exists && c.waited() < Duration::from_secs(3) {
+                        return Step::Wait;
+                    }
+                    c.mark = 0;
+                    return check(
+                        !exists && app.recovery.offered.is_empty(),
+                        format!("journal removed {}", !exists),
+                    );
+                }
                 let t = text(app);
                 let d = doc(app);
                 if t != "NEW first line\nsecond line\n" || !d.is_modified() {
@@ -3176,13 +3282,16 @@ impl SelfTest {
                         Step::Wait
                     };
                 }
-                let gone = !dir.join("999999-7.pieces").exists();
+                // Kept until the document's own journal is written: a crash right after the
+                // restore must not lose the edits.
+                if !exists {
+                    return Step::Fail("the journal went before the document's own one".into());
+                }
                 let id = d.id;
                 app.test_close(id);
-                check(
-                    gone && app.recovery.offered.is_empty(),
-                    format!("journal removed {gone}"),
-                )
+                c.mark = 1;
+                c.mark_time = Instant::now();
+                Step::Wait
             }),
         );
         s(

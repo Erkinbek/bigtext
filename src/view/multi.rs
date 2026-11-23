@@ -91,8 +91,16 @@ pub fn edit_all(doc: &mut Document, e: MultiEdit) -> bool {
     for (i, &(s, end, primary)) in sels.iter().enumerate() {
         let (mut s, mut end) = (s, end);
         match &e {
-            MultiEdit::Backspace if s == end && s > min => s = doc.buf.prev_char(s),
-            MultiEdit::Delete if s == end && end < len => end = doc.buf.next_char(end),
+            // A CRLF pair goes as one line break, as with a single caret.
+            MultiEdit::Backspace if s == end && s > min => {
+                s = match doc.crlf_before(s) {
+                    Some(n) => s - n,
+                    None => doc.buf.prev_char(s),
+                }
+            }
+            MultiEdit::Delete if s == end && end < len => {
+                end = doc.off_crlf(doc.buf.next_char(end), true)
+            }
             _ => {}
         }
         s = s.max(prev_end);
@@ -184,7 +192,9 @@ pub fn handle_event(ui: &Ui, doc: &mut Document, ev: &Event, wrap: Option<usize>
         }
         Event::Copy | Event::Cut => {
             ui.ctx().copy_text(selected_text(doc));
-            if matches!(ev, Event::Cut) {
+            // Selections over 1 MB are left out of the clipboard, so a cut deletes nothing.
+            let all_copied = selections(doc).iter().all(|(s, e, _)| e - s <= 1 << 20);
+            if matches!(ev, Event::Cut) && all_copied {
                 edit_all(doc, MultiEdit::Insert(String::new()));
             }
         }
@@ -220,9 +230,10 @@ pub fn handle_event(ui: &Ui, doc: &mut Document, ev: &Event, wrap: Option<usize>
                             return (p, p);
                         }
                         let n = if right {
-                            rows::next_stop(&d.buf, c)
+                            d.off_crlf(rows::next_stop(&d.buf, c), true)
                         } else {
-                            rows::prev_stop(&d.buf, c).max(d.min_caret())
+                            d.off_crlf(rows::prev_stop(&d.buf, c), false)
+                                .max(d.min_caret())
                         };
                         (if shift { a } else { n }, n)
                     });
@@ -296,6 +307,54 @@ mod tests {
         assert_eq!(text(&d), "foo! x foo! y foo!\n");
         d.undo();
         assert_eq!(text(&d), "foo x foo y foo\n");
+    }
+
+    #[test]
+    fn crlf_pairs_go_as_one_break_at_every_cursor() {
+        let (_t, mut d) = doc("ab\r\ncd\r\nx");
+        d.select(4, 4);
+        add_cursor(&mut d, 8, 8);
+        assert!(edit_all(&mut d, MultiEdit::Backspace));
+        assert_eq!(text(&d), "abcdx");
+        d.undo();
+        d.select(2, 2);
+        add_cursor(&mut d, 6, 6);
+        assert!(edit_all(&mut d, MultiEdit::Delete));
+        assert_eq!(text(&d), "abcdx");
+        d.undo();
+        // Moving right from before a CR goes past the whole pair.
+        assert_eq!(d.off_crlf(3, true), 4);
+        assert_eq!(d.off_crlf(3, false), 2);
+        assert_eq!(d.off_crlf(4, true), 4);
+    }
+
+    /// A batch edit (Replace All) keeps the old selection offsets: they are moved into the text
+    /// and onto a character boundary, so later edits cannot hang or write broken UTF-8.
+    #[test]
+    fn a_selection_from_before_a_batch_edit_is_fitted_to_the_text() {
+        let (_t, mut d) = doc("foo foo foo");
+        let edits: Vec<_> = [0u64, 4, 8]
+            .iter()
+            .map(|&s| (s..s + 3, b"x".to_vec()))
+            .collect();
+        let (pieces, add) = d.buf.build_batch(&edits);
+        let swap = d.buf.apply_batch(pieces, &add);
+        d.record(swap, (11, 11));
+        assert_eq!(text(&d), "x x x");
+        assert_eq!((d.view.anchor, d.view.caret), (5, 5));
+        // An edit range past the end is cut to it instead of looping forever.
+        let (pieces, add) = d.buf.build_batch(&[(10..10, b"!".to_vec())]);
+        let swap = d.buf.apply_batch(pieces, &add);
+        d.record(swap, (5, 5));
+        assert_eq!(text(&d), "x x x!");
+
+        let (_t, mut d) = doc("a\u{e9}");
+        let (pieces, add) = d.buf.build_batch(&[(0..1, "\u{20ac}".as_bytes().to_vec())]);
+        let swap = d.buf.apply_batch(pieces, &add);
+        d.record(swap, (1, 1));
+        assert_eq!(d.view.caret, 3, "inside the 3-byte euro sign");
+        d.insert_text("z");
+        assert_eq!(text(&d), "\u{20ac}z\u{e9}");
     }
 
     #[test]

@@ -121,7 +121,9 @@ pub fn edit_block(doc: &mut Document, b: &mut Block, e: BlockEdit) -> bool {
     for (i, (row, r)) in rows.iter().zip(ranges).enumerate() {
         let (mut s, mut end) = (r.start, r.end);
         match &e {
-            BlockEdit::Backspace if narrow && s > row.start => s = doc.buf.prev_char(s),
+            BlockEdit::Backspace if narrow && s > row.start.max(doc.min_caret()) => {
+                s = doc.buf.prev_char(s)
+            }
             BlockEdit::Delete if narrow && end < row.end => end = doc.buf.next_char(end),
             _ => {}
         }

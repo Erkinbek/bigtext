@@ -59,6 +59,8 @@ pub struct Persisted {
     pub seen_version: Option<String>,
     /// Read from a settings file, so not a first start.
     pub loaded: bool,
+    /// The settings file is there but could not be read: this session does not save over it.
+    pub unreadable: bool,
     pub marks: Vec<super::marks::Mark>,
     /// Search history, newest first.
     pub history: Vec<String>,
@@ -376,12 +378,30 @@ pub fn load() -> Persisted {
     let Some(path) = state_file() else {
         return Persisted::default();
     };
-    match std::fs::read_to_string(path) {
-        Ok(text) => Persisted {
-            loaded: true,
-            ..parse(&text)
-        },
-        Err(_) => Persisted::default(),
+    // Another program (an antivirus, a sync tool) may hold the file for a moment.
+    let mut tries = 0;
+    loop {
+        match std::fs::read(&path) {
+            // A hand edit saved in another encoding loses only its odd characters.
+            Ok(bytes) => {
+                return Persisted {
+                    loaded: true,
+                    ..parse(&String::from_utf8_lossy(&bytes))
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Persisted::default(),
+            Err(_) if tries < 5 => {
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            // Not readable: the defaults, and the file is not written over (see `unreadable`).
+            Err(_) => {
+                return Persisted {
+                    unreadable: true,
+                    ..Persisted::default()
+                }
+            }
+        }
     }
 }
 
@@ -394,7 +414,7 @@ pub(super) fn parse(text: &str) -> Persisted {
         match k {
             "recent" => p.recent.push(PathBuf::from(v)),
             "active" => p.active = v.parse().unwrap_or(0),
-            "font_size" => p.font_size = v.parse().ok(),
+            "font_size" => p.font_size = v.parse().ok().filter(|f: &f32| f.is_finite()),
             "dark" => p.dark = Some(v == "1"),
             "theme" if v == "system" => p.theme_system = Some(true),
             "theme" => p.theme = super::theme::Theme::from_id(v),
@@ -647,16 +667,32 @@ pub fn save_now(p: Persisted) {
 }
 
 fn write_state(path: &Path, text: &str) {
-    // One writer at a time, since all of them use the same temporary file.
+    // One writer at a time in this process: an older snapshot must not land last.
     static LOCK: Mutex<()> = Mutex::new(());
     let _guard = LOCK.lock();
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    let tmp = path.with_extension("tmp");
-    if std::fs::write(&tmp, text).is_ok() {
-        let _ = std::fs::rename(&tmp, path);
+    let _ = write_atomic(path, text.as_bytes());
+}
+
+/// Writes a small file whole or not at all: a temporary file of this process beside it, synced,
+/// then renamed over it (another BigText writing the same file at once has its own).
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let tmp = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+    let r = (|| {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        drop(f);
+        std::fs::rename(&tmp, path)
+    })();
+    if r.is_err() {
+        let _ = std::fs::remove_file(&tmp);
     }
+    r
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1084,6 +1120,7 @@ impl BigTextApp {
             update_checked: Some(self.update.last_check).filter(|&t| t > 0),
             seen_version: Some(bigtext::update::Version::current().to_string()),
             loaded: false,
+            unreadable: false,
             marks: self.settings.marks.clone(),
             history: self.search.history.clone(),
             lang: Some(super::i18n::lang().code().to_string()),
@@ -1650,7 +1687,7 @@ impl BigTextApp {
         let Some(d) = self.docs.iter_mut().find(|d| d.id == p.doc) else {
             return;
         };
-        if d.version != p.version {
+        if d.version != p.version || d.save_job.is_some() {
             self.error = Some(
                 tr("The document changed while the patch was being placed; nothing was changed.")
                     .into(),
@@ -2149,6 +2186,7 @@ mod tests {
             update_checked: Some(1_761_550_000),
             seen_version: Some("0.7.2".into()),
             loaded: false,
+            unreadable: false,
             marks: vec![super::super::marks::Mark {
                 query: bigtext::search::Query {
                     pattern: r"id=\d+|x".into(),

@@ -637,8 +637,14 @@ impl Document {
         self.view.anchor != self.view.caret
     }
 
-    pub fn set_caret(&mut self, off: u64, extend: bool) {
+    /// An offset moved into the text and onto a character boundary.
+    pub fn fit_caret(&self, off: u64) -> u64 {
         let off = off.clamp(self.min_caret(), self.buf.len());
+        self.buf.snap_char(off).max(self.min_caret())
+    }
+
+    pub fn set_caret(&mut self, off: u64, extend: bool) {
+        let off = self.fit_caret(off);
         self.view.caret = off;
         if !extend {
             self.view.anchor = off;
@@ -647,8 +653,8 @@ impl Document {
     }
 
     pub fn select(&mut self, start: u64, end: u64) {
-        self.view.anchor = start.clamp(self.min_caret(), self.buf.len());
-        self.view.caret = end.clamp(self.min_caret(), self.buf.len());
+        self.view.anchor = self.fit_caret(start);
+        self.view.caret = self.fit_caret(end);
         self.view.scroll_to_caret = true;
         self.view.desired_cell = None;
     }
@@ -736,6 +742,9 @@ impl Document {
         let sel_before = (self.view.anchor, self.view.caret);
         self.clamp_bookmarks();
         self.version += 1;
+        // A selection given from before a batch edit may now be past the end or inside a
+        // character (a replacement of another length before it).
+        let sel_after = (self.fit_caret(sel_after.0), self.fit_caret(sel_after.1));
         self.view.anchor = sel_after.0;
         self.view.caret = sel_after.1;
         self.view.scroll_to_caret = true;
@@ -762,8 +771,22 @@ impl Document {
         true
     }
 
+    /// `off` moved off the middle of a CRLF pair: past it going right, before it going left.
+    pub fn off_crlf(&self, off: u64, right: bool) -> u64 {
+        let cr = self.buf.codec.cr_unit().len() as u64;
+        let nl = self.buf.codec.nl_unit().len() as u64;
+        if off < cr || off + nl > self.buf.len() {
+            return off;
+        }
+        match self.crlf_before(off + nl) {
+            Some(n) if n == cr + nl && right => off + nl,
+            Some(n) if n == cr + nl => off - cr,
+            _ => off,
+        }
+    }
+
     /// Length of a CRLF pair ending at `off`, if any.
-    fn crlf_before(&self, off: u64) -> Option<u64> {
+    pub fn crlf_before(&self, off: u64) -> Option<u64> {
         let codec = self.buf.codec;
         let cr = codec.cr_unit();
         let nl = codec.nl_unit();
@@ -902,7 +925,8 @@ impl Document {
     }
 
     pub fn undo(&mut self) {
-        if !self.is_ready() {
+        // Not while a save runs: the saved file replaces the buffer when it ends.
+        if !self.is_ready() || self.save_job.is_some() {
             return;
         }
         if let Some(g) = self.undo.pop() {
@@ -910,8 +934,8 @@ impl Document {
                 self.buf.apply(s, false);
             }
             self.version += 1;
-            self.view.anchor = g.sel_before.0.min(self.buf.len());
-            self.view.caret = g.sel_before.1.min(self.buf.len());
+            self.view.anchor = self.fit_caret(g.sel_before.0);
+            self.view.caret = self.fit_caret(g.sel_before.1);
             self.view.scroll_to_caret = true;
             self.content_state = g.state_before;
             self.redo.push(g);
@@ -920,7 +944,7 @@ impl Document {
     }
 
     pub fn redo(&mut self) {
-        if !self.is_ready() {
+        if !self.is_ready() || self.save_job.is_some() {
             return;
         }
         if let Some(g) = self.redo.pop() {
@@ -928,8 +952,8 @@ impl Document {
                 self.buf.apply(s, true);
             }
             self.version += 1;
-            self.view.anchor = g.sel_after.0.min(self.buf.len());
-            self.view.caret = g.sel_after.1.min(self.buf.len());
+            self.view.anchor = self.fit_caret(g.sel_after.0);
+            self.view.caret = self.fit_caret(g.sel_after.1);
             self.view.scroll_to_caret = true;
             self.content_state = g.state_after;
             self.undo.push(g);
@@ -950,7 +974,7 @@ impl Document {
         let at = self
             .buf
             .codec
-            .decode_lossy(&bytes[..(caret - start) as usize])
+            .decode_lossy(&bytes[..((caret.max(start) - start) as usize).min(bytes.len())])
             .len();
         let stop = |c: char| c.is_whitespace() || "\"'<>`".contains(c);
         let lo = text[..at]
@@ -976,7 +1000,9 @@ impl Document {
         let before = self.buf.read(lo..off)?;
         let start = match codec.rfind_nl(&before, lo) {
             Some(i) => lo + i as u64 + unit,
-            None if lo == 0 => 0,
+            // The first line starts after a byte order mark: it is not text, and a line
+            // command (delete, duplicate, comment) must not take it along.
+            None if lo == 0 => self.min_caret().min(off),
             None => return None,
         };
         let hi = (off + limit).min(len);
@@ -1278,5 +1304,41 @@ impl Document {
         let off = self.buf.snap_char(off.min(self.buf.len()));
         self.set_caret(off, false);
         self.view.center();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn doc(bytes: &[u8]) -> (tempfile::TempDir, Document) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.txt");
+        std::fs::write(&path, bytes).unwrap();
+        let src = Arc::new(Source::open(&path, bigtext::file::OpenMode::Auto).unwrap());
+        let det = bigtext::encoding::detect(&src.read(0..src.len()).unwrap(), true);
+        let mut d = Document::loading(1, path);
+        d.install(src, det, None, bigtext::jobs::noop_waker());
+        (dir, d)
+    }
+
+    fn bytes(d: &Document) -> Vec<u8> {
+        d.buf.read(0..d.buf.len()).unwrap().to_vec()
+    }
+
+    /// The byte order mark is not part of line 1: line commands leave it where it is.
+    #[test]
+    fn line_commands_keep_the_byte_order_mark() {
+        let (_t, mut d) = doc(b"\xEF\xBB\xBFa\nb\n");
+        assert_eq!(d.min_caret(), 3);
+        d.set_caret(3, false);
+        d.duplicate_line();
+        assert_eq!(bytes(&d), b"\xEF\xBB\xBFa\na\nb\n");
+        d.undo();
+        d.set_caret(3, false);
+        d.delete_line();
+        assert_eq!(bytes(&d), b"\xEF\xBB\xBFb\n");
+        d.undo();
+        assert_eq!(bytes(&d), b"\xEF\xBB\xBFa\nb\n");
     }
 }
