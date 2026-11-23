@@ -63,7 +63,7 @@ T = {
          "istek kimliğini taşıyan satırlar."),
         ("Zamana göre yan yana loglar", "Birkaç logu zaman damgasına göre tek bir renkli görünümde birleştirin ya da açık "
          "logları hizalayıp zamana göre birlikte kaydırın; saat kayması ayarlanabilir. İzleme, log döndürmeyi atlatır."),
-        ("JSON ve XML", "Bir yapı paneli, imlecin JSON yolu durum çubuğunda, katlama, sorgulu tablo olarak JSON Lines, hatayı "
+        ("JSON ve XML", "Bir yapı paneli, imlecin JSON yolu durum çubuğunda, katlama, tablo olarak JSON Lines, hatayı "
          "gösteren katı bir denetim, JSON, JSON Lines ve logfmt arasında dönüştürme ve yapısal karşılaştırma."),
         ("Hesap yapan tablolar", "Toplamlarla gruplama, pivot tablolar, iki dosyanın bir anahtarla birleştirilmesi, "
          "hesaplanan sütunlar, sütun grafikleri, sabitlenmiş ve gizli sütunlar, satır denetimleri ve JSON, Markdown veya "
@@ -91,6 +91,8 @@ T = {
         ("Konteyner ve servis logları", "Bir Docker veya Podman konteynerini, bir Kubernetes pod'unu ya da bir systemd servisini, bu bilgisayarda veya SSH üzerinden bir sunucuda, listeden seçin ve logunu açın: son satırlar ya da son dakikalar, büyüdükçe izlenerek. Bir pod'un yeniden başlatmaları görünür; çökme hatasının bulunduğu, son yeniden başlatmadan önceki çalışması da açılabilir."),
         ("Yeni satır uyarıları", "İzlenen bir loga ERROR veya bir düzenli ifade gibi birkaç desen verin: eşleşen her yeni satır sekmede sayılır ve bir sistem bildirimi ile bir sesle duyurulur, en fazla on saniyede bir. Windows'ta bildirime tıklamak o satıra götürür."),
         ("SQL dökümü tabloları", "Bir mysqldump, pg_dump veya SQLite dökümünün tabloları, satır sayıları ve boyutlarıyla: 1 GB'lık bir döküm yaklaşık bir saniyede listelenir. Bir tabloyu kendi başına geri yüklenen bir dosyaya kaydedin ya da dökümü tablo başına birer dosyaya bölün; adlarının sırasıyla dosyalar tüm veritabanını geri yükler."),
+        ("Güvenli paylaş", "Dosya → Güvenli paylaş… bir seçimi ya da dosyanın tamamını bir issue'ya yapıştırmadan önce içindeki token'ları, parolaları, API anahtarlarını, çerezleri, URL'lerdeki gizli bilgileri ve e-posta adreslerini (isterseniz IP adreslerini ya da kendi kalıplarınızı da) gizler. Her değer <email-3f9a2c> gibi bir etikete dönüşür ve önizleme tam olarak neyin yazılacağını gösterir. Kurallar yaygın gizli bilgileri bulur, hepsini değil; bu yüzden paylaşmadan önce kontrol edin. bigtext-cli redact aynısını betiklerde yapar."),
+        ("Her log için tek sorgu", "Arama çubuğunu {} moduna alın; filtre görünümü yalnızca bir sorguya uyan satırları bırakır, örneğin bir nginx logunda .status >= 500 and .method = POST. Alan sorguları JSON Lines, logfmt ve web sunucusu ile syslog loglarının sütunlarını okur; or, not, parantezler, in (a, b) ve .time >= 10:00 gibi saatler kullanılabilir. bigtext-cli query aynısını betiklerde yapar."),
     ],
     "gallery_h2": "Ekran görüntüleri",
     "gallery": {
@@ -268,6 +270,8 @@ GUIDES = [
         "tips": [
             "Birkaç log zamana göre tek bir görünümde birleştirilebilir ya da iki log zamana göre birlikte kaydırılabilir.",
             "Arama, filtre ve kaydetme arka planda ilerleme çubuğu ve İptal düğmesiyle çalışır; pencere yanıt vermeye devam eder.",
+            "Arama çubuğunda {} açıkken filtre metin yerine bir alan sorgusu alır: bir nginx logunda {{.status >= 500 and .method = POST}}, JSON Lines'ta {{.level == \"error\" and .duration > 500}}.",
+            "Log satırlarını bir issue'ya yapıştırmadan önce Dosya → Güvenli paylaş… içlerindeki token'ları, parolaları ve e-posta adreslerini gizler.",
         ],
     },
     {

@@ -54,7 +54,7 @@
  "description": "Har qanday hajmdagi logni darhol oching, muharrir qotmasdan qidiring, filtrlang va kuzating: vaqtga o'tish, daraja bo'yicha filtr, grep kabi filtr, tail -F. Bepul, Windows, Linux va macOS uchun.",
  "inLanguage": "uz",
  "url": "https://erkinbek.github.io/bigtext/uz/guides/open-large-log-file/",
- "dateModified": "2026-11-14",
+ "dateModified": "2026-11-23",
  "author": {
   "@type": "Person",
   "name": "Erkin Pardayev",
@@ -92,7 +92,7 @@
     <h2>Qadamma-qadam</h2>
     <ol class="steps"><li><h3>Oching</h3><p>«Fayl → Ochish», oynaga tortish yoki terminalda <code>bigtext app.log</code> buyrug&#x27;i bilan (<code>bigtext app.log:120</code> 120-qatorda ochadi). .gz va .zst dagi loglar to&#x27;g&#x27;ridan-to&#x27;g&#x27;ri ochiladi.</p></li><li><h3>Fayl bo&#x27;ylab yuring</h3><p><code>Ctrl+End</code> darhol oxirgi qatorga o&#x27;tadi. Qatorga o&#x27;tish (<code>Ctrl+G</code>) indekslash tugamasdan ishlaydi; ungacha qator raqamlari oldida <code>~</code> turadi. Vaqtga o&#x27;tish (<code>Ctrl+Shift+T</code>) <code>14:32:05</code> ni qabul qiladi va o&#x27;sha vaqtdagi birinchi qatorga qo&#x27;yadi.</p></li><li><h3>Xatolarni toping</h3><p>Log ustidagi darajalar paneli ERROR, WARN, INFO va DEBUG qatorlarini filtrlaydi, <code>F8</code> esa keyingi xatoga o&#x27;tadi. <code>Ctrl+F</code> butun fayl bo&#x27;yicha qidiradi, xohlasangiz regex bilan, «Hammasini topish» mosliklar ro&#x27;yxatini beradi.</p></li><li><h3>Faqat keraklisini qoldiring</h3><p>Filtr rejimi faqat mos keladigan yoki aksincha, mos kelmaydigan qatorlarni ko&#x27;rsatadi, xuddi butun faylda grep kabi, va ularni yangi faylga saqlaydi.</p></li><li><h3>Jonli kuzating</h3><p>Kuzatish rejimi (<code>bigtext -f app.log</code> yoki buyruqlar palitrasidagi «Faylni kuzatish (tail)») yangi qatorlarni <code>tail -F</code> kabi qo&#x27;shib boradi va log almashtirilganda ham davom etadi. Serverdagi log SSH orqali kalitlaringiz bilan ochiladi: <code>bigtext -f user@server:/var/log/syslog</code>.</p></li></ol>
     <h2>Bilib qo&#x27;ying</h2>
-    <ul class="tips"><li>Bir nechta logni vaqt bo&#x27;yicha bitta oynaga birlashtirish yoki ikki logni vaqt bo&#x27;yicha birga aylantirish mumkin.</li><li>Qidiruv, filtr va saqlash fonda, progress va bekor qilish tugmasi bilan ishlaydi, oyna javob berishdan to&#x27;xtamaydi.</li></ul>
+    <ul class="tips"><li>Bir nechta logni vaqt bo&#x27;yicha bitta oynaga birlashtirish yoki ikki logni vaqt bo&#x27;yicha birga aylantirish mumkin.</li><li>Qidiruv, filtr va saqlash fonda, progress va bekor qilish tugmasi bilan ishlaydi, oyna javob berishdan to&#x27;xtamaydi.</li><li>Qidiruv panelida {} yoqilsa, filtr matn o&#x27;rniga maydon so&#x27;rovini oladi: nginx logida <code>.status &gt;= 500 and .method = POST</code>, JSON Lines&#x27;da <code>.level == &quot;error&quot; and .duration &gt; 500</code>.</li><li>Log qatorlarini issue&#x27;ga qo&#x27;yishdan oldin Fayl → Xavfsiz ulashish… ulardagi tokenlar, parollar va e-mail manzillarini yashiradi.</li></ul>
     <p class="cta"><a class="btn primary" href="../../../uz/#download">BigText&#x27;ni bepul yuklab olish</a></p>
     <h2>Boshqa qo&#x27;llanmalar</h2>
     <ul class="more"><li><a href="../open-csv-larger-than-excel/">Excel&#x27;ning 1 048 576 qatoridan katta CSV faylni ochish</a></li><li><a href="../extract-table-from-mysqldump/">mysqldump faylidan bitta jadvalni ajratib olish</a></li></ul>
@@ -101,7 +101,7 @@
 <footer class="foot">
   <div class="wrap">
     <p>Muallif: <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
-    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">MIT litsenziyasi</a> · <a href="../../../uz/#privacy">Maxfiylik</a> · v0.11.0</p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">MIT litsenziyasi</a> · <a href="../../../uz/#privacy">Maxfiylik</a> · v0.12.0</p>
     <p class="langs-foot"><a href="../../../guides/open-large-log-file/" hreflang="en" lang="en">English</a> · <a href="../../../ru/guides/open-large-log-file/" hreflang="ru" lang="ru">Русский</a> · <a href="../../../uz/guides/open-large-log-file/" hreflang="uz" lang="uz">O'zbekcha</a> · <a href="../../../zh/guides/open-large-log-file/" hreflang="zh" lang="zh">简体中文</a> · <a href="../../../es/guides/open-large-log-file/" hreflang="es" lang="es">Español</a> · <a href="../../../pt/guides/open-large-log-file/" hreflang="pt" lang="pt">Português</a> · <a href="../../../de/guides/open-large-log-file/" hreflang="de" lang="de">Deutsch</a> · <a href="../../../tr/guides/open-large-log-file/" hreflang="tr" lang="tr">Türkçe</a></p>
   </div>
 </footer>

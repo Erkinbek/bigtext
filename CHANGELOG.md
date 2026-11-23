@@ -3,7 +3,7 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
-## Unreleased
+## 0.12.0 — 2026-11-23
 
 ### One query for every structured log
 

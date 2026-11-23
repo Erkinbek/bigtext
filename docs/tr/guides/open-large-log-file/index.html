@@ -54,7 +54,7 @@
  "description": "Her boyutta logu anında açın; düzenleyici donmadan arayın, filtreleyin ve izleyin: bir zamana atlama, seviyeye göre filtre, grep benzeri filtre, tail -F. Ücretsiz; Windows, Linux ve macOS için.",
  "inLanguage": "tr",
  "url": "https://erkinbek.github.io/bigtext/tr/guides/open-large-log-file/",
- "dateModified": "2026-11-14",
+ "dateModified": "2026-11-23",
  "author": {
   "@type": "Person",
   "name": "Erkin Pardayev",
@@ -92,7 +92,7 @@
     <h2>Adım adım</h2>
     <ol class="steps"><li><h3>Açın</h3><p>Dosya → Aç&#x27;ı kullanın, dosyayı pencereye sürükleyin ya da terminalde <code>bigtext app.log</code> çalıştırın (<code>bigtext app.log:120</code> 120. satırda açar). .gz ve .zst ile sıkıştırılmış loglar doğrudan açılır.</p></li><li><h3>Gezinin</h3><p><code>Ctrl+End</code> anında son satıra gider. Satıra git (<code>Ctrl+G</code>) satır indeksi bitmeden çalışır; o zamana kadar satır numaraları <code>~</code> taşır. Zamana git (<code>Ctrl+Shift+T</code>) <code>14:32:05</code> alır ve o zamandaki ilk satıra götürür.</p></li><li><h3>Hataları bulun</h3><p>Logun üstündeki seviye çubuğu ERROR, WARN, INFO ve DEBUG satırlarını filtreler; <code>F8</code> sonraki hataya atlar. <code>Ctrl+F</code> tüm dosyada, isterseniz düzenli ifadelerle arar; “Tümünü bul” eşleşmeleri listeler.</p></li><li><h3>Yalnızca önemli olanı tutun</h3><p>Filtre görünümü yalnızca eşleşen satırları ya da yalnızca eşleşmeyenleri, tüm dosyada grep gibi gösterir ve yeni bir dosyaya kaydeder.</p></li><li><h3>Canlı izleyin</h3><p>İzleme modu (<code>bigtext -f app.log</code> ya da komut paletinde “Dosya değişikliklerini izle (tail)”) yeni satırları <code>tail -F</code> gibi ekler ve log döndürmeyi atlatır. Sunucudaki bir log, anahtarlarınızla SSH üzerinden açılır: <code>bigtext -f user@server:/var/log/syslog</code>.</p></li></ol>
     <h2>Bilmekte fayda var</h2>
-    <ul class="tips"><li>Birkaç log zamana göre tek bir görünümde birleştirilebilir ya da iki log zamana göre birlikte kaydırılabilir.</li><li>Arama, filtre ve kaydetme arka planda ilerleme çubuğu ve İptal düğmesiyle çalışır; pencere yanıt vermeye devam eder.</li></ul>
+    <ul class="tips"><li>Birkaç log zamana göre tek bir görünümde birleştirilebilir ya da iki log zamana göre birlikte kaydırılabilir.</li><li>Arama, filtre ve kaydetme arka planda ilerleme çubuğu ve İptal düğmesiyle çalışır; pencere yanıt vermeye devam eder.</li><li>Arama çubuğunda {} açıkken filtre metin yerine bir alan sorgusu alır: bir nginx logunda <code>.status &gt;= 500 and .method = POST</code>, JSON Lines&#x27;ta <code>.level == &quot;error&quot; and .duration &gt; 500</code>.</li><li>Log satırlarını bir issue&#x27;ya yapıştırmadan önce Dosya → Güvenli paylaş… içlerindeki token&#x27;ları, parolaları ve e-posta adreslerini gizler.</li></ul>
     <p class="cta"><a class="btn primary" href="../../../tr/#download">BigText&#x27;i ücretsiz indirin</a></p>
     <h2>Diğer rehberler</h2>
     <ul class="more"><li><a href="../open-csv-larger-than-excel/">Excel&#x27;in 1.048.576 satırından büyük bir CSV dosyasını açma</a></li><li><a href="../extract-table-from-mysqldump/">mysqldump dosyasından tek bir tabloyu çıkarma</a></li></ul>
@@ -101,7 +101,7 @@
 <footer class="foot">
   <div class="wrap">
     <p>Geliştiren: <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
-    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">MIT lisansı</a> · <a href="../../../tr/#privacy">Gizlilik</a> · v0.11.0</p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">MIT lisansı</a> · <a href="../../../tr/#privacy">Gizlilik</a> · v0.12.0</p>
     <p class="langs-foot"><a href="../../../guides/open-large-log-file/" hreflang="en" lang="en">English</a> · <a href="../../../ru/guides/open-large-log-file/" hreflang="ru" lang="ru">Русский</a> · <a href="../../../uz/guides/open-large-log-file/" hreflang="uz" lang="uz">O'zbekcha</a> · <a href="../../../zh/guides/open-large-log-file/" hreflang="zh" lang="zh">简体中文</a> · <a href="../../../es/guides/open-large-log-file/" hreflang="es" lang="es">Español</a> · <a href="../../../pt/guides/open-large-log-file/" hreflang="pt" lang="pt">Português</a> · <a href="../../../de/guides/open-large-log-file/" hreflang="de" lang="de">Deutsch</a> · <a href="../../../tr/guides/open-large-log-file/" hreflang="tr" lang="tr">Türkçe</a></p>
   </div>
 </footer>

@@ -54,7 +54,7 @@
  "description": "Откройте лог любого размера сразу, ищите, фильтруйте и следите за ним без зависаний: переход ко времени, фильтр по уровням, фильтр как grep, tail -F. Бесплатно, для Windows, Linux и macOS.",
  "inLanguage": "ru",
  "url": "https://erkinbek.github.io/bigtext/ru/guides/open-large-log-file/",
- "dateModified": "2026-11-14",
+ "dateModified": "2026-11-23",
  "author": {
   "@type": "Person",
   "name": "Erkin Pardayev",
@@ -92,7 +92,7 @@
     <h2>По шагам</h2>
     <ol class="steps"><li><h3>Откройте его</h3><p>Через «Файл → Открыть», перетаскиванием в окно или командой <code>bigtext app.log</code> в терминале (<code>bigtext app.log:120</code> откроет на 120-й строке). Логи в .gz и .zst открываются напрямую.</p></li><li><h3>Перемещайтесь</h3><p><code>Ctrl+End</code> сразу переходит к последней строке. Переход к строке (<code>Ctrl+G</code>) работает ещё до окончания индексации; до тех пор номера строк идут со знаком <code>~</code>. Переход ко времени (<code>Ctrl+Shift+T</code>) принимает <code>14:32:05</code> и ставит на первую строку с этим временем.</p></li><li><h3>Найдите ошибки</h3><p>Панель уровней над логом фильтрует строки ERROR, WARN, INFO и DEBUG, а <code>F8</code> переходит к следующей ошибке. <code>Ctrl+F</code> ищет по всему файлу, в том числе по регулярным выражениям, «Найти все» показывает список совпадений.</p></li><li><h3>Оставьте только нужное</h3><p>Режим фильтра показывает только совпадающие строки или, наоборот, только несовпадающие — как grep по всему файлу — и сохраняет их в новый файл.</p></li><li><h3>Следите вживую</h3><p>Режим слежения (<code>bigtext -f app.log</code> или «Следить за файлом (tail)» в палитре команд) добавляет новые строки как <code>tail -F</code> и переживает ротацию логов. Лог на сервере открывается по SSH с вашими ключами: <code>bigtext -f user@server:/var/log/syslog</code>.</p></li></ol>
     <h2>Полезно знать</h2>
-    <ul class="tips"><li>Несколько логов можно объединить по времени в одно окно или прокручивать два лога вместе по времени.</li><li>Поиск, фильтр и сохранение идут в фоне с индикатором и кнопкой отмены, окно не перестаёт отвечать.</li></ul>
+    <ul class="tips"><li>Несколько логов можно объединить по времени в одно окно или прокручивать два лога вместе по времени.</li><li>Поиск, фильтр и сохранение идут в фоне с индикатором и кнопкой отмены, окно не перестаёт отвечать.</li><li>Если включить {} в строке поиска, фильтр принимает запрос по полям вместо текста: <code>.status &gt;= 500 and .method = POST</code> в логе nginx, <code>.level == &quot;error&quot; and .duration &gt; 500</code> в JSON Lines.</li><li>Прежде чем вставить строки лога в issue, откройте Файл → Поделиться безопасно…: он скроет в них токены, пароли и адреса e-mail.</li></ul>
     <p class="cta"><a class="btn primary" href="../../../ru/#download">Скачать BigText бесплатно</a></p>
     <h2>Другие руководства</h2>
     <ul class="more"><li><a href="../open-csv-larger-than-excel/">Как открыть CSV-файл больше 1 048 576 строк Excel</a></li><li><a href="../extract-table-from-mysqldump/">Как извлечь одну таблицу из дампа mysqldump</a></li></ul>
@@ -101,7 +101,7 @@
 <footer class="foot">
   <div class="wrap">
     <p>Автор: <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
-    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">Лицензия MIT</a> · <a href="../../../ru/#privacy">Конфиденциальность</a> · v0.11.0</p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">Лицензия MIT</a> · <a href="../../../ru/#privacy">Конфиденциальность</a> · v0.12.0</p>
     <p class="langs-foot"><a href="../../../guides/open-large-log-file/" hreflang="en" lang="en">English</a> · <a href="../../../ru/guides/open-large-log-file/" hreflang="ru" lang="ru">Русский</a> · <a href="../../../uz/guides/open-large-log-file/" hreflang="uz" lang="uz">O'zbekcha</a> · <a href="../../../zh/guides/open-large-log-file/" hreflang="zh" lang="zh">简体中文</a> · <a href="../../../es/guides/open-large-log-file/" hreflang="es" lang="es">Español</a> · <a href="../../../pt/guides/open-large-log-file/" hreflang="pt" lang="pt">Português</a> · <a href="../../../de/guides/open-large-log-file/" hreflang="de" lang="de">Deutsch</a> · <a href="../../../tr/guides/open-large-log-file/" hreflang="tr" lang="tr">Türkçe</a></p>
   </div>
 </footer>

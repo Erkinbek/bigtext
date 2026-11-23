@@ -71,7 +71,7 @@ T = {
          "die offenen Logs ausrichten und gemeinsam nach Zeit scrollen, mit einstellbarer Uhrabweichung. Das Verfolgen "
          "übersteht die Log-Rotation."),
         ("JSON und XML", "Ein Strukturbereich, der JSON-Pfad der Schreibmarke in der Statusleiste, Falten, JSON Lines "
-         "als Tabelle mit Abfragen, eine strenge Prüfung, die auf den Fehler zeigt, Umwandlung zwischen JSON, JSON Lines "
+         "als Tabelle, eine strenge Prüfung, die auf den Fehler zeigt, Umwandlung zwischen JSON, JSON Lines "
          "und logfmt und ein struktureller Vergleich."),
         ("Tabellen, die rechnen", "Gruppieren mit Summen, Pivot-Tabellen, ein Join zweier Dateien über einen "
          "Schlüssel, berechnete Spalten, Spaltendiagramme, fixierte und ausgeblendete Spalten, Zeilenprüfungen und "
@@ -100,6 +100,8 @@ T = {
         ("Container- und Dienst-Logs", "Einen Docker- oder Podman-Container, einen Kubernetes-Pod oder einen systemd-Dienst aus einer Liste wählen, auf diesem Rechner oder auf einem Server über SSH, und sein Log öffnen: die letzten Zeilen oder Minuten, mitverfolgt, während es wächst. Die Neustarts eines Pods werden angezeigt, und auch sein Lauf vor dem letzten Neustart lässt sich öffnen, wo der Fehler eines Absturzes steht."),
         ("Benachrichtigung bei neuen Zeilen", "Einem verfolgten Log einige Muster geben, etwa ERROR oder einen regulären Ausdruck: Jede neue passende Zeile wird am Tab gezählt und mit einer Systembenachrichtigung und einem Ton gemeldet, höchstens einmal alle zehn Sekunden. Unter Windows führt ein Klick auf die Benachrichtigung zur Zeile."),
         ("Tabellen des SQL-Dumps", "Die Tabellen eines mysqldump-, pg_dump- oder SQLite-Dumps mit ihren Zeilen und Größen: Ein 1-GB-Dump ist in etwa einer Sekunde aufgelistet. Eine Tabelle als Datei speichern, die sich für sich wiederherstellen lässt, oder den Dump in eine Datei je Tabelle aufteilen; in der Reihenfolge ihrer Namen stellen die Dateien die ganze Datenbank wieder her."),
+        ("Sicher teilen", "Datei → Sicher teilen… verbirgt Token, Passwörter, API-Schlüssel, Cookies, Geheimnisse in URLs und E-Mail-Adressen (auf Wunsch auch IP-Adressen oder eigene Muster) in einer Auswahl oder der ganzen Datei, bevor Sie sie in ein Issue einfügen. Jeder Wert wird zu einer Marke wie <email-3f9a2c>, und eine Vorschau zeigt genau, was geschrieben wird. Die Regeln finden verbreitete Geheimnisse, nicht jedes, also prüfen Sie vor dem Teilen. bigtext-cli redact macht dasselbe in Skripten."),
+        ("Eine Abfrage für jedes Log", "Schalten Sie die Suchleiste auf {}, und die Filteransicht behält nur die Zeilen, die zu einer Abfrage passen, etwa .status >= 500 and .method = POST in einem nginx-Log. Feldabfragen lesen JSON Lines, logfmt und die Spalten von Webserver- und Syslog-Logs, mit or, not, Klammern, in (a, b) und Zeiten wie .time >= 10:00. bigtext-cli query macht dasselbe in Skripten."),
     ],
     "gallery_h2": "Screenshots",
     "gallery": {
@@ -283,6 +285,8 @@ GUIDES = [
             "Mehrere Logs lassen sich nach Zeit zu einer Ansicht zusammenführen oder zwei Logs gemeinsam nach Zeit scrollen.",
             "Suche, Filter und Speichern laufen im Hintergrund mit Fortschrittsanzeige und Abbrechen, das Fenster "
             "reagiert weiter.",
+            "Mit {} in der Suchleiste nimmt der Filter statt Text eine Feldabfrage: {{.status >= 500 and .method = POST}} in einem nginx-Log, {{.level == \"error\" and .duration > 500}} in JSON Lines.",
+            "Bevor Sie Logzeilen in ein Issue einfügen, verbirgt Datei → Sicher teilen… die Token, Passwörter und E-Mail-Adressen darin.",
         ],
     },
     {

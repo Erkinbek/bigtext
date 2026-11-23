@@ -29,7 +29,7 @@ DOCS = ROOT / "docs"
 BASE = "https://erkinbek.github.io/bigtext/"
 REPO = "https://github.com/Erkinbek/bigtext"
 RELEASES = REPO + "/releases/latest"
-VERSION = "0.11.0"
+VERSION = "0.12.0"
 # When the demo animation (docs/img/demo.mp4) was last recorded.
 DEMO_DATE = "2026-11-12"
 
@@ -124,7 +124,7 @@ T = {
             ("Your way", "A command palette (Ctrl+Shift+P), shortcuts you can change, any monospaced font, and an interface in English, Russian, Uzbek, Chinese, Spanish, Portuguese, German or Turkish."),
             ("Log analysis", "A level bar with ERROR, WARN, INFO and DEBUG filters and F8 to the next error, a time histogram, log fields, message patterns, top values, time gaps, and the lines around each match or with the same request id."),
             ("Logs side by side in time", "Merge several logs by timestamp into one coloured view, or line up the open logs and scroll them together by time, with a clock skew you can set. Following survives log rotation."),
-            ("JSON and XML", "A structure panel, the JSON path of the caret in the status bar, folding, JSON Lines as a table with queries, a strict check that points at the error, conversion between JSON, JSON Lines and logfmt, and a structural diff."),
+            ("JSON and XML", "A structure panel, the JSON path of the caret in the status bar, folding, JSON Lines as a table, a strict check that points at the error, conversion between JSON, JSON Lines and logfmt, and a structural diff."),
             ("Tables that calculate", "Group by with sums, pivot tables, a join of two files by a key, computed columns, column charts, frozen and hidden columns, row checks, and export to JSON, Markdown or Excel."),
             ("Compare your way", "Side by side or as a unified diff, next and previous difference, ignore white space, case or timestamps, lines found in only one file, CSV compared by key, and patches applied."),
             ("Archives and big edits", "Files inside zip and tar archives, .xz and .bz2 files shown while they unpack, saving straight to .gz or .zst, multiple cursors, a column editor, and sort, de-duplicate or run any command on a file of any size."),
@@ -136,6 +136,8 @@ T = {
             ("Container and service logs", "Pick a Docker or Podman container, a Kubernetes pod or a systemd service from a list, on this computer or on a server over SSH, and open its log: the last lines or minutes, followed as it grows. A pod's restarts are shown, and its run before the last restart, where a crash's error is, opens too."),
             ("Alerts on new lines", "Give a followed log a few patterns, such as ERROR or a regular expression: each new line that matches is counted on the tab and announced with a system notification and a sound, at most one every ten seconds. On Windows a click on the notification goes to the line."),
             ("SQL dump tables", "The tables of a mysqldump, pg_dump or SQLite dump with their rows and sizes: a 1 GB dump is listed in about a second. Save one table as a file that restores on its own, or split the dump into a file per table that restores the whole database in the order of the names."),
+            ("Share safely", "File → Share safely… hides tokens, passwords, API keys, cookies, secrets in URLs and e-mail addresses (and on request IP addresses or your own patterns) in a selection or a whole file before you paste it into an issue. Each value becomes a label such as <email-3f9a2c>, and a preview shows exactly what will be written. The rules find common secrets, not every one, so look before you share. bigtext-cli redact does the same in scripts."),
+            ("One query for every log", "Switch the search bar to {} and the filter view keeps only the lines that match a query, such as .status >= 500 and .method = POST on an nginx log. Field queries read JSON Lines, logfmt and the columns of web server and syslog logs, with or, not, parentheses, in (a, b) and times such as .time >= 10:00. bigtext-cli query does the same in scripts."),
         ],
         "gallery_h2": "Screenshots",
         "gallery": {
@@ -288,7 +290,7 @@ T = {
             ("Как вам удобно", "Палитра команд (Ctrl+Shift+P), настраиваемые сочетания клавиш, любой моноширинный шрифт и интерфейс на английском, русском, узбекском, китайском, испанском, португальском, немецком или турецком."),
             ("Анализ логов", "Панель уровней с фильтрами ERROR, WARN, INFO и DEBUG и F8 к следующей ошибке, гистограмма по времени, поля логов, шаблоны сообщений, частые значения, разрывы во времени, а также строки вокруг каждого совпадения или с тем же id запроса."),
             ("Логи бок о бок во времени", "Объединяйте несколько логов по времени в один цветной вид или выравнивайте открытые логи и прокручивайте их вместе по времени с настраиваемым сдвигом часов. Слежение переживает ротацию логов."),
-            ("JSON и XML", "Панель структуры, JSON-путь курсора в строке состояния, сворачивание, JSON Lines в виде таблицы с запросами, строгая проверка с указанием места ошибки, преобразование между JSON, JSON Lines и logfmt и структурное сравнение."),
+            ("JSON и XML", "Панель структуры, JSON-путь курсора в строке состояния, сворачивание, JSON Lines в виде таблицы, строгая проверка с указанием места ошибки, преобразование между JSON, JSON Lines и logfmt и структурное сравнение."),
             ("Таблицы с расчётами", "Группировка с суммами, сводные таблицы, объединение двух файлов по ключу, вычисляемые столбцы, диаграммы по столбцам, закреплённые и скрытые столбцы, проверка строк и экспорт в JSON, Markdown или Excel."),
             ("Сравнение как вам нужно", "Бок о бок или в виде unified diff, следующее и предыдущее отличие, без учёта пробелов, регистра или меток времени, строки только из одного файла, сравнение CSV по ключу и применение патчей."),
             ("Архивы и большие правки", "Файлы внутри архивов zip и tar, файлы .xz и .bz2, видимые ещё во время распаковки, сохранение сразу в .gz или .zst, несколько курсоров, редактор столбцов, сортировка, удаление повторов и любая команда над файлом любого размера."),
@@ -300,6 +302,8 @@ T = {
             ("Логи контейнеров и служб", "Выберите из списка контейнер Docker или Podman, под Kubernetes или службу systemd, на этом компьютере или на сервере по SSH, и откройте его лог: последние строки или минуты, с отслеживанием по мере роста. Для пода видны перезапуски, и можно открыть его запуск до последнего перезапуска — там, где ошибка падения."),
             ("Оповещения о новых строках", "Задайте отслеживаемому логу несколько шаблонов, например ERROR или регулярное выражение: каждая новая подходящая строка считается на вкладке и сопровождается системным уведомлением и звуком — не чаще раза в десять секунд. В Windows щелчок по уведомлению переходит к строке."),
             ("Таблицы дампа SQL", "Таблицы дампа mysqldump, pg_dump или SQLite с числом строк и размером: дамп в 1 ГБ читается примерно за секунду. Сохраните одну таблицу в файл, который восстанавливается сам по себе, или разбейте дамп на файлы по таблицам, которые в порядке имён восстанавливают всю базу."),
+            ("Поделиться безопасно", "Файл → Поделиться безопасно… скрывает токены, пароли, API-ключи, cookie, секреты в URL и адреса e-mail (а по желанию IP-адреса и ваши шаблоны) в выделении или во всём файле, прежде чем вы вставите его в issue. Каждое значение заменяется меткой вроде <email-3f9a2c>, а предпросмотр показывает ровно то, что будет записано. Правила находят распространённые секреты, но не все, поэтому проверьте текст перед отправкой. bigtext-cli redact делает то же в скриптах."),
+            ("Один запрос для любого лога", "Переключите строку поиска в режим {}, и режим фильтра оставит только строки, подходящие под запрос, например .status >= 500 and .method = POST в логе nginx. Запросы по полям читают JSON Lines, logfmt и столбцы логов веб-серверов и syslog; есть or, not, скобки, in (a, b) и время вроде .time >= 10:00. bigtext-cli query делает то же в скриптах."),
         ],
         "gallery_h2": "Скриншоты",
         "gallery": {
@@ -453,7 +457,7 @@ T = {
             ("O'zingizga qulay", "Buyruqlar palitrasi (Ctrl+Shift+P), o'zgartiriladigan tezkor tugmalar, istalgan bir xil kenglikdagi shrift va ingliz, rus, o'zbek, xitoy, ispan, portugal, nemis yoki turk tilidagi interfeys."),
             ("Loglarni tahlil qilish", "ERROR, WARN, INFO va DEBUG filtrli darajalar paneli va F8 bilan keyingi xatoga o'tish, vaqt gistogrammasi, log maydonlari, xabar shablonlari, eng ko'p uchraydigan qiymatlar, vaqtdagi uzilishlar, har bir moslik atrofidagi yoki bir xil so'rov id'li satrlar."),
             ("Loglar vaqt bo'yicha yonma-yon", "Bir nechta logni vaqt bo'yicha bitta rangli ko'rinishga birlashtiring yoki ochiq loglarni vaqt bo'yicha tekislab, soatlar farqini sozlagan holda birga aylantiring. Kuzatish rejimi log rotatsiyasidan keyin ham davom etadi."),
-            ("JSON va XML", "Tuzilma paneli, holat qatorida kursordagi JSON yo'li, yig'ish, so'rovlar bilan jadval ko'rinishidagi JSON Lines, xato joyini ko'rsatadigan qat'iy tekshiruv, JSON, JSON Lines va logfmt orasida konvertatsiya hamda tuzilmaviy taqqoslash."),
+            ("JSON va XML", "Tuzilma paneli, holat qatorida kursordagi JSON yo'li, yig'ish, jadval ko'rinishidagi JSON Lines, xato joyini ko'rsatadigan qat'iy tekshiruv, JSON, JSON Lines va logfmt orasida konvertatsiya hamda tuzilmaviy taqqoslash."),
             ("Hisoblaydigan jadvallar", "Yig'indilar bilan guruhlash, pivot jadvallar, ikki faylni kalit bo'yicha birlashtirish, hisoblanadigan ustunlar, ustun diagrammalari, qotirilgan va yashirin ustunlar, qatorlarni tekshirish hamda JSON, Markdown yoki Excel'ga eksport."),
             ("Qulay taqqoslash", "Yonma-yon yoki unified diff ko'rinishida, keyingi va oldingi farq, bo'shliqlar, harf registri yoki vaqt belgilarini hisobga olmaslik, faqat bitta faylda bor satrlar, CSV'ni kalit bo'yicha taqqoslash va patch qo'llash."),
             ("Arxivlar va katta tahrirlar", "zip va tar arxivlari ichidagi fayllar, ochilayotgan paytdayoq ko'rinadigan .xz va .bz2 fayllar, to'g'ridan-to'g'ri .gz yoki .zst'ga saqlash, bir nechta kursor, ustun muharriri, istalgan hajmdagi faylda saralash, takrorlarni olib tashlash yoki istalgan buyruqni bajarish."),
@@ -465,6 +469,8 @@ T = {
             ("Konteyner va xizmat loglari", "Docker yoki Podman konteynerini, Kubernetes podini yoki systemd xizmatini ro'yxatdan tanlang — shu kompyuterda yoki SSH orqali serverda — va uning logini oching: oxirgi satrlar yoki daqiqalar, o'sib borgan sari kuzatib boriladi. Podning qayta ishga tushishlari ko'rinadi, oxirgi qayta ishga tushishdan oldingi ishini ham ochish mumkin — qulash xatosi o'sha yerda bo'ladi."),
             ("Yangi satrlar haqida ogohlantirish", "Kuzatilayotgan logga bir nechta naqsh bering, masalan ERROR yoki muntazam ifoda: mos kelgan har bir yangi satr varaqda sanaladi va tizim bildirishnomasi hamda ovoz bilan xabar qilinadi, o'n soniyada ko'pi bilan bir marta. Windows'da bildirishnoma bosilsa, o'sha satrga o'tadi."),
             ("SQL damp jadvallari", "mysqldump, pg_dump yoki SQLite dampidagi jadvallar qatorlar soni va hajmi bilan: 1 GB damp taxminan bir soniyada ro'yxatlanadi. Bitta jadvalni o'zi alohida tiklanadigan faylga saqlang yoki dampni har jadval uchun alohida fayllarga bo'ling: nomlari tartibida ular butun bazani tiklaydi."),
+            ("Xavfsiz ulashish", "Fayl → Xavfsiz ulashish… belgilangan qismni yoki butun faylni issue'ga qo'yishdan oldin undagi tokenlar, parollar, API kalitlari, cookie'lar, URL'lardagi sirlar va e-mail manzillarini (xohlasangiz IP manzillar va o'z shablonlaringizni ham) yashiradi. Har bir qiymat <email-3f9a2c> kabi belgiga aylanadi, oldindan ko'rish esa aynan nima yozilishini ko'rsatadi. Qoidalar keng tarqalgan sirlarni topadi, lekin hammasini emas, shuning uchun ulashishdan oldin tekshiring. bigtext-cli redact skriptlarda xuddi shuni qiladi."),
+            ("Har qanday log uchun bitta so'rov", "Qidiruv panelini {} rejimiga o'tkazing: filtr rejimi faqat so'rovga mos qatorlarni qoldiradi, masalan nginx logida .status >= 500 and .method = POST. Maydon so'rovlari JSON Lines, logfmt hamda veb-server va syslog loglarining ustunlarini o'qiydi; or, not, qavslar, in (a, b) va .time >= 10:00 kabi vaqtlar bor. bigtext-cli query skriptlarda xuddi shuni qiladi."),
         ],
         "gallery_h2": "Skrinshotlar",
         "gallery": {
@@ -1101,8 +1107,13 @@ def build_images(shots):
     draw_logo(512).save(img / "icon-512.png", optimize=True)
     write_ico(DOCS / "favicon.ico", [16, 32, 48])
     build_app_icons()
+    build_og_image(shots, img / "og-image.png")
 
-    # Social preview (Open Graph / Twitter / GitHub): 1280x640.
+
+def build_og_image(shots, out):
+    """Social preview (Open Graph / Twitter / GitHub): 1280x640. It needs only shots/hero.png, so it
+    can be rebuilt alone when its text changes, without re-encoding the other images."""
+    from PIL import Image, ImageDraw, ImageFilter
     W, H = 1280, 640
     og = Image.new("RGB", (W, H), "#0b0f17")
     d = ImageDraw.Draw(og)
@@ -1123,7 +1134,7 @@ def build_images(shots):
     og.paste(draw_logo(96), (64, 72), draw_logo(96))
     d.text((176, 80), "BigText", font=font(["segoeuib.ttf", "DejaVuSans-Bold.ttf"], 64), fill="#f8fafc")
     big = font(["segoeuib.ttf", "DejaVuSans-Bold.ttf"], 46)
-    for i, line in enumerate(["Open 50 GB text", "files instantly"]):
+    for i, line in enumerate(["Open 50 GB text", "files without waiting"]):
         d.text((64, 214 + i * 58), line, font=big, fill="#f8fafc")
     small = font(["segoeui.ttf", "DejaVuSans.ttf"], 26)
     for i, line in enumerate(["Search at 2.5 GB/s · edit · atomic save", "~100 MB of RAM for a 10 GB file"]):
@@ -1138,7 +1149,7 @@ def build_images(shots):
         d.text((x + 16, 476), label, font=chip, fill="#5eead4")
         x += w + 12
     d.text((64, 560), "erkinbek.github.io/bigtext", font=small, fill="#64748b")
-    og.save(img / "og-image.png", optimize=True)
+    og.save(out, optimize=True)
 
 
 def main():

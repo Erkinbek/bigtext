@@ -67,7 +67,7 @@ T = {
          "abertos e role-os juntos pelo horário, com um desvio de relógio ajustável. O acompanhamento sobrevive à "
          "rotação de logs."),
         ("JSON e XML", "Um painel de estrutura, o caminho JSON do cursor na barra de status, dobramento, JSON Lines como "
-         "tabela com consultas, uma verificação rigorosa que aponta o erro, conversão entre JSON, JSON Lines e logfmt e "
+         "tabela, uma verificação rigorosa que aponta o erro, conversão entre JSON, JSON Lines e logfmt e "
          "uma comparação estrutural."),
         ("Tabelas que calculam", "Agrupar com somas, tabelas dinâmicas, junção de dois arquivos por uma chave, colunas "
          "calculadas, gráficos de colunas, colunas fixas e ocultas, verificação de linhas e exportação para JSON, "
@@ -95,6 +95,8 @@ T = {
         ("Logs de contêineres e serviços", "Escolha em uma lista um contêiner Docker ou Podman, um pod do Kubernetes ou um serviço do systemd, neste computador ou em um servidor via SSH, e abra o log: as últimas linhas ou minutos, acompanhado enquanto cresce. Os reinícios de um pod aparecem, e a execução antes do último reinício, onde está o erro da queda, também abre."),
         ("Alertas de novas linhas", "Dê a um log acompanhado alguns padrões, como ERROR ou uma expressão regular: cada nova linha que corresponde é contada na aba e anunciada com uma notificação do sistema e um som, no máximo uma a cada dez segundos. No Windows, um clique na notificação vai até a linha."),
         ("Tabelas do dump SQL", "As tabelas de um dump do mysqldump, pg_dump ou SQLite com suas linhas e tamanhos: um dump de 1 GB é listado em cerca de um segundo. Salve uma tabela em um arquivo que é restaurado sozinho, ou divida o dump em um arquivo por tabela; na ordem dos nomes, os arquivos restauram o banco inteiro."),
+        ("Compartilhar com segurança", "Arquivo → Compartilhar com segurança… oculta tokens, senhas, chaves de API, cookies, segredos em URLs e endereços de e-mail (e, se você pedir, endereços IP ou seus próprios padrões) numa seleção ou no arquivo inteiro antes de você colá-lo numa issue. Cada valor vira um rótulo como <email-3f9a2c>, e uma prévia mostra exatamente o que será gravado. As regras encontram os segredos comuns, não todos, então confira antes de compartilhar. bigtext-cli redact faz o mesmo em scripts."),
+        ("Uma consulta para qualquer log", "Mude a barra de pesquisa para {} e a visualização de filtro fica só com as linhas que atendem a uma consulta, como .status >= 500 and .method = POST num log do nginx. As consultas por campo leem JSON Lines, logfmt e as colunas de logs de servidores web e syslog, com or, not, parênteses, in (a, b) e horários como .time >= 10:00. bigtext-cli query faz o mesmo em scripts."),
     ],
     "gallery_h2": "Capturas de tela",
     "gallery": {
@@ -275,6 +277,8 @@ GUIDES = [
             "Vários logs podem ser mesclados por horário numa só visualização, ou dois logs rolados juntos pelo horário.",
             "Pesquisa, filtro e salvamento rodam em segundo plano com barra de progresso e Cancelar, então a janela "
             "continua respondendo.",
+            "Com {} na barra de pesquisa, o filtro aceita uma consulta por campo em vez de texto: {{.status >= 500 and .method = POST}} num log do nginx, {{.level == \"error\" and .duration > 500}} em JSON Lines.",
+            "Antes de colar linhas de log numa issue, Arquivo → Compartilhar com segurança… oculta os tokens, as senhas e os endereços de e-mail delas.",
         ],
     },
     {

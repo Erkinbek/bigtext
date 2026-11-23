@@ -100,6 +100,8 @@ GUIDES = {
                 "Several logs can be merged by time into one view, or two logs scrolled together by time.",
                 "Search, the filter and saving run in the background with a progress bar and Cancel, so the window "
                 "keeps answering.",
+                "With {} in the search bar the filter takes a field query instead of text: {{.status >= 500 and .method = POST}} on an nginx log, {{.level == \"error\" and .duration > 500}} on JSON Lines.",
+                "Before you paste log lines into an issue, File → Share safely… hides the tokens, passwords and e-mail addresses in them.",
             ],
         },
         {
@@ -208,6 +210,8 @@ GUIDES = {
             "tips": [
                 "Несколько логов можно объединить по времени в одно окно или прокручивать два лога вместе по времени.",
                 "Поиск, фильтр и сохранение идут в фоне с индикатором и кнопкой отмены, окно не перестаёт отвечать.",
+                "Если включить {} в строке поиска, фильтр принимает запрос по полям вместо текста: {{.status >= 500 and .method = POST}} в логе nginx, {{.level == \"error\" and .duration > 500}} в JSON Lines.",
+                "Прежде чем вставить строки лога в issue, откройте Файл → Поделиться безопасно…: он скроет в них токены, пароли и адреса e-mail.",
             ],
         },
         {
@@ -318,6 +322,8 @@ GUIDES = {
                 "aylantirish mumkin.",
                 "Qidiruv, filtr va saqlash fonda, progress va bekor qilish tugmasi bilan ishlaydi, oyna javob berishdan "
                 "to'xtamaydi.",
+                "Qidiruv panelida {} yoqilsa, filtr matn o'rniga maydon so'rovini oladi: nginx logida {{.status >= 500 and .method = POST}}, JSON Lines'da {{.level == \"error\" and .duration > 500}}.",
+                "Log qatorlarini issue'ga qo'yishdan oldin Fayl → Xavfsiz ulashish… ulardagi tokenlar, parollar va e-mail manzillarini yashiradi.",
             ],
         },
         {

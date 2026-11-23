@@ -54,7 +54,7 @@
  "description": "Abre al instante un log de cualquier tamaño y búscalo, fíltralo y síguelo sin que el editor se congele: saltar a una hora, filtrar por nivel, un filtro como grep, tail -F. Gratis, para Windows, Linux y macOS.",
  "inLanguage": "es",
  "url": "https://erkinbek.github.io/bigtext/es/guides/open-large-log-file/",
- "dateModified": "2026-11-14",
+ "dateModified": "2026-11-23",
  "author": {
   "@type": "Person",
   "name": "Erkin Pardayev",
@@ -92,7 +92,7 @@
     <h2>Paso a paso</h2>
     <ol class="steps"><li><h3>Ábrelo</h3><p>Usa Archivo → Abrir, arrastra el archivo a la ventana o ejecuta <code>bigtext app.log</code> en una terminal (<code>bigtext app.log:120</code> lo abre en la línea 120). Los logs en .gz y .zst se abren directamente.</p></li><li><h3>Muévete por él</h3><p><code>Ctrl+Fin</code> va a la última línea al instante. Ir a la línea (<code>Ctrl+G</code>) funciona antes de que termine el índice de líneas; hasta entonces los números de línea llevan <code>~</code>. Ir a la hora (<code>Ctrl+Mayús+T</code>) acepta <code>14:32:05</code> y te lleva a la primera línea con esa hora.</p></li><li><h3>Encuentra los errores</h3><p>La barra de niveles sobre un log filtra las líneas ERROR, WARN, INFO y DEBUG, y <code>F8</code> salta al siguiente error. <code>Ctrl+F</code> busca en todo el archivo, con expresiones regulares si quieres, y «Buscar todo» lista las coincidencias.</p></li><li><h3>Quédate con lo importante</h3><p>La vista de filtro muestra solo las líneas que coinciden, o solo las que no, como grep sobre todo el archivo, y las guarda en un archivo nuevo.</p></li><li><h3>Síguelo en vivo</h3><p>El modo seguimiento (<code>bigtext -f app.log</code>, o «Seguir los cambios del archivo (tail)» en la paleta de comandos) añade las líneas nuevas como <code>tail -F</code> y sobrevive a la rotación de logs. Un log en un servidor se abre por SSH con tus claves: <code>bigtext -f user@server:/var/log/syslog</code>.</p></li></ol>
     <h2>Conviene saber</h2>
-    <ul class="tips"><li>Se pueden combinar varios logs por tiempo en una sola vista, o desplazar dos logs juntos por tiempo.</li><li>La búsqueda, el filtro y el guardado van en segundo plano con barra de progreso y Cancelar, así que la ventana sigue respondiendo.</li></ul>
+    <ul class="tips"><li>Se pueden combinar varios logs por tiempo en una sola vista, o desplazar dos logs juntos por tiempo.</li><li>La búsqueda, el filtro y el guardado van en segundo plano con barra de progreso y Cancelar, así que la ventana sigue respondiendo.</li><li>Con {} en la barra de búsqueda, el filtro acepta una consulta por campo en vez de texto: <code>.status &gt;= 500 and .method = POST</code> en un log de nginx, <code>.level == &quot;error&quot; and .duration &gt; 500</code> en JSON Lines.</li><li>Antes de pegar líneas de un log en una issue, Archivo → Compartir de forma segura… oculta sus tokens, contraseñas y direcciones de correo.</li></ul>
     <p class="cta"><a class="btn primary" href="../../../es/#download">Descargar BigText gratis</a></p>
     <h2>Más guías</h2>
     <ul class="more"><li><a href="../open-csv-larger-than-excel/">Abrir un archivo CSV con más filas que las 1.048.576 de Excel</a></li><li><a href="../extract-table-from-mysqldump/">Extraer una tabla de un archivo mysqldump</a></li></ul>
@@ -101,7 +101,7 @@
 <footer class="foot">
   <div class="wrap">
     <p>Hecho por <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
-    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">licencia MIT</a> · <a href="../../../es/#privacy">Privacidad</a> · v0.11.0</p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">licencia MIT</a> · <a href="../../../es/#privacy">Privacidad</a> · v0.12.0</p>
     <p class="langs-foot"><a href="../../../guides/open-large-log-file/" hreflang="en" lang="en">English</a> · <a href="../../../ru/guides/open-large-log-file/" hreflang="ru" lang="ru">Русский</a> · <a href="../../../uz/guides/open-large-log-file/" hreflang="uz" lang="uz">O'zbekcha</a> · <a href="../../../zh/guides/open-large-log-file/" hreflang="zh" lang="zh">简体中文</a> · <a href="../../../es/guides/open-large-log-file/" hreflang="es" lang="es">Español</a> · <a href="../../../pt/guides/open-large-log-file/" hreflang="pt" lang="pt">Português</a> · <a href="../../../de/guides/open-large-log-file/" hreflang="de" lang="de">Deutsch</a> · <a href="../../../tr/guides/open-large-log-file/" hreflang="tr" lang="tr">Türkçe</a></p>
   </div>
 </footer>

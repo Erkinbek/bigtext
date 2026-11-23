@@ -54,7 +54,7 @@
  "description": "即刻打开任意大小的日志，并在编辑器不卡顿的情况下搜索、筛选和跟踪：跳到某个时间、按级别筛选、类似 grep 的筛选视图、tail -F。免费，支持 Windows、Linux 和 macOS。",
  "inLanguage": "zh",
  "url": "https://erkinbek.github.io/bigtext/zh/guides/open-large-log-file/",
- "dateModified": "2026-11-14",
+ "dateModified": "2026-11-23",
  "author": {
   "@type": "Person",
   "name": "Erkin Pardayev",
@@ -92,7 +92,7 @@
     <h2>操作步骤</h2>
     <ol class="steps"><li><h3>打开它</h3><p>使用“文件 → 打开”，把文件拖到窗口上，或在终端运行 <code>bigtext app.log</code>（<code>bigtext app.log:120</code> 会直接打开到第 120 行）。用 .gz 和 .zst 压缩的日志可以直接打开。</p></li><li><h3>快速跳转</h3><p><code>Ctrl+End</code> 立即跳到最后一行。转到行（<code>Ctrl+G</code>）在行索引完成之前就能使用；在此之前行号前会带 <code>~</code>。转到时间（<code>Ctrl+Shift+T</code>）接受 <code>14:32:05</code>，并跳到该时间的第一行。</p></li><li><h3>找出错误</h3><p>日志上方的级别栏可筛选 ERROR、WARN、INFO 和 DEBUG 行，<code>F8</code> 跳到下一个错误。<code>Ctrl+F</code> 搜索整个文件，也可以使用正则表达式，“查找全部”会列出所有匹配。</p></li><li><h3>只留关键内容</h3><p>筛选视图只显示匹配的行或只显示不匹配的行，就像对整个文件运行 grep，并可保存到新文件。</p></li><li><h3>实时跟踪</h3><p>跟踪模式（<code>bigtext -f app.log</code>，或命令面板中的“跟踪文件变化（tail）”）会像 <code>tail -F</code> 一样追加新行，并能挺过日志轮转。服务器上的日志可用你的密钥通过 SSH 打开：<code>bigtext -f user@server:/var/log/syslog</code>。</p></li></ol>
     <h2>小贴士</h2>
-    <ul class="tips"><li>可以把多个日志按时间合并到一个视图中，或让两个日志按时间同步滚动。</li><li>搜索、筛选和保存都在后台运行，带进度条和取消按钮，窗口始终保持响应。</li></ul>
+    <ul class="tips"><li>可以把多个日志按时间合并到一个视图中，或让两个日志按时间同步滚动。</li><li>搜索、筛选和保存都在后台运行，带进度条和取消按钮，窗口始终保持响应。</li><li>在搜索栏中打开 {} 后，筛选接受字段查询而不是文本：nginx 日志用 <code>.status &gt;= 500 and .method = POST</code>，JSON Lines 用 <code>.level == &quot;error&quot; and .duration &gt; 500</code>。</li><li>把日志行粘贴到 issue 之前，“文件 → 安全分享…”会隐藏其中的令牌、密码和电子邮件地址。</li></ul>
     <p class="cta"><a class="btn primary" href="../../../zh/#download">免费下载 BigText</a></p>
     <h2>更多指南</h2>
     <ul class="more"><li><a href="../open-csv-larger-than-excel/">打开超过 Excel 1,048,576 行上限的 CSV 文件</a></li><li><a href="../extract-table-from-mysqldump/">从 mysqldump 文件中提取单个表</a></li></ul>
@@ -101,7 +101,7 @@
 <footer class="foot">
   <div class="wrap">
     <p>作者 <strong>Erkin Pardayev</strong> · <a href="https://github.com/Erkinbek">GitHub</a> · <a href="https://t.me/ErkinPardayev">Telegram</a> · <a href="mailto:erkin.pardayev@gmail.com">E-mail</a></p>
-    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">MIT 许可证</a> · <a href="../../../zh/#privacy">隐私</a> · v0.11.0</p>
+    <p><a href="https://github.com/Erkinbek/bigtext">github.com/Erkinbek/bigtext</a> · <a href="https://github.com/Erkinbek/bigtext/blob/main/LICENSE">MIT 许可证</a> · <a href="../../../zh/#privacy">隐私</a> · v0.12.0</p>
     <p class="langs-foot"><a href="../../../guides/open-large-log-file/" hreflang="en" lang="en">English</a> · <a href="../../../ru/guides/open-large-log-file/" hreflang="ru" lang="ru">Русский</a> · <a href="../../../uz/guides/open-large-log-file/" hreflang="uz" lang="uz">O'zbekcha</a> · <a href="../../../zh/guides/open-large-log-file/" hreflang="zh" lang="zh">简体中文</a> · <a href="../../../es/guides/open-large-log-file/" hreflang="es" lang="es">Español</a> · <a href="../../../pt/guides/open-large-log-file/" hreflang="pt" lang="pt">Português</a> · <a href="../../../de/guides/open-large-log-file/" hreflang="de" lang="de">Deutsch</a> · <a href="../../../tr/guides/open-large-log-file/" hreflang="tr" lang="tr">Türkçe</a></p>
   </div>
 </footer>
