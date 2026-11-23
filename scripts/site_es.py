@@ -4,13 +4,13 @@ CODE, NAME, LOCALE = "es", "Español", "es_ES"
 
 T = {
     "title": "BigText — editor gratuito para archivos de texto y logs enormes (1–50+ GB)",
-    "description": "Abre, busca y edita al instante archivos de texto y logs de 1 GB, 10 GB o 50 GB. Una alternativa "
-    "gratuita y de código abierto a EmEditor y UltraEdit para Windows, Linux y macOS que nunca se congela.",
-    "og_title": "BigText — abre archivos de texto de 50 GB al instante",
+    "description": "Abre, busca y edita archivos de texto y logs de 1 GB, 10 GB o 50 GB sin cargarlos en memoria. Una alternativa "
+    "gratuita y de código abierto a EmEditor y UltraEdit para Windows, Linux y macOS.",
+    "og_title": "BigText — abre archivos de texto de 50 GB sin esperar",
     "skip": "Ir al contenido",
     "nav": ["Funciones", "Rendimiento", "Descarga", "Preguntas"],
-    "h1": "Abre archivos de texto de 50 GB al instante",
-    "sub": "Gratis y de código abierto, para Windows, Linux y macOS. Sin bloqueos ni esperas, sea cual sea el tamaño.",
+    "h1": "Abre archivos de texto de 50 GB sin esperar",
+    "sub": "Gratis y de código abierto, para Windows, Linux y macOS. Sin esperar a que el archivo se cargue, sea cual sea su tamaño.",
     "lead": "BigText es un editor para logs, exportaciones CSV, volcados de bases de datos y cualquier archivo demasiado "
     "grande para los editores corrientes, y una alternativa gratuita a EmEditor y UltraEdit. Nunca carga el archivo "
     "entero en memoria: un log de 10 GB se abre en milisegundos y usa unos 100 MB de RAM.",
@@ -28,7 +28,7 @@ T = {
     "features_h2": "Todo lo que necesitas para archivos gigantes",
     "features_intro": "Hecho para logs, volcados CSV y SQL, exportaciones JSON y cualquier archivo de texto que bloquea a otros editores.",
     "features": [
-        ("Abre archivos de cualquier tamaño", "Solo se lee la parte visible: en Windows a través de ventanas mapeadas en memoria, en Linux y macOS en bloques cuando hacen falta. El trabajo en segundo plano procesa el resto, y las unidades de red o USB pasan a lecturas por bloques con caché, así que un disco lento nunca bloquea la ventana."),
+        ("Abre archivos de cualquier tamaño", "Solo se lee la parte visible: en Windows a través de ventanas mapeadas en memoria, en Linux y macOS en bloques cuando hacen falta. El trabajo en segundo plano procesa el resto, y en Windows las unidades de red y las memorias USB se leen por bloques con caché desde un cargador en segundo plano, así que una unidad lenta no bloquea la ventana."),
         ("Ir a una línea al instante", "Un índice de líneas disperso (8 bytes por cada 64 KB) se construye en segundo "
          "plano a 2,5 GB/s. Ir a la línea y la barra de desplazamiento funcionan de inmediato, incluso antes de que "
          "termine la indexación."),
@@ -153,14 +153,14 @@ T = {
     "faq": [
         ("¿Cómo abro un archivo de texto de 50 GB?",
          "Instala BigText y abre el archivo con Archivo → Abrir, arrastrándolo a la ventana o con clic derecho → «Open "
-         "with BigText». La primera pantalla aparece en unos 40 ms, sea cual sea el tamaño; el desplazamiento e ir a la "
+         "with BigText». La primera pantalla aparece en unos 40 ms, sea cual sea el tamaño (con el archivo en la caché del sistema); el desplazamiento e ir a la "
          "línea funcionan mientras el índice de líneas se construye en segundo plano."),
         ("¿Es BigText una alternativa a EmEditor o UltraEdit?",
          "Para archivos grandes, sí. Como ellos, BigText abre archivos de varios gigabytes sin cargarlos en memoria y "
-         "los busca, edita y guarda; a diferencia de ellos, es gratuito y de código abierto y funciona en Windows, Linux "
-         "y macOS. No tiene macros ni plugins: su esfuerzo va a los archivos enormes, los logs y las tablas."),
+         "los busca, edita y guarda; a diferencia de ellos, es gratuito y de código abierto. "
+         "No tiene macros ni plugins: su esfuerzo va a los archivos enormes, los logs y las tablas."),
         ("¿BigText carga el archivo entero en memoria?",
-         "No. Mapea solo la parte que está en pantalla y procesa todo lo demás en segundo plano. Con un archivo de 50 GB "
+         "No. Lee solo la parte que está en pantalla y procesa todo lo demás en segundo plano. Con un archivo de 50 GB "
          "abierto usa unos 107 MB de RAM, la mayor parte para la propia interfaz."),
         ("¿Puedo editar y guardar archivos muy grandes?",
          "Sí. Las ediciones se guardan en una piece table sobre el archivo original, así que escribir es instantáneo en "

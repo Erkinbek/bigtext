@@ -4,13 +4,13 @@ CODE, NAME, LOCALE = "de", "Deutsch", "de_DE"
 
 T = {
     "title": "BigText — kostenloser Editor für riesige Text- und Logdateien (1–50+ GB)",
-    "description": "Text- und Logdateien mit 1 GB, 10 GB oder 50 GB sofort öffnen, durchsuchen und bearbeiten. Eine "
-    "kostenlose Open-Source-Alternative zu EmEditor und UltraEdit für Windows, Linux und macOS, die nie einfriert.",
-    "og_title": "BigText — 50-GB-Textdateien sofort öffnen",
+    "description": "Text- und Logdateien mit 1 GB, 10 GB oder 50 GB öffnen, durchsuchen und bearbeiten, ohne sie in den Speicher zu laden. Eine "
+    "kostenlose Open-Source-Alternative zu EmEditor und UltraEdit für Windows, Linux und macOS.",
+    "og_title": "BigText — 50-GB-Textdateien ohne Warten öffnen",
     "skip": "Zum Inhalt springen",
     "nav": ["Funktionen", "Leistung", "Download", "FAQ"],
-    "h1": "50-GB-Textdateien sofort öffnen",
-    "sub": "Kostenlos und Open Source, für Windows, Linux und macOS. Kein Einfrieren und kein Warten, egal wie groß die Datei ist.",
+    "h1": "50-GB-Textdateien ohne Warten öffnen",
+    "sub": "Kostenlos und Open Source, für Windows, Linux und macOS. Kein Warten aufs Laden, egal wie groß die Datei ist.",
     "lead": "BigText ist ein Editor für Logdateien, CSV-Exporte, Datenbank-Dumps und jede andere Datei, die für "
     "gewöhnliche Editoren zu groß ist – und eine kostenlose Alternative zu EmEditor und UltraEdit. Er lädt die Datei "
     "nie vollständig in den Speicher: Ein 10-GB-Log öffnet sich in Millisekunden und braucht etwa 100 MB RAM.",
@@ -28,7 +28,7 @@ T = {
     "features_h2": "Alles, was Sie für riesige Dateien brauchen",
     "features_intro": "Gemacht für Logs, CSV- und SQL-Dumps, JSON-Exporte und jede Textdatei, an der andere Editoren hängen bleiben.",
     "features": [
-        ("Öffnet Dateien jeder Größe", "Gelesen wird nur der sichtbare Teil: unter Windows über speichergemappte Fenster, unter Linux und macOS in Blöcken bei Bedarf. Arbeit im Hintergrund streamt den Rest, und Netzwerk- oder USB-Laufwerke weichen auf zwischengespeicherte, blockweise Lesevorgänge aus, damit eine langsame Platte das Fenster nie blockiert."),
+        ("Öffnet Dateien jeder Größe", "Gelesen wird nur der sichtbare Teil: unter Windows über speichergemappte Fenster, unter Linux und macOS in Blöcken bei Bedarf. Arbeit im Hintergrund streamt den Rest, und unter Windows werden Netzlaufwerke und USB-Sticks von einem Hintergrund-Lader blockweise mit Cache gelesen, damit ein langsames Laufwerk das Fenster nicht blockiert."),
         ("Sofort zu jeder Zeile", "Ein dünn besetzter Zeilenindex (8 Byte pro 64 KB) entsteht im Hintergrund mit "
          "2,5 GB/s. Gehe zu Zeile und die Bildlaufleiste funktionieren sofort, schon bevor die Indizierung fertig ist."),
         ("Schnelle Suche und reguläre Ausdrücke", "Klartext mit 2,5 GB/s und reguläre Ausdrücke in linearer Zeit, mit "
@@ -157,15 +157,15 @@ T = {
     "faq": [
         ("Wie öffne ich eine 50-GB-Textdatei?",
          "Installieren Sie BigText und öffnen Sie die Datei mit Datei → Öffnen, per Ziehen auf das Fenster oder per "
-         "Rechtsklick → „Open with BigText“. Der erste Bildschirm erscheint unabhängig von der Größe nach etwa 40 ms; "
+         "Rechtsklick → „Open with BigText“. Der erste Bildschirm erscheint unabhängig von der Größe nach etwa 40 ms (Datei im Cache des Betriebssystems); "
          "Scrollen und Gehe zu Zeile funktionieren, während der Zeilenindex im Hintergrund entsteht."),
         ("Ist BigText eine Alternative zu EmEditor oder UltraEdit?",
          "Für große Dateien ja. Wie diese öffnet BigText Dateien mit mehreren Gigabyte, ohne sie in den Speicher zu "
-         "laden, und durchsucht, bearbeitet und speichert sie; anders als diese ist es kostenlos und Open Source und "
-         "läuft unter Windows, Linux und macOS. Makros oder Plug-ins hat es nicht: Seine Stärke sind riesige Dateien, "
+         "laden, und durchsucht, bearbeitet und speichert sie; anders als diese ist es kostenlos und Open Source. "
+         "Makros oder Plug-ins hat es nicht: Seine Stärke sind riesige Dateien, "
          "Logs und Tabellen."),
         ("Lädt BigText die ganze Datei in den Speicher?",
-         "Nein. Es mappt nur den Teil auf dem Bildschirm und streamt alles andere im Hintergrund. Mit einer geöffneten "
+         "Nein. Es liest nur den Teil auf dem Bildschirm und streamt alles andere im Hintergrund. Mit einer geöffneten "
          "50-GB-Datei braucht es etwa 107 MB RAM, das meiste davon für die Oberfläche selbst."),
         ("Kann ich sehr große Dateien bearbeiten und speichern?",
          "Ja. Änderungen liegen in einer Piece Table über der Originaldatei, sodass Tippen bei jeder Größe sofort geht. "

@@ -75,13 +75,13 @@ def url(lang):
 T = {
     "en": {
         "title": "BigText — Free Editor for Huge Text and Log Files (1–50+ GB)",
-        "description": "Open, search and edit 1 GB, 10 GB or 50 GB text and log files instantly. A free, "
-        "open-source alternative to EmEditor and UltraEdit for Windows, Linux and macOS that never freezes.",
-        "og_title": "BigText — open 50 GB text files instantly",
+        "description": "Open, search and edit 1 GB, 10 GB or 50 GB text and log files without loading them into "
+        "memory. A free, open-source alternative to EmEditor and UltraEdit for Windows, Linux and macOS.",
+        "og_title": "BigText — open 50 GB text files without waiting",
         "skip": "Skip to content",
         "nav": ["Features", "Performance", "Download", "FAQ"],
-        "h1": "Open 50 GB text files instantly",
-        "sub": "Free and open source, for Windows, Linux and macOS. No freezing and no waiting, whatever the size.",
+        "h1": "Open 50 GB text files without waiting",
+        "sub": "Free and open source, for Windows, Linux and macOS. No waiting for the file to load, whatever its size.",
         "lead": "BigText is an editor for log files, CSV exports, database dumps and any other file that is "
         "too big for ordinary editors, and a free alternative to EmEditor and UltraEdit. It never loads the "
         "whole file into memory: a 10 GB log opens in milliseconds and uses about 100 MB of RAM.",
@@ -99,7 +99,7 @@ T = {
         "features_h2": "Everything you need for giant files",
         "features_intro": "Made for logs, CSV and SQL dumps, JSON exports and any text file that makes other editors hang.",
         "features": [
-            ("Opens files of any size", "Only the visible part is read: through memory-mapped windows on Windows, in blocks read on demand on Linux and macOS. Background work streams the rest, and network or USB drives fall back to cached chunked reads, so a slow disk never blocks the window."),
+            ("Opens files of any size", "Only the visible part is read: through memory-mapped windows on Windows, in blocks read on demand on Linux and macOS. Background work streams the rest, and on Windows network drives and USB sticks are read in cached blocks by a background loader, so a slow drive does not block the window."),
             ("Instant go to line", "A sparse line index (8 bytes per 64 KB) is built in the background at 2.5 GB/s. "
              "Go to line and the scrollbar work immediately, even before indexing finishes."),
             ("Fast search and regex", "Plain text at 2.5 GB/s and linear-time regular expressions with case, whole-word "
@@ -192,14 +192,14 @@ T = {
         "faq": [
             ("How do I open a 50 GB text file?",
              "Install BigText and open the file with File → Open, by dragging it onto the window, or with right-click → "
-             "“Open with BigText”. The first screen appears in about 40 ms whatever the size; scrolling and go to line "
+             "“Open with BigText”. The first screen appears in about 40 ms whatever the size (file in the OS cache); scrolling and go to line "
              "work while the line index is built in the background."),
             ("Is BigText an alternative to EmEditor or UltraEdit?",
              "For large files, yes. Like them, BigText opens multi-gigabyte files without loading them into memory and "
-             "searches, edits and saves them; unlike them, it is free and open source and runs on Windows, Linux and "
-             "macOS. It has no macros or plug-ins: its effort goes into huge files, logs and tables."),
+             "searches, edits and saves them; unlike them, it is free and open source. "
+             "It has no macros or plug-ins: its effort goes into huge files, logs and tables."),
             ("Does BigText load the whole file into memory?",
-             "No. It maps only the part on screen and streams everything else in the background. With a 50 GB file "
+             "No. It reads only the part on screen and streams everything else in the background. With a 50 GB file "
              "open it uses about 107 MB of RAM, most of which is the user interface itself."),
             ("Can I edit and save very large files?",
              "Yes. Edits are kept in a piece table over the original file, so typing is instant at any size. Saving "
@@ -238,13 +238,13 @@ T = {
     },
     "ru": {
         "title": "BigText — бесплатный редактор огромных текстовых и лог-файлов (1–50+ ГБ)",
-        "description": "Мгновенно открывайте, ищите и редактируйте текстовые и лог-файлы на 1, 10 и 50 ГБ. "
+        "description": "Открывайте, ищите и редактируйте текстовые и лог-файлы на 1, 10 и 50 ГБ, не загружая их в память. "
         "Бесплатная альтернатива EmEditor и UltraEdit с открытым кодом для Windows, Linux и macOS.",
-        "og_title": "BigText — открывайте файлы на 50 ГБ мгновенно",
+        "og_title": "BigText — открывайте файлы на 50 ГБ без ожидания",
         "skip": "Перейти к содержимому",
         "nav": ["Возможности", "Скорость", "Скачать", "Вопросы"],
-        "h1": "Открывайте текстовые файлы на 50 ГБ мгновенно",
-        "sub": "Бесплатно и с открытым кодом, для Windows, Linux и macOS. Без зависаний и ожидания, какого бы размера ни был файл.",
+        "h1": "Открывайте текстовые файлы на 50 ГБ без ожидания",
+        "sub": "Бесплатно и с открытым кодом, для Windows, Linux и macOS. Не нужно ждать, пока файл загрузится, какого бы размера он ни был.",
         "lead": "BigText — редактор для лог-файлов, выгрузок CSV, дампов баз данных и любых файлов, которые "
         "слишком велики для обычных редакторов, и бесплатная альтернатива EmEditor и UltraEdit. Он никогда не "
         "загружает файл в память целиком: лог на 10 ГБ открывается за миллисекунды и занимает около 100 МБ ОЗУ.",
@@ -262,7 +262,7 @@ T = {
         "features_h2": "Всё для работы с гигантскими файлами",
         "features_intro": "Для логов, дампов CSV и SQL, выгрузок JSON и любых текстовых файлов, на которых другие редакторы зависают.",
         "features": [
-            ("Файлы любого размера", "Читается только видимая часть: в Windows — через окна отображения файла в память, в Linux и macOS — блоками по запросу. Фоновые задачи читают остальное потоком, а для сетевых и USB-дисков есть кэшированное чтение блоками, поэтому медленный диск не блокирует окно."),
+            ("Файлы любого размера", "Читается только видимая часть: в Windows — через окна отображения файла в память, в Linux и macOS — блоками по запросу. Фоновые задачи читают остальное потоком, а в Windows сетевые диски и USB-флешки читаются кэшированными блоками фоновым загрузчиком, поэтому медленный диск не блокирует окно."),
             ("Мгновенный переход к строке", "Разреженный индекс строк (8 байт на 64 КБ) строится в фоне со скоростью "
              "2,5 ГБ/с. Переход к строке и полоса прокрутки работают сразу, ещё до конца индексации."),
             ("Быстрый поиск и регулярные выражения", "Обычный текст — 2,5 ГБ/с, регулярные выражения за линейное время, "
@@ -356,14 +356,14 @@ T = {
         "faq": [
             ("Как открыть текстовый файл на 50 ГБ?",
              "Установите BigText и откройте файл через Файл → Открыть, перетащив его в окно или через правый щелчок → "
-             "«Открыть в BigText». Первый экран появляется примерно за 40 мс при любом размере; прокрутка и переход к "
+             "«Открыть в BigText». Первый экран появляется примерно за 40 мс при любом размере (файл в кэше ОС); прокрутка и переход к "
              "строке работают, пока индекс строится в фоне."),
             ("BigText — альтернатива EmEditor или UltraEdit?",
              "Для больших файлов — да. Как и они, BigText открывает файлы на несколько гигабайт, не загружая их в "
-             "память, ищет, редактирует и сохраняет их; в отличие от них, он бесплатный, с открытым кодом и работает в "
-             "Windows, Linux и macOS. Макросов и плагинов в нём нет: он сосредоточен на огромных файлах, логах и таблицах."),
+             "память, ищет, редактирует и сохраняет их; в отличие от них, он бесплатный и с открытым кодом. "
+             "Макросов и плагинов в нём нет: он сосредоточен на огромных файлах, логах и таблицах."),
             ("BigText загружает весь файл в память?",
-             "Нет. Он отображает в память только видимую часть, а остальное читает потоком в фоне. С открытым файлом на "
+             "Нет. Он читает только видимую часть, а остальное читает потоком в фоне. С открытым файлом на "
              "50 ГБ он занимает около 107 МБ ОЗУ, и большая часть этого — сам интерфейс."),
             ("Можно ли редактировать и сохранять очень большие файлы?",
              "Да. Правки хранятся в таблице фрагментов поверх исходного файла, поэтому ввод мгновенный при любом размере. "
@@ -402,13 +402,13 @@ T = {
     },
     "uz": {
         "title": "BigText — ulkan matn va log fayllar uchun bepul muharrir (1–50+ GB)",
-        "description": "1, 10 va 50 GB hajmdagi matn va log fayllarni bir zumda oching, qidiring va tahrirlang. "
+        "description": "1, 10 va 50 GB hajmdagi matn va log fayllarni xotiraga yuklamasdan oching, qidiring va tahrirlang. "
         "Windows, Linux va macOS uchun EmEditor va UltraEdit'ning bepul, ochiq kodli muqobili.",
-        "og_title": "BigText — 50 GB matn fayllarini bir zumda oching",
+        "og_title": "BigText — 50 GB matn fayllarini kutmasdan oching",
         "skip": "Asosiy qismga o'tish",
         "nav": ["Imkoniyatlar", "Tezlik", "Yuklab olish", "Savollar"],
-        "h1": "50 GB matn fayllarini bir zumda oching",
-        "sub": "Bepul va ochiq kodli, Windows, Linux va macOS uchun. Fayl qanchalik katta bo'lmasin, qotishsiz va kutishsiz.",
+        "h1": "50 GB matn fayllarini kutmasdan oching",
+        "sub": "Bepul va ochiq kodli, Windows, Linux va macOS uchun. Fayl qanchalik katta bo'lmasin, uning yuklanishini kutish shart emas.",
         "lead": "BigText — log fayllar, CSV eksportlar, ma'lumotlar bazasi damplari va oddiy muharrirlar uchun juda "
         "katta bo'lgan har qanday fayl uchun muharrir, EmEditor va UltraEdit'ning bepul muqobili. U faylni hech "
         "qachon xotiraga to'liq yuklamaydi: 10 GB log millisekundlarda ochiladi va taxminan 100 MB operativ xotira "
@@ -427,7 +427,7 @@ T = {
         "features_h2": "Ulkan fayllar bilan ishlash uchun hamma narsa",
         "features_intro": "Loglar, CSV va SQL damplar, JSON eksportlar va boshqa muharrirlarni qotiradigan har qanday matn fayli uchun.",
         "features": [
-            ("Istalgan hajmdagi fayllar", "Faqat ko'rinib turgan qism o'qiladi: Windows'da xotiraga akslantirilgan oynalar orqali, Linux va macOS'da kerak bo'lganda bloklab. Fon vazifalari qolganini oqim bilan o'qiydi, tarmoq va USB disklar uchun esa keshli bloklab o'qish bor — sekin disk oynani hech qachon to'xtatmaydi."),
+            ("Istalgan hajmdagi fayllar", "Faqat ko'rinib turgan qism o'qiladi: Windows'da xotiraga akslantirilgan oynalar orqali, Linux va macOS'da kerak bo'lganda bloklab. Fon vazifalari qolganini oqim bilan o'qiydi, Windows'da esa tarmoq disklari va USB fleshkalar fon yuklovchisi orqali keshli bloklab o'qiladi, shuning uchun sekin disk oynani to'xtatmaydi."),
             ("Satrga bir zumda o'tish", "Siyrak satr indeksi (har 64 KB ga 8 bayt) fonda 2,5 GB/s tezlikda quriladi. "
              "Satrga o'tish va aylantirish paneli indekslash tugashidan oldin ham darhol ishlaydi."),
             ("Tezkor qidiruv va regex", "Oddiy matn 2,5 GB/s, chiziqli vaqtli muntazam ifodalar, katta-kichik harf, "
@@ -521,14 +521,14 @@ T = {
         "faq": [
             ("50 GB matn faylini qanday ochaman?",
              "BigText'ni o'rnating va faylni File → Open orqali, oynaga sudrab tashlab yoki o'ng tugma → «Open with "
-             "BigText» bilan oching. Hajmidan qat'i nazar birinchi ekran taxminan 40 ms da chiqadi; indeks fonda "
+             "BigText» bilan oching. Hajmidan qat'i nazar birinchi ekran taxminan 40 ms da chiqadi (fayl OS keshida bo'lsa); indeks fonda "
              "qurilayotganda ham aylantirish va satrga o'tish ishlaydi."),
             ("BigText EmEditor yoki UltraEdit'ning muqobilimi?",
              "Katta fayllar uchun — ha. Ular kabi BigText ham bir necha gigabaytli fayllarni xotiraga yuklamasdan ochadi, "
-             "qidiradi, tahrirlaydi va saqlaydi; ulardan farqli o'laroq, u bepul, ochiq kodli va Windows, Linux va macOS'da "
-             "ishlaydi. Makros va plaginlar yo'q: u ulkan fayllar, loglar va jadvallarga e'tibor qaratadi."),
+             "qidiradi, tahrirlaydi va saqlaydi; ulardan farqli o'laroq, u bepul va ochiq kodli. "
+             "Makros va plaginlar yo'q: u ulkan fayllar, loglar va jadvallarga e'tibor qaratadi."),
             ("BigText butun faylni xotiraga yuklaydimi?",
-             "Yo'q. U faqat ekrandagi qismni akslantiradi, qolganini fonda oqim bilan o'qiydi. 50 GB fayl ochiq "
+             "Yo'q. U faqat ekrandagi qismni o'qiydi, qolganini fonda oqim bilan o'qiydi. 50 GB fayl ochiq "
              "turganda taxminan 107 MB operativ xotira ishlatadi, uning katta qismi interfeysning o'zi."),
             ("Juda katta fayllarni tahrirlab saqlash mumkinmi?",
              "Ha. Tahrirlar asl fayl ustidagi bo'laklar jadvalida saqlanadi, shuning uchun istalgan hajmda yozish bir "

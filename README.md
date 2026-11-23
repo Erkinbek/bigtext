@@ -1,27 +1,47 @@
-# BigText — open 50 GB text and log files instantly, free
+# BigText — open, search and edit 50 GB text and log files, free
 
 [![build](https://github.com/Erkinbek/bigtext/actions/workflows/build.yml/badge.svg)](https://github.com/Erkinbek/bigtext/actions/workflows/build.yml)
 [![release](https://img.shields.io/github/v/release/Erkinbek/bigtext?sort=semver)](https://github.com/Erkinbek/bigtext/releases/latest)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![website](https://img.shields.io/badge/website-erkinbek.github.io%2Fbigtext-2dd4bf)](https://erkinbek.github.io/bigtext/)
 
-**Open, search and edit 1 GB, 10 GB and 50 GB text and log files instantly.** BigText is a free,
-open-source editor for **huge files** — logs, CSV exports, SQL dumps, JSON — that never freezes
-and never loads a whole file into memory: a free alternative to EmEditor and UltraEdit, for
-Windows, Linux and macOS. Written in Rust, it is one self-contained binary with no runtime
-dependencies.
+**Open, search and edit 1 GB, 10 GB and 50 GB text and log files without waiting for them to
+load.** BigText is a free, open-source editor for **huge files** — logs, CSV exports, SQL dumps,
+JSON — that never loads a whole file into memory: a 50 GB file shows its first screen in about
+50 ms (from the OS cache) and the window keeps responding while the file is indexed and searched.
+A free alternative to EmEditor and UltraEdit, for Windows, Linux and macOS. Written in Rust, it
+is one self-contained binary with no runtime to install.
 
 **[Download](#download)** · [Website](https://erkinbek.github.io/bigtext/) · [All features](FEATURES.md) · [Usage](USAGE.md) · [Русский](https://erkinbek.github.io/bigtext/ru/) · [O'zbekcha](https://erkinbek.github.io/bigtext/uz/) · [中文](https://erkinbek.github.io/bigtext/zh/) · [Español](https://erkinbek.github.io/bigtext/es/) · [Português](https://erkinbek.github.io/bigtext/pt/) · [Deutsch](https://erkinbek.github.io/bigtext/de/) · [Türkçe](https://erkinbek.github.io/bigtext/tr/)
 
 ![BigText opens a 50 GB log file at once, jumps to its end and its middle, searches it with a regular expression while the matches come in, and follows a growing log](docs/img/demo.gif)
 
+## What it is for
+
+- **Finding what went wrong in gigabytes of logs.** Open the log, filter it to `ERROR` lines or a
+  regex, jump to the time of the incident, see errors per minute in a histogram, group lines by
+  message pattern, and follow the file as it grows. See
+  [opening a 10 GB log file](https://erkinbek.github.io/bigtext/guides/open-large-log-file/).
+- **Looking into a CSV or JSON export that is too big for Excel or an editor.** A CSV past
+  Excel's 1,048,576 rows opens as a table you can filter, sort and summarise without importing
+  it, and JSON Lines can be queried by field. See
+  [a CSV larger than Excel](https://erkinbek.github.io/bigtext/guides/open-csv-larger-than-excel/).
+- **Changing a huge file safely.** Edit anywhere, replace all matches in a 10 GB file with bounded
+  memory, and save through a temporary file that replaces the original atomically; or take one
+  table out of a SQL dump. See
+  [one table out of a mysqldump](https://erkinbek.github.io/bigtext/guides/extract-table-from-mysqldump/).
+
+What it does not do: there are no macros or plug-ins, and the known limits are listed in
+[FEATURES.md](FEATURES.md#known-limitations). The numbers below are measured with the file in the
+OS cache; how they were measured is under [Measured performance](#measured-performance).
+
 ## Highlights
 
-- **Any size opens instantly.** A 50 GB file shows its first screen in under 50 ms and stays at
-  about 100 MB of memory. The line index builds in the background, and go to line works before
-  it finishes.
-- **Search at 2.5 GB/s.** Plain text or regex, Find All, a filter view that works like `grep`,
-  and Replace All streamed through a 10 GB file with bounded memory.
+- **Any size opens without waiting.** A 50 GB file shows its first screen in under 50 ms and
+  stays at about 100 MB of memory. The line index builds in the background, and go to line works
+  before it finishes.
+- **Search at 2.5 GB/s** (on a file in the OS cache). Plain text or regex, Find All, a filter
+  view that works like `grep`, and Replace All streamed through a 10 GB file with bounded memory.
 - **Real editing, safe saving.** Undo, multiple cursors, column selection, and sorting and text
   operations on files of any size. Saves write a temporary file and replace the original
   atomically, and a recovery journal brings unsaved edits back after a crash.
@@ -65,7 +85,7 @@ Latest release: [all files and release notes](https://github.com/Erkinbek/bigtex
 | --- | --- |
 | Windows 10 / 11 | [Installer](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-setup-windows-x64.exe) (adds “Open with” and an Explorer context-menu entry) · [portable .zip](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-windows-x64.zip) (unsigned: SmartScreen may ask, **More info → Run anyway**) |
 | Linux x64 | [AppImage](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.AppImage) · [.deb](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.deb) (Debian, Ubuntu) · [.tar.gz](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-linux-x64.tar.gz) |
-| macOS | BigText.app for [Apple Silicon](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-arm64.app.zip) · [Intel](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-x64.app.zip); plain binaries: [Apple Silicon](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-arm64.tar.gz) · [Intel](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-x64.tar.gz) (unsigned: right-click → Open on first launch) |
+| macOS | BigText.app for [Apple Silicon](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-arm64.app.zip) · [Intel](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-x64.app.zip); plain binaries: [Apple Silicon](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-arm64.tar.gz) · [Intel](https://github.com/Erkinbek/bigtext/releases/latest/download/bigtext-macos-x64.tar.gz) (unsigned: right-click → Open on first launch; the Intel builds have not been tried on an Intel Mac yet) |
 
 With a package manager:
 
@@ -84,23 +104,28 @@ Erkinbek/bigtext` checks that it was built by this repository's workflow from th
 ## How it compares
 
 Notepad++ and VS Code read the whole file into memory, so a 10 GB log needs at least 10 GB of
-free RAM. The editors built for huge files are paid, Windows-only or read-only: EmEditor runs
-only on Windows and its free edition is for home and school use, UltraEdit is a paid
-subscription, and klogg views and searches files without editing them. BigText opens, searches
-**and edits** files of any size on Windows, Linux and macOS, and it is free and open source.
+free RAM. The editors built for huge files are paid or read-only: EmEditor Professional is a
+subscription (its free edition is for home and school use and has no large file controller or
+filter), UltraEdit is sold as a subscription or a perpetual licence, and klogg views and searches
+files without editing them. BigText opens, searches **and edits** files of any size on Windows,
+Linux and macOS, and it is free and open source.
 
 | Editor | Price | Open source | Platforms | A 10 GB file | Editing huge files |
 | --- | --- | --- | --- | --- | --- |
 | **BigText** | Free | ✅ MIT | Windows, Linux, macOS | ✅ Reads only the part on screen, about 100 MB of RAM | ✅ Streaming replace, atomic save |
-| EmEditor | Paid (free edition for home and school use only) | ❌ | Windows | ✅ | ✅ |
-| UltraEdit | Paid subscription | ❌ | Windows, Linux, macOS | ✅ | ✅ |
+| EmEditor | Paid subscription (free edition for home and school use only) | ❌ | Windows; a macOS preview since November 2026 | ✅ | ✅ |
+| UltraEdit | Paid (subscription or perpetual licence) | ❌ | Windows, Linux, macOS | ✅ | ✅ |
 | klogg | Free | ✅ GPL-3.0 | Windows, Linux, macOS | ✅ | ❌ Views and searches only |
 | Notepad++ | Free | ✅ GPL | Windows | ⚠️ Loads the whole file into RAM; the 32-bit build refuses files over 2 GB | ⚠️ Only what fits in RAM |
 | VS Code | Free | ✅ MIT (Code - OSS) | Windows, Linux, macOS | ⚠️ Loads the whole file into RAM | ⚠️ Only what fits in RAM |
 
-<sub>Checked in November 2026 against each project's own pages:
-[EmEditor](https://www.emeditor.com/) and [EmEditor Free](https://www.emeditor.com/text-editor-features/emeditor-free/),
+<sub>Checked on 23 November 2026 against each project's own pages:
+[EmEditor](https://www.emeditor.com/), [EmEditor Free](https://www.emeditor.com/text-editor-features/emeditor-free/),
+[EmEditor prices](https://www.emeditor.com/buy/),
+[EmEditor 26.4: editing in Fast View](https://www.emeditor.com/emeditor-core/emeditor-v26-4-released-edit-huge-files-in-fast-view-mode-faster-startup-and-31-smaller-files/),
+[EmEditor for Mac Preview 1](https://www.emeditor.com/emeditor-mac/emeditor-for-mac-preview-1-released/),
 [UltraEdit large files](https://www.ultraedit.com/support/tutorials-power-tips/ultraedit/large-file-handling/),
+[UltraEdit subscription](https://www.ultraedit.com/pricing/) and [perpetual](https://www.ultraedit.com/perpetual-pricing/) prices,
 [klogg](https://github.com/variar/klogg),
 [Notepad++ file loading](https://github.com/notepad-plus-plus/notepad-plus-plus/blob/master/PowerEditor/src/ScintillaComponent/Buffer.cpp),
 [VS Code text buffer](https://code.visualstudio.com/blogs/2018/03/23/text-buffer-reimplementation).
@@ -130,8 +155,11 @@ The full command line, every `bigtext-cli` command and the keyboard shortcuts ar
 
 ## Measured performance
 
-Measured on Windows 11 Pro, Intel Core Ultra 9 285 (24 cores), 191 GB RAM, release build,
-files already in the OS page cache ("cached data" as in the targets). GUI numbers come from
+Measured with BigText 0.1.0 on 24 October 2026 on Windows 11 Pro, Intel Core Ultra 9 285
+(24 cores), 191 GB RAM, release build, files already in the OS page cache ("cached data" as in
+the targets). Reading a file from a cold disk was not measured. A re-run with 0.4.1 on
+10 November 2026 on the same PC gave a first screen of 31–35 ms and literal search at
+4.0–4.3 GB/s for the 50 GB file; the tables keep the older, slower numbers. GUI numbers come from
 `bigtext --bench-ui` (frame time = CPU time of one egui frame including our layout); core numbers
 from `bigtext-bench`. Raw reports: `scripts/bench.ps1` reproduces them.
 

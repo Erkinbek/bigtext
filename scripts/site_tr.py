@@ -4,13 +4,13 @@ CODE, NAME, LOCALE = "tr", "Türkçe", "tr_TR"
 
 T = {
     "title": "BigText — devasa metin ve log dosyaları için ücretsiz düzenleyici (1–50+ GB)",
-    "description": "1 GB, 10 GB veya 50 GB metin ve log dosyalarını anında açın, arayın ve düzenleyin. Windows, Linux "
-    "ve macOS için EmEditor ve UltraEdit'e ücretsiz, açık kaynaklı ve asla donmayan bir alternatif.",
-    "og_title": "BigText — 50 GB metin dosyalarını anında açın",
+    "description": "1 GB, 10 GB veya 50 GB metin ve log dosyalarını belleğe yüklemeden açın, arayın ve düzenleyin. Windows, Linux "
+    "ve macOS için EmEditor ve UltraEdit'e ücretsiz, açık kaynaklı bir alternatif.",
+    "og_title": "BigText — 50 GB metin dosyalarını beklemeden açın",
     "skip": "İçeriğe geç",
     "nav": ["Özellikler", "Performans", "İndir", "SSS"],
-    "h1": "50 GB metin dosyalarını anında açın",
-    "sub": "Ücretsiz ve açık kaynaklı; Windows, Linux ve macOS için. Boyutu ne olursa olsun donma yok, bekleme yok.",
+    "h1": "50 GB metin dosyalarını beklemeden açın",
+    "sub": "Ücretsiz ve açık kaynaklı; Windows, Linux ve macOS için. Boyutu ne olursa olsun dosyanın yüklenmesini beklemezsiniz.",
     "lead": "BigText; log dosyaları, CSV dışa aktarımları, veritabanı dökümleri ve sıradan düzenleyiciler için fazla büyük "
     "her dosya için bir düzenleyici ve EmEditor ile UltraEdit'e ücretsiz bir alternatif. Dosyayı asla tamamen belleğe "
     "yüklemez: 10 GB'lık bir log milisaniyeler içinde açılır ve yaklaşık 100 MB RAM kullanır.",
@@ -28,7 +28,7 @@ T = {
     "features_h2": "Dev dosyalar için ihtiyacınız olan her şey",
     "features_intro": "Loglar, CSV ve SQL dökümleri, JSON dışa aktarımları ve diğer düzenleyicileri kilitleyen her metin dosyası için yapıldı.",
     "features": [
-        ("Her boyutta dosyayı açar", "Yalnızca görünen kısım okunur: Windows'ta belleğe eşlenmiş pencereler üzerinden, Linux ve macOS'ta gerektikçe bloklar halinde. Arka plandaki iş geri kalanını akış olarak işler; ağ veya USB sürücüler önbellekli parça okumalara geçer, böylece yavaş bir disk pencereyi asla kilitlemez."),
+        ("Her boyutta dosyayı açar", "Yalnızca görünen kısım okunur: Windows'ta belleğe eşlenmiş pencereler üzerinden, Linux ve macOS'ta gerektikçe bloklar halinde. Arka plandaki iş geri kalanını akış olarak işler; Windows'ta ağ sürücüleri ve USB bellekler arka planda önbellekli bloklar halinde okunur, böylece yavaş bir sürücü pencereyi kilitlemez."),
         ("Anında satıra git", "Seyrek bir satır indeksi (her 64 KB için 8 bayt) arka planda 2,5 GB/s hızla oluşturulur. "
          "Satıra git ve kaydırma çubuğu, indeksleme bitmeden bile hemen çalışır."),
         ("Hızlı arama ve regex", "Düz metin 2,5 GB/s hızla, düzenli ifadeler doğrusal sürede; büyük/küçük harf, tam "
@@ -147,14 +147,14 @@ T = {
     "faq": [
         ("50 GB'lık bir metin dosyasını nasıl açarım?",
          "BigText'i kurun ve dosyayı Dosya → Aç ile, pencereye sürükleyerek ya da sağ tık → “Open with BigText” ile açın. "
-         "İlk ekran, boyut ne olursa olsun yaklaşık 40 ms'de görünür; satır indeksi arka planda oluşturulurken kaydırma ve "
+         "İlk ekran, boyut ne olursa olsun yaklaşık 40 ms'de görünür (dosya işletim sistemi önbelleğindeyken); satır indeksi arka planda oluşturulurken kaydırma ve "
          "satıra git çalışır."),
         ("BigText, EmEditor veya UltraEdit'e bir alternatif mi?",
          "Büyük dosyalar için evet. Onlar gibi BigText de çok gigabaytlık dosyaları belleğe yüklemeden açar, arar, düzenler "
-         "ve kaydeder; onlardan farklı olarak ücretsiz ve açık kaynaklıdır ve Windows, Linux ve macOS'ta çalışır. Makro "
+         "ve kaydeder; onlardan farklı olarak ücretsiz ve açık kaynaklıdır. Makro "
          "veya eklentisi yok: emeğini devasa dosyalara, loglara ve tablolara veriyor."),
         ("BigText dosyanın tamamını belleğe yükler mi?",
-         "Hayır. Yalnızca ekrandaki kısmı eşler ve geri kalan her şeyi arka planda akış olarak işler. 50 GB'lık bir dosya "
+         "Hayır. Yalnızca ekrandaki kısmı okur ve geri kalan her şeyi arka planda akış olarak işler. 50 GB'lık bir dosya "
          "açıkken yaklaşık 107 MB RAM kullanır; bunun çoğu arayüzün kendisidir."),
         ("Çok büyük dosyaları düzenleyip kaydedebilir miyim?",
          "Evet. Düzenlemeler orijinal dosyanın üzerindeki bir piece table'da tutulur, bu yüzden yazmak her boyutta anında "

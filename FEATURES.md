@@ -9,9 +9,10 @@ keyboard shortcuts.
 - **Never reads the whole file**: the visible text comes from a small cache of memory-mapped
   views on Windows and of 64 KB blocks read on demand on Linux and macOS (there another
   program may truncate an open file, which would crash a process reading it through a
-  mapping); background work streams with positional reads. Network/removable drives (or mmap
-  failure) fall back to buffered chunked reads served from a cache by a loader thread, so a
-  slow drive can never stall the UI.
+  mapping); background work streams with positional reads. On Windows, network, removable and
+  optical drives (or an mmap failure) fall back to buffered chunked reads served from a cache by
+  a loader thread, so a slow drive can never stall the UI; on Linux and macOS a network mount is
+  read like a local disk.
 - **Sparse, incremental line index**: one `u64` per 64 KB, built in the background from the top.
   Go to line and the scrollbar work immediately (estimated positions, shown with `~`, refined
   when the index catches up).
