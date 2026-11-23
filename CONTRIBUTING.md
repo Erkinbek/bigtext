@@ -97,7 +97,7 @@ src/
   index.rs          LineIndex: one u64 per 64 KB, background indexer, estimates
   text/buffer.rs    TextBuf: piece table (original mmap + add buffer), line<->offset mapping, undo swaps
   text/rows.rs      bounded visual segments (64 KB soft breaks), wrap, cell math
-  search.rs         Matcher (memmem / regex-automata / decoded), windowed streaming search
+  search.rs         Matcher (memmem / regex-automata / decoded), windowed search (parallel for whole files)
   replace.rs        templates, batch edits, streaming replace-all
   save.rs           temp file + fsync + atomic replace (ReplaceFileW), EOL conversion
   diff.rs           streaming line diff (chunk compare + hashed re-synchronisation)

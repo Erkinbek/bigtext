@@ -202,17 +202,18 @@ fn main() {
     println!("go-to line after indexing (exact={exact}, + layout of 50 rows): avg {avg:.3} ms, max {worst:.3} ms");
 
     // 6/7. Search throughput.
+    let threads = search::search_threads(&buf, &(0..buf.len()));
     let run = |q: &Query, label: &str| {
         let m = Matcher::new(q, det.codec).expect("pattern");
         let t = Instant::now();
         let mut count = 0u64;
-        search::search_forward(&buf, &m, 0..buf.len(), &CancelToken::new(), None, |_, _| {
+        search::search_forward_par(&buf, &m, 0..buf.len(), &CancelToken::new(), None, |_, _| {
             count += 1;
             true
         });
         let s = t.elapsed().as_secs_f64();
         println!(
-            "{label} {:?}: {count} matches in {:.2} s = {:.0} MB/s ({:.2} GB/s){}",
+            "{label} {:?}: {count} matches in {:.2} s = {:.0} MB/s ({:.2} GB/s){} [{threads} thread{}]",
             q.pattern,
             s,
             buf.len() as f64 / 1048576.0 / s.max(1e-9),
@@ -221,7 +222,8 @@ fn main() {
                 " [memmem]"
             } else {
                 " [regex]"
-            }
+            },
+            if threads == 1 { "" } else { "s" }
         );
     };
     for l in &literals {

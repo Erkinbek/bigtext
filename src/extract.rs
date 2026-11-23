@@ -27,7 +27,7 @@ pub fn extract(
     mut on_value: impl FnMut(&str) -> bool,
 ) -> SearchEnd {
     let mut failed = false;
-    let end = search::search_forward_ctx(buf, m, range, cancel, progress, |s, e, hay, base| {
+    let end = search::search_forward_par_ctx(buf, m, range, cancel, progress, |s, e, hay, base| {
         let text = if group > 0 {
             match search::group_text(buf, m, s, e, group) {
                 Some(t) => t,

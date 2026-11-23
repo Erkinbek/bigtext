@@ -106,7 +106,9 @@ measure it elsewhere, empty the cache before each run:
 - **Search** (`bigtext-bench`): one pass over the whole file counting every match, in bytes of the
   file per second. The file is searched in 16 MB windows; case-sensitive literal text uses
   `memchr::memmem` on the raw bytes, everything else the `regex` crate, with a 1 MB overlap between
-  windows so a match on a window edge is not missed.
+  windows so a match on a window edge is not missed. After 0.12.0 the windows of a local file over
+  64 MB are searched on up to 4 threads (`BIGTEXT_SEARCH_THREADS=1` for one), and the line says how
+  many.
 - **Replace All** (`bigtext-bench`): `timeout` → `TIMEOUT!` streamed into a new temporary file in
   the same folder, then fsync; wall time and the peak private memory sampled every 20 ms. The
   output is deleted afterwards.

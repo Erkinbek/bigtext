@@ -10,8 +10,14 @@
 //!   straight from the mmap; with edits they are assembled across piece boundaries.
 //! * Regex matches longer than the overlap are re-searched with a growing window, capped at
 //!   [`MAX_MATCH`] (longer matches are reported truncated).
+//! * The windows lie on a fixed grid from the range start, so each one can be searched on its
+//!   own: [`search_forward_par`] searches them on worker threads and merges the matches in
+//!   order, giving exactly what [`search_forward`] gives.
 
+use std::collections::VecDeque;
 use std::ops::Range;
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use regex_automata::meta::Regex;
 use regex_automata::util::captures::Captures;
@@ -242,8 +248,17 @@ impl Matcher {
         // Decode [0, from), [from, accept), [accept, span_end) and remember the UTF-8 boundaries.
         let unit = codec.unit();
         let align = |x: usize| x - x % unit;
-        let from = align(from);
-        let acc = align(accept_end.min(span_end));
+        // A window edge inside a UTF-16 surrogate pair moves past the pair, which belongs to
+        // the window it starts in (decoding from the middle would make two U+FFFD of it).
+        let whole = |x: usize| {
+            if x + 2 <= span_end && splits_pair(codec, hay, x) {
+                x + 2
+            } else {
+                x
+            }
+        };
+        let from = whole(align(from));
+        let acc = whole(align(accept_end.min(span_end))).max(from);
         let mut text = String::with_capacity(span_end * 2);
         codec.decode_into(&hay[..from], &mut text);
         let u_from = text.len();
@@ -294,6 +309,19 @@ impl Matcher {
     }
 }
 
+/// Whether `x` lies between the two halves of a UTF-16 surrogate pair in `hay`.
+fn splits_pair(codec: Codec, hay: &[u8], x: usize) -> bool {
+    let unit = |i: usize| match codec.enc {
+        Encoding::Utf16Le => u16::from_le_bytes([hay[i], hay[i + 1]]),
+        _ => u16::from_be_bytes([hay[i], hay[i + 1]]),
+    };
+    codec.enc.is_utf16()
+        && x >= 2
+        && x + 2 <= hay.len()
+        && (0xD800..0xDC00).contains(&unit(x - 2))
+        && (0xDC00..0xE000).contains(&unit(x))
+}
+
 fn utf8_step(hay: &[u8], i: usize) -> usize {
     if i >= hay.len() {
         return 1;
@@ -329,109 +357,791 @@ pub fn search_forward_ctx(
     progress: Option<&Progress>,
     mut on_match: impl FnMut(u64, u64, &[u8], u64) -> bool,
 ) -> SearchEnd {
-    let len = buf.len();
-    let unit = buf.codec.unit() as u64;
-    // A byte order mark is not text: no match starts in it or before it, and it is not context
-    // either (`^` matches at the start of line 1). The end is cut to whole code units: a UTF-16
-    // file of an odd length would otherwise never reach its last window.
-    let bom = (buf.codec.bom_len as u64).min(len);
-    let end = align_down(range.end.min(len), unit).max(bom);
-    let start = align_down(range.start.max(bom).min(end), unit);
-    if let Some(p) = progress {
-        p.set_total(end - start);
+    Scan::new(buf, m, GEOM, range, cancel, progress).run_seq(&mut on_match)
+}
+
+/// [`search_forward`] for whole-range jobs (Find All, counts, filters): on a local file and a
+/// range of several windows it reads and searches the windows on worker threads, while
+/// `on_match` still runs on the calling thread with exactly the matches, in the same order, of
+/// [`search_forward`]. Otherwise it is [`search_forward`].
+pub fn search_forward_par(
+    buf: &TextBuf,
+    m: &Matcher,
+    range: Range<u64>,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut on_match: impl FnMut(u64, u64) -> bool,
+) -> SearchEnd {
+    search_forward_par_ctx(buf, m, range, cancel, progress, |s, e, _, _| on_match(s, e))
+}
+
+/// [`search_forward_ctx`] on worker threads, as [`search_forward_par`] (`hay` is the window
+/// the match was found in, which may start before the previous match).
+pub fn search_forward_par_ctx(
+    buf: &TextBuf,
+    m: &Matcher,
+    range: Range<u64>,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    mut on_match: impl FnMut(u64, u64, &[u8], u64) -> bool,
+) -> SearchEnd {
+    let threads = search_threads(buf, &range);
+    let scan = Scan::new(buf, m, GEOM, range, cancel, progress);
+    if threads < 2 {
+        scan.run_seq(&mut on_match)
+    } else {
+        scan.run_par(ParCfg::new(threads), &mut on_match)
     }
-    let mut pos = start;
-    let mut last_end: Option<u64> = None;
-    let mut window = Vec::new();
-    loop {
-        if cancel.is_cancelled() {
-            return SearchEnd::Cancelled;
+}
+
+/// Worker threads [`search_forward_par`] uses for `range` of `buf`: 1 (the calling thread
+/// alone) for chunked and remote sources, non-blocking snapshots and ranges of a few windows;
+/// otherwise the available parallelism, at most 4: the windows are copied out of the page
+/// cache, and that copy, not the matching, limits a search on more threads (a laptop's memory
+/// bandwidth was used up at 4). `BIGTEXT_SEARCH_THREADS` overrides the number (1 turns the
+/// parallel search off).
+pub fn search_threads(buf: &TextBuf, range: &Range<u64>) -> usize {
+    static THREADS: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    let threads = *THREADS.get_or_init(|| {
+        std::env::var("BIGTEXT_SEARCH_THREADS")
+            .ok()
+            .and_then(|v| v.trim().parse::<usize>().ok())
+            .unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(1)
+                    .min(4)
+            })
+            .clamp(1, 64)
+    });
+    let local = buf.source.is_mmap() || buf.source.is_pread();
+    let span = range.end.min(buf.len()).saturating_sub(range.start);
+    if !buf.blocking || !local || span < 4 * WINDOW {
+        1
+    } else {
+        threads
+    }
+}
+
+/// Window geometry ([`WINDOW`], [`REGEX_OVERLAP`], [`MAX_MATCH`]); tests use small ones so that
+/// matches meet window edges often.
+#[derive(Clone, Copy, Debug)]
+struct Geom {
+    window: u64,
+    regex_overlap: u64,
+    max_match: u64,
+}
+
+const GEOM: Geom = Geom {
+    window: WINDOW,
+    regex_overlap: REGEX_OVERLAP,
+    max_match: MAX_MATCH,
+};
+
+/// Where the window loop stands: the next search position and the end of the last match
+/// (an empty match right there is skipped).
+#[derive(Clone, Copy, Debug)]
+struct Cursor {
+    pos: u64,
+    last_end: Option<u64>,
+}
+
+enum Flow {
+    Next,
+    Done(SearchEnd),
+}
+
+/// The outcome of searching one window from a cursor.
+struct Pass {
+    /// The callback asked to stop.
+    halted: bool,
+    /// A regex match ran into the end of the window's span (it may be longer).
+    truncated: Option<u64>,
+    /// The window end, or the furthest match end past it.
+    max_end: u64,
+    /// The end of the last match passed to the callback.
+    pos: u64,
+}
+
+type OnMatch<'f> = dyn FnMut(u64, u64, &[u8], u64) -> bool + 'f;
+
+/// One forward search of `start..end`.
+///
+/// The range is cut into windows on a fixed grid (`start + k * window`): a window takes the
+/// matches that start in it, searching on into the next one by the overlap, and the next
+/// window resumes where the last match ended. Because the grid does not move when a match
+/// crosses an edge, every window can be searched on its own (see [`Scan::run_par`]).
+struct Scan<'a> {
+    buf: &'a TextBuf,
+    m: &'a Matcher,
+    g: Geom,
+    start: u64,
+    end: u64,
+    /// `end` rounded down to a whole code unit (the last place a match can start).
+    end_unit: u64,
+    /// `end` is the end of the text: an empty match there counts (`$` after the last line);
+    /// at the end of a selection it is the start of the next line and does not.
+    at_text_end: bool,
+    /// Length of the byte order mark, which is neither searched nor context.
+    bom: u64,
+    len: u64,
+    unit: u64,
+    overlap: u64,
+    cancel: &'a CancelToken,
+    progress: Option<&'a Progress>,
+}
+
+impl<'a> Scan<'a> {
+    fn new(
+        buf: &'a TextBuf,
+        m: &'a Matcher,
+        g: Geom,
+        range: Range<u64>,
+        cancel: &'a CancelToken,
+        progress: Option<&'a Progress>,
+    ) -> Scan<'a> {
+        let len = buf.len();
+        let unit = buf.codec.unit() as u64;
+        // A byte order mark is not text: no match starts in it or before it, and it is not
+        // context either (`^` matches at the start of line 1). The end is cut to whole code
+        // units: a UTF-16 file of an odd length would otherwise never reach its last window.
+        let bom = (buf.codec.bom_len as u64).min(len);
+        let end = align_down(range.end.min(len), unit).max(bom);
+        let start = align_down(range.start.max(bom).min(end), unit);
+        let overlap = match &m.engine {
+            Engine::Literal { len, .. } => (*len as u64).saturating_sub(1),
+            Engine::Regex(_) => g.regex_overlap,
+        };
+        Scan {
+            buf,
+            m,
+            g,
+            start,
+            end,
+            end_unit: align_down(end, unit).max(start),
+            at_text_end: end >= align_down(len, unit),
+            bom,
+            len,
+            unit,
+            overlap,
+            cancel,
+            progress,
         }
-        let win_end = align_down((pos + WINDOW).min(end), unit).max(pos.min(end));
-        let span_end = (win_end + m.overlap()).min(end);
-        let read_start = align_down(pos.saturating_sub(CTX), unit).max(bom.min(pos));
-        let read_end = (span_end + CTX).min(len);
-        let Some(n) = buf.read_to(read_start..read_end, &mut window) else {
-            return SearchEnd::Unavailable;
-        };
-        let hay = &window[..n];
-        let final_window = win_end >= end;
+    }
+
+    /// Grid window holding `pos`.
+    fn index(&self, pos: u64) -> u64 {
+        (pos - self.start) / self.g.window
+    }
+
+    /// End of the window holding `pos` (matches starting before it belong to that window).
+    fn win_end(&self, pos: u64) -> u64 {
+        let grid = self
+            .start
+            .saturating_add((self.index(pos) + 1).saturating_mul(self.g.window));
+        align_down(grid.min(self.end), self.unit).max(pos.min(self.end))
+    }
+
+    fn is_final(&self, win_end: u64) -> bool {
+        win_end >= self.end_unit
+    }
+
+    fn span_end(&self, win_end: u64) -> u64 {
+        (win_end + self.overlap).min(self.end)
+    }
+
+    /// Bytes a window from `pos` reads: the span plus [`CTX`] on both sides.
+    fn read_range(&self, pos: u64, win_end: u64) -> Range<u64> {
+        let start = align_down(pos.saturating_sub(CTX), self.unit).max(self.bom.min(pos));
+        start..(self.span_end(win_end) + CTX).min(self.len)
+    }
+
+    /// Searches the window ending at `win_end` from `cur` in `hay` (bytes from `read_start`,
+    /// at least [`Scan::read_range`]), calling `f` for every match in order.
+    fn pass(
+        &self,
+        cur: &mut Cursor,
+        hay: &[u8],
+        read_start: u64,
+        win_end: u64,
+        f: &mut dyn FnMut(u64, u64) -> bool,
+    ) -> Pass {
+        let span_end = self.span_end(win_end);
         let rel = |x: u64| (x - read_start) as usize;
-        // An empty match at the very end counts only at the end of the text (`$` after the last
-        // line), not at the end of a selection: that is the start of the next line.
-        let accept = if final_window && end >= align_down(len, unit) {
-            rel(win_end) + 1
-        } else {
-            rel(win_end)
+        let accept = rel(win_end) + usize::from(self.is_final(win_end) && self.at_text_end);
+        let (end, literal) = (self.end, self.m.is_literal());
+        let mut p = Pass {
+            halted: false,
+            truncated: None,
+            max_end: win_end,
+            pos: cur.pos,
         };
-        let mut truncated: Option<u64> = None;
-        let mut stopped = false;
-        let mut max_end = win_end;
-        let literal = m.is_literal();
-        m.find_in(
+        self.m.find_in(
             hay,
             read_start,
-            rel(pos),
+            rel(cur.pos),
             accept,
             rel(span_end),
-            &mut last_end,
+            &mut cur.last_end,
             &mut |s, e| {
                 if !literal && e == span_end && span_end < end {
-                    truncated = Some(s);
+                    p.truncated = Some(s);
                     return false;
                 }
-                if !on_match(s, e, hay, read_start) {
-                    stopped = true;
+                p.max_end = p.max_end.max(e);
+                p.pos = e;
+                if !f(s, e) {
+                    p.halted = true;
                     return false;
                 }
-                max_end = max_end.max(e);
                 true
             },
         );
-        if stopped {
-            return SearchEnd::Stopped;
-        }
-        if let Some(s) = truncated {
-            // Re-search from the match start with a growing window.
-            match extend_match(buf, m, s, end, cancel) {
-                Some((s2, e2)) => {
-                    last_end = Some(e2);
-                    if !on_match(s2, e2, &[], 0) {
-                        return SearchEnd::Stopped;
-                    }
-                    pos = if e2 > s2 { e2 } else { buf.next_char(s2) };
-                }
-                None => pos = buf.next_char(s),
-            }
-            if let Some(p) = progress {
-                p.set_done(pos.min(end) - start);
-            }
-            if pos > end {
-                break;
-            }
-            continue;
-        }
-        if let Some(p) = progress {
-            p.set_done(win_end - start);
-        }
-        if final_window {
-            break;
-        }
-        pos = max_end;
+        p
     }
-    SearchEnd::Completed
+
+    /// After a match ran into the span end at `s`: re-search it with a growing window.
+    fn finish_truncated(&self, cur: &mut Cursor, s: u64, on_match: &mut OnMatch) -> Flow {
+        match extend_match(self.buf, self.m, self.g, s, self.end, self.cancel) {
+            Some((s2, e2)) => {
+                cur.last_end = Some(e2);
+                if !on_match(s2, e2, &[], 0) {
+                    return Flow::Done(SearchEnd::Stopped);
+                }
+                cur.pos = if e2 > s2 { e2 } else { self.buf.next_char(s2) };
+            }
+            None => cur.pos = self.buf.next_char(s),
+        }
+        if let Some(p) = self.progress {
+            p.set_done(cur.pos.min(self.end) - self.start);
+        }
+        if cur.pos > self.end {
+            Flow::Done(SearchEnd::Completed)
+        } else {
+            Flow::Next
+        }
+    }
+
+    /// After a window was searched to its end.
+    fn finish_window(&self, cur: &mut Cursor, win_end: u64, max_end: u64) -> Flow {
+        let last = self.is_final(win_end);
+        if let Some(p) = self.progress {
+            p.set_done(if last { self.end } else { win_end } - self.start);
+        }
+        if last {
+            return Flow::Done(SearchEnd::Completed);
+        }
+        cur.pos = max_end;
+        Flow::Next
+    }
+
+    /// Reads and searches the window holding `cur.pos`, from there.
+    fn seq_step(&self, cur: &mut Cursor, window: &mut Vec<u8>, on_match: &mut OnMatch) -> Flow {
+        let win_end = self.win_end(cur.pos);
+        let rr = self.read_range(cur.pos, win_end);
+        let Some(n) = self.buf.read_to(rr.clone(), window) else {
+            return Flow::Done(SearchEnd::Unavailable);
+        };
+        let hay = &window[..n];
+        let p = self.pass(cur, hay, rr.start, win_end, &mut |s, e| {
+            on_match(s, e, hay, rr.start)
+        });
+        if p.halted {
+            return Flow::Done(SearchEnd::Stopped);
+        }
+        match p.truncated {
+            Some(s) => self.finish_truncated(cur, s, on_match),
+            None => self.finish_window(cur, win_end, p.max_end),
+        }
+    }
+
+    /// The search on the calling thread, window after window.
+    fn run_seq(&self, on_match: &mut OnMatch) -> SearchEnd {
+        if let Some(p) = self.progress {
+            p.set_total(self.end - self.start);
+        }
+        let mut cur = Cursor {
+            pos: self.start,
+            last_end: None,
+        };
+        let mut window = Vec::new();
+        loop {
+            if self.cancel.is_cancelled() {
+                return SearchEnd::Cancelled;
+            }
+            if let Flow::Done(r) = self.seq_step(&mut cur, &mut window, on_match) {
+                return r;
+            }
+        }
+    }
+
+    /// The search with `cfg.threads` workers. Each worker takes the next grid window `k`,
+    /// reads it and searches it as if the sequential search had arrived at its start with no
+    /// match before (cursor `start + k * window`, no last match end), passing its matches on in
+    /// batches. The calling thread takes the windows in order and keeps the real cursor:
+    ///
+    /// * When the real cursor is the worker's starting cursor (the cursor is at the window
+    ///   start, and no empty match there is suppressed), the window's search is the same
+    ///   computation on the same bytes, so the worker's matches are used as they are.
+    /// * Otherwise (the previous match crossed into this window, or ended right at its start)
+    ///   the window is searched here from the real cursor, in the worker's buffer, until it
+    ///   reports a match the worker reported too: from then on both searches stand at the same
+    ///   cursor (the match end, with it as the last match end) in the same window, so the rest
+    ///   of the worker's matches are used. That usually takes one or two matches.
+    /// * A worker stops at a match that runs into its span end (the long match is extended
+    ///   here, as in the sequential search) and when its read fails (the window is read and
+    ///   searched here).
+    ///
+    /// At most `cfg.in_flight` windows are in progress at once, each holding at most
+    /// `cfg.queued` matches not yet taken, so memory stays bounded; a worker that finds more
+    /// waits.
+    fn run_par(&self, cfg: ParCfg, on_match: &mut OnMatch) -> SearchEnd {
+        if let Some(p) = self.progress {
+            p.set_total(self.end - self.start);
+        }
+        let windows = (self.end - self.start).div_ceil(self.g.window);
+        let sh = Shared::default();
+        std::thread::scope(|scope| {
+            for i in 0..cfg.threads {
+                let (me, sh) = (&*self, &sh);
+                std::thread::Builder::new()
+                    .name(format!("search-{i}"))
+                    .spawn_scoped(scope, move || me.worker(sh, cfg, windows))
+                    .expect("failed to spawn search thread");
+            }
+            // Stops the workers however the merge ends (also on a panic in `on_match`).
+            let _stop = StopOnDrop(&sh);
+            self.merge(&sh, cfg, windows, on_match)
+        })
+    }
+
+    fn merge(&self, sh: &Shared, cfg: ParCfg, windows: u64, on_match: &mut OnMatch) -> SearchEnd {
+        let mut cur = Cursor {
+            pos: self.start,
+            last_end: None,
+        };
+        let mut window = Vec::new();
+        let mut feed: Option<Feed> = None;
+        loop {
+            if self.cancel.is_cancelled() {
+                return SearchEnd::Cancelled;
+            }
+            let k = self.index(cur.pos);
+            let ready = if k < windows {
+                self.wait_hay(sh, cfg, k)
+            } else {
+                None
+            };
+            let flow = match ready {
+                Some((hay, rs, n)) => {
+                    if feed.as_ref().is_none_or(|f| f.k != k) {
+                        feed = Some(Feed::new(k));
+                    }
+                    let f = feed.as_mut().expect("feed of window k");
+                    self.merge_window(sh, &mut cur, f, &hay[..n], rs, on_match)
+                }
+                None if self.cancel.is_cancelled() => return SearchEnd::Cancelled,
+                // No worker result (failed read, or past the last grid window): search here.
+                None => self.seq_step(&mut cur, &mut window, on_match),
+            };
+            if let Flow::Done(r) = flow {
+                return r;
+            }
+        }
+    }
+
+    /// Releases the windows before `k` and waits for window `k`'s buffer (`None`: the worker
+    /// could not read it, or the search was cancelled).
+    fn wait_hay(&self, sh: &Shared, cfg: ParCfg, k: u64) -> Option<(Arc<Vec<u8>>, u64, usize)> {
+        let mut b = sh.lock();
+        if b.first < k {
+            while b.first < k {
+                if let Some((hay, _, _)) = b.slots.pop_front().and_then(|s| s.hay) {
+                    b.recycle(hay, cfg);
+                }
+                b.first += 1;
+            }
+            sh.to_workers.notify_all();
+        }
+        loop {
+            if self.cancel.is_cancelled() {
+                return None;
+            }
+            if let Some(s) = b.slot(k) {
+                if let Some((hay, rs, n)) = &s.hay {
+                    return Some((hay.clone(), *rs, *n));
+                }
+                if s.end.is_some() {
+                    return None;
+                }
+            }
+            b = sh.wait_merger(b);
+        }
+    }
+
+    /// Takes window `feed.k` (its bytes in `hay`, from `rs_w`) from `cur` to its end, or to a
+    /// match that has to be extended.
+    fn merge_window(
+        &self,
+        sh: &Shared,
+        cur: &mut Cursor,
+        feed: &mut Feed,
+        hay: &[u8],
+        rs_w: u64,
+        on_match: &mut OnMatch,
+    ) -> Flow {
+        let g_k = self.start + feed.k * self.g.window;
+        let worker_end = self.win_end(g_k);
+        let mut win_end = self.win_end(cur.pos);
+        let mut joined = cur.pos == g_k && cur.last_end.is_none_or(|le| le < g_k);
+        let mut max_end = win_end;
+        loop {
+            if joined {
+                while let Some((s, e)) = feed.next(self, sh) {
+                    max_end = max_end.max(e);
+                    cur.pos = e;
+                    cur.last_end = Some(e);
+                    if !on_match(s, e, hay, rs_w) {
+                        return Flow::Done(SearchEnd::Stopped);
+                    }
+                }
+                if feed.end == Some(WorkerEnd::Complete) {
+                    return self.finish_window(cur, win_end, max_end);
+                }
+                if self.cancel.is_cancelled() {
+                    return Flow::Done(SearchEnd::Cancelled);
+                }
+                // The worker stopped early: go on from the cursor here.
+            }
+            win_end = self.win_end(cur.pos);
+            let can_join = win_end == worker_end;
+            let rs = self.read_range(cur.pos, win_end).start;
+            let sub = &hay[(rs - rs_w) as usize..];
+            let (mut stopped, mut join) = (false, false);
+            let p = self.pass(cur, sub, rs, win_end, &mut |s, e| {
+                if !on_match(s, e, hay, rs_w) {
+                    stopped = true;
+                    return false;
+                }
+                join = can_join && feed.join(self, sh, s, e);
+                !join
+            });
+            if stopped {
+                return Flow::Done(SearchEnd::Stopped);
+            }
+            max_end = max_end.max(p.max_end);
+            if join {
+                cur.pos = p.pos;
+                joined = true;
+                continue;
+            }
+            return match p.truncated {
+                Some(s) => self.finish_truncated(cur, s, on_match),
+                None => self.finish_window(cur, win_end, max_end),
+            };
+        }
+    }
+
+    fn worker(&self, sh: &Shared, cfg: ParCfg, windows: u64) {
+        let mut spare: Option<Vec<u8>> = None;
+        loop {
+            let (k, mut window) = {
+                let mut b = sh.lock();
+                loop {
+                    if b.stop || self.cancel.is_cancelled() {
+                        return;
+                    }
+                    b.next = b.next.max(b.first);
+                    if b.next >= windows {
+                        return;
+                    }
+                    if b.next - b.first < cfg.in_flight as u64 {
+                        break;
+                    }
+                    b = sh.wait_workers(b);
+                }
+                let k = b.next;
+                b.next += 1;
+                b.slots.push_back(Slot::default());
+                let window = spare.take().or_else(|| b.spare.pop()).unwrap_or_default();
+                (k, window)
+            };
+            let pos = self.start + k * self.g.window;
+            let win_end = self.win_end(pos);
+            let rr = self.read_range(pos, win_end);
+            let Some(n) = self.buf.read_to(rr.clone(), &mut window) else {
+                sh.finish(k, Vec::new(), WorkerEnd::Failed);
+                spare = Some(window);
+                continue;
+            };
+            let hay = Arc::new(window);
+            {
+                let mut b = sh.lock();
+                match b.slot(k) {
+                    Some(s) => s.hay = Some((hay.clone(), rr.start, n)),
+                    None => {
+                        drop(b);
+                        spare = Arc::try_unwrap(hay).ok();
+                        continue;
+                    }
+                }
+                sh.to_merger.notify_one();
+            }
+            let mut batch = Vec::with_capacity(cfg.batch);
+            let mut aborted = false;
+            let mut cur = Cursor {
+                pos,
+                last_end: None,
+            };
+            let p = self.pass(&mut cur, &hay[..n], rr.start, win_end, &mut |s, e| {
+                batch.push((s, e));
+                if batch.len() >= cfg.batch && !sh.publish(self, k, &mut batch, cfg) {
+                    aborted = true;
+                    return false;
+                }
+                true
+            });
+            let end = if aborted {
+                WorkerEnd::Failed
+            } else if p.truncated.is_some() {
+                WorkerEnd::Truncated
+            } else {
+                WorkerEnd::Complete
+            };
+            sh.finish(k, batch, end);
+            spare = Arc::try_unwrap(hay).ok();
+        }
+    }
+}
+
+/// How a parallel search is spread out.
+#[derive(Clone, Copy, Debug)]
+struct ParCfg {
+    threads: usize,
+    /// Windows read or searched ahead of the one being merged (each holds a buffer).
+    in_flight: usize,
+    /// Matches of one window waiting to be merged before its worker waits.
+    queued: usize,
+    /// Matches passed on at once.
+    batch: usize,
+}
+
+impl ParCfg {
+    fn new(threads: usize) -> ParCfg {
+        ParCfg {
+            threads,
+            in_flight: threads + 2,
+            queued: 64 * 1024,
+            batch: 4096,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WorkerEnd {
+    /// Searched to the window end.
+    Complete,
+    /// Stopped at a match that runs into the span end.
+    Truncated,
+    /// Not read, abandoned or cancelled.
+    Failed,
+}
+
+/// One window being searched by a worker.
+#[derive(Default)]
+struct Slot {
+    /// The window's bytes, their offset and length.
+    hay: Option<(Arc<Vec<u8>>, u64, usize)>,
+    batches: VecDeque<Vec<(u64, u64)>>,
+    queued: usize,
+    end: Option<WorkerEnd>,
+}
+
+#[derive(Default)]
+struct Board {
+    /// Window of `slots[0]`: the one being merged; earlier ones are done.
+    first: u64,
+    /// Next window to hand to a worker (`slots` holds `first..next`).
+    next: u64,
+    slots: VecDeque<Slot>,
+    stop: bool,
+    /// Window buffers for reuse.
+    spare: Vec<Vec<u8>>,
+}
+
+impl Board {
+    fn slot(&mut self, k: u64) -> Option<&mut Slot> {
+        let i = k.checked_sub(self.first)?;
+        self.slots.get_mut(usize::try_from(i).ok()?)
+    }
+
+    fn recycle(&mut self, hay: Arc<Vec<u8>>, cfg: ParCfg) {
+        if self.spare.len() < cfg.in_flight {
+            if let Ok(v) = Arc::try_unwrap(hay) {
+                self.spare.push(v);
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct Shared {
+    board: Mutex<Board>,
+    to_merger: Condvar,
+    to_workers: Condvar,
+}
+
+impl Shared {
+    fn lock(&self) -> MutexGuard<'_, Board> {
+        self.board.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn wait_workers<'g>(&self, g: MutexGuard<'g, Board>) -> MutexGuard<'g, Board> {
+        self.to_workers
+            .wait(g)
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The merger also wakes up now and then to notice a cancellation.
+    fn wait_merger<'g>(&self, g: MutexGuard<'g, Board>) -> MutexGuard<'g, Board> {
+        self.to_merger
+            .wait_timeout(g, Duration::from_millis(20))
+            .unwrap_or_else(PoisonError::into_inner)
+            .0
+    }
+
+    /// Hands a batch of window `k`'s matches to the merger, waiting while too many are
+    /// queued. False if the window is no longer wanted.
+    fn publish(&self, scan: &Scan, k: u64, batch: &mut Vec<(u64, u64)>, cfg: ParCfg) -> bool {
+        let mut b = self.lock();
+        loop {
+            if b.stop || scan.cancel.is_cancelled() {
+                return false;
+            }
+            let Some(s) = b.slot(k) else {
+                return false;
+            };
+            if s.queued < cfg.queued {
+                s.queued += batch.len();
+                let full = std::mem::replace(batch, Vec::with_capacity(cfg.batch));
+                s.batches.push_back(full);
+                self.to_merger.notify_one();
+                return true;
+            }
+            b = self.wait_workers(b);
+        }
+    }
+
+    fn finish(&self, k: u64, batch: Vec<(u64, u64)>, end: WorkerEnd) {
+        let mut b = self.lock();
+        if let Some(s) = b.slot(k) {
+            if !batch.is_empty() {
+                s.queued += batch.len();
+                s.batches.push_back(batch);
+            }
+            s.end = Some(end);
+        }
+        self.to_merger.notify_one();
+    }
+}
+
+struct StopOnDrop<'a>(&'a Shared);
+
+impl Drop for StopOnDrop<'_> {
+    fn drop(&mut self) {
+        self.0.lock().stop = true;
+        self.0.to_workers.notify_all();
+    }
+}
+
+/// The merger's reader of one window's worker matches.
+struct Feed {
+    k: u64,
+    batch: Vec<(u64, u64)>,
+    at: usize,
+    /// How the worker ended, once all its matches are taken.
+    end: Option<WorkerEnd>,
+}
+
+impl Feed {
+    fn new(k: u64) -> Feed {
+        Feed {
+            k,
+            batch: Vec::new(),
+            at: 0,
+            end: None,
+        }
+    }
+
+    /// The worker's next match, waiting for it; `None` at the worker's end or on cancel.
+    fn peek(&mut self, scan: &Scan, sh: &Shared) -> Option<(u64, u64)> {
+        if let Some(&m) = self.batch.get(self.at) {
+            return Some(m);
+        }
+        if self.end.is_some() {
+            return None;
+        }
+        let mut b = sh.lock();
+        loop {
+            if scan.cancel.is_cancelled() {
+                return None;
+            }
+            let Some(s) = b.slot(self.k) else {
+                self.end = Some(WorkerEnd::Failed);
+                return None;
+            };
+            if let Some(v) = s.batches.pop_front() {
+                s.queued -= v.len();
+                sh.to_workers.notify_all();
+                self.batch = v;
+                self.at = 0;
+                if let Some(&m) = self.batch.first() {
+                    return Some(m);
+                }
+                continue;
+            }
+            if let Some(e) = s.end {
+                self.end = Some(e);
+                return None;
+            }
+            b = sh.wait_merger(b);
+        }
+    }
+
+    fn next(&mut self, scan: &Scan, sh: &Shared) -> Option<(u64, u64)> {
+        let m = self.peek(scan, sh)?;
+        self.at += 1;
+        Some(m)
+    }
+
+    /// Whether the worker reported the match `s..e` (skipping its matches before `s`).
+    fn join(&mut self, scan: &Scan, sh: &Shared, s: u64, e: u64) -> bool {
+        while let Some((ws, we)) = self.peek(scan, sh) {
+            if ws < s {
+                self.at += 1;
+                continue;
+            }
+            if (ws, we) == (s, e) {
+                self.at += 1;
+                return true;
+            }
+            return false;
+        }
+        false
+    }
 }
 
 fn extend_match(
     buf: &TextBuf,
     m: &Matcher,
+    g: Geom,
     s: u64,
     end: u64,
     cancel: &CancelToken,
 ) -> Option<(u64, u64)> {
     let len = buf.len();
     let unit = buf.codec.unit() as u64;
-    let mut lim = (s + 4 * REGEX_OVERLAP).min(end);
+    let mut lim = (s + 4 * g.regex_overlap).min(end);
     loop {
         if cancel.is_cancelled() {
             return None;
@@ -453,8 +1163,8 @@ fn extend_match(
             },
         );
         match found {
-            Some((a, b)) if b < lim || lim >= end || lim - s >= MAX_MATCH => return Some((a, b)),
-            Some(_) => lim = (s + (lim - s) * 4).min(end).min(s + MAX_MATCH),
+            Some((a, b)) if b < lim || lim >= end || lim - s >= g.max_match => return Some((a, b)),
+            Some(_) => lim = (s + (lim - s) * 4).min(end).min(s + g.max_match),
             None => return None,
         }
     }
@@ -811,5 +1521,477 @@ mod tests {
         t.blocking = true;
         let m = Matcher::new(&q("BOUNDARY!!"), Codec::utf8()).unwrap();
         assert_eq!(all(&t, &m), vec![(1_048_570, 1_048_580)]);
+    }
+
+    // ---- Grid windows and the parallel search ----
+
+    struct Rng(u64);
+
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn below(&mut self, n: u64) -> u64 {
+            self.next() % n.max(1)
+        }
+        fn pick<T: Copy>(&mut self, v: &[T]) -> T {
+            v[self.below(v.len() as u64) as usize]
+        }
+    }
+
+    /// Runs one search the given way, checking that `hay` holds every match it is passed with
+    /// and that progress only moves forward.
+    fn run_with(
+        buf: &TextBuf,
+        m: &Matcher,
+        g: Geom,
+        range: Range<u64>,
+        par: Option<ParCfg>,
+        progress: Option<&Progress>,
+    ) -> (Vec<(u64, u64)>, SearchEnd) {
+        let cancel = CancelToken::new();
+        let scan = Scan::new(buf, m, g, range, &cancel, progress);
+        let mut v = Vec::new();
+        let mut done = 0;
+        let mut f = |s: u64, e: u64, hay: &[u8], base: u64| {
+            if !hay.is_empty() {
+                assert!(
+                    base <= s && e <= base + hay.len() as u64,
+                    "{s}..{e} not in hay"
+                );
+                let want = buf.read(s..e).unwrap();
+                assert_eq!(&hay[(s - base) as usize..(e - base) as usize], &want[..]);
+            }
+            if let Some(p) = progress {
+                assert!(p.done() >= done, "progress went back");
+                done = p.done();
+            }
+            v.push((s, e));
+            true
+        };
+        let r = match par {
+            None => scan.run_seq(&mut f),
+            Some(cfg) => scan.run_par(cfg, &mut f),
+        };
+        (v, r)
+    }
+
+    /// The forward search as it was before the grid: each window starts where the last match
+    /// of the previous one ended and spans `window` bytes from there (with the byte order mark
+    /// and text-end rules of that loop).
+    fn legacy(buf: &TextBuf, m: &Matcher, g: Geom, range: Range<u64>) -> Vec<(u64, u64)> {
+        let cancel = CancelToken::new();
+        let mut out = Vec::new();
+        let len = buf.len();
+        let unit = buf.codec.unit() as u64;
+        let bom = (buf.codec.bom_len as u64).min(len);
+        let end = align_down(range.end.min(len), unit).max(bom);
+        let start = align_down(range.start.max(bom).min(end), unit);
+        let overlap = if m.is_literal() {
+            m.overlap()
+        } else {
+            g.regex_overlap
+        };
+        let mut pos = start;
+        let mut last_end: Option<u64> = None;
+        loop {
+            let win_end = align_down((pos + g.window).min(end), unit).max(pos.min(end));
+            let span_end = (win_end + overlap).min(end);
+            let read_start = align_down(pos.saturating_sub(CTX), unit).max(bom.min(pos));
+            let read_end = (span_end + CTX).min(len);
+            let hay = buf.read(read_start..read_end).unwrap();
+            let final_window = win_end >= end;
+            let rel = |x: u64| (x - read_start) as usize;
+            let accept = rel(win_end) + usize::from(final_window && end >= align_down(len, unit));
+            let mut truncated: Option<u64> = None;
+            let mut max_end = win_end;
+            m.find_in(
+                &hay,
+                read_start,
+                rel(pos),
+                accept,
+                rel(span_end),
+                &mut last_end,
+                &mut |s, e| {
+                    if !m.is_literal() && e == span_end && span_end < end {
+                        truncated = Some(s);
+                        return false;
+                    }
+                    out.push((s, e));
+                    max_end = max_end.max(e);
+                    true
+                },
+            );
+            if let Some(s) = truncated {
+                match extend_match(buf, m, g, s, end, &cancel) {
+                    Some((s2, e2)) => {
+                        last_end = Some(e2);
+                        out.push((s2, e2));
+                        pos = if e2 > s2 { e2 } else { buf.next_char(s2) };
+                    }
+                    None => pos = buf.next_char(s),
+                }
+                if pos > end {
+                    break;
+                }
+                continue;
+            }
+            if final_window {
+                break;
+            }
+            pos = max_end;
+        }
+        out
+    }
+
+    fn queries() -> Vec<Query> {
+        let ci = |p: &str| Query {
+            case_sensitive: false,
+            ..q(p)
+        };
+        let word = |p: &str| Query {
+            whole_word: true,
+            ..q(p)
+        };
+        let re = |p: &str| Query {
+            regex: true,
+            ..q(p)
+        };
+        vec![
+            q("ab"),
+            q("a"),
+            q("aba"),
+            q("b a"),
+            q("aaaa"),
+            q("ж"),
+            q("Жж"),
+            q("\n"),
+            ci("AB"),
+            ci("Ж"),
+            ci("A B"),
+            word("ab"),
+            word("a"),
+            re("a+"),
+            re("x*"),
+            re(r"\b"),
+            re(r"\B"),
+            re("^"),
+            re("$"),
+            re("^a.*$"),
+            re(r"a[ab ]*b"),
+            re(r"[^\n]{3,8}"),
+            re(r"\w+"),
+            re("b|ab|aab"),
+            re("a{2,}?"),
+            re(r"(?s)a.{0,90}b"),
+            re("a*?b*"),
+            re("(?:ab)*"),
+            re(r"[ab]+\r?\n"),
+            re(r"\b\w"),
+            re("(?s).*"),
+            re("ж+"),
+            re("(?i)ЖЖ|a"),
+        ]
+    }
+
+    fn random_text(rng: &mut Rng, cyrillic: bool) -> String {
+        let pieces: &[&str] = if cyrillic {
+            &["a", "b", " ", "\n", "ж", "Ж", "ab", "aaaaaaa", "\r\n", "x"]
+        } else {
+            &[
+                "a", "b", " ", "\n", "x", "é", "Ж", "ж", "ab", "aaaaaaa", "\r\n", "😀",
+            ]
+        };
+        let n = rng.below(1500);
+        let mut s = String::new();
+        // Mostly short pieces, now and then a long run (long matches, long lines).
+        for _ in 0..n {
+            if rng.below(40) == 0 {
+                let p = rng.pick(&["a", "ab", "x", "b "]);
+                for _ in 0..rng.below(120) {
+                    s.push_str(p);
+                }
+            } else {
+                s.push_str(rng.pick(pieces));
+            }
+        }
+        s
+    }
+
+    fn random_geom(rng: &mut Rng) -> Geom {
+        Geom {
+            window: rng.pick(&[4, 8, 16, 24, 64, 100, 256, 1000]),
+            regex_overlap: rng.pick(&[2, 4, 16, 50, 300]),
+            max_match: rng.pick(&[8, 64, 1000, 100_000]),
+        }
+    }
+
+    fn random_cfg(rng: &mut Rng) -> ParCfg {
+        ParCfg {
+            threads: 2 + rng.below(3) as usize,
+            in_flight: 1 + rng.below(5) as usize,
+            queued: 1 + rng.below(20) as usize,
+            batch: 1 + rng.below(8) as usize,
+        }
+    }
+
+    /// A document in one of the test encodings, sometimes edited through the piece table.
+    fn random_doc(rng: &mut Rng) -> (tempfile::NamedTempFile, TextBuf, &'static str) {
+        let kind = rng.below(4);
+        let (codec, cyrillic, name) = match kind {
+            0 | 1 => (Codec::utf8(), false, "utf-8"),
+            2 => (
+                Codec::new(Encoding::Utf16Le, NlByte::Lf, 2),
+                false,
+                "utf-16",
+            ),
+            _ => (
+                Codec::new(Encoding::Windows1251, NlByte::Lf, 0),
+                true,
+                "cp1251",
+            ),
+        };
+        let text = random_text(rng, cyrillic);
+        let mut data = if codec.enc.is_utf16() {
+            vec![0xFF, 0xFE]
+        } else {
+            Vec::new()
+        };
+        data.extend(codec.encode(&text));
+        let (f, mut t) = buf_with(&data, codec);
+        if kind == 1 {
+            // Edits: windows are assembled across piece boundaries.
+            for _ in 0..rng.below(12) {
+                let len = t.len();
+                let a = rng.below(len + 1);
+                let b = (a + rng.below(30)).min(len);
+                let ins: String = random_text(rng, false)
+                    .chars()
+                    .take(rng.below(60) as usize)
+                    .collect();
+                let a = t.snap_char(a);
+                let b = t.snap_char(b).max(a);
+                t.replace(a..b, ins.as_bytes());
+            }
+            return (f, t, "utf-8 edited");
+        }
+        (f, t, name)
+    }
+
+    #[test]
+    fn parallel_search_matches_sequential_exactly() {
+        let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
+        let qs = queries();
+        let (mut compared, mut with_matches) = (0, 0);
+        for round in 0..crate::robustness::rounds(120) {
+            let (_f, t, name) = random_doc(&mut rng);
+            for query in &qs {
+                let Ok(m) = Matcher::new(query, t.codec) else {
+                    continue;
+                };
+                let len = t.len();
+                let range = if rng.below(3) == 0 {
+                    let a = rng.below(len + 1);
+                    a..a + rng.below(len + 1 - a + 10)
+                } else {
+                    0..len
+                };
+                let g = random_geom(&mut rng);
+                let cfg = random_cfg(&mut rng);
+                let progress = Progress::default();
+                let (seq, r1) = run_with(&t, &m, g, range.clone(), None, None);
+                let (par, r2) = run_with(&t, &m, g, range.clone(), Some(cfg), Some(&progress));
+                assert_eq!(r1, SearchEnd::Completed);
+                assert_eq!(r2, SearchEnd::Completed);
+                assert_eq!(
+                    seq, par,
+                    "round {round} {name} {query:?} {range:?} {g:?} {cfg:?}"
+                );
+                assert_eq!(progress.done(), progress.total());
+                compared += 1;
+                with_matches += usize::from(!seq.is_empty());
+            }
+        }
+        assert!(compared > 3000 && with_matches > compared / 2);
+    }
+
+    #[test]
+    fn grid_windows_find_what_moving_windows_found() {
+        // With matches shorter than the overlap it does not matter where the windows lie: the
+        // grid gives exactly what windows that moved with the last match gave.
+        let mut rng = Rng(0x2545_F491_4F6C_DD1D);
+        let qs = queries();
+        for round in 0..crate::robustness::rounds(80) {
+            let (_f, t, name) = random_doc(&mut rng);
+            let g = Geom {
+                regex_overlap: 1 << 20,
+                ..random_geom(&mut rng)
+            };
+            for query in &qs {
+                let Ok(m) = Matcher::new(query, t.codec) else {
+                    continue;
+                };
+                let (now, _) = run_with(&t, &m, g, 0..t.len(), None, None);
+                let before = legacy(&t, &m, g, 0..t.len());
+                assert_eq!(now, before, "round {round} {name} {query:?} {g:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn odd_length_utf16_search_ends() {
+        // A UTF-16 document cut in the middle of a code unit: the search used to go round at
+        // the last whole unit for ever.
+        let mut data = vec![0xFF, 0xFE];
+        data.extend("ab ab".encode_utf16().flat_map(|u| u.to_le_bytes()));
+        data.push(b'a');
+        let codec = Codec::new(Encoding::Utf16Le, NlByte::Lf, 2);
+        let (_f, t) = buf_with(&data, codec);
+        let m = Matcher::new(&q("b"), codec).unwrap();
+        assert_eq!(all(&t, &m), vec![(4, 6), (10, 12)]);
+        let g = Geom { window: 4, ..GEOM };
+        let cfg = ParCfg {
+            threads: 2,
+            in_flight: 2,
+            queued: 1,
+            batch: 1,
+        };
+        let (par, _) = run_with(&t, &m, g, 0..t.len(), Some(cfg), None);
+        assert_eq!(par, vec![(4, 6), (10, 12)]);
+    }
+
+    fn dense_doc() -> (tempfile::NamedTempFile, TextBuf) {
+        let mut rng = Rng(7);
+        let mut text = String::new();
+        while text.len() < 200_000 {
+            text.push_str(rng.pick(&["ab ", "a", "b", "\n", "aab x "]));
+        }
+        buf_with(text.as_bytes(), Codec::utf8())
+    }
+
+    const SMALL: Geom = Geom {
+        window: 512,
+        regex_overlap: 64,
+        max_match: 4096,
+    };
+
+    fn rq(p: &str) -> Query {
+        Query {
+            regex: true,
+            ..q(p)
+        }
+    }
+
+    #[test]
+    fn parallel_search_stops_when_asked() {
+        let (_f, t) = dense_doc();
+        let cfg = ParCfg {
+            threads: 4,
+            in_flight: 4,
+            queued: 16,
+            batch: 4,
+        };
+        for pat in ["ab", r"\w+", "x*"] {
+            let m = Matcher::new(&rq(pat), Codec::utf8()).unwrap();
+            let (seq, _) = run_with(&t, &m, SMALL, 0..t.len(), None, None);
+            for stop_at in [1, 2, 7, 100, 1000, seq.len() / 2, seq.len() - 1] {
+                let cancel = CancelToken::new();
+                let scan = Scan::new(&t, &m, SMALL, 0..t.len(), &cancel, None);
+                let mut got = Vec::new();
+                let r = scan.run_par(cfg, &mut |s, e, _, _| {
+                    assert!(got.len() < stop_at, "called after it asked to stop");
+                    got.push((s, e));
+                    got.len() < stop_at
+                });
+                assert_eq!(r, SearchEnd::Stopped);
+                assert_eq!(got, seq[..stop_at]);
+            }
+        }
+    }
+
+    #[test]
+    fn parallel_search_cancels() {
+        let (_f, t) = dense_doc();
+        let cfg = ParCfg::new(4);
+        let m = Matcher::new(&rq(r"\w+"), Codec::utf8()).unwrap();
+        let (seq, _) = run_with(&t, &m, SMALL, 0..t.len(), None, None);
+        // Cancelled before it starts: nothing is reported.
+        let cancel = CancelToken::new();
+        cancel.cancel();
+        let scan = Scan::new(&t, &m, SMALL, 0..t.len(), &cancel, None);
+        let mut n = 0;
+        let r = scan.run_par(cfg, &mut |_, _, _, _| {
+            n += 1;
+            true
+        });
+        assert_eq!(r, SearchEnd::Cancelled);
+        assert_eq!(n, 0);
+        // Cancelled from the callback: what was reported is the start of the full list.
+        for at in [1, 50, 3000] {
+            let cancel = CancelToken::new();
+            let scan = Scan::new(&t, &m, SMALL, 0..t.len(), &cancel, None);
+            let mut got = Vec::new();
+            let r = scan.run_par(cfg, &mut |s, e, _, _| {
+                got.push((s, e));
+                if got.len() == at {
+                    cancel.cancel();
+                }
+                true
+            });
+            assert_eq!(r, SearchEnd::Cancelled);
+            assert!(got.len() >= at && got.len() < seq.len());
+            assert_eq!(got, seq[..got.len()]);
+        }
+        // Cancelled from another thread while the workers wait for a slow merger.
+        let cancel = CancelToken::new();
+        let scan = Scan::new(&t, &m, SMALL, 0..t.len(), &cancel, None);
+        let started = std::time::Instant::now();
+        let r = std::thread::scope(|s| {
+            s.spawn(|| {
+                std::thread::sleep(Duration::from_millis(30));
+                cancel.cancel();
+            });
+            scan.run_par(cfg, &mut |_, _, _, _| {
+                std::thread::sleep(Duration::from_micros(200));
+                true
+            })
+        });
+        assert_eq!(r, SearchEnd::Cancelled);
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn parallel_search_with_real_windows() {
+        // Four and a half windows of a local file: the public entry point searches on several
+        // threads and gives what the sequential search gives, also across window edges.
+        let n = 4 * WINDOW as usize + WINDOW as usize / 2;
+        let mut data = vec![b'x'; n];
+        for k in 1..5 {
+            let at = k * WINDOW as usize;
+            data[at - 3..at + 3].copy_from_slice(b"NEEDLE");
+            data[at + 100..at + 106].copy_from_slice(b"NEEDLE");
+        }
+        for i in (0..n).step_by(1_000_003) {
+            data[i] = b'\n';
+        }
+        let (_f, t) = buf_with(&data, Codec::utf8());
+        if std::env::var_os("BIGTEXT_SEARCH_THREADS").is_none() {
+            let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
+            assert_eq!(search_threads(&t, &(0..t.len())) > 1, threads > 1);
+        }
+        for query in [q("NEEDLE"), rq("N[A-Z]+E"), rq(r"x\nx"), rq("^")] {
+            let m = Matcher::new(&query, Codec::utf8()).unwrap();
+            let seq = all(&t, &m);
+            let mut par = Vec::new();
+            let r = search_forward_par(&t, &m, 0..t.len(), &CancelToken::new(), None, |s, e| {
+                par.push((s, e));
+                true
+            });
+            assert_eq!(r, SearchEnd::Completed);
+            assert_eq!(par, seq, "{query:?}");
+        }
     }
 }
