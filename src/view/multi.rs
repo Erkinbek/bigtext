@@ -121,8 +121,8 @@ pub fn edit_all(doc: &mut Document, e: MultiEdit) -> bool {
     if edits.is_empty() {
         return false;
     }
-    let (pieces, add) = doc.buf.build_batch(&edits);
-    let swap = doc.buf.apply_batch(pieces, &add);
+    let batch = doc.buf.build_batch(&edits);
+    let swap = doc.buf.apply_batch(batch);
     let p = after.iter().find(|x| x.2).map(|x| x.0).unwrap_or(0);
     doc.record(swap, (p, p));
     set_cursors(doc, after);
@@ -337,20 +337,20 @@ mod tests {
             .iter()
             .map(|&s| (s..s + 3, b"x".to_vec()))
             .collect();
-        let (pieces, add) = d.buf.build_batch(&edits);
-        let swap = d.buf.apply_batch(pieces, &add);
+        let batch = d.buf.build_batch(&edits);
+        let swap = d.buf.apply_batch(batch);
         d.record(swap, (11, 11));
         assert_eq!(text(&d), "x x x");
         assert_eq!((d.view.anchor, d.view.caret), (5, 5));
         // An edit range past the end is cut to it instead of looping forever.
-        let (pieces, add) = d.buf.build_batch(&[(10..10, b"!".to_vec())]);
-        let swap = d.buf.apply_batch(pieces, &add);
+        let batch = d.buf.build_batch(&[(10..10, b"!".to_vec())]);
+        let swap = d.buf.apply_batch(batch);
         d.record(swap, (5, 5));
         assert_eq!(text(&d), "x x x!");
 
         let (_t, mut d) = doc("a\u{e9}");
-        let (pieces, add) = d.buf.build_batch(&[(0..1, "\u{20ac}".as_bytes().to_vec())]);
-        let swap = d.buf.apply_batch(pieces, &add);
+        let batch = d.buf.build_batch(&[(0..1, "\u{20ac}".as_bytes().to_vec())]);
+        let swap = d.buf.apply_batch(batch);
         d.record(swap, (1, 1));
         assert_eq!(d.view.caret, 3, "inside the 3-byte euro sign");
         d.insert_text("z");

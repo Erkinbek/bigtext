@@ -53,6 +53,28 @@ enum SwapKind {
     Whole { before: PieceTree, after: PieceTree },
 }
 
+/// A batch of replacements prepared by [`TextBuf::build_batch`] (on a worker): the finished
+/// piece tree and the bytes it adds. It is applied with [`TextBuf::apply_batch`].
+#[derive(Clone)]
+pub struct Batch {
+    tree: PieceTree,
+    add: Vec<u8>,
+    /// The add buffer length of the snapshot it was built on: its add pieces start there.
+    base: u64,
+}
+
+impl Batch {
+    /// The add buffer length it was built on; apply only to a document with the same.
+    pub fn add_len(&self) -> u64 {
+        self.base
+    }
+
+    /// Pieces of the document after the batch.
+    pub fn piece_count(&self) -> usize {
+        self.tree.len()
+    }
+}
+
 impl Default for Swap {
     fn default() -> Swap {
         Swap(SwapKind::Splice {
@@ -667,12 +689,14 @@ impl TextBuf {
         swap
     }
 
-    /// Builds the piece list for a batch of sorted, non-overlapping replacements (worker side).
-    /// Returns the new pieces and the bytes to append to the add buffer; new add pieces start at
-    /// this snapshot's `add_len()`.
-    pub fn build_batch(&self, edits: &[(Range<u64>, Vec<u8>)]) -> (Vec<Piece>, Vec<u8>) {
+    /// Prepares a batch of sorted, non-overlapping replacements, on a worker: the whole new
+    /// piece tree and the bytes it adds, so that [`TextBuf::apply_batch`] on the UI thread does
+    /// no work that grows with the document. The new add pieces start at this snapshot's
+    /// `add_len()`, which [`Batch::add_len`] returns for the caller to compare.
+    pub fn build_batch(&self, edits: &[(Range<u64>, Vec<u8>)]) -> Batch {
         let mut out: Vec<Piece> = Vec::with_capacity(self.pieces.len() + edits.len() * 2);
-        let mut add_bytes = Vec::new();
+        let added: usize = edits.iter().map(|(_, t)| t.len()).sum();
+        let mut add_bytes = Vec::with_capacity(added);
         let base = self.add.len();
         // Ranges past the end are cut to it.
         let len = self.len();
@@ -715,16 +739,27 @@ impl TextBuf {
             pos = r.end.max(s).min(len);
         }
         push_range(&mut out, pos, len);
-        (out, add_bytes)
+        Batch {
+            tree: PieceTree::from_vec(out),
+            add: add_bytes,
+            base,
+        }
     }
 
-    /// Applies a batch built by [`build_batch`] on a snapshot with the same add buffer length.
-    pub fn apply_batch(&mut self, pieces: Vec<Piece>, add_bytes: &[u8]) -> Swap {
+    /// Applies a batch built by [`TextBuf::build_batch`] on a snapshot with the same add buffer
+    /// length (callers check [`Batch::add_len`] first). O(1) apart from taking the batch's bytes,
+    /// which are moved rather than copied when they are large.
+    pub fn apply_batch(&mut self, batch: Batch) -> Swap {
+        debug_assert_eq!(
+            self.add.len(),
+            batch.base,
+            "batch built on another add buffer"
+        );
         // All of the batch's bytes go in as one text, so its pieces stay inside one chunk.
-        self.add.push(add_bytes);
+        self.add.push_owned(batch.add);
         let swap = Swap(SwapKind::Whole {
             before: self.pieces.clone(),
-            after: PieceTree::from_vec(pieces),
+            after: batch.tree,
         });
         self.apply(&swap, true);
         swap
@@ -933,9 +968,9 @@ mod tests {
             (8..11, b"YY\n".to_vec()),
             (16..19, Vec::new()),
         ];
-        let (pieces, add) = t.build_batch(&edits);
+        let batch = t.build_batch(&edits);
         let mut t2 = t.clone();
-        let swap = t2.apply_batch(pieces, &add);
+        let swap = t2.apply_batch(batch);
         assert_eq!(text(&t2), "X bbb YY\n ccc ");
         check_lines(&t2);
         t2.apply(&swap, false);
@@ -972,12 +1007,14 @@ mod tests {
             let edits: Vec<(Range<u64>, Vec<u8>)> = (0..lines as u64)
                 .map(|i| (i * 13..i * 13 + 1, b"L".to_vec()))
                 .collect();
-            let (pieces, add) = t.build_batch(&edits);
+            let at = Instant::now();
+            let batch = t.build_batch(&edits);
+            let built = at.elapsed();
             let mut t = t.clone();
             t.blocking = false;
             let at = Instant::now();
-            t.apply_batch(pieces, &add);
-            let batch = at.elapsed();
+            t.apply_batch(batch);
+            let applied = at.elapsed();
             let keys = 2000;
             let mut run = |t: &mut TextBuf, mode: u8| {
                 let mut keep = None;
@@ -996,9 +1033,11 @@ mod tests {
             let once = run(&mut t, 1);
             let each = run(&mut t, 2);
             eprintln!(
-                "{target:>8} pieces: apply_batch {:.1} ms; insert {plain:.1} us, \
-                 with a snapshot {once:.1} us, with a new snapshot per key {each:.1} us",
-                batch.as_secs_f64() * 1e3
+                "{target:>8} pieces: build_batch (worker) {:.1} ms, apply_batch (UI) {:.3} ms; \
+                 insert {plain:.1} us, with a snapshot {once:.1} us, with a new snapshot per key \
+                 {each:.1} us",
+                built.as_secs_f64() * 1e3,
+                applied.as_secs_f64() * 1e3
             );
         }
         // A 100 MB paste, then typing while a worker holds a snapshot taken before each key.
@@ -1216,7 +1255,7 @@ mod tests {
                         edits.push((a..b, text));
                         p = b + 1;
                     }
-                    let (pieces, add) = t.snapshot().build_batch(&edits);
+                    let batch = t.snapshot().build_batch(&edits);
                     let mut new = model.clone();
                     for (r, text) in edits.iter().rev() {
                         new.splice(r.start as usize..r.end as usize, text.iter().copied());
@@ -1225,7 +1264,7 @@ mod tests {
                         old: model.clone(),
                         new,
                     };
-                    Some((t.apply_batch(pieces, &add), m))
+                    Some((t.apply_batch(batch), m))
                 }
                 46 if next() % 4 == 0 => {
                     // A big insert: a chunk of the add buffer of its own.
@@ -1353,12 +1392,46 @@ mod tests {
         assert_eq!(&*t.read(0..3).unwrap(), b"ayz");
     }
 
+    /// A batch is built on a snapshot taken on another thread and applied later; its large
+    /// bytes reach the add buffer without a copy, and small ones still join the last chunk.
+    #[test]
+    fn batch_built_on_a_worker_moves_its_bytes() {
+        let (_f, mut t) = buf_with(&b"0123456789\n".repeat(20_000));
+        t.replace(0..0, b">");
+        let snap = t.snapshot();
+        let big = vec![b'x'; 200_000];
+        let batch =
+            std::thread::spawn(move || snap.build_batch(&[(1..11, big), (13..14, b"y".to_vec())]))
+                .join()
+                .unwrap();
+        assert_eq!(batch.add_len(), t.add_len());
+        let ptr = batch.add.as_ptr();
+        let base = t.add_len();
+        let swap = t.apply_batch(batch);
+        assert_eq!(
+            t.add.slice(base, base + 1).as_ptr(),
+            ptr,
+            "bytes were copied"
+        );
+        let want = format!(">{}\n0y23456789\n", "x".repeat(200_000));
+        assert_eq!(&text(&t)[..want.len()], want);
+        check_lines(&t);
+        t.apply(&swap, false);
+        assert_eq!(&text(&t)[..22], ">0123456789\n0123456789");
+        // A small batch is copied into the last chunk as before.
+        let chunks = t.add.chunk_count();
+        let batch = t.build_batch(&[(1..2, b"Z".to_vec())]);
+        t.apply_batch(batch);
+        assert_eq!(t.add.chunk_count(), chunks);
+        assert_eq!(&text(&t)[..4], ">Z12");
+    }
+
     #[test]
     fn batch_undo_and_redo() {
         let (_f, mut t) = buf_with(b"aaa bbb aaa\n");
         let s1 = t.replace(0..0, b">");
-        let (pieces, add) = t.build_batch(&[(1..4, b"X".to_vec())]);
-        let s2 = t.apply_batch(pieces, &add);
+        let batch = t.build_batch(&[(1..4, b"X".to_vec())]);
+        let s2 = t.apply_batch(batch);
         assert_eq!(text(&t), ">X bbb aaa\n");
         let s3 = t.replace(2..2, b"!");
         assert_eq!(text(&t), ">X! bbb aaa\n");

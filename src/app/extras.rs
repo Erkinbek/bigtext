@@ -1698,9 +1698,9 @@ impl BigTextApp {
         }
         let planned = p.planned;
         if let Some(first) = planned.edits.first().map(|e| e.0.start) {
-            let (pieces, add) = d.buf.build_batch(&planned.edits);
+            let batch = d.buf.build_batch(&planned.edits);
             let (s, _) = d.selection();
-            let swap = d.buf.apply_batch(pieces, &add);
+            let swap = d.buf.apply_batch(batch);
             d.record(swap, (s, s));
             d.set_caret(first.min(d.buf.len()), false);
             d.view.center();
