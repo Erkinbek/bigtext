@@ -58,6 +58,19 @@ impl AddBuf {
         start
     }
 
+    /// [`AddBuf::push`] for bytes the caller gives up: a text of [`COPY_MAX`] or more becomes a
+    /// chunk of its own without being copied (a batch of replacements built on a worker, or a
+    /// whole rewritten document).
+    pub fn push_owned(&mut self, text: Vec<u8>) -> u64 {
+        if text.len() < COPY_MAX {
+            return self.push(&text);
+        }
+        let start = self.len;
+        self.len += text.len() as u64;
+        Arc::make_mut(&mut self.chunks).push((start, Arc::new(text)));
+        start
+    }
+
     fn chunk_index(&self, off: u64) -> usize {
         self.chunks
             .partition_point(|&(s, _)| s <= off)

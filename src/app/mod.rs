@@ -92,7 +92,7 @@ use bigtext::file::{self, OpenMode, Source};
 use bigtext::jobs::{self, human_bytes, CancelToken, Waker};
 use bigtext::replace::Template;
 use bigtext::search::Matcher;
-use bigtext::text::Piece;
+use bigtext::text::Batch;
 
 use crate::view::{hex_view, table_view, text_view};
 use document::{Banner, DocState, Document, Restore};
@@ -156,9 +156,7 @@ pub enum Msg {
     ReplaceBatch {
         doc: u64,
         version: u64,
-        add_len: u64,
-        pieces: Vec<Piece>,
-        add: Vec<u8>,
+        batch: Batch,
         count: usize,
     },
     ReplaceTooMany {
@@ -1521,11 +1519,9 @@ impl BigTextApp {
                 Msg::ReplaceBatch {
                     doc,
                     version,
-                    add_len,
-                    pieces,
-                    add,
+                    batch,
                     count,
-                } => self.on_replace_batch(doc, version, add_len, pieces, add, count),
+                } => self.on_replace_batch(doc, version, batch, count),
                 Msg::ReplaceTooMany {
                     doc,
                     version,

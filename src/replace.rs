@@ -356,9 +356,9 @@ mod tests {
             &CancelToken::new(),
             None,
         ) {
-            let (pieces, add) = t.build_batch(&edits);
+            let batch = t.build_batch(&edits);
             let mut t2 = t.clone();
-            t2.apply_batch(pieces, &add);
+            t2.apply_batch(batch);
             assert_eq!(t2.read(0..t2.len()).unwrap().as_ref(), out.as_slice());
         } else {
             panic!("expected edits");

@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use bigtext::csv::{self, ColumnStats, Cond, CondOp, Dialect, Groups, Rewrite, ScanEnd};
 use bigtext::csv_rows::{index_records, RecordIndex};
 use bigtext::jobs::{self, human_bytes, CancelToken, Progress};
-use bigtext::text::Piece;
+use bigtext::text::Batch;
 
 use super::columns::IN_MEMORY_MAX;
 use super::document::{Banner, EditKind};
@@ -25,9 +25,7 @@ pub const SORT_MAX: u64 = bigtext::csv::SORT_MAX;
 pub struct CsvRewritten {
     pub doc: u64,
     pub version: u64,
-    pub add_len: u64,
-    pub pieces: Vec<Piece>,
-    pub add: Vec<u8>,
+    pub batch: Batch,
     pub rewrite: Rewrite,
     pub records: u64,
 }
@@ -544,13 +542,11 @@ impl BigTextApp {
             let msg = match csv::rewrite_to(&snap, dialect, &rw, &mut out, &cancel, Some(&progress))
             {
                 Ok(Some(stats)) => {
-                    let (pieces, add) = snap.build_batch(&[(0..snap.len(), out)]);
+                    let batch = snap.build_batch(&[(0..snap.len(), out)]);
                     Msg::CsvRewritten(Box::new(CsvRewritten {
                         doc,
                         version,
-                        add_len: snap.add_len(),
-                        pieces,
-                        add,
+                        batch,
                         rewrite: rw,
                         records: stats.count,
                     }))
@@ -571,14 +567,14 @@ impl BigTextApp {
             return;
         };
         d.save_job = None;
-        if d.version != c.version || d.buf.add_len() != c.add_len {
+        if d.version != c.version || d.buf.add_len() != c.batch.add_len() {
             d.banner = Some(Banner::Info(
                 tr("The document changed meanwhile; nothing was changed.").into(),
             ));
             return;
         }
         let (top_line, _) = d.buf.line_of(d.view.top);
-        let swap = d.buf.apply_batch(c.pieces, &c.add);
+        let swap = d.buf.apply_batch(c.batch);
         let top = d
             .buf
             .line_start(top_line)

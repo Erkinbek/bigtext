@@ -6,4 +6,4 @@ pub mod buffer;
 pub mod rows;
 mod tree;
 
-pub use buffer::{Buf, Piece, Swap, TextBuf};
+pub use buffer::{Batch, Buf, Piece, Swap, TextBuf};
