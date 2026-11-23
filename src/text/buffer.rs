@@ -1,11 +1,17 @@
 //! Piece table over the original (memory-mapped) file plus an append-only add buffer.
 //!
 //! The original file is never modified. A `TextBuf` is cheap to clone (all heavy parts are
-//! `Arc`s), so workers get consistent snapshots; edits on the UI side copy-on-write.
+//! `Arc`s), so workers get consistent snapshots; edits on the UI side copy-on-write. The pieces
+//! are kept in a chunked tree ([`super::tree`]) and the add buffer in chunks
+//! ([`super::addbuf`]), so an edit costs O(P / 512) rather than O(P) for P pieces, and an edit
+//! while a worker holds a snapshot copies one leaf and the leaf list, never the whole piece
+//! list or the whole add buffer.
 
 use std::ops::Range;
 use std::sync::Arc;
 
+use super::addbuf::AddBuf;
+use super::tree::{PieceTree, Pos};
 use crate::encoding::Codec;
 use crate::file::{Bytes, Source};
 use crate::index::LineIndex;
@@ -30,12 +36,41 @@ pub struct Piece {
     pub exact: bool,
 }
 
-/// One reversible edit: `pieces[at..at+removed.len()]` was replaced by `inserted`.
-#[derive(Clone, Debug, Default)]
-pub struct Swap {
-    pub at: usize,
-    pub removed: Vec<Piece>,
-    pub inserted: Vec<Piece>,
+/// One reversible edit.
+#[derive(Clone, Debug)]
+pub struct Swap(SwapKind);
+
+#[derive(Clone, Debug)]
+enum SwapKind {
+    /// Pieces `at..at + removed.len()` were replaced by `inserted`.
+    Splice {
+        at: usize,
+        removed: Vec<Piece>,
+        inserted: Vec<Piece>,
+    },
+    /// The whole piece list was replaced (a batch): both lists are kept as they are, sharing
+    /// their leaves, so applying either way is O(1).
+    Whole { before: PieceTree, after: PieceTree },
+}
+
+impl Default for Swap {
+    fn default() -> Swap {
+        Swap(SwapKind::Splice {
+            at: 0,
+            removed: Vec::new(),
+            inserted: Vec::new(),
+        })
+    }
+}
+
+impl Swap {
+    fn splice(at: usize, removed: Vec<Piece>, inserted: Vec<Piece>) -> Swap {
+        Swap(SwapKind::Splice {
+            at,
+            removed,
+            inserted,
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -43,13 +78,8 @@ pub struct TextBuf {
     pub source: Arc<Source>,
     pub index: Arc<LineIndex>,
     pub codec: Codec,
-    pieces: Arc<Vec<Piece>>,
-    add: Arc<Vec<u8>>,
-    /// `cum_bytes[k]` = document offset of piece k; last entry = document length.
-    cum_bytes: Arc<Vec<u64>>,
-    /// `cum_lines[k]` = newlines before piece k (estimates after the first inexact piece).
-    cum_lines: Arc<Vec<u64>>,
-    inexact_from: usize,
+    pieces: PieceTree,
+    add: AddBuf,
     /// Reads may block (worker snapshots) or must not (UI thread).
     pub blocking: bool,
 }
@@ -57,33 +87,17 @@ pub struct TextBuf {
 impl TextBuf {
     pub fn new(source: Arc<Source>, index: Arc<LineIndex>, codec: Codec) -> TextBuf {
         let len = source.len();
-        let pieces = if len > 0 {
-            vec![Piece {
-                buf: Buf::Orig,
-                start: 0,
-                len,
-                nl: 0,
-                exact: false,
-            }]
-        } else {
-            vec![]
-        };
         let mut t = TextBuf {
             source,
             index,
             codec,
-            pieces: Arc::new(pieces),
-            add: Arc::new(Vec::new()),
-            cum_bytes: Arc::new(vec![0]),
-            cum_lines: Arc::new(vec![0]),
-            inexact_from: 0,
+            pieces: PieceTree::default(),
+            add: AddBuf::default(),
             blocking: false,
         };
         if len > 0 {
-            let p = t.make_piece(Buf::Orig, 0, len);
-            Arc::make_mut(&mut t.pieces)[0] = p;
+            t.pieces = PieceTree::from_vec(vec![t.make_piece(Buf::Orig, 0, len)]);
         }
-        t.rebuild_cum();
         t
     }
 
@@ -109,25 +123,22 @@ impl TextBuf {
             source,
             index,
             codec,
-            pieces: Arc::new(Vec::new()),
-            add: Arc::new(add),
-            cum_bytes: Arc::new(vec![0]),
-            cum_lines: Arc::new(vec![0]),
-            inexact_from: 0,
+            pieces: PieceTree::default(),
+            add: AddBuf::from_vec(add),
             blocking: false,
         };
         let ps: Vec<Piece> = pieces
             .iter()
             .map(|&(b, s, l)| t.make_piece(b, s, l))
             .collect();
-        t.pieces = Arc::new(ps);
-        t.rebuild_cum();
+        t.pieces = PieceTree::from_vec(ps);
         Some(t)
     }
 
-    /// The bytes edits inserted (what [`Buf::Add`] pieces point into).
-    pub fn add_bytes(&self) -> &[u8] {
-        &self.add
+    /// A copy of the bytes edits inserted (what [`Buf::Add`] pieces point into) from offset
+    /// `from` on.
+    pub fn add_bytes_from(&self, from: u64) -> Vec<u8> {
+        self.add.copy_from(from)
     }
 
     /// Rebuilds this buffer on a different (but byte-identical) source, keeping all edits.
@@ -146,26 +157,31 @@ impl TextBuf {
     }
 
     pub fn len(&self) -> u64 {
-        *self.cum_bytes.last().unwrap()
+        self.pieces.bytes()
     }
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    pub fn pieces(&self) -> &[Piece] {
-        &self.pieces
+    /// The pieces in document order.
+    pub fn pieces(&self) -> impl Iterator<Item = Piece> + '_ {
+        self.pieces.iter().map(|(_, p)| p)
+    }
+
+    pub fn piece_count(&self) -> usize {
+        self.pieces.len()
     }
 
     pub fn add_len(&self) -> u64 {
-        self.add.len() as u64
+        self.add.len()
     }
 
     /// True if the document is exactly the original file (fast paths may use the mmap directly).
     pub fn is_pristine(&self) -> bool {
-        match self.pieces.as_slice() {
-            [] => self.source.is_empty(),
-            [p] => p.buf == Buf::Orig && p.start == 0 && p.len == self.source.len(),
+        match (self.pieces.len(), self.pieces.first()) {
+            (0, _) => self.source.is_empty(),
+            (1, Some(p)) => p.buf == Buf::Orig && p.start == 0 && p.len == self.source.len(),
             _ => false,
         }
     }
@@ -178,22 +194,12 @@ impl TextBuf {
         }
     }
 
-    /// Index of the piece containing `off` (the last piece for `off == len`).
-    fn piece_at(&self, off: u64) -> usize {
-        let n = self.pieces.len();
-        if n == 0 {
-            return 0;
-        }
-        let pp = self.cum_bytes[..n].partition_point(|&s| s <= off);
-        pp.saturating_sub(1).min(n - 1)
-    }
-
     fn piece_bytes(&self, p: &Piece, rel: Range<u64>) -> Option<Bytes<'_>> {
         let s = p.start + rel.start;
         let e = p.start + rel.end;
         match p.buf {
             Buf::Orig => self.source.get(s..e, self.blocking),
-            Buf::Add => Some(Bytes::borrowed(&self.add[s as usize..e as usize])),
+            Buf::Add => Some(Bytes::borrowed(self.add.slice(s, e))),
         }
     }
 
@@ -205,21 +211,19 @@ impl TextBuf {
         if start == end {
             return Some(Bytes::borrowed(&[]));
         }
-        let k = self.piece_at(start);
-        let pstart = self.cum_bytes[k];
-        let p = self.pieces[k];
-        if end <= pstart + p.len {
-            return self.piece_bytes(&p, start - pstart..end - pstart);
+        let pos = self.pieces.at_offset(start)?;
+        let p = pos.piece;
+        if end <= pos.start + p.len {
+            return self.piece_bytes(&p, start - pos.start..end - pos.start);
         }
         let mut out = Vec::with_capacity((end - start) as usize);
-        let mut i = k;
-        while i < self.pieces.len() && self.cum_bytes[i] < end {
-            let p = self.pieces[i];
-            let ps = self.cum_bytes[i];
+        for (ps, p) in self.pieces.iter_from(&pos) {
+            if ps >= end {
+                break;
+            }
             let s = start.max(ps) - ps;
             let e = end.min(ps + p.len) - ps;
             out.extend_from_slice(&self.piece_bytes(&p, s..e)?);
-            i += 1;
         }
         Some(Bytes::owned(out))
     }
@@ -243,12 +247,15 @@ impl TextBuf {
         let end = start
             .checked_add(out.len() as u64)
             .filter(|&e| e <= self.len())?;
-        let mut pos = start;
+        if start == end {
+            return Some(());
+        }
         let mut w = 0usize;
-        while pos < end {
-            let k = self.piece_at(pos);
-            let p = self.pieces[k];
-            let ps = self.cum_bytes[k];
+        for (ps, p) in self.pieces.iter_from(&self.pieces.at_offset(start)?) {
+            if ps >= end {
+                break;
+            }
+            let pos = start.max(ps);
             let e = end.min(ps + p.len);
             let len = (e - pos) as usize;
             let s = p.start + (pos - ps);
@@ -256,10 +263,9 @@ impl TextBuf {
             match p.buf {
                 Buf::Orig if self.blocking => self.source.read_into(s, dst).ok()?,
                 Buf::Orig => dst.copy_from_slice(&self.source.get(s..s + len as u64, false)?),
-                Buf::Add => dst.copy_from_slice(&self.add[s as usize..s as usize + len]),
+                Buf::Add => dst.copy_from_slice(self.add.slice(s, s + len as u64)),
             }
             w += len;
-            pos = e;
         }
         Some(())
     }
@@ -310,7 +316,7 @@ impl TextBuf {
         let (nl, exact) = match buf {
             Buf::Add => (
                 self.codec
-                    .count_nl(&self.add[start as usize..(start + len) as usize], start),
+                    .count_nl(self.add.slice(start, start + len), start),
                 true,
             ),
             Buf::Orig => self.count_orig(start, len),
@@ -334,13 +340,11 @@ impl TextBuf {
             return (p.nl, true);
         }
         match p.buf {
-            Buf::Add => {
-                let s = p.start as usize;
-                (
-                    self.codec.count_nl(&self.add[s..s + rel as usize], p.start),
-                    true,
-                )
-            }
+            Buf::Add => (
+                self.codec
+                    .count_nl(self.add.slice(p.start, p.start + rel), p.start),
+                true,
+            ),
             Buf::Orig => {
                 let idx = &self.index;
                 let src = &self.source;
@@ -361,13 +365,15 @@ impl TextBuf {
 
     /// 0-based line number containing `off`, and whether it is exact.
     pub fn line_of(&self, off: u64) -> (u64, bool) {
-        if self.pieces.is_empty() {
-            return (0, true);
-        }
         let off = off.min(self.len());
-        let k = self.piece_at(off);
-        let (n, exact) = self.piece_prefix_nl(&self.pieces[k], off - self.cum_bytes[k]);
-        (self.cum_lines[k] + n, exact && k <= self.inexact_from)
+        let Some(pos) = self.pieces.at_offset(off) else {
+            return (0, true);
+        };
+        let (n, exact) = self.piece_prefix_nl(&pos.piece, off - pos.start);
+        (
+            pos.lines + n,
+            exact && pos.index <= self.pieces.inexact_from(),
+        )
     }
 
     /// Start offset of 0-based `line`. `None` if the line is known not to exist. The offset is
@@ -376,17 +382,13 @@ impl TextBuf {
         if line == 0 {
             return Some((0, true));
         }
-        let n = self.pieces.len();
-        if n == 0 {
-            return None;
-        }
         // Piece containing the `line`-th newline (the last piece takes everything beyond).
-        let k = self.cum_lines[1..n].partition_point(|&c| c < line);
-        let p = self.pieces[k];
-        let need = line - self.cum_lines[k];
-        let pstart = self.cum_bytes[k];
-        let lines_exact = k <= self.inexact_from;
-        let is_last = k == n - 1;
+        let pos = self.pieces.at_line(line)?;
+        let p = pos.piece;
+        let need = line - pos.lines;
+        let pstart = pos.start;
+        let lines_exact = pos.index <= self.pieces.inexact_from();
+        let is_last = pos.index == self.pieces.len() - 1;
         let not_here = || {
             if is_last && lines_exact {
                 None
@@ -396,8 +398,7 @@ impl TextBuf {
         };
         match p.buf {
             Buf::Add => {
-                let s = p.start as usize;
-                let hay = &self.add[s..s + p.len as usize];
+                let hay = self.add.slice(p.start, p.start + p.len);
                 match self.codec.nth_nl(hay, p.start, need) {
                     Some(i) => Some((pstart + i as u64 + self.codec.unit() as u64, lines_exact)),
                     None => not_here(),
@@ -435,24 +436,25 @@ impl TextBuf {
     /// Total number of lines and whether it is exact.
     pub fn line_count(&self) -> (u64, bool) {
         let n = self.pieces.len();
-        if n == 1 && self.pieces[0].buf == Buf::Orig && self.pieces[0].start == 0 {
-            if let Some(t) = self.index.total_lines() {
-                if self.pieces[0].len == self.index.len() {
-                    return (t, true);
+        if let (1, Some(p)) = (n, self.pieces.first()) {
+            if p.buf == Buf::Orig && p.start == 0 {
+                if let Some(t) = self.index.total_lines() {
+                    if p.len == self.index.len() {
+                        return (t, true);
+                    }
                 }
+                let (nl, ex) =
+                    self.index
+                        .nl_before_est(&self.source, &self.codec, self.blocking, p.len);
+                return (nl + 1, ex);
             }
-            let p = &self.pieces[0];
-            let (nl, ex) =
-                self.index
-                    .nl_before_est(&self.source, &self.codec, self.blocking, p.len);
-            return (nl + 1, ex);
         }
-        (self.cum_lines[n] + 1, self.inexact_from >= n)
+        (self.pieces.lines() + 1, self.pieces.inexact_from() >= n)
     }
 
     /// True if some pieces have estimated newline counts.
     pub fn has_inexact(&self) -> bool {
-        self.inexact_from < self.pieces.len()
+        self.pieces.inexact_from() < self.pieces.len()
     }
 
     /// Re-counts up to `budget` inexact pieces (call when the index has progressed).
@@ -460,54 +462,20 @@ impl TextBuf {
         if !self.has_inexact() {
             return false;
         }
-        let mut changed = false;
-        let mut done = 0;
-        let mut updates = Vec::new();
-        for (i, p) in self.pieces.iter().enumerate().skip(self.inexact_from) {
-            if p.exact {
-                continue;
-            }
-            if done >= budget {
-                break;
-            }
-            done += 1;
-            let (nl, exact) = self.count_orig(p.start, p.len);
-            if exact || nl != p.nl {
-                updates.push((i, nl, exact));
-            }
+        let updates: Vec<(usize, u64, bool)> = self
+            .pieces
+            .inexact(budget)
+            .into_iter()
+            .filter_map(|(i, p)| {
+                let (nl, exact) = self.count_orig(p.start, p.len);
+                (exact || nl != p.nl).then_some((i, nl, exact))
+            })
+            .collect();
+        if updates.is_empty() {
+            return false;
         }
-        if !updates.is_empty() {
-            let pieces = Arc::make_mut(&mut self.pieces);
-            for (i, nl, exact) in updates {
-                pieces[i].nl = nl;
-                pieces[i].exact = exact;
-            }
-            changed = true;
-            self.rebuild_cum();
-        }
-        changed
-    }
-
-    fn rebuild_cum(&mut self) {
-        let n = self.pieces.len();
-        let mut cb = Vec::with_capacity(n + 1);
-        let mut cl = Vec::with_capacity(n + 1);
-        let (mut b, mut l) = (0u64, 0u64);
-        let mut inexact_from = n;
-        for (i, p) in self.pieces.iter().enumerate() {
-            cb.push(b);
-            cl.push(l);
-            b += p.len;
-            l += p.nl;
-            if !p.exact && inexact_from == n {
-                inexact_from = i;
-            }
-        }
-        cb.push(b);
-        cl.push(l);
-        self.cum_bytes = Arc::new(cb);
-        self.cum_lines = Arc::new(cl);
-        self.inexact_from = inexact_from;
+        self.pieces.set_counts(&updates);
+        true
     }
 
     // ----------------------------------------------------------------------------------------
@@ -541,9 +509,7 @@ impl TextBuf {
         if text.is_empty() {
             return None;
         }
-        let add = Arc::make_mut(&mut self.add);
-        let start = add.len() as u64;
-        add.extend_from_slice(text);
+        let start = self.add.push(text);
         let nl = self.codec.count_nl(text, start);
         Some(Piece {
             buf: Buf::Add,
@@ -554,12 +520,18 @@ impl TextBuf {
         })
     }
 
+    /// The piece containing `off` (the last one for `off == len`); the document must not be
+    /// empty.
+    fn pos_at(&self, off: u64) -> Pos {
+        self.pieces.at_offset(off).expect("document is not empty")
+    }
+
     /// Replaces `range` with `text` and returns the reversible swap.
     pub fn replace(&mut self, range: Range<u64>, text: &[u8]) -> Swap {
         let len = self.len();
         let end = range.end.min(len);
         let start = range.start.min(end);
-        let add_len_before = self.add.len() as u64;
+        let add_len_before = self.add.len();
         let new_piece = self.append_add(text);
         let n = self.pieces.len();
 
@@ -568,71 +540,58 @@ impl TextBuf {
             let Some(np) = new_piece else {
                 return Swap::default();
             };
-            let (k, rel) = if n == 0 || start == len {
-                (n, 0)
+            let (k, rel, piece) = if n == 0 || start == len {
+                (n, 0, None)
             } else {
-                let k = self.piece_at(start);
-                (k, start - self.cum_bytes[k])
+                let pos = self.pos_at(start);
+                (pos.index, start - pos.start, Some(pos.piece))
             };
             if rel == 0 {
-                // At a piece boundary: try to extend the previous add piece (typing).
-                if k > 0 {
-                    let prev = self.pieces[k - 1];
-                    if prev.buf == Buf::Add && prev.start + prev.len == add_len_before {
+                // At a piece boundary: try to extend the previous add piece (typing), unless the
+                // new text went into another chunk of the add buffer.
+                let prev = (k > 0).then(|| self.pieces.get(k - 1));
+                match prev {
+                    Some(prev)
+                        if prev.buf == Buf::Add
+                            && prev.start + prev.len == add_len_before
+                            && self.add.contiguous(prev.start, np.start + np.len) =>
+                    {
                         let ext = Piece {
                             len: prev.len + np.len,
                             nl: prev.nl + np.nl,
                             ..prev
                         };
-                        Swap {
-                            at: k - 1,
-                            removed: vec![prev],
-                            inserted: vec![ext],
-                        }
-                    } else {
-                        Swap {
-                            at: k,
-                            removed: vec![],
-                            inserted: vec![np],
-                        }
+                        Swap::splice(k - 1, vec![prev], vec![ext])
                     }
-                } else {
-                    Swap {
-                        at: 0,
-                        removed: vec![],
-                        inserted: vec![np],
-                    }
+                    _ => Swap::splice(k, vec![], vec![np]),
                 }
             } else {
-                let p = self.pieces[k];
+                let p = piece.unwrap();
                 let (l, r) = self.split_piece(&p, rel);
-                Swap {
-                    at: k,
-                    removed: vec![p],
-                    inserted: vec![l, np, r],
-                }
+                Swap::splice(k, vec![p], vec![l, np, r])
             }
         } else {
-            let a = self.piece_at(start);
-            let b = self.piece_at(end - 1);
-            let rel_a = start - self.cum_bytes[a];
-            let rel_b = end - self.cum_bytes[b];
+            let pa = self.pos_at(start);
+            let pb = self.pos_at(end - 1);
+            let rel_a = start - pa.start;
+            let rel_b = end - pb.start;
             let mut inserted = Vec::with_capacity(3);
             if rel_a > 0 {
-                inserted.push(self.sub_piece(&self.pieces[a], 0, rel_a));
+                inserted.push(self.sub_piece(&pa.piece, 0, rel_a));
             }
             if let Some(np) = new_piece {
                 inserted.push(np);
             }
-            let pb = self.pieces[b];
-            if rel_b < pb.len {
-                inserted.push(self.sub_piece(&pb, rel_b, pb.len));
+            if rel_b < pb.piece.len {
+                inserted.push(self.sub_piece(&pb.piece, rel_b, pb.piece.len));
             }
-            Swap {
-                at: a,
-                removed: self.pieces[a..=b].to_vec(),
-                inserted,
-            }
+            let removed = self
+                .pieces
+                .iter_from(&pa)
+                .take(pb.index - pa.index + 1)
+                .map(|(_, p)| p)
+                .collect();
+            Swap::splice(pa.index, removed, inserted)
         };
         self.apply(&swap, true);
         swap
@@ -640,33 +599,43 @@ impl TextBuf {
 
     /// Applies (`forward`) or reverts a swap.
     pub fn apply(&mut self, swap: &Swap, forward: bool) {
-        let pieces = Arc::make_mut(&mut self.pieces);
-        if forward {
-            pieces.splice(
-                swap.at..swap.at + swap.removed.len(),
-                swap.inserted.iter().copied(),
-            );
-        } else {
-            pieces.splice(
-                swap.at..swap.at + swap.inserted.len(),
-                swap.removed.iter().copied(),
-            );
+        match &swap.0 {
+            SwapKind::Splice {
+                at,
+                removed,
+                inserted,
+            } => {
+                let (old, new) = if forward {
+                    (removed, inserted)
+                } else {
+                    (inserted, removed)
+                };
+                if !old.is_empty() || !new.is_empty() {
+                    self.pieces.splice(*at, old.len(), new);
+                }
+            }
+            SwapKind::Whole { before, after } => {
+                let to = if forward { after } else { before };
+                self.pieces = to.clone();
+            }
         }
-        self.rebuild_cum();
     }
 
     /// Pieces referencing the bytes of `range` (zero-copy duplication).
     pub fn copy_pieces(&self, range: Range<u64>) -> Vec<Piece> {
         let end = range.end.min(self.len());
-        let mut pos = range.start.min(end);
+        let start = range.start.min(end);
         let mut out = Vec::new();
-        while pos < end {
-            let k = self.piece_at(pos);
-            let p = self.pieces[k];
-            let ps = self.cum_bytes[k];
-            let e = end.min(ps + p.len);
-            out.push(self.sub_piece(&p, pos - ps, e - ps));
-            pos = e;
+        if start == end {
+            return out;
+        }
+        for (ps, p) in self.pieces.iter_from(&self.pos_at(start)) {
+            if ps >= end {
+                break;
+            }
+            let s = start.max(ps) - ps;
+            let e = end.min(ps + p.len) - ps;
+            out.push(self.sub_piece(&p, s, e));
         }
         out
     }
@@ -679,31 +648,19 @@ impl TextBuf {
         let at = at.min(self.len());
         let n = self.pieces.len();
         let swap = if n == 0 || at == self.len() {
-            Swap {
-                at: n,
-                removed: vec![],
-                inserted: new,
-            }
+            Swap::splice(n, vec![], new)
         } else {
-            let k = self.piece_at(at);
-            let rel = at - self.cum_bytes[k];
+            let pos = self.pos_at(at);
+            let rel = at - pos.start;
             if rel == 0 {
-                Swap {
-                    at: k,
-                    removed: vec![],
-                    inserted: new,
-                }
+                Swap::splice(pos.index, vec![], new)
             } else {
-                let p = self.pieces[k];
-                let (l, r) = self.split_piece(&p, rel);
-                let mut ins = vec![l];
+                let (l, r) = self.split_piece(&pos.piece, rel);
+                let mut ins = Vec::with_capacity(new.len() + 2);
+                ins.push(l);
                 ins.extend(new);
                 ins.push(r);
-                Swap {
-                    at: k,
-                    removed: vec![p],
-                    inserted: ins,
-                }
+                Swap::splice(pos.index, vec![pos.piece], ins)
             }
         };
         self.apply(&swap, true);
@@ -716,21 +673,28 @@ impl TextBuf {
     pub fn build_batch(&self, edits: &[(Range<u64>, Vec<u8>)]) -> (Vec<Piece>, Vec<u8>) {
         let mut out: Vec<Piece> = Vec::with_capacity(self.pieces.len() + edits.len() * 2);
         let mut add_bytes = Vec::new();
-        let base = self.add.len() as u64;
+        let base = self.add.len();
+        // Ranges past the end are cut to it.
         let len = self.len();
         let mut pos = 0u64;
-        // Ranges past the end are cut to it: walking pieces beyond the last one would never
-        // reach `to`.
-        let push_range = |out: &mut Vec<Piece>, from: u64, to: u64| {
-            let mut p = from;
-            let to = to.min(len);
-            while p < to {
-                let k = self.piece_at(p);
-                let pc = self.pieces[k];
-                let ps = self.cum_bytes[k];
-                let e = to.min(ps + pc.len);
-                out.push(self.sub_piece(&pc, p - ps, e - ps));
-                p = e;
+        // One pass over the pieces: the ranges kept are in document order.
+        let mut it = self.pieces.iter().peekable();
+        let mut push_range = |out: &mut Vec<Piece>, from: u64, to: u64| {
+            if from >= to {
+                return;
+            }
+            while let Some(&(ps, pc)) = it.peek() {
+                let pe = ps + pc.len;
+                if ps >= to {
+                    break;
+                }
+                if pe > from {
+                    out.push(self.sub_piece(&pc, from.max(ps) - ps, to.min(pe) - ps));
+                }
+                if pe > to {
+                    break;
+                }
+                it.next();
             }
         };
         for (r, text) in edits {
@@ -756,12 +720,12 @@ impl TextBuf {
 
     /// Applies a batch built by [`build_batch`] on a snapshot with the same add buffer length.
     pub fn apply_batch(&mut self, pieces: Vec<Piece>, add_bytes: &[u8]) -> Swap {
-        Arc::make_mut(&mut self.add).extend_from_slice(add_bytes);
-        let swap = Swap {
-            at: 0,
-            removed: self.pieces.to_vec(),
-            inserted: pieces,
-        };
+        // All of the batch's bytes go in as one text, so its pieces stay inside one chunk.
+        self.add.push(add_bytes);
+        let swap = Swap(SwapKind::Whole {
+            before: self.pieces.clone(),
+            after: PieceTree::from_vec(pieces),
+        });
         self.apply(&swap, true);
         swap
     }
@@ -817,14 +781,13 @@ mod tests {
         let mut t = TextBuf::new(src.clone(), LineIndex::new(src.len()), Codec::utf8());
         t.replace(0..5, b"HELLO");
         t.replace(12..12, b"inserted\n");
-        let pieces: Vec<(Buf, u64, u64)> =
-            t.pieces().iter().map(|p| (p.buf, p.start, p.len)).collect();
+        let pieces: Vec<(Buf, u64, u64)> = t.pieces().map(|p| (p.buf, p.start, p.len)).collect();
         let back = TextBuf::with_pieces(
             src.clone(),
             LineIndex::new(src.len()),
             Codec::utf8(),
             &pieces,
-            t.add_bytes().to_vec(),
+            t.add_bytes_from(0),
         )
         .unwrap();
         assert_eq!(
@@ -914,7 +877,7 @@ mod tests {
             t.replace(1 + i as u64..1 + i as u64, &[c]);
         }
         assert_eq!(text(&t), "axyz123b");
-        assert_eq!(t.pieces().len(), 3);
+        assert_eq!(t.piece_count(), 3);
     }
 
     #[test]
@@ -988,6 +951,74 @@ mod tests {
         check_lines(&t);
     }
 
+    /// Edit costs on large piece lists and a large add buffer, with and without a live worker
+    /// snapshot. `cargo test --release --lib bench_edit_costs -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn bench_edit_costs() {
+        use std::time::Instant;
+        let mut rng = 7u64;
+        let mut next = move || {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            rng
+        };
+        for target in [100_000usize, 1_000_000] {
+            // Every line's first byte replaced in one batch: about two pieces per line.
+            let lines = target / 2;
+            let base: String = (0..lines).map(|i| format!("line {i:07}\n")).collect();
+            let (_f, t) = buf_with(base.as_bytes());
+            let edits: Vec<(Range<u64>, Vec<u8>)> = (0..lines as u64)
+                .map(|i| (i * 13..i * 13 + 1, b"L".to_vec()))
+                .collect();
+            let (pieces, add) = t.build_batch(&edits);
+            let mut t = t.clone();
+            t.blocking = false;
+            let at = Instant::now();
+            t.apply_batch(pieces, &add);
+            let batch = at.elapsed();
+            let keys = 2000;
+            let mut run = |t: &mut TextBuf, mode: u8| {
+                let mut keep = None;
+                let at = Instant::now();
+                for _ in 0..keys {
+                    if mode == 2 || (mode == 1 && keep.is_none()) {
+                        keep = Some(t.snapshot());
+                    }
+                    let off = next() % (t.len() + 1);
+                    t.replace(off..off, b"k");
+                }
+                drop(keep);
+                at.elapsed().as_secs_f64() * 1e6 / keys as f64
+            };
+            let plain = run(&mut t, 0);
+            let once = run(&mut t, 1);
+            let each = run(&mut t, 2);
+            eprintln!(
+                "{target:>8} pieces: apply_batch {:.1} ms; insert {plain:.1} us, \
+                 with a snapshot {once:.1} us, with a new snapshot per key {each:.1} us",
+                batch.as_secs_f64() * 1e3
+            );
+        }
+        // A 100 MB paste, then typing while a worker holds a snapshot taken before each key.
+        let (_f, mut t) = buf_with(b"some text\n");
+        t.blocking = false;
+        t.replace(5..5, &vec![b'p'; 100 << 20]);
+        let keys = 50;
+        let at = Instant::now();
+        let mut keep = Vec::new();
+        for i in 0..keys {
+            keep.push(t.snapshot());
+            t.replace(5 + i..5 + i, b"k");
+            keep.truncate(1);
+        }
+        eprintln!(
+            "100 MB add buffer: insert with a new snapshot per key {:.1} us",
+            at.elapsed().as_secs_f64() * 1e6 / keys as f64
+        );
+    }
+
     #[test]
     fn char_navigation() {
         let (_f, t) = buf_with("aé😀b".as_bytes());
@@ -997,5 +1028,352 @@ mod tests {
         assert_eq!(t.prev_char(7), 3);
         assert_eq!(t.prev_char(3), 1);
         assert_eq!(t.snap_char(4), 7);
+    }
+
+    /// One edit on the reference model, reversible.
+    enum ModelEdit {
+        Splice {
+            at: usize,
+            old: Vec<u8>,
+            new: Vec<u8>,
+        },
+        Whole {
+            old: Vec<u8>,
+            new: Vec<u8>,
+        },
+    }
+
+    impl ModelEdit {
+        fn apply(&self, model: &mut Vec<u8>, forward: bool) {
+            match self {
+                ModelEdit::Splice { at, old, new } => {
+                    let (from, to) = if forward { (old, new) } else { (new, old) };
+                    model.splice(*at..*at + from.len(), to.iter().copied());
+                }
+                ModelEdit::Whole { old, new } => {
+                    let to = if forward { new } else { old };
+                    model.clone_from(to);
+                }
+            }
+        }
+    }
+
+    /// Checks content, structure and (once the index is built) a sample of lines.
+    fn check_model(t: &mut TextBuf, model: &[u8], next: &mut impl FnMut() -> u64) {
+        t.pieces.check();
+        assert_eq!(t.len(), model.len() as u64);
+        assert_eq!(t.read(0..t.len()).unwrap().as_ref(), model);
+        let mut buf = Vec::new();
+        let len = model.len() as u64;
+        for _ in 0..20 {
+            let a = next() % (len + 1);
+            let b = (a + next() % 3000).min(len);
+            assert_eq!(
+                t.read(a..b).unwrap().as_ref(),
+                &model[a as usize..b as usize]
+            );
+            assert_eq!(t.read_to(a..b, &mut buf), Some((b - a) as usize));
+            assert_eq!(&buf[..(b - a) as usize], &model[a as usize..b as usize]);
+        }
+        if !t.index.is_done() {
+            // Estimated counts: only that the mapping answers.
+            assert!(!t.has_inexact() || !t.line_count().1);
+            for _ in 0..20 {
+                let (l, _) = t.line_of(next() % (len + 1));
+                t.line_start(l);
+            }
+            return;
+        }
+        while t.refresh_counts(512) {}
+        assert!(!t.has_inexact());
+        let starts: Vec<u64> = std::iter::once(0)
+            .chain(
+                model
+                    .iter()
+                    .enumerate()
+                    .filter(|&(_, &b)| b == b'\n')
+                    .map(|(i, _)| i as u64 + 1),
+            )
+            .collect();
+        assert_eq!(t.line_count(), (starts.len() as u64, true));
+        for _ in 0..100 {
+            let l = (next() % starts.len() as u64) as usize;
+            assert_eq!(t.line_start(l as u64), Some((starts[l], true)), "line {l}");
+            assert_eq!(t.line_of(starts[l]), (l as u64, true));
+            let off = next() % (len + 1);
+            let line = starts.partition_point(|&s| s <= off) - 1;
+            assert_eq!(t.line_of(off), (line as u64, true));
+        }
+        assert_eq!(t.line_start(starts.len() as u64), None);
+    }
+
+    /// Thousands of random edits (replaces, typing runs, big deletes, duplicated pieces,
+    /// batches, big inserts) with undo and redo interleaved, snapshots kept across later edits,
+    /// estimated newline counts refreshed once the index is built, and journal round trips.
+    #[test]
+    fn random_edits_tree_stress() {
+        // Over 1 MB with no index yet: pieces of the original get estimated counts.
+        let base: String = (0..60_000)
+            .map(|i| format!("row {i:06} {}\n", "x".repeat(i % 37)))
+            .collect();
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(base.as_bytes()).unwrap();
+        f.flush().unwrap();
+        let src = Arc::new(Source::open(f.path(), OpenMode::Auto).unwrap());
+        let mut t = TextBuf::new(src.clone(), LineIndex::new(src.len()), Codec::utf8());
+        t.blocking = true;
+        assert!(t.has_inexact());
+        let mut model = base.into_bytes();
+        let mut rng = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = move || {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            rng
+        };
+        let mut done: Vec<(Swap, ModelEdit)> = Vec::new();
+        let mut undone: Vec<(Swap, ModelEdit)> = Vec::new();
+        let mut snaps: Vec<(TextBuf, Vec<u8>)> = Vec::new();
+        let mut caret = 0u64;
+        let (mut max_leaves, mut merged) = (0, false);
+        let rounds = 8000;
+        for round in 0..rounds {
+            if round == rounds / 2 {
+                // The index finishes: estimated counts become exact on refresh.
+                t.index = index::build_blocking(&src, Codec::utf8());
+                check_model(&mut t, &model, &mut next);
+            }
+            let len = model.len() as u64;
+            let leaves_before = t.pieces.leaf_count();
+            let rec = match next() % 100 {
+                0..=11 if !done.is_empty() => {
+                    let (s, m) = done.pop().unwrap();
+                    t.apply(&s, false);
+                    m.apply(&mut model, false);
+                    undone.push((s, m));
+                    None
+                }
+                12..=17 if !undone.is_empty() => {
+                    let (s, m) = undone.pop().unwrap();
+                    t.apply(&s, true);
+                    m.apply(&mut model, true);
+                    done.push((s, m));
+                    None
+                }
+                18..=39 => {
+                    // A typing run at the caret: coalesces into one add piece.
+                    caret = caret.min(len);
+                    let c = [b'a' + (next() % 26) as u8];
+                    let s = t.replace(caret..caret, &c);
+                    let m = ModelEdit::Splice {
+                        at: caret as usize,
+                        old: vec![],
+                        new: c.to_vec(),
+                    };
+                    caret += 1;
+                    Some((s, m))
+                }
+                40..=41 => {
+                    // A big delete across many pieces and leaves.
+                    let a = next() % (len + 1);
+                    let b = (a + next() % (len / 4).clamp(1, 200_000)).min(len);
+                    let old = model[a as usize..b as usize].to_vec();
+                    let m = ModelEdit::Splice {
+                        at: a as usize,
+                        old,
+                        new: vec![],
+                    };
+                    Some((t.replace(a..b, b""), m))
+                }
+                42..=44 => {
+                    // Duplicating a range by its pieces.
+                    let a = next() % (len + 1);
+                    let b = (a + next() % 5000).min(len);
+                    let at = next() % (len + 1);
+                    let pcs = t.copy_pieces(a..b);
+                    let m = ModelEdit::Splice {
+                        at: at as usize,
+                        old: vec![],
+                        new: model[a as usize..b as usize].to_vec(),
+                    };
+                    Some((t.insert_pieces(at, pcs), m))
+                }
+                45 => {
+                    // A batch of replacements over the whole document, built on a snapshot.
+                    let mut edits = Vec::new();
+                    let mut p = 0u64;
+                    while edits.len() < 300 {
+                        let a = p + next() % 4000;
+                        if a > len {
+                            break;
+                        }
+                        let b = (a + next() % 20).min(len);
+                        let text = if next() % 2 == 0 {
+                            b"B\n".to_vec()
+                        } else {
+                            vec![]
+                        };
+                        edits.push((a..b, text));
+                        p = b + 1;
+                    }
+                    let (pieces, add) = t.snapshot().build_batch(&edits);
+                    let mut new = model.clone();
+                    for (r, text) in edits.iter().rev() {
+                        new.splice(r.start as usize..r.end as usize, text.iter().copied());
+                    }
+                    let m = ModelEdit::Whole {
+                        old: model.clone(),
+                        new,
+                    };
+                    Some((t.apply_batch(pieces, &add), m))
+                }
+                46 if next() % 4 == 0 => {
+                    // A big insert: a chunk of the add buffer of its own.
+                    let at = next() % (len + 1);
+                    let text: Vec<u8> = (0..(next() % (1 << 21)) as usize)
+                        .map(|i| if i % 50 == 49 { b'\n' } else { b'q' })
+                        .collect();
+                    let m = ModelEdit::Splice {
+                        at: at as usize,
+                        old: vec![],
+                        new: text.clone(),
+                    };
+                    Some((t.replace(at..at, &text), m))
+                }
+                _ => {
+                    let a = next() % (len + 1);
+                    let b = (a + next() % 60).min(len);
+                    let text: &[u8] = match next() % 4 {
+                        0 => b"",
+                        1 => b"X\nY",
+                        2 => b"\n",
+                        _ => b"zz",
+                    };
+                    caret = a + text.len() as u64;
+                    let m = ModelEdit::Splice {
+                        at: a as usize,
+                        old: model[a as usize..b as usize].to_vec(),
+                        new: text.to_vec(),
+                    };
+                    Some((t.replace(a..b, text), m))
+                }
+            };
+            if let Some((s, m)) = rec {
+                m.apply(&mut model, true);
+                done.push((s, m));
+                undone.clear();
+            }
+            assert_eq!(t.len(), model.len() as u64, "round {round}");
+            let leaves = t.pieces.leaf_count();
+            max_leaves = max_leaves.max(leaves);
+            merged |= leaves < leaves_before;
+            if next() % 40 == 0 {
+                snaps.push((t.snapshot(), model.clone()));
+                if snaps.len() > 4 {
+                    snaps.remove(next() as usize % snaps.len());
+                }
+            }
+            if round % 400 == 0 {
+                check_model(&mut t, &model, &mut next);
+                for (s, m) in &snaps {
+                    assert_eq!(s.read(0..s.len()).unwrap().as_ref(), m.as_slice());
+                    s.pieces.check();
+                }
+                // The recovery journal's view of the buffer rebuilds the same text.
+                let list: Vec<(Buf, u64, u64)> =
+                    t.pieces().map(|p| (p.buf, p.start, p.len)).collect();
+                let mut back = TextBuf::with_pieces(
+                    src.clone(),
+                    t.index.clone(),
+                    Codec::utf8(),
+                    &list,
+                    t.add_bytes_from(0),
+                )
+                .unwrap();
+                back.blocking = true;
+                check_model(&mut back, &model, &mut next);
+            }
+        }
+        check_model(&mut t, &model, &mut next);
+        assert!(max_leaves > 20, "leaves never split: {max_leaves}");
+        assert!(merged, "leaves never merged");
+        assert!(
+            t.add.chunk_count() > 3,
+            "add buffer in {} chunks",
+            t.add.chunk_count()
+        );
+        for (s, m) in &snaps {
+            assert_eq!(s.read(0..s.len()).unwrap().as_ref(), m.as_slice());
+        }
+        // Everything undone gives back the original file.
+        while let Some((s, m)) = done.pop() {
+            t.apply(&s, false);
+            m.apply(&mut model, false);
+        }
+        assert!(t.is_pristine());
+        check_model(&mut t, &model, &mut next);
+    }
+
+    #[test]
+    fn add_buffer_never_copies_shared_old_bytes() {
+        let mut a = AddBuf::default();
+        let s = a.push(&vec![b'p'; 3 << 20]);
+        let snap = a.clone();
+        // A shared last chunk larger than the copy limit is left alone.
+        let t = a.push(b"typed");
+        assert_eq!((s, t), (0, 3 << 20));
+        assert_eq!(a.chunk_count(), 2);
+        assert!(!a.contiguous(t - 1, t + 1));
+        assert!(a.contiguous(t, t + 5));
+        assert_eq!(a.slice(t, t + 5), b"typed");
+        // Unshared: appended in place.
+        a.push(b"more");
+        assert_eq!(a.chunk_count(), 2);
+        assert_eq!(snap.len(), 3 << 20);
+        assert_eq!(a.copy_from(t), b"typedmore");
+        assert_eq!(a.copy_from(t + 2), b"pedmore");
+        assert_eq!(a.copy_from(0).len(), (3 << 20) + 9);
+        // A small shared last chunk is copied rather than split.
+        let snap2 = a.clone();
+        a.push(b"!");
+        assert_eq!(a.chunk_count(), 2);
+        assert_eq!(snap2.copy_from(t), b"typedmore");
+        assert_eq!(a.copy_from(t), b"typedmore!");
+    }
+
+    #[test]
+    fn typing_after_a_chunk_switch_does_not_merge_across_chunks() {
+        let (_f, mut t) = buf_with(b"ab");
+        t.replace(1..1, &vec![b'x'; 2 << 20]);
+        let _snap = t.snapshot();
+        let n = t.piece_count();
+        t.replace(1..1, b"y");
+        t.replace(2..2, b"z");
+        assert_eq!(t.piece_count(), n + 1);
+        assert_eq!(&*t.read(0..3).unwrap(), b"ayz");
+    }
+
+    #[test]
+    fn batch_undo_and_redo() {
+        let (_f, mut t) = buf_with(b"aaa bbb aaa\n");
+        let s1 = t.replace(0..0, b">");
+        let (pieces, add) = t.build_batch(&[(1..4, b"X".to_vec())]);
+        let s2 = t.apply_batch(pieces, &add);
+        assert_eq!(text(&t), ">X bbb aaa\n");
+        let s3 = t.replace(2..2, b"!");
+        assert_eq!(text(&t), ">X! bbb aaa\n");
+        for s in [&s3, &s2, &s1] {
+            t.apply(s, false);
+        }
+        assert!(t.is_pristine());
+        for (s, want) in [
+            (&s1, ">aaa bbb aaa\n"),
+            (&s2, ">X bbb aaa\n"),
+            (&s3, ">X! bbb aaa\n"),
+        ] {
+            t.apply(s, true);
+            assert_eq!(text(&t), want);
+            check_lines(&t);
+        }
     }
 }
