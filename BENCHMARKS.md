@@ -146,6 +146,37 @@ target/release/bigtext --bench-ui FILE --scenario close-search --report r.txt
   exits at once (each whole run, start included, took about 1 s), the file is unchanged and no
   temporary file is left.
 
+## Linux, macOS and Windows on GitHub runners
+
+The [bench workflow](.github/workflows/bench.yml) ran the core benchmark (`bigtext-bench`, no
+window) with the published 0.12.0 binaries on four GitHub-hosted runners, 3 runs each, on
+23 November 2026. Raw reports: [`bench/2026-11-23-ci/`](bench/2026-11-23-ci/). Runners are shared
+virtual machines with 3–4 cores, so the numbers vary between runs (the ranges are wide) and are
+lower than a desktop's. They show how the Linux and macOS reading path (`pread`) behaves, not
+what a user's PC does.
+
+| | Linux x64 | macOS arm64 | macOS x64 (Intel) | Windows x64 |
+|---|---|---|---|---|
+| Runner | AMD EPYC 7763, 4 vCPU, 16 GB | Apple M1 (virtual), 3 cores, 7 GB | Intel i7-8700B, 4 cores, 14 GB | Intel Xeon 6973P-C, 4 vCPU, 16 GB |
+| Open → first screen laid out (core), 1 / 10 GB | 3.0 / 2.9–3.9 ms | 5.4–8.8 / 12.5–17.1 ms | 9.4–19.0 / 5.8–47.1 ms | 2.5–3.0 / 2.5–3.0 ms |
+| Background line index, 1 GB | 0.84–0.87 s | 1.18–1.76 s | 2.37–5.03 s | 2.34–2.38 s |
+| Background line index, 10 GB | 10.1–10.9 s | 11.5–12.9 s | 28.7–180 s | 21.3–24.5 s |
+| Literal search, 1 / 10 GB | 2.07–2.11 / 2.22 GB/s | 1.10–4.29 / 0.85–1.25 GB/s | 1.32–2.53 / 0.15–0.74 GB/s | 3.05–3.61 / 3.26–3.59 GB/s |
+| Regex `id=99\d{4} `, 1 / 10 GB | 1.94–2.04 / 2.05–2.09 GB/s | 3.42–3.92 / 0.82–1.37 GB/s | 2.01–2.92 / 0.38–0.88 GB/s | 2.98–3.63 / 3.33–3.70 GB/s |
+| Replace All, 1 GB (2.2 M replacements, with fsync) | 3.62–4.02 s | 0.80–1.66 s | 3.12–8.65 s | 4.40–6.20 s, 43.4–43.7 MB peak |
+
+- **"Open → first screen" here is the core figure** (the text of the first screen read and laid
+  out, no window), not the GUI's "drawn" time in the summary above.
+- **The 10 GB file does not fit in the macOS arm64 runner's 7 GB of memory**, so its 10 GB
+  searches read the disk; the Intel runner's disk made its 10 GB runs vary from 28.7 to 180 s.
+- **On 4 cores the background index is the slowest part**: 0.42–0.48 GB/s on the Windows runner
+  and about 1 GB/s on Linux, against 2.4–2.7 GB/s on the 24-core PC above (50 GB would take from
+  about 50 s to 2 minutes there). Scrolling and Go to line do not wait for it.
+- **Memory** is not measured on macOS (`n/a` in the reports), and on Linux the figure changed
+  from 1 MB to 71 MB between identical runs, so it is left out.
+- **Intel Macs**: this is the first time the macOS x64 build ran on an Intel processor. The core
+  benchmark ran on every test file; the window itself was not tested there.
+
 ## Earlier runs
 
 | | 0.1.0, 24 Oct 2026 | 0.12.0, 23 Nov 2026 |
@@ -171,6 +202,7 @@ editors.
 ## Not measured yet
 
 - A cold disk, a hard disk, a network drive or a USB stick.
-- Linux and macOS (the `pread` path), and Intel Macs at all.
+- Linux and macOS on a real PC (only on shared GitHub runners so far, see above), and the GUI
+  benchmark on them.
 - Files larger than RAM.
 - The time to present the first frame, after its cause is understood.

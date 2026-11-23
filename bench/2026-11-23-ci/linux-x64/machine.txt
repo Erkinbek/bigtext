@@ -1,0 +1,9 @@
+BigText v0.12.0, release binaries (bigtext-linux-x64.tar.gz)
+runner: ubuntu-latest (Linux X64), image ubuntu26 20261116.202.1
+date: 2026-11-23 18:09 UTC
+CPU(s):                                  4
+Model name:                              AMD EPYC 7763 64-Core Processor
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       920Mi        14Gi        41Mi       928Mi        14Gi
+/dev/root       145G   58G   88G  40% /
+free disk after the small files: 83 GB

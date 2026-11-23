@@ -1,0 +1,7 @@
+BigText v0.12.0, release binaries (bigtext-macos-x64.tar.gz)
+runner: macos-15-intel (macOS X64), image macos15 20260824.0482.1
+date: 2026-11-23 18:09 UTC
+CPU: Intel(R) Core(TM) i7-8700B CPU @ 3.20GHz, 4 cores
+RAM: 14 GiB
+/dev/disk1s1   325Gi   202Gi   108Gi    66%    2.2M  1.1G    0%   /System/Volumes/Data
+free disk after the small files: 104 GB

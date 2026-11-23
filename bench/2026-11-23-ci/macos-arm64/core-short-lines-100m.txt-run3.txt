@@ -1,0 +1,16 @@
+file: testdata/short-lines-100m.txt
+private memory at start: n/a
+private memory right after open (mapping created, nothing read): n/a
+size: 466.22 MB (488869191 bytes), backing: pread, encoding: UTF-8, line endings: LF
+open + detect: 4.19 ms
+first screen (60 rows, 110 chars): 0.211 ms  => open-to-first-screen 4.40 ms
+go-to line before indexing (estimate + layout of 50 rows): avg 1.533 ms, max 2.367 ms
+index: 0.30 s (1529 MB/s), 100000001 lines, index memory 65.00 KB (0.0136% of file)
+private memory with file open + index: n/a
+go-to line after indexing (exact=true, + layout of 50 rows): avg 0.267 ms, max 1.271 ms
+literal "timeout connection": 0 matches in 0.09 s = 5153 MB/s (5.03 GB/s) [memmem]
+literal (ignore case) "timeout connection": 0 matches in 0.16 s = 2897 MB/s (2.83 GB/s) [regex]
+regex "id=99\\d{4} ": 0 matches in 0.08 s = 5518 MB/s (5.39 GB/s) [regex]
+regex "ERROR\\] id=\\d+ timeout": 0 matches in 0.12 s = 3806 MB/s (3.72 GB/s) [regex]
+replace all "timeout" -> "TIMEOUT!": 0 replacements, wrote 466.22 MB in 0.43 s = 1093 MB/s (incl. fsync); private memory before 0 B peak 0 B
+private memory at end (file open, idle): n/a

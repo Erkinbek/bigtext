@@ -3,7 +3,7 @@ name: bench
 # Runs the core benchmarks of BENCHMARKS.md (bigtext-bench, no window) with the published release
 # binaries on GitHub-hosted runners: Linux x64, macOS arm64, macOS x64 (Intel) and Windows x64.
 # Started by hand from the Actions tab; the reports are uploaded as artifacts and copied into
-# bench/<date>-ci-<platform>/. Runners are shared virtual machines with little memory and disk,
+# bench/<date>-ci/<platform>/. Runners are shared virtual machines with little memory and disk,
 # so their numbers vary between runs and are lower than a desktop's: BENCHMARKS.md keeps them
 # apart from the desktop run. The GUI benchmark needs a real display and GPU and is not run here.
 on:

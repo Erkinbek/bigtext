@@ -1,0 +1,7 @@
+BigText v0.12.0, release binaries (bigtext-macos-arm64.tar.gz)
+runner: macos-latest (macOS ARM64), image macos26 20261117.0516.1
+date: 2026-11-23 18:09 UTC
+CPU: Apple M1 (Virtual), 3 cores
+RAM: 7 GiB
+/dev/disk2s5   320Gi   203Gi    96Gi    68%    1.9M  1.0G    0%   /System/Volumes/Data
+free disk after the small files: 92 GB
