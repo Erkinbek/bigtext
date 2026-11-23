@@ -7,6 +7,7 @@ use std::ops::Range;
 use crate::jobs::{CancelToken, Progress};
 use crate::search::{self, Matcher, SearchEnd};
 use crate::text::TextBuf;
+use regex_automata::util::captures::Captures;
 
 /// Replacement text with escape sequences resolved.
 #[derive(Clone, Debug)]
@@ -59,21 +60,71 @@ impl Template {
 
     /// Replacement bytes (in the document's encoding) for the match `s..e`.
     pub fn expand(&self, buf: &TextBuf, m: &Matcher, s: u64, e: u64) -> Vec<u8> {
+        let mut out = Vec::new();
+        Expander::new(self, m).expand_into(buf, s, e, &mut out);
+        out
+    }
+}
+
+/// Expands a [`Template`] for many matches of one search: a replacement without `$`
+/// references is encoded once, and capture buffers are reused, so Replace All does no
+/// per-match encoding or allocation beyond the output itself.
+pub struct Expander<'a> {
+    tpl: &'a Template,
+    m: &'a Matcher,
+    /// The encoded replacement when it does not depend on the match.
+    fixed: Option<Vec<u8>>,
+    caps: Option<Captures>,
+    hay: Vec<u8>,
+    interp: Vec<u8>,
+}
+
+impl<'a> Expander<'a> {
+    pub fn new(tpl: &'a Template, m: &'a Matcher) -> Expander<'a> {
         let codec = m.codec();
-        if !self.interpolate {
-            return codec.encode(&self.text);
+        let fixed = (!tpl.interpolate).then(|| codec.encode(&tpl.text));
+        let caps = if tpl.interpolate {
+            m.regex().map(|r| r.create_captures())
+        } else {
+            None
+        };
+        Expander {
+            tpl,
+            m,
+            fixed,
+            caps,
+            hay: Vec::new(),
+            interp: Vec::new(),
         }
-        match search::captures_at(buf, m, s, e) {
-            Some((hay, caps, _)) => {
-                let mut dst = Vec::new();
-                caps.interpolate_bytes_into(&hay, self.text.as_bytes(), &mut dst);
-                if codec.enc == crate::encoding::Encoding::Utf8 {
-                    dst
-                } else {
-                    codec.encode(&String::from_utf8_lossy(&dst))
-                }
-            }
-            None => codec.encode(&self.text),
+    }
+
+    /// The replacement when it is the same for every match.
+    pub fn fixed(&self) -> Option<&[u8]> {
+        self.fixed.as_deref()
+    }
+
+    /// Appends the replacement for the match `s..e` to `out`.
+    pub fn expand_into(&mut self, buf: &TextBuf, s: u64, e: u64, out: &mut Vec<u8>) {
+        if let Some(f) = &self.fixed {
+            out.extend_from_slice(f);
+            return;
+        }
+        let codec = self.m.codec();
+        let found = match self.caps.as_mut() {
+            Some(caps) => search::captures_into(buf, self.m, s, e, caps, &mut self.hay).is_some(),
+            None => false,
+        };
+        if !found {
+            out.extend_from_slice(&codec.encode(&self.tpl.text));
+            return;
+        }
+        let caps = self.caps.as_ref().expect("captures");
+        if codec.enc == crate::encoding::Encoding::Utf8 {
+            caps.interpolate_bytes_into(&self.hay, self.tpl.text.as_bytes(), out);
+        } else {
+            self.interp.clear();
+            caps.interpolate_bytes_into(&self.hay, self.tpl.text.as_bytes(), &mut self.interp);
+            out.extend_from_slice(&codec.encode(&String::from_utf8_lossy(&self.interp)));
         }
     }
 }
@@ -106,12 +157,15 @@ pub fn collect(
 ) -> Collected {
     let mut edits = Vec::new();
     let mut too_many = false;
+    let mut exp = Expander::new(tpl, m);
     let end = search::search_forward(buf, m, range, cancel, progress, |s, e| {
         if edits.len() >= threshold {
             too_many = true;
             return false;
         }
-        edits.push((s..e, tpl.expand(buf, m, s, e)));
+        let mut rep = Vec::new();
+        exp.expand_into(buf, s, e, &mut rep);
+        edits.push((s..e, rep));
         true
     });
     match end {
@@ -189,11 +243,19 @@ pub fn replace_all_to<W: Write>(
         }
         Ok(())
     };
+    let mut exp = Expander::new(tpl, m);
+    let mut rep = Vec::new();
     let end = search::search_forward_ctx(buf, m, range, cancel, progress, |s, e, hay, base| {
         let r = copy(pos, s, hay, base, out, &mut stats).and_then(|_| {
-            let rep = tpl.expand(buf, m, s, e);
+            let rep: &[u8] = if exp.fixed().is_none() {
+                rep.clear();
+                exp.expand_into(buf, s, e, &mut rep);
+                &rep
+            } else {
+                exp.fixed().unwrap_or_default()
+            };
             stats.bytes_out += rep.len() as u64;
-            out.write_all(&rep)
+            out.write_all(rep)
         });
         if let Err(e) = r {
             err = Some(e);
@@ -382,6 +444,74 @@ mod tests {
             run(b"key=value", r"(?P<k>\w+)=(?P<v>\w+)", true, "${v}=${k}"),
             "value=key"
         );
+    }
+
+    /// One `Expander` reuses its capture buffers for every match: many matches of different
+    /// lengths, in UTF-8 and in decoded encodings, must expand exactly as one at a time.
+    #[test]
+    fn expander_reuse_matches_single_expansion() {
+        use crate::encoding::{Encoding, NlByte};
+        let text: String = (0..300)
+            .map(|i| format!("k{i}={} x{}\n", "v".repeat(i % 17), i * 7))
+            .collect();
+        let encodings = [
+            (Encoding::Utf8, Codec::utf8()),
+            (
+                Encoding::Utf16Le,
+                Codec::new(Encoding::Utf16Le, NlByte::Lf, 0),
+            ),
+            (
+                Encoding::Windows1251,
+                Codec::new(Encoding::Windows1251, NlByte::Lf, 0),
+            ),
+        ];
+        for (enc, codec) in encodings {
+            let data = codec.encode(&text);
+            let mut f = tempfile::NamedTempFile::new().unwrap();
+            f.write_all(&data).unwrap();
+            f.flush().unwrap();
+            let src = Arc::new(Source::open(f.path(), OpenMode::Auto).unwrap());
+            let idx = index::build_blocking(&src, codec);
+            let mut t = TextBuf::new(src, idx, codec);
+            t.blocking = true;
+            let q = Query {
+                pattern: r"(\w+)=(v*) x(\d+)".into(),
+                regex: true,
+                case_sensitive: true,
+                ..Default::default()
+            };
+            let m = Matcher::new(&q, codec).unwrap();
+            for rep in ["[$3|$2|$1]", "fixed"] {
+                let tpl = Template::new(rep, true);
+                let mut exp = Expander::new(&tpl, &m);
+                let mut n = 0;
+                search::search_forward(&t, &m, 0..t.len(), &CancelToken::new(), None, |s, e| {
+                    let mut out = Vec::new();
+                    exp.expand_into(&t, s, e, &mut out);
+                    assert_eq!(out, tpl.expand(&t, &m, s, e), "{enc:?} {rep}");
+                    n += 1;
+                    true
+                });
+                assert_eq!(n, 300, "{enc:?}");
+            }
+            let mut out = Vec::new();
+            let tpl = Template::new("[$3|$2|$1]", true);
+            replace_all_to(
+                &t,
+                &m,
+                &tpl,
+                0..t.len(),
+                &mut out,
+                &CancelToken::new(),
+                None,
+            )
+            .unwrap()
+            .unwrap();
+            let expected: String = (0..300)
+                .map(|i| format!("[{}|{}|k{i}]\n", i * 7, "v".repeat(i % 17)))
+                .collect();
+            assert_eq!(codec.decode_lossy(&out), expected, "{enc:?}");
+        }
     }
 
     #[test]

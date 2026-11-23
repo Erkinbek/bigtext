@@ -576,35 +576,54 @@ pub fn captures_at(
     start: u64,
     end: u64,
 ) -> Option<(Vec<u8>, Captures, usize)> {
+    let mut caps = m.regex()?.create_captures();
+    let mut hay = Vec::new();
+    let s = captures_into(buf, m, start, end, &mut caps, &mut hay)?;
+    Some((hay, caps, s))
+}
+
+/// [`captures_at`] into caller-owned `caps` and `hay`, so a loop over many matches allocates
+/// nothing per match. Returns the offset of the match start in `hay`.
+pub fn captures_into(
+    buf: &TextBuf,
+    m: &Matcher,
+    start: u64,
+    end: u64,
+    caps: &mut Captures,
+    hay: &mut Vec<u8>,
+) -> Option<usize> {
     let re = m.regex()?;
     let len = buf.len();
     let unit = buf.codec.unit() as u64;
     let rs = align_down(start.saturating_sub(CTX), unit);
     let re_end = (end + CTX).min(len);
-    let raw = buf.read(rs..re_end)?;
-    let (hay, s, e) = if m.decoded {
-        let mut t = String::new();
+    let (s, e) = if m.decoded {
+        let raw = buf.read(rs..re_end)?;
+        hay.clear();
+        let mut t = String::from_utf8(std::mem::take(hay)).unwrap_or_default();
         m.codec.decode_into(&raw[..(start - rs) as usize], &mut t);
         let s = t.len();
         m.codec
             .decode_into(&raw[(start - rs) as usize..(end - rs) as usize], &mut t);
         let e = t.len();
         m.codec.decode_into(&raw[(end - rs) as usize..], &mut t);
-        (t.into_bytes(), s, e)
+        *hay = t.into_bytes();
+        (s, e)
     } else {
-        (raw.into_owned(), (start - rs) as usize, (end - rs) as usize)
+        // `read` borrows from the mapping or block cache; `read_to` would issue one positional
+        // read per match on worker snapshots.
+        let raw = buf.read(rs..re_end)?;
+        hay.clear();
+        hay.extend_from_slice(&raw);
+        ((start - rs) as usize, (end - rs) as usize)
     };
-    let mut caps = re.create_captures();
     re.search_captures(
-        &Input::new(&hay)
+        &Input::new(&hay[..])
             .range(s..e)
             .anchored(regex_automata::Anchored::Yes),
-        &mut caps,
+        caps,
     );
-    if !caps.is_match() {
-        return None;
-    }
-    Some((hay, caps, s))
+    caps.is_match().then_some(s)
 }
 
 #[cfg(test)]
