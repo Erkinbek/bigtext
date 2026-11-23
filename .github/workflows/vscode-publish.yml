@@ -1,0 +1,52 @@
+name: vscode-publish
+
+# Publishes the VS Code extension (packaging/vscode) to the VS Code Marketplace under the
+# publisher "erkinbek", and to Open VSX for VSCodium, Cursor and other forks.
+#   - VSCE_PAT (secret): an Azure DevOps personal access token, organisation "All accessible
+#     organizations", scope Marketplace > Manage.
+#   - OVSX_PAT (secret, optional): an Open VSX access token (open-vsx.org, after signing the
+#     publisher agreement and creating the "erkinbek" namespace).
+# A missing token skips its step. A version that is already published is skipped too, so this runs
+# on every release tag and publishes only when packaging/vscode/package.json has a new version.
+# Run it by hand with: gh workflow run vscode-publish.yml
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packaging/vscode
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Unit tests
+        run: node --test test/*.test.js
+
+      - name: Package .vsix
+        run: npx --yes @vscode/vsce@3 package -o bigtext-vscode.vsix
+
+      - name: VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then echo "VSCE_PAT is not set: skipping the Marketplace"; exit 0; fi
+          npx --yes @vscode/vsce@3 publish --packagePath bigtext-vscode.vsix --skip-duplicate
+
+      - name: Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then echo "OVSX_PAT is not set: skipping Open VSX"; exit 0; fi
+          npx --yes ovsx@0 publish bigtext-vscode.vsix --skip-duplicate
