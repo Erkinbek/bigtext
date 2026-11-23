@@ -89,6 +89,7 @@ fn main() -> eframe::Result {
     let mut self_test: Option<PathBuf> = None;
     let mut tour: Option<PathBuf> = None;
     let mut demo: Option<PathBuf> = None;
+    let mut demo_for: Option<self_test::demos::Audience> = None;
     let mut args = std::env::args_os().skip(1);
     while let Some(a) = args.next() {
         match a.to_str() {
@@ -114,6 +115,19 @@ fn main() -> eframe::Result {
                         .map(PathBuf::from)
                         .unwrap_or_else(|| PathBuf::from("target/demo")),
                 )
+            }
+            Some("--demo-for") => {
+                let name = args
+                    .next()
+                    .and_then(|s| s.into_string().ok())
+                    .unwrap_or_default();
+                match self_test::demos::Audience::parse(&name) {
+                    Some(a) => demo_for = Some(a),
+                    None => {
+                        eprintln!("--demo-for takes devops, data, dba or soc");
+                        std::process::exit(2);
+                    }
+                }
             }
             Some("--scenario") => {
                 let s = args
@@ -263,7 +277,9 @@ fn main() -> eframe::Result {
             }
             if let (Some(dir), Some(file)) = (tour.or(demo.clone()), tour_file) {
                 let _ = std::fs::create_dir_all(&dir);
-                app.self_test = Some(if demo.is_some() {
+                app.self_test = Some(if let (true, Some(who)) = (demo.is_some(), demo_for) {
+                    self_test::SelfTest::audience_demo(dir, who)
+                } else if demo.is_some() {
                     self_test::SelfTest::demo(dir, file)
                 } else {
                     self_test::SelfTest::tour(dir, file)
