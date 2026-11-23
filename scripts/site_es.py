@@ -20,9 +20,9 @@ T = {
     "demo_alt": "BigText abre al instante un log de 50 GB, salta a su final y a su mitad, lo busca con una expresión "
                 "regular mientras llegan las coincidencias y sigue un log que crece.",
     "stats": [
-        ("41 ms", "hasta la primera pantalla de un archivo de 50 GB"),
-        ("2,5 GB/s", "velocidad de búsqueda de texto"),
-        ("107 MB", "de RAM con un archivo de 50 GB abierto"),
+        ("24 ms", "hasta dibujar la primera pantalla de un archivo de 50 GB"),
+        ("> 3 GB/s", "velocidad de búsqueda de texto"),
+        ("108 MB", "de RAM con un archivo de 50 GB abierto"),
         ("< 3 ms", "por fotograma de la interfaz mientras indexa"),
     ],
     "features_h2": "Todo lo que necesitas para archivos gigantes",
@@ -32,12 +32,12 @@ T = {
         ("Ir a una línea al instante", "Un índice de líneas disperso (8 bytes por cada 64 KB) se construye en segundo "
          "plano a 2,5 GB/s. Ir a la línea y la barra de desplazamiento funcionan de inmediato, incluso antes de que "
          "termine la indexación."),
-        ("Búsqueda rápida y regex", "Texto simple a 2,5 GB/s y expresiones regulares en tiempo lineal, con opciones de "
+        ("Búsqueda rápida y regex", "Texto simple a más de 3 GB/s y expresiones regulares en tiempo lineal, con opciones de "
          "mayúsculas, palabra completa y varias líneas. «Buscar todo» lista hasta un millón de resultados; F3 funciona "
          "en el acto."),
         ("Reemplazar en gigabytes", "Reemplaza con $1 y grupos con nombre. Hasta 50.000 cambios son una sola edición que "
          "se puede deshacer; los trabajos mayores se escriben en un archivo nuevo: 22 millones de reemplazos en un "
-         "archivo de 10 GB tardaron 11 s y usaron 46 MB de RAM."),
+         "archivo de 10 GB usaron como máximo 63 MB de RAM."),
         ("Edición de verdad", "Escribir, cortar, copiar, pegar, deshacer y rehacer, duplicar o borrar líneas, sangría "
          "automática, sobre una piece table, de modo que las ediciones no reescriben el archivo hasta que guardas."),
         ("Guardado a prueba de fallos", "Al guardar se escribe un archivo temporal, se vuelca al disco y sustituye al "
@@ -119,18 +119,18 @@ T = {
          "en Windows conserva atributos y permisos)."),
     ],
     "perf_h2": "Rendimiento medido",
-    "perf_intro": "Resultados de las pruebas de rendimiento integradas con archivos de prueba de 1 GB, 10 GB y 50 GB en "
-    "Windows 11. El método y los resultados completos están en el README.",
+    "perf_intro": "Resultados de las pruebas de rendimiento integradas de BigText 0.12.0 con archivos de prueba de 1 GB, "
+    "10 GB y 50 GB en Windows 11, con los archivos en la caché del sistema. El método y los informes completos están en BENCHMARKS.md.",
     "perf_cols": ("Tarea", "Resultado"),
     "perf": [
-        ("Abrir → primera pantalla de texto (1–50 GB)", "41–46 ms"),
-        ("Saltar a una línea en un archivo de 50 GB", "menos de 1 ms"),
-        ("Construir el índice de líneas", "2,2–2,7 GB/s (50 GB en unos 20 s)"),
-        ("Búsqueda de texto simple", "2,4–2,5 GB/s"),
-        ("Búsqueda con regex", "2,3–2,8 GB/s con parte literal, 672 MB/s sin ella"),
-        ("Reemplazar todo en un archivo de 10 GB", "11,3 s, 46 MB de memoria máxima"),
-        ("Memoria con un archivo de 50 GB abierto", "107 MB"),
-        ("Arranque → primer fotograma", "159–185 ms"),
+        ("Abrir → primera pantalla de texto (1–50 GB)", "se dibuja en 22–26 ms, en pantalla en unos 0,1 s"),
+        ("Saltar a una línea en un archivo de 50 GB", "menos de 2 ms"),
+        ("Construir el índice de líneas", "2,4–2,7 GB/s (50 GB en unos 19 s)"),
+        ("Búsqueda de texto simple", "3,2–4,3 GB/s"),
+        ("Búsqueda con regex", "2,9–4,2 GB/s con parte literal"),
+        ("Reemplazar todo en un archivo de 10 GB", "47–63 MB de memoria máxima; el tiempo depende del disco"),
+        ("Memoria con un archivo de 50 GB abierto", "108 MB"),
+        ("Arranque → primer fotograma", "138–150 ms"),
     ],
     "dl_h2": "Descargar BigText",
     "dl_intro": "Gratis para uso personal y comercial. Sin cuenta, sin telemetría, un solo ejecutable.",
@@ -155,7 +155,7 @@ T = {
     "faq": [
         ("¿Cómo abro un archivo de texto de 50 GB?",
          "Instala BigText y abre el archivo con Archivo → Abrir, arrastrándolo a la ventana o con clic derecho → «Open "
-         "with BigText». La primera pantalla aparece en unos 40 ms, sea cual sea el tamaño (con el archivo en la caché del sistema); el desplazamiento e ir a la "
+         "with BigText». La primera pantalla se dibuja en unos 25 ms, sea cual sea el tamaño, y se ve en unos 0,1 s (con el archivo en la caché del sistema); el desplazamiento e ir a la "
          "línea funcionan mientras el índice de líneas se construye en segundo plano."),
         ("¿Es BigText una alternativa a EmEditor o UltraEdit?",
          "Para archivos grandes, sí. Como ellos, BigText abre archivos de varios gigabytes sin cargarlos en memoria y "
@@ -163,14 +163,14 @@ T = {
          "No tiene macros ni plugins: su esfuerzo va a los archivos enormes, los logs y las tablas."),
         ("¿BigText carga el archivo entero en memoria?",
          "No. Lee solo la parte que está en pantalla y procesa todo lo demás en segundo plano. Con un archivo de 50 GB "
-         "abierto usa unos 107 MB de RAM, la mayor parte para la propia interfaz."),
+         "abierto usa unos 108 MB de RAM, la mayor parte para la propia interfaz."),
         ("¿Puedo editar y guardar archivos muy grandes?",
          "Sí. Las ediciones se guardan en una piece table sobre el archivo original, así que escribir es instantáneo en "
          "cualquier tamaño. Al guardar, el resultado se escribe en un archivo temporal que sustituye al original de forma "
          "atómica, de modo que el original nunca se daña si algo sale mal."),
         ("¿Qué tan rápida es la búsqueda en archivos enormes?",
-         "El texto simple se busca a 2,4–2,5 GB/s y las expresiones regulares habituales a 2,3–2,8 GB/s, así que un log "
-         "de 10 GB tarda unos 4 segundos. F3 encuentra la siguiente coincidencia al instante, sin esperar a una búsqueda "
+         "El texto simple se busca a 3,2–4,3 GB/s y las expresiones regulares habituales a 2,9–4,2 GB/s, así que un log "
+         "de 10 GB tarda unos 3 segundos. F3 encuentra la siguiente coincidencia al instante, sin esperar a una búsqueda "
          "completa."),
         ("¿Puede seguir un log que crece, como tail -f?",
          "Sí. Ver → Seguir mantiene la vista al final del archivo e indexa las líneas nuevas a medida que llegan. BigText "

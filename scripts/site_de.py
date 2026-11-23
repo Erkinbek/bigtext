@@ -20,9 +20,9 @@ T = {
     "demo_alt": "BigText öffnet eine 50-GB-Logdatei sofort, springt an ihr Ende und in ihre Mitte, durchsucht sie mit "
                 "einem regulären Ausdruck, während die Treffer eintreffen, und verfolgt ein wachsendes Log.",
     "stats": [
-        ("41 ms", "bis zum ersten Bildschirm einer 50-GB-Datei"),
-        ("2,5 GB/s", "Volltextsuche"),
-        ("107 MB", "RAM mit einer geöffneten 50-GB-Datei"),
+        ("24 ms", "bis der erste Bildschirm einer 50-GB-Datei gezeichnet ist"),
+        ("> 3 GB/s", "Volltextsuche"),
+        ("108 MB", "RAM mit einer geöffneten 50-GB-Datei"),
         ("< 3 ms", "Frame-Zeit der Oberfläche beim Indizieren"),
     ],
     "features_h2": "Alles, was Sie für riesige Dateien brauchen",
@@ -31,12 +31,12 @@ T = {
         ("Öffnet Dateien jeder Größe", "Gelesen wird nur der sichtbare Teil: unter Windows über speichergemappte Fenster, unter Linux und macOS in Blöcken bei Bedarf. Arbeit im Hintergrund streamt den Rest, und unter Windows werden Netzlaufwerke und USB-Sticks von einem Hintergrund-Lader blockweise mit Cache gelesen, damit ein langsames Laufwerk das Fenster nicht blockiert."),
         ("Sofort zu jeder Zeile", "Ein dünn besetzter Zeilenindex (8 Byte pro 64 KB) entsteht im Hintergrund mit "
          "2,5 GB/s. Gehe zu Zeile und die Bildlaufleiste funktionieren sofort, schon bevor die Indizierung fertig ist."),
-        ("Schnelle Suche und reguläre Ausdrücke", "Klartext mit 2,5 GB/s und reguläre Ausdrücke in linearer Zeit, mit "
+        ("Schnelle Suche und reguläre Ausdrücke", "Klartext mit über 3 GB/s und reguläre Ausdrücke in linearer Zeit, mit "
          "Optionen für Groß-/Kleinschreibung, ganze Wörter und mehrere Zeilen. „Alle suchen“ listet bis zu eine Million "
          "Treffer; F3 funktioniert sofort."),
         ("Ersetzen über Gigabytes", "Ersetzen mit $1 und benannten Gruppen. Bis zu 50.000 Änderungen sind ein Schritt, "
          "der sich rückgängig machen lässt; größere Aufgaben werden in eine neue Datei gestreamt: 22 Millionen "
-         "Ersetzungen in einer 10-GB-Datei dauerten 11 s und brauchten 46 MB RAM."),
+         "Ersetzungen in einer 10-GB-Datei brauchten höchstens 63 MB RAM."),
         ("Echtes Bearbeiten", "Tippen, Ausschneiden, Kopieren, Einfügen, Rückgängig und Wiederholen, Zeilen duplizieren "
          "oder löschen, automatisches Einrücken – auf einer Piece Table, sodass Änderungen die Datei erst beim Speichern "
          "neu schreiben."),
@@ -123,18 +123,18 @@ T = {
          "(ReplaceFileW unter Windows behält Attribute und Berechtigungen)."),
     ],
     "perf_h2": "Gemessene Leistung",
-    "perf_intro": "Ergebnisse der eingebauten Benchmarks mit Testdateien von 1 GB, 10 GB und 50 GB unter Windows 11. "
-    "Methode und vollständige Ergebnisse stehen in der README.",
+    "perf_intro": "Ergebnisse der eingebauten Benchmarks von BigText 0.12.0 mit Testdateien von 1 GB, 10 GB und 50 GB "
+    "unter Windows 11, Dateien im Cache des Betriebssystems. Methode und Rohdaten stehen in BENCHMARKS.md.",
     "perf_cols": ("Aufgabe", "Ergebnis"),
     "perf": [
-        ("Öffnen → erster Bildschirm mit Text (1–50 GB)", "41–46 ms"),
-        ("Sprung zu einer Zeile in einer 50-GB-Datei", "unter 1 ms"),
-        ("Zeilenindex aufbauen", "2,2–2,7 GB/s (50 GB in etwa 20 s)"),
-        ("Klartextsuche", "2,4–2,5 GB/s"),
-        ("Suche mit regulärem Ausdruck", "2,3–2,8 GB/s mit literalem Anteil, 672 MB/s ohne"),
-        ("Alle ersetzen in einer 10-GB-Datei", "11,3 s, 46 MB Spitzenspeicher"),
-        ("Speicher mit geöffneter 50-GB-Datei", "107 MB"),
-        ("Start → erster Frame", "159–185 ms"),
+        ("Öffnen → erster Bildschirm mit Text (1–50 GB)", "in 22–26 ms gezeichnet, nach etwa 0,1 s zu sehen"),
+        ("Sprung zu einer Zeile in einer 50-GB-Datei", "unter 2 ms"),
+        ("Zeilenindex aufbauen", "2,4–2,7 GB/s (50 GB in etwa 19 s)"),
+        ("Klartextsuche", "3,2–4,3 GB/s"),
+        ("Suche mit regulärem Ausdruck", "2,9–4,2 GB/s mit literalem Anteil"),
+        ("Alle ersetzen in einer 10-GB-Datei", "47–63 MB Spitzenspeicher; die Zeit bestimmt das Laufwerk"),
+        ("Speicher mit geöffneter 50-GB-Datei", "108 MB"),
+        ("Start → erster Frame", "138–150 ms"),
     ],
     "dl_h2": "BigText herunterladen",
     "dl_intro": "Kostenlos für private und kommerzielle Nutzung. Kein Konto, keine Telemetrie, eine ausführbare Datei.",
@@ -159,7 +159,7 @@ T = {
     "faq": [
         ("Wie öffne ich eine 50-GB-Textdatei?",
          "Installieren Sie BigText und öffnen Sie die Datei mit Datei → Öffnen, per Ziehen auf das Fenster oder per "
-         "Rechtsklick → „Open with BigText“. Der erste Bildschirm erscheint unabhängig von der Größe nach etwa 40 ms (Datei im Cache des Betriebssystems); "
+         "Rechtsklick → „Open with BigText“. Der erste Bildschirm ist unabhängig von der Größe nach etwa 25 ms gezeichnet und nach etwa 0,1 s zu sehen (Datei im Cache des Betriebssystems); "
          "Scrollen und Gehe zu Zeile funktionieren, während der Zeilenindex im Hintergrund entsteht."),
         ("Ist BigText eine Alternative zu EmEditor oder UltraEdit?",
          "Für große Dateien ja. Wie diese öffnet BigText Dateien mit mehreren Gigabyte, ohne sie in den Speicher zu "
@@ -168,14 +168,14 @@ T = {
          "Logs und Tabellen."),
         ("Lädt BigText die ganze Datei in den Speicher?",
          "Nein. Es liest nur den Teil auf dem Bildschirm und streamt alles andere im Hintergrund. Mit einer geöffneten "
-         "50-GB-Datei braucht es etwa 107 MB RAM, das meiste davon für die Oberfläche selbst."),
+         "50-GB-Datei braucht es etwa 108 MB RAM, das meiste davon für die Oberfläche selbst."),
         ("Kann ich sehr große Dateien bearbeiten und speichern?",
          "Ja. Änderungen liegen in einer Piece Table über der Originaldatei, sodass Tippen bei jeder Größe sofort geht. "
          "Beim Speichern wird das Ergebnis in eine temporäre Datei gestreamt, die das Original atomar ersetzt; das "
          "Original wird also nie beschädigt, wenn etwas schiefgeht."),
         ("Wie schnell ist die Suche in riesigen Dateien?",
-         "Klartext wird mit 2,4–2,5 GB/s durchsucht und typische reguläre Ausdrücke mit 2,3–2,8 GB/s, ein 10-GB-Log "
-         "dauert also etwa 4 Sekunden. F3 findet den nächsten Treffer sofort, ohne auf eine vollständige Suche zu warten."),
+         "Klartext wird mit 3,2–4,3 GB/s durchsucht und typische reguläre Ausdrücke mit 2,9–4,2 GB/s, ein 10-GB-Log "
+         "dauert also etwa 3 Sekunden. F3 findet den nächsten Treffer sofort, ohne auf eine vollständige Suche zu warten."),
         ("Kann es ein wachsendes Log wie tail -f verfolgen?",
          "Ja. Ansicht → Verfolgen hält die Ansicht am Dateiende und indiziert neue Zeilen, sobald sie ankommen. "
          "BigText bemerkt auch, wenn sich eine Datei auf der Platte ändert, und bietet an, sie neu zu laden."),
