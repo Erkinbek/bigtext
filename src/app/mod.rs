@@ -411,6 +411,8 @@ pub struct BigTextApp {
     pub self_test: Option<crate::self_test::SelfTest>,
     exit_confirmed: bool,
     exit_after_jobs: bool,
+    /// The window title last sent to the system.
+    window_title: String,
     pub show_about: bool,
     pub recent: Vec<PathBuf>,
     /// Session state is saved and restored (off for benchmarks and the self-test).
@@ -849,6 +851,7 @@ impl BigTextApp {
             self_test: None,
             exit_confirmed: false,
             exit_after_jobs: false,
+            window_title: String::new(),
             show_about: false,
             recent: Vec::new(),
             persist,
@@ -3046,7 +3049,12 @@ impl eframe::App for BigTextApp {
             ),
             None => "BigText".into(),
         };
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+        // Only when it changes: every viewport command asks for another frame, so sending the
+        // title each frame kept an idle window repainting as fast as it could.
+        if title != self.window_title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.window_title = title;
+        }
 
         // Keep repainting while background work is visible in the UI.
         let busy = self.docs.iter().any(|d| {
