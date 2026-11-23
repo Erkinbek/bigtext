@@ -320,6 +320,14 @@ impl TextBuf {
         let end = start + len;
         let src = &self.source;
         let idx = &self.index;
+        // The index answers by scanning from the start of each end's 64 KB block; a short piece
+        // (a batch makes one per match) is cheaper to count directly.
+        let block = crate::index::BLOCK;
+        if len <= start % block + end % block {
+            if let Some(bytes) = src.get(start..end, self.blocking) {
+                return (self.codec.count_nl(&bytes, start), true);
+            }
+        }
         if let (Some(a), Some(b)) = (
             idx.nl_before(src, &self.codec, self.blocking, start),
             idx.nl_before(src, &self.codec, self.blocking, end),
@@ -1424,6 +1432,55 @@ mod tests {
         t.apply_batch(batch);
         assert_eq!(t.add.chunk_count(), chunks);
         assert_eq!(&text(&t)[..4], ">Z12");
+    }
+
+    /// Short pieces of the original file (one per match of a batch) are counted directly, long
+    /// ones through the index; either way every piece's count is the real one.
+    #[test]
+    fn short_and_long_original_pieces_count_exactly() {
+        let data: Vec<u8> = (0..300_000u32)
+            .map(|i| {
+                if i % 37 == 0 || i % 1009 == 0 {
+                    b'\n'
+                } else {
+                    b'a'
+                }
+            })
+            .collect();
+        let (_f, indexed) = buf_with(&data);
+        let unindexed = TextBuf::new(
+            indexed.source.clone(),
+            LineIndex::new(indexed.source.len()),
+            Codec::utf8(),
+        );
+        for t in [indexed, unindexed] {
+            // Replacements every 13 bytes in the first half, then a few far apart, so pieces of
+            // a few bytes and pieces spanning several index blocks both occur.
+            let mut edits: Vec<(Range<u64>, Vec<u8>)> = (0..10_000u64)
+                .map(|i| (i * 13..i * 13 + 1, b"\n".to_vec()))
+                .collect();
+            edits.extend((0..4u64).map(|i| (150_000 + i * 40_000..150_001 + i * 40_000, vec![])));
+            let mut t = t.clone();
+            t.blocking = true;
+            let batch = t.build_batch(&edits);
+            t.apply_batch(batch);
+            let mut model = data.clone();
+            for (r, text) in edits.iter().rev() {
+                model.splice(r.start as usize..r.end as usize, text.iter().copied());
+            }
+            for p in t.pieces() {
+                if p.buf == Buf::Orig {
+                    let want = data[p.start as usize..(p.start + p.len) as usize]
+                        .iter()
+                        .filter(|&&b| b == b'\n')
+                        .count() as u64;
+                    assert!(p.exact, "{p:?}");
+                    assert_eq!(p.nl, want, "{p:?}");
+                }
+            }
+            let lines = model.iter().filter(|&&b| b == b'\n').count() as u64 + 1;
+            assert_eq!(t.line_count(), (lines, true));
+        }
     }
 
     #[test]
