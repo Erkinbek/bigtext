@@ -510,7 +510,14 @@ keyboard shortcuts.
 - Regex matches are exact up to 1 MB of length across window edges; longer matches are found
   by re-searching with a growing window, capped at 256 MB (longer matches are reported
   truncated). A match longer than 1 MB that only ends past the overlap may be reported from a
-  later start than strict leftmost-first semantics would give.
+  later start than strict leftmost-first semantics would give, and one that needs text after
+  it to match at all (like `"[^"]*"` around a 2 MB value) can be missed where it crosses one of
+  the 16 MB windows the file is searched in.
+- **Whole word** with a pattern of plain ASCII letters checks word boundaries by ASCII (it is
+  much faster that way): a word that goes on with a non-ASCII letter counts as ending there,
+  so a whole-word `caf` also matches the start of `café`.
+- Sorting lines, removing duplicate lines and the column editor's "down to the end" read lines
+  of up to 16 MB; a longer line is handled as 16 MB pieces.
 - Column numbers inside soft-broken lines (> 64 KB) are byte-based estimates (`Col ~N`).
 - A CR-only line break is recognised only in files without LF line breaks (mixed CR is shown
   as a `←` placeholder; **Line endings on save** can turn such CRs into line breaks).

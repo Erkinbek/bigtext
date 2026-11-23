@@ -42,6 +42,15 @@ pub fn unescape(s: &str) -> String {
 }
 
 impl Template {
+    /// Replacement text used exactly as written: no escapes, no `$` references (the command
+    /// line's plain-text mode, where `C:\new` is a path, not a line break).
+    pub fn verbatim(replacement: &str) -> Template {
+        Template {
+            text: replacement.to_string(),
+            interpolate: false,
+        }
+    }
+
     pub fn new(replacement: &str, regex_mode: bool) -> Template {
         let text = unescape(replacement);
         let interpolate = regex_mode && text.contains('$');
@@ -217,14 +226,102 @@ mod tests {
     use std::sync::Arc;
 
     fn buf_with(data: &[u8]) -> (tempfile::NamedTempFile, TextBuf) {
+        buf_in(data, Codec::utf8())
+    }
+
+    fn buf_in(data: &[u8], codec: Codec) -> (tempfile::NamedTempFile, TextBuf) {
         let mut f = tempfile::NamedTempFile::new().unwrap();
         f.write_all(data).unwrap();
         f.flush().unwrap();
         let src = Arc::new(Source::open(f.path(), OpenMode::Auto).unwrap());
-        let idx = index::build_blocking(&src, Codec::utf8());
-        let mut t = TextBuf::new(src, idx, Codec::utf8());
+        let idx = index::build_blocking(&src, codec);
+        let mut t = TextBuf::new(src, idx, codec);
         t.blocking = true;
         (f, t)
+    }
+
+    fn replaced(t: &TextBuf, pattern: &str, regex: bool, tpl: &Template, r: Range<u64>) -> Vec<u8> {
+        let q = Query {
+            pattern: pattern.into(),
+            regex,
+            case_sensitive: true,
+            ..Default::default()
+        };
+        let m = Matcher::new(&q, t.codec).unwrap();
+        let mut out = Vec::new();
+        replace_all_to(t, &m, tpl, r, &mut out, &CancelToken::new(), None)
+            .unwrap()
+            .unwrap();
+        out
+    }
+
+    /// The byte order mark is not text: `^` matches at the start of line 1, after it, and
+    /// nothing is written in front of it.
+    #[test]
+    fn a_byte_order_mark_stays_in_front() {
+        let codec = Codec::new(
+            crate::encoding::Encoding::Utf8,
+            crate::encoding::NlByte::Lf,
+            3,
+        );
+        let (_f, t) = buf_in(b"\xEF\xBB\xBFid,x\nb\n", codec);
+        let tpl = Template::new("> ", true);
+        assert_eq!(
+            replaced(&t, "^", true, &tpl, 0..t.len()),
+            b"\xEF\xBB\xBF> id,x\n> b\n> "
+        );
+        let tpl = Template::new("ID,", true);
+        assert_eq!(
+            replaced(&t, "^id,", true, &tpl, 0..t.len()),
+            b"\xEF\xBB\xBFID,x\nb\n"
+        );
+    }
+
+    /// In a selection that ends at the start of a line, that line is not part of it.
+    #[test]
+    fn no_empty_match_at_the_end_of_a_selection() {
+        let (_f, t) = buf_with(b"a\nb\nc\n");
+        let tpl = Template::new("// ", true);
+        assert_eq!(replaced(&t, "^", true, &tpl, 0..4), b"// a\n// b\nc\n");
+    }
+
+    /// A UTF-16 file with an odd number of bytes (cut off) is searched to its end instead of
+    /// looping on the half code unit.
+    #[test]
+    fn an_odd_length_utf16_file_is_searched_to_the_end() {
+        let codec = Codec::new(
+            crate::encoding::Encoding::Utf16Le,
+            crate::encoding::NlByte::Lf,
+            2,
+        );
+        let (_f, t) = buf_in(b"\xFF\xFEa\x00b", codec);
+        let q = Query {
+            pattern: "z".into(),
+            ..Default::default()
+        };
+        let m = Matcher::new(&q, codec).unwrap();
+        let cancel = CancelToken::new();
+        let watchdog = cancel.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(10));
+            watchdog.cancel();
+        });
+        let mut n = 0;
+        let end = search::search_forward(&t, &m, 0..t.len(), &cancel, None, |_, _| {
+            n += 1;
+            true
+        });
+        assert_eq!((end, n), (SearchEnd::Completed, 0));
+    }
+
+    #[test]
+    fn a_verbatim_replacement_keeps_backslashes_and_dollars() {
+        let (_f, t) = buf_with(br"path C:\old here");
+        let tpl = Template::verbatim(r"C:\new $1");
+        assert_eq!(
+            replaced(&t, r"C:\old", false, &tpl, 0..t.len()),
+            br"path C:\new $1 here"
+        );
     }
 
     fn run(data: &[u8], pattern: &str, regex: bool, rep: &str) -> String {

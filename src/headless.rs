@@ -103,9 +103,10 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         statistics, or rows per value. Columns are header names or 1-based
         numbers; --delimiter , ; | or tab.
   replace [-i] [-w] [-E] PATTERN REPLACEMENT FILE [-o OUT | --in-place [--bak]]
-        Every match replaced (-E: $1 and ${name} in REPLACEMENT), streamed,
-        keeping the encoding and line breaks; --in-place swaps the file
-        atomically (--bak keeps the old one). Exit code 1 when nothing matched.
+        Every match replaced by REPLACEMENT as written (with -E: $1, ${name},
+        \\n and \\t in it), streamed, keeping the encoding and line breaks;
+        --in-place swaps the file atomically (--bak keeps the old one).
+        Exit code 1 when nothing matched.
   saved [--settings FILE]
         The searches saved in BigText (the search bar's star menu);
         filter, count and grep --saved NAME run one.
@@ -1753,7 +1754,11 @@ fn cmd_replace(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let (buf, _) = open(path)?;
     let q = query(&a, pattern);
     let m = Matcher::new(&q, buf.codec).map_err(Fail)?;
-    let tpl = crate::replace::Template::new(replacement, q.regex);
+    let tpl = if q.regex {
+        crate::replace::Template::new(replacement, true)
+    } else {
+        crate::replace::Template::verbatim(replacement)
+    };
     let cancel = CancelToken::new();
     let count = if a.flag(&["--in-place"]) {
         let t = crate::save::Transform::Replace {

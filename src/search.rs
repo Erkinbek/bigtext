@@ -331,8 +331,12 @@ pub fn search_forward_ctx(
 ) -> SearchEnd {
     let len = buf.len();
     let unit = buf.codec.unit() as u64;
-    let end = range.end.min(len);
-    let start = align_down(range.start.min(end), unit);
+    // A byte order mark is not text: no match starts in it or before it, and it is not context
+    // either (`^` matches at the start of line 1). The end is cut to whole code units: a UTF-16
+    // file of an odd length would otherwise never reach its last window.
+    let bom = (buf.codec.bom_len as u64).min(len);
+    let end = align_down(range.end.min(len), unit).max(bom);
+    let start = align_down(range.start.max(bom).min(end), unit);
     if let Some(p) = progress {
         p.set_total(end - start);
     }
@@ -345,7 +349,7 @@ pub fn search_forward_ctx(
         }
         let win_end = align_down((pos + WINDOW).min(end), unit).max(pos.min(end));
         let span_end = (win_end + m.overlap()).min(end);
-        let read_start = align_down(pos.saturating_sub(CTX), unit);
+        let read_start = align_down(pos.saturating_sub(CTX), unit).max(bom.min(pos));
         let read_end = (span_end + CTX).min(len);
         let Some(n) = buf.read_to(read_start..read_end, &mut window) else {
             return SearchEnd::Unavailable;
@@ -353,7 +357,9 @@ pub fn search_forward_ctx(
         let hay = &window[..n];
         let final_window = win_end >= end;
         let rel = |x: u64| (x - read_start) as usize;
-        let accept = if final_window {
+        // An empty match at the very end counts only at the end of the text (`$` after the last
+        // line), not at the end of a selection: that is the start of the next line.
+        let accept = if final_window && end >= align_down(len, unit) {
             rel(win_end) + 1
         } else {
             rel(win_end)
