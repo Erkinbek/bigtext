@@ -3,6 +3,45 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## Unreleased
+
+### Fixed: data safety (found by an audit before 1.0)
+
+- Closing the window while a save was running exited without asking about unsaved changes. It
+  asks now.
+- Unsaved edits are kept in the recovery journal until a save succeeds (it went when the save
+  started), and a journal restored after a crash stays until the document's own one is
+  written. A journal write that failed no longer leaves the typed text in twice, and a write
+  still running when the journal was dropped no longer brings it back as a false "did not close
+  properly" offer.
+- **Save text as** from the recovery window, for a file that changed on disk since, scrambled
+  the text; it saves only what you typed and says so.
+- Saving a file that another program changed after it was opened (a log that grew) asks first;
+  before, the new lines were dropped.
+- A failed Save As of an untitled document made its text unreachable.
+- Undo and redo during a save, a large Cut copied in the background, a follow-mode reload while
+  typing, and "on disk" operations on an unpacked or remote copy could lose text.
+- After Replace All the caret could be left past the end of the text or inside a character,
+  which could crash Base64 decode or hang typing with several cursors.
+- Line commands, block Backspace, the column editor and Replace All (`^`) took a file's byte
+  order mark as part of line 1. With several cursors, Backspace, Delete and the arrows split
+  CRLF line breaks. The column editor's "down to the end" from inside a long line dropped the
+  rest of that line.
+- Searching a UTF-16 file with an odd number of bytes never ended; Replace All in a selection
+  that ends at the start of a line no longer changes that line too.
+- An unreadable settings file is no longer replaced by the defaults; settings and sessions are
+  written whole or not at all.
+
+### Command line
+
+- `--` ends the options (a pattern may start with a dash), and negative numbers are values.
+- `--json` works with several files, and `validate FILE --json` checks strict JSON again.
+- `-o` with several input files is an error instead of keeping only the last file's lines;
+  `--out-dir` is created when missing and never overwrites one input's output with another's.
+- `replace` without `-E` uses the replacement as written (`C:\new` stays a path).
+- `jsonl --fields` reads logfmt keys and web server log columns, not only JSON keys.
+- `replace --in-place` works with Git Bash paths like `E:/logs/x.log`.
+
 ## 0.12.0 — 2026-11-23
 
 ### One query for every structured log
