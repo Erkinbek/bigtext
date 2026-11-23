@@ -3,6 +3,42 @@
 Bug reports and ideas are welcome in the [issue tracker](https://github.com/Erkinbek/bigtext/issues).
 This page explains how BigText is built, how it works inside, and how it is tested and released.
 
+## First run
+
+1. Install [Rust](https://rustup.rs) and keep it on the latest stable (`rustup update stable`):
+   CI builds and lints with the latest stable, and an older clippy disagrees with it (see
+   [Code style](#code-style)). Then the platform's build tools from [Building](#building): the
+   Visual Studio Build Tools on Windows, a few X11/Wayland/GL libraries on Linux, the Xcode
+   command line tools on macOS.
+2. Build and run:
+
+   ```
+   git clone https://github.com/Erkinbek/bigtext && cd bigtext
+   cargo run --release -- FILE                    # the editor (a release build: debug is slow on big files)
+   cargo run --release --bin bigtext-cli -- --help
+   scripts/gen-testfiles.sh --skip-big            # test files in testdata/, ~1.8 GB (Windows: scripts\gen-testfiles.ps1 -SkipBig)
+   ```
+
+   Without `--skip-big` the generator also writes a 10 GB file (~14 GB in all), which the
+   benchmarks and the screenshots use.
+3. Before a pull request, run what CI runs:
+
+   ```
+   cargo fmt
+   cargo clippy --all-targets -- -D warnings
+   cargo test --lib --bins
+   ```
+
+   For a change to the window (menus, the text view, dialogs), also run the GUI self-test
+   (`target/release/bigtext --self-test --report report.txt`, see
+   [Tests and benchmarks](#tests-and-benchmarks)) and try the change on a large file.
+
+The core (`src/lib.rs`: file access, encodings, index, piece table, search, replace, save and the
+log, CSV, JSON and SQL tools) is a library that all four binaries use; the window (`app/`,
+`view/`, the self-test and the GUI benchmark) belongs to the `bigtext` binary. The
+[architecture map](#architecture) says where each part lives, and
+[the rules below](#rules-for-new-code) are the ones every change has to keep.
+
 ## Building
 
 The workspace builds four binaries: `bigtext` (the editor), `bigtext-cli` (the script
@@ -22,9 +58,13 @@ Scoop bucket and Homebrew tap (see [packaging/README.md](packaging/README.md)).
 ### Linux
 
 ```
-sudo apt-get install libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev
+sudo apt-get install build-essential pkg-config libxkbcommon-dev libwayland-dev libxcb-render0-dev \
+  libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev libegl1-mesa-dev
 cargo build --release
 ```
+
+These are the libraries CI installs on Ubuntu 22.04. Running under X11 also needs
+`libxkbcommon-x11-0`, which desktop systems already have.
 
 ### macOS
 
@@ -57,12 +97,33 @@ src/
   save.rs           temp file + fsync + atomic replace (ReplaceFileW), EOL conversion
   diff.rs           streaming line diff (chunk compare + hashed re-synchronisation)
   jobs.rs           cancel tokens, progress, wakers
+  filter.rs         grep-like filter view: the lines with (or without) a match, streamed
+  lines.rs          reading every line front to back in large chunks, for whole-file jobs
+  timestamp.rs      log timestamps near the line start, binary search for a time
+  loglevel.rs, logformat.rs   log levels; nginx/Apache, load balancer, IIS and syslog formats as columns
+  fields.rs, jsonq.rs         fields of JSON Lines / logfmt lines; field queries (.status >= 500 and ...)
+  merge.rs, correlate.rs      merging logs by time; request/trace ids that tie lines together
+  csv*.rs           CSV/TSV: detection, records with line breaks, checks, diff, join, pivot, expressions
+  json*.rs, xml.rs  streaming JSON/XML structure, strict JSON check, structural JSON diff
+  sqldump.rs        tables of mysqldump / pg_dump / SQLite dumps, one table saved on its own
+  redact.rs         Share safely: secrets and personal data replaced by labels
+  decompress.rs     .gz/.zst/.xz/.bz2 and zip/tar members, unpacked to temp files
+  remote.rs         HTTP(S)/S3 range reads and files over ssh, read in parts
+  headless.rs       bigtext-cli commands (filter, count, split, stats, query, redact, ...)
+  update.rs         update check and self-update from GitHub releases
+  robustness.rs     seeded random/broken input for the parsers (tests only)
   app/              egui shell: tabs, menus, search panel, results list, dialogs, save protocol,
-                    session/recent files, compare panel
-  view/             custom virtualized text view, hex view, syntax highlighting
+                    session/recent files, compare panel, the tool panels and translations (i18n_*.rs)
+  view/             custom virtualized text view, CSV table view, hex view, syntax highlighting
+  cli.rs            the editor's command-line options (bigtext FILE:LINE, -f, --find, ...)
   self_test.rs      in-app GUI self-test driven by synthetic input
-  bin/              gen-testfiles, bigtext-bench
+  bench_ui.rs       scripted GUI benchmark (--bench-ui)
+  bin/              bigtext-cli, gen-testfiles, bigtext-bench
 ```
+
+`app/`, `view/`, `cli.rs`, `self_test.rs` and `bench_ui.rs` are modules of the `bigtext` binary
+(`src/main.rs`); everything else is the library in `src/lib.rs`. Each file starts with a `//!`
+comment that says what it does.
 
 Key decisions (details in [PLAN.md](PLAN.md)):
 
@@ -79,6 +140,30 @@ Key decisions (details in [PLAN.md](PLAN.md)):
   that fails the original (untouched) file is reopened and the edits are re-attached.
 - Undo history is cleared after a save (the old mapping it refers to is released). Undoing
   back to the last saved state clears the modified marker.
+
+### Rules for new code
+
+These come from the original specification ([prompt.md](prompt.md)) and hold for every feature,
+since a single whole-file read or blocking call undoes the point of the program:
+
+- **Never read a whole file into memory.** Touch only the byte ranges needed; work that has to
+  see the whole file streams it in bounded chunks. No per-line offset tables for big files:
+  index memory stays under about 1 % of the file size.
+- **The UI thread never blocks.** File I/O, indexing, searching, replacing, saving and encoding
+  detection run on worker threads with progress and cancellation; no single UI-thread task takes
+  more than about 16 ms.
+- **Only what is on screen is decoded and laid out**, and only the visible part of a long line:
+  a single 2 GB line must not be allocated whole.
+- **The original file is not changed before a save**, and a save writes a temp file in the same
+  folder, fsyncs it and atomically replaces the original; if anything fails, the original is
+  untouched.
+- **Everything that can be large is bounded:** result lists are capped, large clipboard copies
+  ask first, match highlighting covers only the visible range.
+
+The targets the code is measured against (first screen under 200 ms, frames under 16 ms while
+background work runs, literal search at 1 GB/s or more, Replace All on 10 GB under 300 MB of
+private memory) and the measured numbers are in
+[README → Measured performance](README.md#measured-performance).
 
 ## Code style
 
@@ -100,13 +185,14 @@ makes `git blame` look past it (GitHub does this by itself).
 ## Tests and benchmarks
 
 ```
-cargo test --lib --bins              # 371 unit tests: index, piece table, rows, search, replace, save,
+cargo test --lib --bins              # the unit tests: index, piece table, rows, search, replace, save,
                                      # encodings, diff, highlighting, log formats, SQL dumps, CSV, ...
+cargo test --lib headless            # the bigtext-cli commands (src/headless.rs), on temp files
 cargo test --lib update -- --ignored # downloads and unpacks the latest release (needs the network)
 BIGTEXT_FUZZ_ROUNDS=50 cargo test --release --lib robustness
                                      # random and broken input for the file parsers, 50 times as many
 target/release/bigtext --self-test --report report.txt [--screenshot shots/x.png]
-                                     # 261 GUI checks with synthetic mouse/keyboard/clipboard input
+                                     # GUI checks with synthetic mouse/keyboard/clipboard input; PASS/FAIL per check in the report
 scripts/gen-testfiles.ps1            # or scripts/gen-testfiles.sh; -SkipBig / --skip-big avoids the 10 GB file
 BIGTEXT_SSH_CONFIG=test/ssh_config BIGTEXT_SELFTEST_SSH=root@test-host:/var/log/app/big.log \
 target/release/bigtext --self-test ... # also reads a file in place over SSH and searches it on the server
@@ -151,8 +237,9 @@ read-only files (edits blocked; saving over one fails cleanly and keeps the edit
 appended to while open (banner, then follow mode), a file renamed or deleted while open, a
 path longer than 260 characters (open, edit, save), a Unicode path, the chunked read path
 (forced, and via `\\localhost\E$` UNC), empty / no-trailing-newline / CR-only / BOM-in-the-middle
-/ UTF-16 / Windows-1251 files, a binary file, and a 6 MB copy on a worker. Every run: 56/56
-passed, max UI frame time 3–5 ms. The `close-search` / `close-replace` scenarios close the window
+/ UTF-16 / Windows-1251 files, a binary file, and a 6 MB copy on a worker. The report's first line
+counts passed, failed and skipped checks (the SSH, container and notification checks are
+skipped without their variables) and gives the longest UI frame of the run; nothing may fail. The `close-search` / `close-replace` scenarios close the window
 mid-job: the process exits within a second, no temp file is left and the original file's hash
 is unchanged.
 
