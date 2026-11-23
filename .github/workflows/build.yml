@@ -77,9 +77,11 @@ jobs:
         if: matrix.test
         run: cargo clippy --all-targets --target ${{ matrix.target }} -- -D warnings
 
+      # --bins: the window's own tests (src/app, src/view: recovery journal, editing,
+      # translations) live in the `bigtext` binary, not in the library.
       - name: Unit tests
         if: matrix.test
-        run: cargo test --lib --target ${{ matrix.target }}
+        run: cargo test --lib --bins --target ${{ matrix.target }}
 
       - name: Build release binaries
         run: cargo build --release --bins --target ${{ matrix.target }}
