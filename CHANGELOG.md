@@ -31,6 +31,14 @@ All notable changes to BigText. Each release on
   that ends at the start of a line no longer changes that line too.
 - An unreadable settings file is no longer replaced by the defaults; settings and sessions are
   written whole or not at all.
+- A file set to **View → Highlight as** INI in 0.4–0.6 keeps that choice again (it was dropped
+  since 0.7 renamed the language). Settings, sessions and journals written by every earlier
+  release are now checked by tests.
+
+### Demos
+
+- `bigtext --demo DIR --demo-for devops|data|dba|soc` records a short demo for each kind of
+  user on a sample file it makes itself.
 
 ### Command line
 
