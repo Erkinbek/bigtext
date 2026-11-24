@@ -452,12 +452,16 @@ pub fn temp_path_for(path: &Path) -> PathBuf {
 /// A fresh path for a temporary file named `name`, in its own folder in [`temp_dir`] (which
 /// [`remove_temp`] deletes with it, and [`cleanup_old`] after a crash).
 pub fn temp_file(name: &str) -> PathBuf {
+    // A counter as well as the time: two calls in the same clock tick (two comparisons started
+    // together, or tests running in parallel) must not share a folder and its files.
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     temp_dir()
-        .join(format!("{}-{nanos:x}", std::process::id()))
+        .join(format!("{}-{nanos:x}-{n}", std::process::id()))
         .join(name)
 }
 
@@ -790,6 +794,31 @@ pub fn unpack_live(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Calls in the same instant get folders of their own: two table comparisons running at
+    /// once shared one, so each read the other's bucket files (and deleted them when done).
+    #[test]
+    fn temp_files_made_at_once_get_their_own_folders() {
+        let (threads, each) = (8, 2000);
+        let start = std::sync::Barrier::new(threads);
+        let folders: std::collections::HashSet<PathBuf> = std::thread::scope(|s| {
+            let handles: Vec<_> = (0..threads)
+                .map(|_| {
+                    s.spawn(|| {
+                        start.wait();
+                        (0..each)
+                            .map(|_| temp_file("x").parent().unwrap().to_path_buf())
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .flat_map(|h| h.join().unwrap())
+                .collect()
+        });
+        assert_eq!(folders.len(), threads * each);
+    }
 
     #[test]
     fn live_unpacking_says_when_the_start_is_there() {
