@@ -68,7 +68,7 @@ pub fn write_via_temp(
     write: impl FnOnce(&mut Packer<BufWriter<&File>>) -> io::Result<Option<String>>,
 ) -> TaskOutcome {
     let temp = save::temp_path_for(target);
-    let file = match File::options().write(true).create_new(true).open(&temp) {
+    let file = match save::create_temp(&temp, target) {
         Ok(f) => f,
         Err(e) => return TaskOutcome::Failed(save::describe(&e, target)),
     };

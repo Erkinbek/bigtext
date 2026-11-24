@@ -393,10 +393,7 @@ fn with_output(
         Some(t) => {
             let path = PathBuf::from(t);
             let temp = crate::save::temp_path_for(&path);
-            let file = std::fs::File::options()
-                .write(true)
-                .create_new(true)
-                .open(&temp)
+            let file = crate::save::create_temp(&temp, &path)
                 .map_err(|e| Fail(format!("{}: {e}", display_path(&temp))))?;
             let r = (|| {
                 // -o out.gz (.zst, .xz, .bz2) is compressed on the way.

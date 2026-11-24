@@ -245,6 +245,37 @@ pub fn temp_path_for(target: &Path) -> PathBuf {
     ))
 }
 
+/// Creates `temp` (from [`temp_path_for`]) for writing; it must not exist yet. On Unix, when
+/// `target` exists, the new file takes its permission bits before anything is written, so the
+/// text of a private file is never readable by others while it is saved. (On Windows
+/// `ReplaceFileW` gives the replacement the original's attributes and ACLs.)
+pub fn create_temp(temp: &Path, target: &Path) -> io::Result<File> {
+    let mut options = File::options();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    let original = fs::metadata(target).ok().map(|m| m.permissions());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        if original.is_some() {
+            // The owner only, until the original's bits are set below.
+            options.mode(0o600);
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = target;
+    let file = options.open(temp)?;
+    #[cfg(unix)]
+    {
+        if let Some(perm) = original {
+            // As in `finalize`: a file system without Unix permissions (FAT, some network
+            // shares) does not stop the save.
+            let _ = file.set_permissions(perm);
+        }
+    }
+    Ok(file)
+}
+
 pub fn backup_path_for(target: &Path) -> PathBuf {
     let mut s = target.as_os_str().to_os_string();
     s.push(".bak");
@@ -379,11 +410,7 @@ pub fn write_temp(
     progress: &Progress,
 ) -> Result<(PathBuf, ReplaceStats), SaveError> {
     let temp = temp_path_for(target);
-    let file = File::options()
-        .write(true)
-        .create_new(true)
-        .open(&temp)
-        .map_err(|e| SaveError::Io(describe(&e, target)))?;
+    let file = create_temp(&temp, target).map_err(|e| SaveError::Io(describe(&e, target)))?;
     let result = (|| -> Result<ReplaceStats, SaveError> {
         let mut w = BufWriter::with_capacity(WRITE_BUF, &file);
         let len = buf.len();
@@ -1159,6 +1186,69 @@ mod tests {
         .unwrap();
         assert_eq!(&out[out.len() - 5..], b"a\rz\r\n");
         assert_eq!(out.len(), big.len() + 1);
+    }
+
+    /// A save keeps a file's permission bits, and the temp file has them before any text is
+    /// written to it (a private file is never readable by others while it is saved).
+    #[cfg(unix)]
+    #[test]
+    fn temp_file_takes_the_original_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o7777;
+        let set = |p: &Path, m: u32| fs::set_permissions(p, fs::Permissions::from_mode(m)).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("private.txt");
+        fs::write(&path, b"secret\n").unwrap();
+        // With an execute bit: a new file's default mode (0o666 less the umask) never has one,
+        // so a temp file that did not take these bits cannot pass by chance.
+        set(&path, 0o700);
+        let temp = temp_path_for(&path);
+        let f = create_temp(&temp, &path).unwrap();
+        assert_eq!((mode(&temp), f.metadata().unwrap().len()), (0o700, 0));
+        drop(f);
+        fs::remove_file(&temp).unwrap();
+        // Save (and CLI --in-place, which writes the same way).
+        let mut t = open(&path, Codec::utf8());
+        t.replace(0..6, b"SECRET");
+        let (temp, _) = write_temp(
+            &t,
+            &path,
+            Transform::Identity,
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
+        assert_eq!(mode(&temp), 0o700);
+        finalize(&temp, &path, false).unwrap();
+        assert_eq!(mode(&path), 0o700);
+        assert_eq!(fs::read(&path).unwrap(), b"SECRET\n");
+        // Save As over another existing file takes that file's bits.
+        let other = dir.path().join("other.txt");
+        fs::write(&other, b"old").unwrap();
+        set(&other, 0o710);
+        let (temp, _) = write_temp(
+            &t,
+            &other,
+            Transform::Identity,
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
+        assert_eq!(mode(&temp), 0o710);
+        finalize(&temp, &other, false).unwrap();
+        assert_eq!(mode(&other), 0o710);
+        // Save As to a new file keeps the default mode.
+        let new = dir.path().join("new.txt");
+        let (temp, _) = write_temp(
+            &t,
+            &new,
+            Transform::Identity,
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
+        assert_eq!(mode(&temp) & 0o111, 0);
+        fs::remove_file(&temp).unwrap();
     }
 
     #[test]
