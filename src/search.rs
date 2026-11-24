@@ -16,6 +16,7 @@
 
 use std::collections::VecDeque;
 use std::ops::Range;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -398,8 +399,9 @@ pub fn search_forward_par_ctx(
 /// alone) for chunked and remote sources, non-blocking snapshots and ranges of a few windows;
 /// otherwise the available parallelism, at most 4: the windows are copied out of the page
 /// cache, and that copy, not the matching, limits a search on more threads (a laptop's memory
-/// bandwidth was used up at 4). `BIGTEXT_SEARCH_THREADS` overrides the number (1 turns the
-/// parallel search off).
+/// bandwidth was used up at 4). `BIGTEXT_SEARCH_THREADS` overrides the number, from 1 (the
+/// parallel search off) to 16: each thread adds two window buffers, so a search holds up to
+/// about (2 x threads + 3) x 17 MB, 190 MB at 4 threads and 600 MB at 16.
 pub fn search_threads(buf: &TextBuf, range: &Range<u64>) -> usize {
     static THREADS: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     let threads = *THREADS.get_or_init(|| {
@@ -412,7 +414,7 @@ pub fn search_threads(buf: &TextBuf, range: &Range<u64>) -> usize {
                     .unwrap_or(1)
                     .min(4)
             })
-            .clamp(1, 64)
+            .clamp(1, 16)
     });
     let local = buf.source.is_mmap() || buf.source.is_pread();
     let span = range.end.min(buf.len()).saturating_sub(range.start);
@@ -701,18 +703,39 @@ impl<'a> Scan<'a> {
         }
         let windows = (self.end - self.start).div_ceil(self.g.window);
         let sh = Shared::default();
-        std::thread::scope(|scope| {
+        let merged = std::thread::scope(|scope| {
+            // Stops the workers however this ends: a failed spawn, a panic in `on_match`.
+            let _stop = StopOnDrop(&sh);
+            let mut started = 0;
             for i in 0..cfg.threads {
                 let (me, sh) = (&*self, &sh);
-                std::thread::Builder::new()
-                    .name(format!("search-{i}"))
-                    .spawn_scoped(scope, move || me.worker(sh, cfg, windows))
-                    .expect("failed to spawn search thread");
+                #[cfg(test)]
+                let injected = matches!(cfg.fault, Fault::SpawnFailsFrom(n) if i >= n);
+                #[cfg(not(test))]
+                let injected = false;
+                let spawned = if injected {
+                    Err(std::io::Error::other("injected spawn failure"))
+                } else {
+                    std::thread::Builder::new()
+                        .name(format!("search-{i}"))
+                        .spawn_scoped(scope, move || {
+                            let _panic = PanicGuard(sh);
+                            me.worker(sh, cfg, windows)
+                        })
+                };
+                // Windows go to whichever worker asks next, so fewer workers only search
+                // slower; with none, the search runs here.
+                if spawned.is_err() {
+                    break;
+                }
+                started += 1;
             }
-            // Stops the workers however the merge ends (also on a panic in `on_match`).
-            let _stop = StopOnDrop(&sh);
-            self.merge(&sh, cfg, windows, on_match)
-        })
+            (started > 0).then(|| self.merge(&sh, cfg, windows, on_match))
+        });
+        match merged {
+            Some(r) => r,
+            None => self.run_seq(on_match),
+        }
     }
 
     fn merge(&self, sh: &Shared, cfg: ParCfg, windows: u64, on_match: &mut OnMatch) -> SearchEnd {
@@ -723,7 +746,9 @@ impl<'a> Scan<'a> {
         let mut window = Vec::new();
         let mut feed: Option<Feed> = None;
         loop {
-            if self.cancel.is_cancelled() {
+            // After a worker panicked the result does not matter: the scope raises the panic
+            // in the caller once the workers have stopped, as the search here would have.
+            if self.cancel.is_cancelled() || sh.panicked() {
                 return SearchEnd::Cancelled;
             }
             let k = self.index(cur.pos);
@@ -740,7 +765,7 @@ impl<'a> Scan<'a> {
                     let f = feed.as_mut().expect("feed of window k");
                     self.merge_window(sh, &mut cur, f, &hay[..n], rs, on_match)
                 }
-                None if self.cancel.is_cancelled() => return SearchEnd::Cancelled,
+                None if self.cancel.is_cancelled() || sh.panicked() => return SearchEnd::Cancelled,
                 // No worker result (failed read, or past the last grid window): search here.
                 None => self.seq_step(&mut cur, &mut window, on_match),
             };
@@ -764,7 +789,7 @@ impl<'a> Scan<'a> {
             sh.to_workers.notify_all();
         }
         loop {
-            if self.cancel.is_cancelled() {
+            if self.cancel.is_cancelled() || sh.panicked() {
                 return None;
             }
             if let Some(s) = b.slot(k) {
@@ -808,7 +833,7 @@ impl<'a> Scan<'a> {
                 if feed.end == Some(WorkerEnd::Complete) {
                     return self.finish_window(cur, win_end, max_end);
                 }
-                if self.cancel.is_cancelled() {
+                if self.cancel.is_cancelled() || sh.panicked() {
                     return Flow::Done(SearchEnd::Cancelled);
                 }
                 // The worker stopped early: go on from the cursor here.
@@ -817,8 +842,12 @@ impl<'a> Scan<'a> {
             let can_join = win_end == worker_end;
             let rs = self.read_range(cur.pos, win_end).start;
             let sub = &hay[(rs - rs_w) as usize..];
-            let (mut stopped, mut join) = (false, false);
+            let (mut stopped, mut join, mut aborted) = (false, false, false);
             let p = self.pass(cur, sub, rs, win_end, &mut |s, e| {
+                if sh.panicked() {
+                    aborted = true;
+                    return false;
+                }
                 if !on_match(s, e, hay, rs_w) {
                     stopped = true;
                     return false;
@@ -826,6 +855,9 @@ impl<'a> Scan<'a> {
                 join = can_join && feed.join(self, sh, s, e);
                 !join
             });
+            if aborted {
+                return Flow::Done(SearchEnd::Cancelled);
+            }
             if stopped {
                 return Flow::Done(SearchEnd::Stopped);
             }
@@ -869,6 +901,10 @@ impl<'a> Scan<'a> {
             let pos = self.start + k * self.g.window;
             let win_end = self.win_end(pos);
             let rr = self.read_range(pos, win_end);
+            #[cfg(test)]
+            if cfg.fault == Fault::PanicAt(k, false) {
+                panic!("injected panic before reading window {k}");
+            }
             let Some(n) = self.buf.read_to(rr.clone(), &mut window) else {
                 sh.finish(k, Vec::new(), WorkerEnd::Failed);
                 spare = Some(window);
@@ -886,6 +922,10 @@ impl<'a> Scan<'a> {
                     }
                 }
                 sh.to_merger.notify_one();
+            }
+            #[cfg(test)]
+            if cfg.fault == Fault::PanicAt(k, true) {
+                panic!("injected panic while searching window {k}");
             }
             let mut batch = Vec::with_capacity(cfg.batch);
             let mut aborted = false;
@@ -924,6 +964,8 @@ struct ParCfg {
     queued: usize,
     /// Matches passed on at once.
     batch: usize,
+    #[cfg(test)]
+    fault: Fault,
 }
 
 impl ParCfg {
@@ -933,8 +975,21 @@ impl ParCfg {
             in_flight: threads + 2,
             queued: 64 * 1024,
             batch: 4096,
+            #[cfg(test)]
+            fault: Fault::None,
         }
     }
+}
+
+/// A failure to inject in tests.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Fault {
+    None,
+    /// Spawning worker `n` and later ones fails.
+    SpawnFailsFrom(usize),
+    /// The worker of window `k` panics, after handing over the window's bytes if `true`.
+    PanicAt(u64, bool),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -989,9 +1044,15 @@ struct Shared {
     board: Mutex<Board>,
     to_merger: Condvar,
     to_workers: Condvar,
+    /// A worker panicked: everyone stops, and the scope raises the panic in the caller.
+    panicked: AtomicBool,
 }
 
 impl Shared {
+    fn panicked(&self) -> bool {
+        self.panicked.load(Ordering::Relaxed)
+    }
+
     fn lock(&self) -> MutexGuard<'_, Board> {
         self.board.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -1045,6 +1106,20 @@ impl Shared {
     }
 }
 
+/// Makes a panicking worker stop the search, so that nobody waits for its window.
+struct PanicGuard<'a>(&'a Shared);
+
+impl Drop for PanicGuard<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            self.0.panicked.store(true, Ordering::Relaxed);
+            self.0.lock().stop = true;
+            self.0.to_merger.notify_all();
+            self.0.to_workers.notify_all();
+        }
+    }
+}
+
 struct StopOnDrop<'a>(&'a Shared);
 
 impl Drop for StopOnDrop<'_> {
@@ -1083,6 +1158,10 @@ impl Feed {
         }
         let mut b = sh.lock();
         loop {
+            if sh.panicked() {
+                self.end = Some(WorkerEnd::Failed);
+                return None;
+            }
             if scan.cancel.is_cancelled() {
                 return None;
             }
@@ -1786,6 +1865,7 @@ mod tests {
             in_flight: 1 + rng.below(5) as usize,
             queued: 1 + rng.below(20) as usize,
             batch: 1 + rng.below(8) as usize,
+            fault: Fault::None,
         }
     }
 
@@ -1909,6 +1989,7 @@ mod tests {
             in_flight: 2,
             queued: 1,
             batch: 1,
+            fault: Fault::None,
         };
         let (par, _) = run_with(&t, &m, g, 0..t.len(), Some(cfg), None);
         assert_eq!(par, vec![(4, 6), (10, 12)]);
@@ -1944,6 +2025,7 @@ mod tests {
             in_flight: 4,
             queued: 16,
             batch: 4,
+            fault: Fault::None,
         };
         for pat in ["ab", r"\w+", "x*"] {
             let m = Matcher::new(&rq(pat), Codec::utf8()).unwrap();
@@ -2043,6 +2125,154 @@ mod tests {
             });
             assert_eq!(r, SearchEnd::Completed);
             assert_eq!(par, seq, "{query:?}");
+        }
+    }
+
+    /// Runs `f` on a thread of its own and fails the test if it takes more than 30 s (a search
+    /// that hangs or crawls would otherwise stall the whole test run).
+    fn within<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)));
+        });
+        match rx.recv_timeout(Duration::from_secs(30)) {
+            Ok(Ok(v)) => v,
+            Ok(Err(p)) => std::panic::resume_unwind(p),
+            Err(_) => panic!("timed out"),
+        }
+    }
+
+    #[test]
+    fn long_match_cut_at_the_span_end_is_found_once() {
+        // `a+` over 300 `a`s with 64-byte windows and a 16-byte overlap: the match is cut at the
+        // span end and extended. In UTF-16 the extension used to fail, and with the grid the
+        // search then went on one character at a time.
+        let g = Geom {
+            window: 64,
+            regex_overlap: 16,
+            max_match: 1 << 20,
+        };
+        let utf16 = Codec::new(Encoding::Utf16Le, NlByte::Lf, 2);
+        let cp1251 = Codec::new(Encoding::Windows1251, NlByte::Lf, 0);
+        for codec in [Codec::utf8(), utf16, cp1251] {
+            for lead in ["xx", "x", ""] {
+                within(move || {
+                    let mut data = if codec.enc.is_utf16() {
+                        vec![0xFF, 0xFE]
+                    } else {
+                        Vec::new()
+                    };
+                    let bom = data.len() as u64;
+                    let text = format!("{lead}{}\nyy", "a".repeat(300));
+                    data.extend(codec.encode(&text));
+                    let (_f, t) = buf_with(&data, codec);
+                    let m = Matcher::new(&rq("a+"), codec).unwrap();
+                    let unit = codec.unit() as u64;
+                    let s = bom + lead.len() as u64 * unit;
+                    let want = vec![(s, s + 300 * unit)];
+                    let cfg = ParCfg {
+                        in_flight: 3,
+                        queued: 2,
+                        batch: 1,
+                        ..ParCfg::new(3)
+                    };
+                    let (seq, r1) = run_with(&t, &m, g, 0..t.len(), None, None);
+                    let (par, r2) = run_with(&t, &m, g, 0..t.len(), Some(cfg), None);
+                    assert_eq!((r1, r2), (SearchEnd::Completed, SearchEnd::Completed));
+                    assert_eq!(seq, want, "{:?} {lead:?}", codec.enc);
+                    assert_eq!(par, want, "{:?} {lead:?}", codec.enc);
+                    assert_eq!(legacy(&t, &m, g, 0..t.len()), want);
+                });
+            }
+        }
+    }
+
+    #[test]
+    fn extended_matches_agree_with_moving_windows() {
+        // Matches far longer than the overlap, so they are cut at the span end and extended:
+        // the grid, the moving windows and the parallel search all find the same ones.
+        let mut rng = Rng(0xD1B5_4A32_D192_ED03);
+        // Repeats of one ASCII character: a match cut at the span end ends right there, which
+        // is what sends it to be extended. A match that grows in longer steps (`(?:ab)+`, or
+        // `\w+` over multi-byte characters) can be cut short of the span end and is reported
+        // short, at the grid edges now as at the moving ones before; with the real 1 MB
+        // overlap that takes a match longer than 1 MB.
+        let long = ["a+", "[ab]+", "x+", "[ab ]+", "[a-z ]{3,}", "(?i)A+"];
+        let mut extended = 0;
+        for round in 0..crate::robustness::rounds(60) {
+            let (_f, t, name) = random_doc(&mut rng);
+            let g = Geom {
+                window: rng.pick(&[8, 16, 24, 64, 100]),
+                // At least the shortest match (three UTF-16 units), or one starting just
+                // before an edge would not fit in the span at all.
+                regex_overlap: rng.pick(&[6, 8, 16]),
+                max_match: 1 << 20,
+            };
+            for pat in long {
+                let Ok(m) = Matcher::new(&rq(pat), t.codec) else {
+                    continue;
+                };
+                let cfg = random_cfg(&mut rng);
+                let before = legacy(&t, &m, g, 0..t.len());
+                let (seq, _) = run_with(&t, &m, g, 0..t.len(), None, None);
+                let (par, _) = run_with(&t, &m, g, 0..t.len(), Some(cfg), None);
+                assert_eq!(seq, before, "round {round} {name} {pat} {g:?}");
+                assert_eq!(par, seq, "round {round} {name} {pat} {g:?} {cfg:?}");
+                // Longer than a window and its overlap: found only by extending it.
+                extended += seq
+                    .iter()
+                    .filter(|(s, e)| e - s > g.window + g.regex_overlap)
+                    .count();
+            }
+        }
+        assert!(extended > 100, "only {extended} extended matches");
+    }
+
+    type Matches = Vec<(u64, u64)>;
+
+    /// The dense document, searched with an injected failure: what the search returned (`None`:
+    /// it panicked), the matches it reported, and those of the sequential search.
+    fn with_fault(fault: Fault) -> (Option<SearchEnd>, Matches, Matches) {
+        within(move || {
+            let (_f, t) = dense_doc();
+            let m = Matcher::new(&rq(r"\w+"), Codec::utf8()).unwrap();
+            let (seq, _) = run_with(&t, &m, SMALL, 0..t.len(), None, None);
+            let cancel = CancelToken::new();
+            let scan = Scan::new(&t, &m, SMALL, 0..t.len(), &cancel, None);
+            let cfg = ParCfg {
+                queued: 16,
+                batch: 4,
+                fault,
+                ..ParCfg::new(4)
+            };
+            let mut got = Vec::new();
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                scan.run_par(cfg, &mut |s, e, _, _| {
+                    got.push((s, e));
+                    true
+                })
+            }));
+            (r.ok(), got, seq)
+        })
+    }
+
+    #[test]
+    fn failed_spawns_fall_back_to_fewer_threads() {
+        for from in [0, 1, 3] {
+            let (r, got, seq) = with_fault(Fault::SpawnFailsFrom(from));
+            assert_eq!(r, Some(SearchEnd::Completed));
+            assert_eq!(got, seq, "spawn fails from {from}");
+        }
+    }
+
+    #[test]
+    fn a_worker_panic_fails_the_search_instead_of_hanging() {
+        for k in [0, 1, 7, 150] {
+            for searching in [false, true] {
+                let (r, got, seq) = with_fault(Fault::PanicAt(k, searching));
+                assert_eq!(r, None, "window {k}: the panic did not reach the caller");
+                assert_eq!(got, seq[..got.len()]);
+            }
         }
     }
 }
