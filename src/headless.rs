@@ -113,7 +113,8 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         Exit code 1 when nothing matched.
   saved [--settings FILE]
         The searches saved in BigText (the search bar's star menu);
-        filter, count and grep --saved NAME run one.
+        filter, count and grep --saved NAME run one. Exit code 1 when there
+        are none, 2 when FILE is not a BigText settings file.
   --json on filter, levels, grep, count, stats, replace (with -o or
   --in-place), saved and csv stats gives one JSON record per line ({file,
   line, offset, text, context}; errors as {\"error\": …}).
@@ -3562,6 +3563,7 @@ mod tests {
             (st["lines"].as_u64(), st["crlf"].as_u64()),
             (Some(3), Some(3))
         );
+        let no_saved = file(&d, "state.txt", b"# BigText session state\nfont_size=14\n");
         let e: serde_json::Value = serde_json::from_str(
             run_args(&[
                 "count",
@@ -3569,7 +3571,7 @@ mod tests {
                 "--saved",
                 "nope",
                 "--settings",
-                &log,
+                &no_saved,
                 "--json",
             ])
             .1
@@ -3612,6 +3614,84 @@ mod tests {
         assert_eq!(
             run_args(&["filter", "--saved", "Not ok", "--settings", &settings, &log]).1,
             "Error one\nError two\n"
+        );
+    }
+
+    #[test]
+    fn saved_tells_a_wrong_file_from_settings_without_searches() {
+        let d = tempfile::tempdir().unwrap();
+        // The app's own file without saved searches: nothing, exit code 1.
+        let state = file(
+            &d,
+            "state.txt",
+            b"# BigText session state\r\nfont_size=14\r\n",
+        );
+        assert_eq!(
+            run_args(&["saved", "--settings", &state]),
+            (1, String::new(), String::new())
+        );
+        // Anything else is an error that names the file.
+        let not =
+            "not a BigText settings file (the app's state.txt, or one from Help → Export settings)";
+        for (name, text) in [
+            (
+                "app.log",
+                &b"2024-05-01 10:00:00 INFO start\n2024-05-01 10:00:01 ERROR x\n"[..],
+            ),
+            ("t.csv", b"name,count\nsaved,3\n"),
+            ("a.json", b"[{\"saved\":1},{\"saved\":2}]"),
+            ("b.bin", b"\x00\x01\x02\xFF\xFE\x00garbage"),
+            ("logfmt.log", b"level=info msg=ok\nlevel=error msg=bad\n"),
+            // A saved session is not the settings either.
+            (
+                "work.session",
+                b"# BigText session\ntab=0|0|0||a.log\npinned=0\n",
+            ),
+            ("empty.txt", b""),
+        ] {
+            let f = file(&d, name, text);
+            let shown = display_path(Path::new(&f));
+            assert_eq!(
+                run_args(&["saved", "--settings", &f]),
+                (2, String::new(), format!("bigtext saved: {shown}: {not}\n")),
+                "{name}"
+            );
+            if name == "app.log" {
+                assert_eq!(
+                    run_args(&["saved", "--json", "--settings", &f]),
+                    (
+                        2,
+                        format!(
+                            "{}\n",
+                            serde_json::json!({"error": format!("{shown}: {not}")})
+                        ),
+                        String::new()
+                    )
+                );
+                assert_eq!(
+                    run_args(&["count", "--saved", "Errors", "--settings", &f, &f]),
+                    (2, String::new(), format!("bigtext count: {shown}: {not}\n"))
+                );
+            }
+        }
+        // A missing file, as other commands report one.
+        let missing = d.path().join("missing.txt");
+        let shown = display_path(&missing);
+        let (code, out, err) = run_args(&["saved", "--settings", &missing.to_string_lossy()]);
+        assert_eq!((code, out.as_str()), (2, ""));
+        assert!(
+            err.starts_with(&format!("bigtext saved: {shown}: ")) && !err.contains(not),
+            "{err}"
+        );
+        // An exported file (after a byte order mark, with a hand edit in another encoding).
+        let exported = file(
+            &d,
+            "my.settings",
+            b"\xEF\xBB\xBF# BigText settings\nfont=Caf\xE9\nsaved=Errors|i|0||error\n",
+        );
+        assert_eq!(
+            run_args(&["saved", "--settings", &exported]),
+            (0, "Errors\terror\n".into(), String::new())
         );
     }
 
