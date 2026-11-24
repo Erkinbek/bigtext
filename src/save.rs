@@ -23,7 +23,8 @@ const WRITE_BUF: usize = 8 * 1024 * 1024;
 pub enum Transform<'a> {
     Identity,
     /// Convert line breaks to the given style; with `true`, a CR not followed by LF (in a file
-    /// whose line breaks are LF) becomes a line break too instead of staying as it is.
+    /// whose line breaks are LF) becomes a line break too instead of staying as it is. In a
+    /// file whose line breaks are CR every CR is a line break, so the `bool` does not matter.
     Eol(LineEnding, bool),
     /// Replace every match in the range.
     Replace {
@@ -507,7 +508,13 @@ pub fn write_temp(
                     Transform::Eol(style, lone_cr) => Sink::Eol(EolWriter {
                         out: &mut w,
                         codec: buf.codec,
-                        target: buf.codec.line_break(*style),
+                        // The style asked for: `line_break` of a CR file's own codec is always
+                        // CR (what Enter types there), which would leave its breaks as they are.
+                        target: Codec {
+                            nl: NlByte::Lf,
+                            ..buf.codec
+                        }
+                        .line_break(*style),
                         pending_cr: false,
                         lone_cr: *lone_cr,
                         written: 0,
@@ -832,6 +839,44 @@ mod tests {
         )
         .unwrap();
         assert_eq!(fs::read(&temp3).unwrap(), u16c.encode("x\r\ny\r\nz"));
+    }
+
+    /// "Convert to LF/CRLF" changes a file whose line breaks are CR (old Mac style): every CR
+    /// is a line break there, whatever the lone-CR choice.
+    #[test]
+    fn eol_conversion_of_a_cr_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let save = |t: &TextBuf, target: &Path, style, lone| {
+            let (temp, _) = write_temp(
+                t,
+                target,
+                Transform::Eol(style, lone),
+                &CancelToken::new(),
+                &Progress::default(),
+            )
+            .unwrap();
+            let out = fs::read(&temp).unwrap();
+            fs::remove_file(temp).unwrap();
+            out
+        };
+        let path = dir.path().join("mac.txt");
+        fs::write(&path, b"a\rb\r\rc").unwrap();
+        let t = open(&path, Codec::new(Encoding::Utf8, NlByte::Cr, 0));
+        for lone in [false, true] {
+            assert_eq!(save(&t, &path, LineEnding::Lf, lone), b"a\nb\n\nc");
+            assert_eq!(save(&t, &path, LineEnding::CrLf, lone), b"a\r\nb\r\n\r\nc");
+            assert_eq!(save(&t, &path, LineEnding::Cr, lone), b"a\rb\r\rc");
+        }
+        // UTF-16, with a CR as the last character.
+        let u16c = Codec::new(Encoding::Utf16Le, NlByte::Cr, 0);
+        let p2 = dir.path().join("mac16.txt");
+        fs::write(&p2, u16c.encode("x\ry\r")).unwrap();
+        let t2 = open(&p2, u16c);
+        assert_eq!(
+            save(&t2, &p2, LineEnding::CrLf, false),
+            u16c.encode("x\r\ny\r\n")
+        );
+        assert_eq!(save(&t2, &p2, LineEnding::Lf, false), u16c.encode("x\ny\n"));
     }
 
     #[test]
