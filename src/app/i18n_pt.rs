@@ -1383,4 +1383,5 @@ pub static PT: &[(&str, &str)] = &[
     ("File changed on disk", "O arquivo mudou no disco"),
     ("{file} changed on disk after it was opened (another program wrote to it). Saving replaces it with the text shown here, and what the other program wrote is lost.", "{file} mudou no disco depois de aberto (outro programa gravou nele). Salvar o substitui pelo texto mostrado aqui, e o que o outro programa gravou se perde."),
     ("Save anyway", "Salvar mesmo assim"),
+    ("Unsaved edits from an earlier session could not be moved and stay in {dir}.", "As edições não salvas de uma sessão anterior não puderam ser movidas e continuam em {dir}."),
 ];

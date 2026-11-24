@@ -179,7 +179,8 @@ impl BigTextApp {
     }
 
     /// Creates the portable settings folder next to the program and saves the settings there.
-    fn make_portable(&mut self) -> Result<PathBuf, String> {
+    /// Returns the old journal folder when journals of unsaved edits had to stay in it.
+    fn make_portable(&mut self) -> Result<Option<PathBuf>, String> {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let dir = exe.parent().ok_or("no program folder")?.join(PORTABLE_DIR);
         let old_sessions = super::sessions::sessions_dir();
@@ -196,7 +197,13 @@ impl BigTextApp {
                 }
             }
         }
-        Ok(dir)
+        // The journals of unsaved edits too: the next start looks for them there.
+        let old_journals = self.recovery.dir.clone();
+        let left = match super::recovery::default_dir() {
+            Some(to) => self.move_recovery(to),
+            None => 0,
+        };
+        Ok(old_journals.filter(|_| left > 0))
     }
 
     pub(super) fn portable_window(&mut self, ctx: &egui::Context) {
@@ -222,7 +229,15 @@ impl BigTextApp {
         });
         if make {
             match self.make_portable() {
-                Ok(_) => self.notify(tr("BigText is portable now.").into(), None),
+                Ok(left_in) => {
+                    self.notify(tr("BigText is portable now.").into(), None);
+                    if let Some(old) = left_in {
+                        self.error = Some(trf(
+                            "Unsaved edits from an earlier session could not be moved and stay in {dir}.",
+                            &[("dir", &bigtext::file::display_path(&old))],
+                        ));
+                    }
+                }
                 Err(e) => self.error = Some(e),
             }
         }

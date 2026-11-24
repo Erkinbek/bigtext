@@ -789,6 +789,13 @@ pub fn same_path(a: &Path, b: &Path) -> bool {
     norm(a) == norm(b)
 }
 
+/// An app without a window, saved settings or journal folder, for tests.
+#[cfg(test)]
+pub(crate) fn test_app() -> BigTextApp {
+    let cc = eframe::CreationContext::_new_kittest(egui::Context::default());
+    BigTextApp::new(&cc, StartOptions::default(), Instant::now(), false)
+}
+
 impl BigTextApp {
     pub fn new(
         cc: &eframe::CreationContext<'_>,

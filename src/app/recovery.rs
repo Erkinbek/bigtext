@@ -248,11 +248,16 @@ pub struct Entry {
     drop_pending: bool,
     /// Set when the journal is dropped, so a write still running does not leave files behind.
     cancel: Arc<AtomicBool>,
+    /// The journal is in the folder used before the journals moved (`RecoveryState::old_dir`):
+    /// it goes from there once it is written whole in the new one.
+    in_old: bool,
+    /// The write running when the journals moved goes to the old folder.
+    old_write: bool,
 }
 
 /// Stops journaling a document: its files go now, or when the write in flight ends (a write
 /// finishing after the files were deleted would bring them back).
-fn drop_journal(entries: &mut HashMap<u64, Entry>, dir: &Path, doc: u64) {
+fn drop_journal(entries: &mut HashMap<u64, Entry>, dir: &Path, old: Option<&Path>, doc: u64) {
     let Some(e) = entries.get_mut(&doc) else {
         return;
     };
@@ -264,7 +269,44 @@ fn drop_journal(entries: &mut HashMap<u64, Entry>, dir: &Path, doc: u64) {
     if e.exists {
         remove(dir, &RecoveryState::id(doc));
     }
+    if let (true, Some(old)) = (e.in_old, old) {
+        remove(old, &RecoveryState::id(doc));
+    }
     entries.remove(&doc);
+}
+
+/// Copies a file and makes sure the copy is on the disk.
+fn copy_synced(from: &Path, to: &Path) -> io::Result<()> {
+    fs::copy(from, to)?;
+    File::options().write(true).open(to)?.sync_all()
+}
+
+/// Moves a journal to another folder (on another drive, too): the typed bytes, then the piece
+/// list through a temporary file, both copied and synced before anything is deleted, so that a
+/// failure or a crash part way leaves the whole journal in one folder or the other. A journal of
+/// the same name in `to` is not overwritten.
+fn move_journal(from: &Path, to: &Path, id: &str) -> io::Result<()> {
+    let target = pieces_path(to, id);
+    if target.exists() {
+        return Err(io::ErrorKind::AlreadyExists.into());
+    }
+    let temp = to.join(format!("{id}.pieces.tmp"));
+    let r = (|| {
+        if add_path(from, id).exists() {
+            copy_synced(&add_path(from, id), &add_path(to, id))?;
+        }
+        copy_synced(&pieces_path(from, id), &temp)?;
+        fs::rename(&temp, &target)
+    })();
+    if let Err(e) = r {
+        let _ = fs::remove_file(&temp);
+        let _ = fs::remove_file(add_path(to, id));
+        return Err(e);
+    }
+    // The piece list first: typed bytes a crash leaves without one are no journal and go.
+    let _ = fs::remove_file(pieces_path(from, id));
+    let _ = fs::remove_file(add_path(from, id));
+    Ok(())
 }
 
 #[derive(Default)]
@@ -281,6 +323,10 @@ pub struct RecoveryState {
     /// Restored journals (by the document they went into), deleted once that document's own
     /// journal is written or no longer needed: a crash right after a restore keeps them.
     superseded: HashMap<u64, String>,
+    /// The folder the journals were in before they moved with the settings (Make portable), and
+    /// this instance's lock there, held while journals of its documents are still in it.
+    old_dir: Option<PathBuf>,
+    old_lock: Option<File>,
 }
 
 impl RecoveryState {
@@ -397,12 +443,79 @@ impl BigTextApp {
         self.recovery.offered = found;
     }
 
+    /// Moves journaling to `to`, where the settings went (Make portable): the next start looks
+    /// for journals there only. What crashed instances left is moved along; this instance's
+    /// journals are written whole in `to` and their old copies deleted once that is done, so
+    /// none is ever missing from both folders. A running BigText's journals are its own and
+    /// stay. Returns how many journals could not be moved: they stay where they are.
+    pub(crate) fn move_recovery(&mut self, to: PathBuf) -> usize {
+        let Some(from) = self.recovery.dir.clone() else {
+            return 0;
+        };
+        if from == to || fs::create_dir_all(&to).is_err() {
+            return 0;
+        }
+        keep_reused_pid_journals(&to);
+        let mine = std::process::id().to_string();
+        let crashed: Vec<String> = fs::read_dir(&from)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                let id = name.strip_suffix(".pieces")?;
+                let pid = id.split('-').next().unwrap_or("");
+                (pid != mine && !running(&from, pid)).then(|| id.to_string())
+            })
+            .collect();
+        let left: Vec<String> = crashed
+            .into_iter()
+            .filter(|id| move_journal(&from, &to, id).is_err())
+            .collect();
+        // Those are not in the folder the journals are read from any more.
+        let r = &mut self.recovery;
+        r.offered.retain(|j| !left.contains(&j.id));
+        r.pending.retain(|_, j| !left.contains(&j.id));
+        r.superseded.retain(|_, id| !left.contains(id));
+        for e in r.entries.values_mut() {
+            if e.exists || e.writing {
+                e.in_old = true;
+                e.old_write = e.writing;
+                e.exists = false;
+                e.rewrite = true;
+                // Written again even if the document does not change (a journaled document's
+                // version is at least 1).
+                e.written = 0;
+            }
+        }
+        let lock = File::create(to.join(format!("{mine}.lock")))
+            .ok()
+            .filter(|f| f.try_lock().is_ok());
+        r.old_lock = std::mem::replace(&mut r.lock, lock);
+        r.old_dir = Some(from);
+        r.dir = Some(to);
+        left.len()
+    }
+
+    /// Lets go of the old folder once none of this instance's journals is left in it.
+    fn release_old_dir(&mut self) {
+        let r = &mut self.recovery;
+        if r.old_dir.is_none() || r.entries.values().any(|e| e.in_old) {
+            return;
+        }
+        r.old_lock = None;
+        if let Some(old) = r.old_dir.take() {
+            let _ = fs::remove_file(old.join(format!("{}.lock", std::process::id())));
+        }
+    }
+
     /// Writes the journals of documents that changed and settled, and drops those of documents
     /// that are saved, unchanged or closed (every frame).
     pub(super) fn journal_tick(&mut self) {
         let Some(dir) = self.recovery.dir.clone() else {
             return;
         };
+        let old = self.recovery.old_dir.clone();
         let now = Instant::now();
         let ids: Vec<u64> = self.docs.iter().map(|d| d.id).collect();
         let gone: Vec<u64> = self
@@ -413,7 +526,7 @@ impl BigTextApp {
             .filter(|id| !ids.contains(id))
             .collect();
         for id in gone {
-            drop_journal(&mut self.recovery.entries, &dir, id);
+            drop_journal(&mut self.recovery.entries, &dir, old.as_deref(), id);
         }
         let superseded: Vec<u64> = self
             .recovery
@@ -438,7 +551,7 @@ impl BigTextApp {
                 && !d.temporary
                 && d.buf.add_len() as usize <= ADD_MAX;
             if !keep {
-                drop_journal(&mut self.recovery.entries, &dir, d.id);
+                drop_journal(&mut self.recovery.entries, &dir, old.as_deref(), d.id);
                 continue;
             }
             // While a save runs (or after it failed and left the document in an error state)
@@ -506,6 +619,7 @@ impl BigTextApp {
                 waker();
             });
         }
+        self.release_old_dir();
     }
 
     pub(super) fn on_journaled(&mut self, doc: u64, version: u64, add_len: u64, ok: bool) {
@@ -516,9 +630,19 @@ impl BigTextApp {
             return;
         };
         e.writing = false;
+        let old_write = std::mem::take(&mut e.old_write);
+        let old = self.recovery.old_dir.as_deref();
         if e.drop_pending {
             remove(&dir, &RecoveryState::id(doc));
+            if let (true, Some(old)) = (e.in_old, old) {
+                remove(old, &RecoveryState::id(doc));
+            }
             self.recovery.entries.remove(&doc);
+            return;
+        }
+        if old_write {
+            // Written to the old folder, where the journal stays until it is written whole in
+            // the new one (the next write: the journals moved since this one started).
             return;
         }
         if ok {
@@ -527,6 +651,10 @@ impl BigTextApp {
             e.exists = true;
             e.rewrite = false;
             e.waiting_since = None;
+            // The journal is whole in the new folder: its copy in the old one can go.
+            if let (true, Some(old)) = (std::mem::take(&mut e.in_old), old) {
+                remove(old, &RecoveryState::id(doc));
+            }
             // The document's own journal is there now: the one it was restored from can go.
             if let Some(old) = self.recovery.superseded.remove(&doc) {
                 remove(&dir, &old);
@@ -548,10 +676,14 @@ impl BigTextApp {
         let Some(dir) = self.recovery.dir.clone() else {
             return;
         };
+        let old = self.recovery.old_dir.clone();
         for (id, e) in self.recovery.entries.drain() {
             e.cancel.store(true, Ordering::Relaxed);
             if e.exists || e.writing {
                 remove(&dir, &RecoveryState::id(id));
+            }
+            if let (true, Some(old)) = (e.in_old, &old) {
+                remove(old, &RecoveryState::id(id));
             }
         }
         for (_, old) in self.recovery.superseded.drain() {
@@ -559,6 +691,7 @@ impl BigTextApp {
         }
         self.recovery.lock = None;
         let _ = fs::remove_file(dir.join(format!("{}.lock", std::process::id())));
+        self.release_old_dir();
     }
 
     /// Opens the journal's file (or a new document) with the edits put back.
@@ -918,5 +1051,136 @@ mod tests {
             .unwrap_or_else(|| panic!("{names:?}"));
         assert_eq!(text_of(d, moved).as_deref(), Some("ok"));
         assert!(names.contains(&format!("{}-2.pieces", pid + 1)));
+    }
+
+    /// As if the pause in editing were over: the next tick writes the journals.
+    fn settle(app: &mut BigTextApp) {
+        app.journal_tick();
+        let past = Instant::now().checked_sub(Duration::from_secs(3)).unwrap();
+        for e in app.recovery.entries.values_mut() {
+            e.changed_at = Some(past);
+        }
+    }
+
+    fn wait_written(app: &mut BigTextApp) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while app.recovery.entries.values().any(|e| e.writing) {
+            assert!(Instant::now() < deadline, "the journal was not written");
+            std::thread::sleep(Duration::from_millis(5));
+            app.poll_messages();
+        }
+    }
+
+    fn journal_now(app: &mut BigTextApp) {
+        settle(app);
+        app.journal_tick();
+        wait_written(app);
+    }
+
+    fn offered(app: &BigTextApp) -> Vec<String> {
+        app.recovery.offered.iter().map(|j| j.id.clone()).collect()
+    }
+
+    fn typed(app: &mut BigTextApp, at: u64, text: &[u8]) {
+        let d = &mut app.docs[app.active];
+        d.edit(at..at, text, crate::app::document::EditKind::Typing);
+    }
+
+    /// Make portable moves the settings: the next start looks for journals next to them, so
+    /// the journals go there too, and none is lost on the way.
+    #[test]
+    fn journals_move_with_the_settings() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (old, new) = (tmp.path().join("old"), tmp.path().join("new"));
+        let no = AtomicBool::new(false);
+        let mut app = crate::app::test_app();
+        app.start_recovery(Some(old.clone()));
+        typed(&mut app, 0, b"typed");
+        journal_now(&mut app);
+        let mine = RecoveryState::id(app.docs[app.active].id);
+        assert_eq!(text_of(&old, &mine).as_deref(), Some("typed"));
+        // What a crashed BigText left (offered), and the journal of one that still runs.
+        let crashed = untitled("999999-7", vec![(Buf::Add, 0, 4)], 4);
+        write_journal(&old, &crashed, false, b"lost", &no).unwrap();
+        let running = File::create(old.join("999998.lock")).unwrap();
+        running.try_lock().unwrap();
+        let other = untitled("999998-1", vec![(Buf::Add, 0, 5)], 5);
+        write_journal(&old, &other, false, b"other", &no).unwrap();
+        app.scan_recovery();
+        assert_eq!(offered(&app), ["999999-7"]);
+
+        assert_eq!(app.move_recovery(new.clone()), 0);
+        assert_eq!(app.recovery.dir.as_deref(), Some(new.as_path()));
+        // The crashed one is whole in the new folder, and still offered from there.
+        assert_eq!(text_of(&new, "999999-7").as_deref(), Some("lost"));
+        assert!(!pieces_path(&old, "999999-7").exists());
+        assert!(!add_path(&old, "999999-7").exists());
+        assert_eq!(offered(&app), ["999999-7"]);
+        // The running BigText's stays with it.
+        assert_eq!(text_of(&old, "999998-1").as_deref(), Some("other"));
+        assert!(!pieces_path(&new, "999998-1").exists());
+        // This instance's stays in the old folder, still locked, until written in the new one.
+        let lock = format!("{}.lock", std::process::id());
+        assert!(pieces_path(&old, &mine).exists());
+        assert!(old.join(&lock).exists() && new.join(&lock).exists());
+        journal_now(&mut app);
+        assert_eq!(text_of(&new, &mine).as_deref(), Some("typed"));
+        assert!(!pieces_path(&old, &mine).exists());
+        assert!(!add_path(&old, &mine).exists());
+        app.journal_tick();
+        assert!(!old.join(&lock).exists());
+        // Later edits are journaled in the new folder only.
+        typed(&mut app, 5, b"!");
+        journal_now(&mut app);
+        assert_eq!(text_of(&new, &mine).as_deref(), Some("typed!"));
+        assert!(!pieces_path(&old, &mine).exists());
+        app.end_recovery();
+        assert!(!pieces_path(&new, &mine).exists() && !new.join(&lock).exists());
+    }
+
+    /// A write that was running when the journals moved lands in the old folder: the journal
+    /// is written again in the new one before that copy goes.
+    #[test]
+    fn a_journal_written_while_the_journals_move_is_written_again() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (old, new) = (tmp.path().join("old"), tmp.path().join("new"));
+        let mut app = crate::app::test_app();
+        app.start_recovery(Some(old.clone()));
+        typed(&mut app, 0, b"abc");
+        settle(&mut app);
+        app.journal_tick();
+        let mine = RecoveryState::id(app.docs[app.active].id);
+        assert!(app.recovery.entries.values().any(|e| e.writing));
+        app.move_recovery(new.clone());
+        wait_written(&mut app);
+        assert_eq!(text_of(&old, &mine).as_deref(), Some("abc"));
+        assert!(!pieces_path(&new, &mine).exists());
+        journal_now(&mut app);
+        assert_eq!(text_of(&new, &mine).as_deref(), Some("abc"));
+        assert!(!pieces_path(&old, &mine).exists());
+    }
+
+    /// A journal that cannot be moved stays whole where it was (and is not offered from a
+    /// folder it is not in); nothing half copied is left in the new folder.
+    #[test]
+    fn a_journal_that_cannot_be_moved_stays_whole() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (old, new) = (tmp.path().join("old"), tmp.path().join("new"));
+        let no = AtomicBool::new(false);
+        let mut app = crate::app::test_app();
+        app.start_recovery(Some(old.clone()));
+        let kept = untitled("999999-8", vec![(Buf::Add, 0, 4)], 4);
+        write_journal(&old, &kept, false, b"kept", &no).unwrap();
+        let moved = untitled("999999-9", vec![(Buf::Add, 0, 5)], 5);
+        write_journal(&old, &moved, false, b"moved", &no).unwrap();
+        app.scan_recovery();
+        // Its piece list cannot be written in the new folder.
+        fs::create_dir_all(new.join("999999-8.pieces.tmp")).unwrap();
+        assert_eq!(app.move_recovery(new.clone()), 1);
+        assert_eq!(text_of(&old, "999999-8").as_deref(), Some("kept"));
+        assert!(!add_path(&new, "999999-8").exists());
+        assert!(!pieces_path(&new, "999999-8").exists());
+        assert_eq!(text_of(&new, "999999-9").as_deref(), Some("moved"));
+        assert_eq!(offered(&app), ["999999-9"]);
     }
 }

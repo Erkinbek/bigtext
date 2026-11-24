@@ -1383,4 +1383,5 @@ pub static TR: &[(&str, &str)] = &[
     ("File changed on disk", "Dosya diskte değişti"),
     ("{file} changed on disk after it was opened (another program wrote to it). Saving replaces it with the text shown here, and what the other program wrote is lost.", "{file} açıldıktan sonra diskte değişti (başka bir program ona yazdı). Kaydetmek onu burada gösterilen metinle değiştirir ve diğer programın yazdıkları kaybolur."),
     ("Save anyway", "Yine de kaydet"),
+    ("Unsaved edits from an earlier session could not be moved and stay in {dir}.", "Önceki bir oturumdaki kaydedilmemiş düzenlemeler taşınamadı, {dir} içinde kalıyor."),
 ];

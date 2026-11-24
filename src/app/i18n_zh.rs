@@ -1380,4 +1380,5 @@ pub static ZH: &[(&str, &str)] = &[
     ("File changed on disk", "文件已在磁盘上更改"),
     ("{file} changed on disk after it was opened (another program wrote to it). Saving replaces it with the text shown here, and what the other program wrote is lost.", "{file} 在打开后已在磁盘上更改（另一个程序写入了它）。保存会用此处显示的文本替换它，另一个程序写入的内容将丢失。"),
     ("Save anyway", "仍然保存"),
+    ("Unsaved edits from an earlier session could not be moved and stay in {dir}.", "之前会话中未保存的编辑无法移动，仍保留在 {dir} 中。"),
 ];

@@ -1556,4 +1556,5 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["File changed on disk", "Файл изменился на диске", "Fayl diskda o'zgargan"],
     ["{file} changed on disk after it was opened (another program wrote to it). Saving replaces it with the text shown here, and what the other program wrote is lost.", "{file} изменился на диске после открытия (в него писала другая программа). Сохранение заменит его текстом, показанным здесь, и записанное другой программой пропадёт.", "{file} ochilgandan keyin diskda o'zgargan (unga boshqa dastur yozgan). Saqlash uni shu yerda ko'rinib turgan matn bilan almashtiradi va boshqa dastur yozgan narsa yo'qoladi."],
     ["Save anyway", "Всё равно сохранить", "Baribir saqlash"],
+    ["Unsaved edits from an earlier session could not be moved and stay in {dir}.", "Несохранённые правки прошлого сеанса не удалось перенести, они остаются в {dir}.", "Oldingi seansning saqlanmagan tahrirlarini ko'chirib bo'lmadi, ular {dir} da qoladi."],
 ];
