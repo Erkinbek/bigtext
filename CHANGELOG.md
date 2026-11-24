@@ -3,6 +3,14 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## Unreleased
+
+### Fixed
+
+- In a UTF-16 file, a regex match longer than 1 MB that ran past the end of a 16 MB search
+  window was found one character late: search showed it short, and Replace All left its first
+  character unchanged.
+
 ## 0.13.0 — 2026-11-24
 
 ### Fixed: an idle window used a third of a CPU core

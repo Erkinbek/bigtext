@@ -444,7 +444,9 @@ fn extend_match(
             &hay,
             rs,
             (s - rs) as usize,
-            (s - rs) as usize + 1,
+            // Accept only a match starting at `s`: one whole code unit, or a UTF-16 search
+            // rounds the range down to nothing and the long match is lost.
+            (s - rs + unit) as usize,
             (lim - rs) as usize,
             &mut le,
             &mut |a, b| {
@@ -754,6 +756,36 @@ mod tests {
         assert_eq!(hits.len(), 1);
         let (s, e) = hits[0];
         assert_eq!(codec.decode_lossy(&t.read(s..e).unwrap()), "and");
+    }
+
+    /// A regex match cut at the end of a window is searched again from its start with a longer
+    /// span. In UTF-16 that search accepted no start at all, so the match was dropped and found
+    /// again one character later: Replace All left the first character of a long match.
+    #[test]
+    fn long_match_is_extended_in_every_encoding() {
+        let mut rq = q("a+");
+        rq.regex = true;
+        let utf16 = Codec::new(Encoding::Utf16Le, NlByte::Lf, 2);
+        let cp1251 = Codec::new(Encoding::Windows1251, NlByte::Lf, 0);
+        for codec in [Codec::utf8(), utf16, cp1251] {
+            let mut data = if codec.enc == Encoding::Utf16Le {
+                vec![0xFF, 0xFE]
+            } else {
+                Vec::new()
+            };
+            let bom = data.len() as u64;
+            data.extend(codec.encode(&format!("xx{}\nyy", "a".repeat(300))));
+            let (_f, t) = buf_with(&data, codec);
+            let m = Matcher::new(&rq, codec).unwrap();
+            let unit = codec.unit() as u64;
+            let s = bom + 2 * unit;
+            assert_eq!(
+                extend_match(&t, &m, s, t.len(), &CancelToken::new()),
+                Some((s, s + 300 * unit)),
+                "{:?}",
+                codec.enc
+            );
+        }
     }
 
     #[test]
