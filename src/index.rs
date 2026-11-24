@@ -6,7 +6,7 @@
 
 use std::ops::Range;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex, RwLock};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock, PoisonError, RwLock};
 use std::time::{Duration, Instant};
 
 use crate::encoding::Codec;
@@ -215,9 +215,10 @@ impl LineIndex {
 /// Builds the index in the background, from the start of the file (so the top is navigable at
 /// once). Cancelled via `cancel`; wakes the UI periodically.
 ///
-/// A large local file (mapped or read with pread) is counted by several threads; chunked
-/// sources (network and removable drives, remote files) keep one sequential reader, where
-/// parallel reads would only compete for the same slow device or server.
+/// A large file on a local disk is counted by several threads (see [`Source::parallel_reads`]);
+/// network and removable drives, rotating disks and remote files keep one sequential reader,
+/// where parallel reads would only compete for the same slow device or server.
+/// `BIGTEXT_INDEX_THREADS` sets the number of threads (1: one reader for every file).
 pub fn spawn_indexer(
     src: Arc<Source>,
     codec: Codec,
@@ -226,7 +227,8 @@ pub fn spawn_indexer(
     waker: Waker,
 ) -> std::thread::JoinHandle<()> {
     jobs::spawn("indexer", move || {
-        let threads = indexer_threads(&src, index.len - index.indexed_bytes());
+        let remaining = index.len - index.indexed_bytes();
+        let threads = indexer_threads(&src, remaining, max_index_threads());
         run_indexer(&src, codec, &index, &cancel, &waker, threads, BATCH);
     })
 }
@@ -239,18 +241,35 @@ const MIN_PARALLEL_BATCHES: u64 = 4;
 /// core's cache (several times faster than counting 4 MB read in one go, measured).
 const PIECE: u64 = 4 * BLOCK;
 
-fn indexer_threads(src: &Source, remaining: u64) -> usize {
-    if !(src.is_mmap() || src.is_pread()) {
+/// Threads an indexer may use: `BIGTEXT_INDEX_THREADS` if set (1 to 64), otherwise the
+/// available parallelism, at most [`MAX_INDEX_THREADS`].
+fn max_index_threads() -> usize {
+    static THREADS: OnceLock<usize> = OnceLock::new();
+    *THREADS.get_or_init(|| {
+        let available = std::thread::available_parallelism().map_or(1, |n| n.get());
+        threads_setting(
+            std::env::var("BIGTEXT_INDEX_THREADS").ok().as_deref(),
+            available,
+        )
+    })
+}
+
+fn threads_setting(var: Option<&str>, available: usize) -> usize {
+    var.and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or_else(|| available.min(MAX_INDEX_THREADS))
+        .clamp(1, 64)
+}
+
+/// Threads for indexing the `remaining` bytes of `src`, at most `max`.
+fn indexer_threads(src: &Source, remaining: u64, max: usize) -> usize {
+    if !src.parallel_reads() {
         return 1;
     }
     let batches = remaining.div_ceil(BATCH);
     if batches < MIN_PARALLEL_BATCHES {
         return 1;
     }
-    std::thread::available_parallelism()
-        .map_or(1, |n| n.get())
-        .min(MAX_INDEX_THREADS)
-        .min(batches as usize)
+    max.min(batches as usize)
 }
 
 /// Indexes from the end of the existing prefix to the end of the file with `threads` threads,
@@ -342,16 +361,48 @@ struct Pipeline {
     published: u64,
     /// Per-block newline counts of finished batches, at `batch % window`.
     slots: Vec<Option<Vec<u64>>>,
-    /// First batch whose read failed.
+    /// First batch that could not be counted (its read failed or its worker panicked).
     failed_at: Option<u64>,
-    /// Set on cancellation: workers claim nothing more.
+    /// Set when the publisher gives up (cancelled, or the next batch to publish failed):
+    /// workers claim nothing more.
     stop: bool,
+}
+
+/// Locks the pipeline even if a panicking worker poisoned the lock: the state stays consistent
+/// (every change is a single assignment), and the publisher must keep going to end the job.
+fn lock(state: &Mutex<Pipeline>) -> MutexGuard<'_, Pipeline> {
+    state.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Marks a claimed batch as failed if its worker unwinds before handing in the counts, so that
+/// the publisher stops there instead of waiting for it.
+struct Claim<'a> {
+    state: &'a Mutex<Pipeline>,
+    cv: &'a Condvar,
+    batch: u64,
+}
+
+impl Drop for Claim<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            let mut st = lock(self.state);
+            if st.failed_at.is_none_or(|f| self.batch < f) {
+                st.failed_at = Some(self.batch);
+            }
+            drop(st);
+            self.cv.notify_all();
+        }
+    }
 }
 
 /// Workers claim successive batches, each reads its batch (in [`PIECE`]s) and counts the
 /// newlines of every block; this thread adds the counts up and publishes them in file order, so
 /// the indexed part is always a prefix of the file. At most `2 * threads` batches are claimed
 /// ahead of the published prefix. `Ok(false)`: cancelled.
+///
+/// If not all workers can be started, the ones that did do the work; if none did, one thread
+/// indexes the file. A read error or a panicking worker ends the job as failed, with the batches
+/// before the one that could not be counted published.
 fn index_parallel(
     src: &Source,
     codec: Codec,
@@ -365,25 +416,22 @@ fn index_parallel(
     let len = index.len;
     let batches = (len - start).div_ceil(batch);
     let window = 2 * threads;
-    let shared = (
-        Mutex::new(Pipeline {
-            next: 0,
-            published: 0,
-            slots: vec![None; window],
-            failed_at: None,
-            stop: false,
-        }),
-        Condvar::new(),
-    );
-    let (state, cv) = &shared;
-    let mut error = None;
-
     let piece = PIECE.min(batch);
-    let worker = || {
+    let state = Mutex::new(Pipeline {
+        next: 0,
+        published: 0,
+        slots: vec![None; window],
+        failed_at: None,
+        stop: false,
+    });
+    let cv = Condvar::new();
+    let (state, cv) = (&state, &cv);
+
+    let worker = || -> Option<std::io::Error> {
         let mut buf = vec![0u8; piece as usize];
         loop {
             let b = {
-                let mut st = state.lock().unwrap();
+                let mut st = lock(state);
                 loop {
                     if st.stop || st.failed_at.is_some() || st.next >= batches {
                         return None;
@@ -394,11 +442,18 @@ fn index_parallel(
                     if st.next < st.published + window as u64 {
                         break;
                     }
-                    st = cv.wait(st).unwrap();
+                    st = cv.wait(st).unwrap_or_else(PoisonError::into_inner);
                 }
                 st.next += 1;
                 st.next - 1
             };
+            let _claim = Claim {
+                state,
+                cv,
+                batch: b,
+            };
+            #[cfg(test)]
+            tests::fault_in_batch(len, b);
             let pos = start + b * batch;
             let end = (pos + batch).min(len);
             let mut counts = Vec::with_capacity((batch / BLOCK) as usize);
@@ -414,10 +469,9 @@ fn index_parallel(
                 count_blocks(&codec, bytes, p, &mut counts);
                 p = e;
             }
-            let result = result.map(|()| counts);
-            let mut st = state.lock().unwrap();
+            let mut st = lock(state);
             match result {
-                Ok(counts) => st.slots[(b % window as u64) as usize] = Some(counts),
+                Ok(()) => st.slots[(b % window as u64) as usize] = Some(counts),
                 Err(e) => {
                     if st.failed_at.is_none_or(|f| b < f) {
                         st.failed_at = Some(b);
@@ -432,57 +486,89 @@ fn index_parallel(
         }
     };
 
-    let finished = std::thread::scope(|scope| {
+    let outcome = std::thread::scope(|scope| {
+        // Stops at the first worker that cannot be started (no threads or memory left).
         let handles: Vec<_> = (0..threads)
-            .map(|i| {
-                std::thread::Builder::new()
-                    .name(format!("indexer-{i}"))
-                    .spawn_scoped(scope, worker)
-                    .expect("failed to spawn worker thread")
-            })
+            .map_while(|i| spawn_worker(scope, i, len, worker).ok())
             .collect();
+        if handles.is_empty() {
+            return None;
+        }
         let mut throttle = Throttle::new(Duration::from_millis(100));
         let finished = loop {
             let mut counts = {
-                let mut st = state.lock().unwrap();
+                let mut st = lock(state);
                 loop {
                     if st.published == batches {
+                        break None;
+                    }
+                    if cancel.is_cancelled() || st.failed_at == Some(st.published) {
+                        st.stop = true;
                         break None;
                     }
                     let slot = (st.published % window as u64) as usize;
                     if let Some(c) = st.slots[slot].take() {
                         break Some(c);
                     }
-                    if cancel.is_cancelled() || st.failed_at == Some(st.published) {
-                        st.stop = true;
-                        break None;
-                    }
                     // Woken by every finished batch; the timeout notices a cancellation.
-                    st = cv.wait_timeout(st, Duration::from_millis(20)).unwrap().0;
+                    st = cv
+                        .wait_timeout(st, Duration::from_millis(20))
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .0;
                 }
             };
             let Some(counts) = counts.as_mut() else {
                 cv.notify_all();
-                break state.lock().unwrap().published == batches;
+                break lock(state).published == batches;
             };
             publish(index, counts);
-            state.lock().unwrap().published += 1;
+            lock(state).published += 1;
             cv.notify_all();
             if throttle.ready() {
                 waker();
             }
         };
+        let mut error = None;
         for h in handles {
-            if let Ok(Some(e)) = h.join() {
-                error.get_or_insert(e);
+            match h.join() {
+                Ok(Some(e)) => {
+                    error.get_or_insert(e);
+                }
+                Ok(None) => {}
+                Err(_) => {
+                    error.get_or_insert(std::io::Error::other("index worker panicked"));
+                }
             }
         }
-        finished
+        Some((finished, error))
     });
-    match error {
-        Some(e) if !finished && !cancel.is_cancelled() => Err(e),
-        _ => Ok(finished),
+    match outcome {
+        None => index_serial(src, codec, index, cancel, waker, batch),
+        Some((true, _)) => Ok(true),
+        Some((false, _)) if cancel.is_cancelled() => Ok(false),
+        Some((false, error)) => {
+            Err(error.unwrap_or_else(|| std::io::Error::other("index worker stopped")))
+        }
     }
+}
+
+/// Starts worker `i` of an indexer.
+fn spawn_worker<'scope, F>(
+    scope: &'scope std::thread::Scope<'scope, '_>,
+    i: usize,
+    len: u64,
+    f: F,
+) -> std::io::Result<std::thread::ScopedJoinHandle<'scope, Option<std::io::Error>>>
+where
+    F: FnOnce() -> Option<std::io::Error> + Send + 'scope,
+{
+    #[cfg(test)]
+    tests::fault_in_spawn(len, i)?;
+    #[cfg(not(test))]
+    let _ = len;
+    std::thread::Builder::new()
+        .name(format!("indexer-{i}"))
+        .spawn_scoped(scope, f)
 }
 
 /// Indexes synchronously (tests and benchmarks).
@@ -719,13 +805,16 @@ mod tests {
             assert!(idx.is_done() && !idx.failed(), "keep {keep}");
             assert_eq!(checkpoints(&idx), want, "keep {keep}");
         }
-        // The real entry point, on a file large enough for several threads.
+        // Full-size batches on four threads, whatever drive the temp folder is on.
         let codec = Codec::utf8();
         let data = random_text(5 * BATCH as usize + 1, &codec, 5);
         let want = naive_checkpoints(&data, &codec);
         let (_f, src) = source_with(&data);
-        let one_cpu = std::thread::available_parallelism().map_or(true, |n| n.get() == 1);
-        assert!(one_cpu || indexer_threads(&src, src.len()) > 1);
+        let idx = LineIndex::with_prefix(src.len(), want[..70].to_vec());
+        run(&src, codec, &idx, 4, BATCH);
+        assert!(idx.is_done());
+        assert_eq!(checkpoints(&idx), want);
+        // The real entry point (one thread or several, as the source allows).
         let idx = build_blocking(&src, codec);
         assert_eq!(checkpoints(&idx), want);
         let idx = LineIndex::with_prefix(src.len(), want[..70].to_vec());
@@ -746,9 +835,116 @@ mod tests {
     fn small_and_chunked_sources_use_one_thread() {
         let data = random_text(3 * BATCH as usize, &Codec::utf8(), 3);
         let (_f, src) = source_with(&data);
-        assert_eq!(indexer_threads(&src, src.len()), 1);
+        assert_eq!(indexer_threads(&src, src.len(), 8), 1);
         let remote = Source::remote(Box::new(Slow::new(data, u64::MAX, None)), 9 * BATCH, None);
-        assert_eq!(indexer_threads(&remote, remote.len()), 1);
+        assert_eq!(indexer_threads(&remote, remote.len(), 8), 1);
+        // BIGTEXT_INDEX_THREADS=1 turns the parallel indexer off.
+        let data = random_text(5 * BATCH as usize, &Codec::utf8(), 4);
+        let (_g, src) = source_with(&data);
+        assert_eq!(indexer_threads(&src, src.len(), 1), 1);
+        let n = indexer_threads(&src, src.len(), 3);
+        assert!(n == 3 || (n == 1 && !src.parallel_reads()));
+    }
+
+    #[test]
+    fn thread_setting() {
+        assert_eq!(threads_setting(None, 16), MAX_INDEX_THREADS);
+        assert_eq!(threads_setting(None, 2), 2);
+        assert_eq!(threads_setting(None, 0), 1);
+        assert_eq!(threads_setting(Some("1"), 16), 1);
+        assert_eq!(threads_setting(Some(" 3\n"), 16), 3);
+        assert_eq!(threads_setting(Some("12"), 4), 12);
+        assert_eq!(threads_setting(Some("0"), 16), 1);
+        assert_eq!(threads_setting(Some("1000"), 16), 64);
+        assert_eq!(threads_setting(Some("many"), 16), MAX_INDEX_THREADS);
+    }
+
+    /// Faults injected into the indexer of a file of a given length (one no other test uses).
+    #[derive(Clone, Copy, PartialEq)]
+    enum Fault {
+        /// Starting worker `k` and every later one fails.
+        SpawnFailsFrom(usize),
+        /// The worker counting this batch panics.
+        PanicIn(u64),
+    }
+
+    static FAULTS: Mutex<Vec<(u64, Fault)>> = Mutex::new(Vec::new());
+
+    fn fault(len: u64, f: Fault) {
+        FAULTS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((len, f));
+    }
+
+    fn faults(len: u64) -> Vec<Fault> {
+        let all = FAULTS.lock().unwrap_or_else(PoisonError::into_inner);
+        all.iter().filter(|f| f.0 == len).map(|f| f.1).collect()
+    }
+
+    pub(super) fn fault_in_spawn(len: u64, i: usize) -> std::io::Result<()> {
+        let fails = faults(len)
+            .iter()
+            .any(|f| matches!(*f, Fault::SpawnFailsFrom(k) if i >= k));
+        if fails {
+            return Err(std::io::Error::other("injected spawn failure"));
+        }
+        Ok(())
+    }
+
+    pub(super) fn fault_in_batch(len: u64, batch: u64) {
+        if faults(len).contains(&Fault::PanicIn(batch)) {
+            panic!("injected panic in batch {batch}");
+        }
+    }
+
+    /// Runs `f` on its own thread and fails the test if it does not finish within 20 s.
+    fn within_timeout(f: impl FnOnce() + Send + 'static) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            f();
+            let _ = tx.send(());
+        });
+        rx.recv_timeout(Duration::from_secs(20))
+            .expect("the indexer hung (or the test panicked)");
+    }
+
+    #[test]
+    fn workers_that_cannot_be_started_are_done_without() {
+        let codec = Codec::utf8();
+        for k in [0, 1, 2] {
+            let len = (30 + k) * BLOCK as usize + 17;
+            fault(len as u64, Fault::SpawnFailsFrom(k));
+            let data = random_text(len, &codec, 21 + k as u64);
+            let want = naive_checkpoints(&data, &codec);
+            within_timeout(move || {
+                let (_f, src) = source_with(&data);
+                let idx = LineIndex::new(src.len());
+                run(&src, codec, &idx, 4, 2 * BLOCK);
+                assert!(idx.is_done() && !idx.failed(), "spawn {k} fails");
+                assert_eq!(checkpoints(&idx), want, "spawn {k} fails");
+            });
+        }
+    }
+
+    #[test]
+    fn a_panicking_worker_fails_the_index_without_hanging() {
+        let codec = Codec::utf8();
+        for (threads, k) in [(2, 0), (4, 0), (4, 5), (8, 13)] {
+            let len = (40 + 2 * threads + k as usize) * BLOCK as usize + 3;
+            fault(len as u64, Fault::PanicIn(k));
+            let data = random_text(len, &codec, 31 + k);
+            let want = naive_checkpoints(&data, &codec);
+            within_timeout(move || {
+                let (_f, src) = source_with(&data);
+                let idx = LineIndex::new(src.len());
+                run(&src, codec, &idx, threads, 2 * BLOCK);
+                let what = format!("threads {threads}, panic in batch {k}");
+                assert!(idx.failed() && !idx.is_done(), "{what}");
+                // Everything before the batch that could not be counted.
+                assert_eq!(checkpoints(&idx), want[..=2 * k as usize], "{what}");
+            });
+        }
     }
 
     /// A remote file in memory that is slow to read, can cancel the indexer after some reads and
