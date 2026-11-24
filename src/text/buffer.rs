@@ -68,11 +68,6 @@ impl Batch {
     pub fn add_len(&self) -> u64 {
         self.base
     }
-
-    /// Pieces of the document after the batch.
-    pub fn piece_count(&self) -> usize {
-        self.tree.len()
-    }
 }
 
 impl Default for Swap {
@@ -758,7 +753,9 @@ impl TextBuf {
     /// length (callers check [`Batch::add_len`] first). O(1) apart from taking the batch's bytes,
     /// which are moved rather than copied when they are large.
     pub fn apply_batch(&mut self, batch: Batch) -> Swap {
-        debug_assert_eq!(
+        // One comparison: a caller that skipped the `add_len` check must not leave pieces
+        // pointing at the wrong bytes in a release build.
+        assert_eq!(
             self.add.len(),
             batch.base,
             "batch built on another add buffer"
@@ -1391,13 +1388,21 @@ mod tests {
     #[test]
     fn typing_after_a_chunk_switch_does_not_merge_across_chunks() {
         let (_f, mut t) = buf_with(b"ab");
-        t.replace(1..1, &vec![b'x'; 2 << 20]);
+        let run = 2u64 << 20;
+        t.replace(1..1, &vec![b'x'; run as usize]);
+        // The x run fills the last chunk, which a snapshot now shares: the next typed byte
+        // starts a new chunk. It directly follows the x piece in the add buffer, so only the
+        // chunk check keeps it from extending that piece across two chunks.
         let _snap = t.snapshot();
         let n = t.piece_count();
-        t.replace(1..1, b"y");
-        t.replace(2..2, b"z");
+        let end = 1 + run;
+        t.replace(end..end, b"y");
+        assert_eq!(t.piece_count(), n + 1, "typed byte merged across chunks");
+        // The next byte is in the same chunk as `y`, so it extends that piece.
+        t.replace(end + 1..end + 1, b"z");
         assert_eq!(t.piece_count(), n + 1);
-        assert_eq!(&*t.read(0..3).unwrap(), b"ayz");
+        assert_eq!(&*t.read(end - 2..end + 3).unwrap(), b"xxyzb");
+        assert_eq!(t.len(), run + 4);
     }
 
     /// A batch is built on a snapshot taken on another thread and applied later; its large
