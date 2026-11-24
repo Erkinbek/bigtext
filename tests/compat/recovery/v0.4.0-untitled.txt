@@ -1,0 +1,7 @@
+bigtext-journal 1
+title=Без имени-2
+len=0
+codec=UTF-8|lf|0
+add=133
+a 0 71
+a 88 45

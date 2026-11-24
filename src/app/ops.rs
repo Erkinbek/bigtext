@@ -17,7 +17,7 @@ use bigtext::jobs::{self, human_bytes, CancelToken, Progress};
 use bigtext::replace::{self, Collected, ReplaceStats, Template};
 use bigtext::save::{self, SaveError, Transform};
 use bigtext::search::Matcher;
-use bigtext::text::Piece;
+use bigtext::text::Batch;
 
 use super::document::{Banner, DocState};
 use super::i18n::{tr, trf};
@@ -534,12 +534,7 @@ impl BigTextApp {
                     Ok(o) => d.rebind(o.source, waker.clone()),
                     // Text that is all typed (an untitled document) needs no file: it stays
                     // editable, so the user can save it somewhere else.
-                    Err(_)
-                        if d.buf
-                            .pieces()
-                            .iter()
-                            .all(|p| p.buf == bigtext::text::Buf::Add) =>
-                    {
+                    Err(_) if d.buf.pieces().all(|p| p.buf == bigtext::text::Buf::Add) => {
                         d.state = DocState::Ready;
                     }
                     Err(e) => d.state = DocState::Failed(format!("{msg}\n{e}")),
@@ -649,13 +644,10 @@ impl BigTextApp {
             ) {
                 Collected::Edits(edits) => {
                     let count = edits.len();
-                    let (pieces, add) = snap.build_batch(&edits);
                     Msg::ReplaceBatch {
                         doc: id,
                         version,
-                        add_len: snap.add_len(),
-                        pieces,
-                        add,
+                        batch: snap.build_batch(&edits),
                         count,
                     }
                 }
@@ -673,20 +665,12 @@ impl BigTextApp {
         });
     }
 
-    pub(super) fn on_replace_batch(
-        &mut self,
-        doc: u64,
-        version: u64,
-        add_len: u64,
-        pieces: Vec<Piece>,
-        add: Vec<u8>,
-        count: usize,
-    ) {
+    pub(super) fn on_replace_batch(&mut self, doc: u64, version: u64, batch: Batch, count: usize) {
         let Some(d) = self.docs.iter_mut().find(|d| d.id == doc) else {
             return;
         };
         d.save_job = None;
-        if d.version != version || d.buf.add_len() != add_len {
+        if d.version != version || d.buf.add_len() != batch.add_len() {
             self.search.status = tr("Document changed during replace; nothing replaced").into();
             return;
         }
@@ -695,7 +679,7 @@ impl BigTextApp {
             return;
         }
         let (s, _) = d.selection();
-        let swap = d.buf.apply_batch(pieces, &add);
+        let swap = d.buf.apply_batch(batch);
         d.record(swap, (s, s));
         self.search.status = trf(
             "Replaced {n} matches (undo with Ctrl+Z)",

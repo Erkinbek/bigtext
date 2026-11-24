@@ -1154,7 +1154,9 @@ fn extend_match(
             &hay,
             rs,
             (s - rs) as usize,
-            (s - rs) as usize + 1,
+            // Accept only a match starting at `s`: one whole code unit, or a UTF-16 search
+            // rounds the range down to nothing and the long match is lost.
+            (s - rs + unit) as usize,
             (lim - rs) as usize,
             &mut le,
             &mut |a, b| {
@@ -1284,35 +1286,54 @@ pub fn captures_at(
     start: u64,
     end: u64,
 ) -> Option<(Vec<u8>, Captures, usize)> {
+    let mut caps = m.regex()?.create_captures();
+    let mut hay = Vec::new();
+    let s = captures_into(buf, m, start, end, &mut caps, &mut hay)?;
+    Some((hay, caps, s))
+}
+
+/// [`captures_at`] into caller-owned `caps` and `hay`, so a loop over many matches allocates
+/// nothing per match. Returns the offset of the match start in `hay`.
+pub fn captures_into(
+    buf: &TextBuf,
+    m: &Matcher,
+    start: u64,
+    end: u64,
+    caps: &mut Captures,
+    hay: &mut Vec<u8>,
+) -> Option<usize> {
     let re = m.regex()?;
     let len = buf.len();
     let unit = buf.codec.unit() as u64;
     let rs = align_down(start.saturating_sub(CTX), unit);
     let re_end = (end + CTX).min(len);
-    let raw = buf.read(rs..re_end)?;
-    let (hay, s, e) = if m.decoded {
-        let mut t = String::new();
+    let (s, e) = if m.decoded {
+        let raw = buf.read(rs..re_end)?;
+        hay.clear();
+        let mut t = String::from_utf8(std::mem::take(hay)).unwrap_or_default();
         m.codec.decode_into(&raw[..(start - rs) as usize], &mut t);
         let s = t.len();
         m.codec
             .decode_into(&raw[(start - rs) as usize..(end - rs) as usize], &mut t);
         let e = t.len();
         m.codec.decode_into(&raw[(end - rs) as usize..], &mut t);
-        (t.into_bytes(), s, e)
+        *hay = t.into_bytes();
+        (s, e)
     } else {
-        (raw.into_owned(), (start - rs) as usize, (end - rs) as usize)
+        // `read` borrows from the mapping or block cache; `read_to` would issue one positional
+        // read per match on worker snapshots.
+        let raw = buf.read(rs..re_end)?;
+        hay.clear();
+        hay.extend_from_slice(&raw);
+        ((start - rs) as usize, (end - rs) as usize)
     };
-    let mut caps = re.create_captures();
     re.search_captures(
-        &Input::new(&hay)
+        &Input::new(&hay[..])
             .range(s..e)
             .anchored(regex_automata::Anchored::Yes),
-        &mut caps,
+        caps,
     );
-    if !caps.is_match() {
-        return None;
-    }
-    Some((hay, caps, s))
+    caps.is_match().then_some(s)
 }
 
 #[cfg(test)]
@@ -1464,6 +1485,36 @@ mod tests {
         assert_eq!(hits.len(), 1);
         let (s, e) = hits[0];
         assert_eq!(codec.decode_lossy(&t.read(s..e).unwrap()), "and");
+    }
+
+    /// A regex match cut at the end of a window is searched again from its start with a longer
+    /// span. In UTF-16 that search accepted no start at all, so the match was dropped and found
+    /// again one character later: Replace All left the first character of a long match.
+    #[test]
+    fn long_match_is_extended_in_every_encoding() {
+        let mut rq = q("a+");
+        rq.regex = true;
+        let utf16 = Codec::new(Encoding::Utf16Le, NlByte::Lf, 2);
+        let cp1251 = Codec::new(Encoding::Windows1251, NlByte::Lf, 0);
+        for codec in [Codec::utf8(), utf16, cp1251] {
+            let mut data = if codec.enc == Encoding::Utf16Le {
+                vec![0xFF, 0xFE]
+            } else {
+                Vec::new()
+            };
+            let bom = data.len() as u64;
+            data.extend(codec.encode(&format!("xx{}\nyy", "a".repeat(300))));
+            let (_f, t) = buf_with(&data, codec);
+            let m = Matcher::new(&rq, codec).unwrap();
+            let unit = codec.unit() as u64;
+            let s = bom + 2 * unit;
+            assert_eq!(
+                extend_match(&t, &m, GEOM, s, t.len(), &CancelToken::new()),
+                Some((s, s + 300 * unit)),
+                "{:?}",
+                codec.enc
+            );
+        }
     }
 
     #[test]

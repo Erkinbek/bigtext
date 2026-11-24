@@ -9,7 +9,7 @@ use bigtext::filter::{self, FilterSpec};
 use bigtext::jobs::{self, CancelToken};
 use bigtext::jsonq::FieldQuery;
 use bigtext::search::Matcher;
-use bigtext::text::Piece;
+use bigtext::text::Batch;
 
 use super::filter_panel::{fmt_count, line_meets, term_refs, FilterTerm};
 use super::i18n::{tr, trf};
@@ -53,9 +53,7 @@ impl LineSel {
 pub struct LinesRemoved {
     pub doc: u64,
     pub version: u64,
-    pub add_len: u64,
-    pub pieces: Vec<Piece>,
-    pub add: Vec<u8>,
+    pub batch: Batch,
     pub lines: u64,
 }
 
@@ -95,7 +93,7 @@ impl BigTextApp {
             invert: r.spec.invert,
             terms: r.terms.clone(),
         });
-        let (snap, doc, version, add_len) = (d.buf.snapshot(), d.id, d.version, d.buf.add_len());
+        let (snap, doc, version) = (d.buf.snapshot(), d.id, d.version);
         let (tx, waker) = (self.tx.clone(), self.waker.clone());
         self.search.status = tr("Finding the lines…").into();
         jobs::spawn("collect-lines", move || {
@@ -132,13 +130,10 @@ impl BigTextApp {
             } else {
                 let edits: Vec<(Range<u64>, Vec<u8>)> =
                     runs.into_iter().map(|r| (r, Vec::new())).collect();
-                let (pieces, add) = snap.build_batch(&edits);
                 Msg::LinesRemoved(Box::new(LinesRemoved {
                     doc,
                     version,
-                    add_len,
-                    pieces,
-                    add,
+                    batch: snap.build_batch(&edits),
                     lines,
                 }))
             };
@@ -153,7 +148,7 @@ impl BigTextApp {
         };
         // A save that started meanwhile installs the saved file when it ends: an edit made now
         // would be lost.
-        if d.version != l.version || d.buf.add_len() != l.add_len || d.save_job.is_some() {
+        if d.version != l.version || d.buf.add_len() != l.batch.add_len() || d.save_job.is_some() {
             self.search.status = tr("The document changed meanwhile; no line was deleted.").into();
             return;
         }
@@ -162,7 +157,7 @@ impl BigTextApp {
             return;
         }
         let (s, _) = d.selection();
-        let swap = d.buf.apply_batch(l.pieces, &l.add);
+        let swap = d.buf.apply_batch(l.batch);
         d.record(swap, (s, s));
         let len = d.buf.len();
         d.set_caret(s.min(len), false);

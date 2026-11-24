@@ -1,6 +1,6 @@
 [package]
 name = "bigtext"
-version = "0.12.0"
+version = "0.13.0"
 edition = "2021"
 description = "Free editor for huge text and log files (1-50+ GB): opens them without loading them into memory, 2.5 GB/s search, atomic save"
 authors = ["Erkin Pardayev <erkin.pardayev@gmail.com>"]
@@ -12,7 +12,7 @@ categories = ["text-editors", "gui"]
 license = "MIT"
 default-run = "bigtext"
 # Only what `cargo install bigtext` needs; the website, test data and CI stay out of the crate.
-include = ["/src/", "/build.rs", "/assets/bigtext.ico", "/assets/icon-256.png", "/README.md", "/LICENSE", "/CHANGELOG.md"]
+include = ["/src/", "/build.rs", "/assets/bigtext.ico", "/assets/icon-256.png", "/README.md", "/LICENSE", "/CHANGELOG.md", "/tests/compat/"]
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]

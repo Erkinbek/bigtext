@@ -3,6 +3,77 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## Unreleased
+
+### Faster (contributed by Jahongir Qurbonov)
+
+- Counting a file's lines, which line numbers, the scrollbar and Go to line wait for, is about
+  twice as fast: newlines are counted 16 bytes at a time (SSE2 on x86-64, NEON on ARM).
+- Typing stays fast in a document with many pieces (after a large Replace All or paste) and
+  while a search runs in the background: from milliseconds to microseconds per key, and from
+  about 50 ms to about 1 µs after a 100 MB paste. A Replace All with many matches is prepared
+  in a fraction of the time and no longer stalls the window when it is applied.
+- Replace All with `$1` style replacements is about a third faster.
+
+### Fixed
+
+- In a UTF-16 file, a regex match longer than 1 MB that ran past the end of a 16 MB search
+  window was found one character late: search showed it short, and Replace All left its first
+  character unchanged.
+
+## 0.13.0 — 2026-11-24
+
+### Fixed: an idle window used a third of a CPU core
+
+- With nothing happening, BigText repainted its window as fast as it could (about 725 frames a
+  second, 33–53 % of one core), because it sent the window title to the system on every frame.
+  An idle window now uses no CPU, which matters most on a laptop's battery.
+
+### Fixed: data safety (found by an audit before 1.0)
+
+- Closing the window while a save was running exited without asking about unsaved changes. It
+  asks now.
+- Unsaved edits are kept in the recovery journal until a save succeeds (it went when the save
+  started), and a journal restored after a crash stays until the document's own one is
+  written. A journal write that failed no longer leaves the typed text in twice, and a write
+  still running when the journal was dropped no longer brings it back as a false "did not close
+  properly" offer.
+- **Save text as** from the recovery window, for a file that changed on disk since, scrambled
+  the text; it saves only what you typed and says so.
+- Saving a file that another program changed after it was opened (a log that grew) asks first;
+  before, the new lines were dropped.
+- A failed Save As of an untitled document made its text unreachable.
+- Undo and redo during a save, a large Cut copied in the background, a follow-mode reload while
+  typing, and "on disk" operations on an unpacked or remote copy could lose text.
+- After Replace All the caret could be left past the end of the text or inside a character,
+  which could crash Base64 decode or hang typing with several cursors.
+- Line commands, block Backspace, the column editor and Replace All (`^`) took a file's byte
+  order mark as part of line 1. With several cursors, Backspace, Delete and the arrows split
+  CRLF line breaks. The column editor's "down to the end" from inside a long line dropped the
+  rest of that line.
+- Searching a UTF-16 file with an odd number of bytes never ended; Replace All in a selection
+  that ends at the start of a line no longer changes that line too.
+- An unreadable settings file is no longer replaced by the defaults; settings and sessions are
+  written whole or not at all.
+- A file set to **View → Highlight as** INI in 0.4–0.6 keeps that choice again (it was dropped
+  since 0.7 renamed the language). Settings, sessions and journals written by every earlier
+  release are now checked by tests.
+
+### Demos
+
+- `bigtext --demo DIR --demo-for devops|data|dba|soc` records a short demo for each kind of
+  user on a sample file it makes itself.
+
+### Command line
+
+- `--` ends the options (a pattern may start with a dash), and negative numbers are values.
+- `--json` works with several files, and `validate FILE --json` checks strict JSON again.
+- `-o` with several input files is an error instead of keeping only the last file's lines;
+  `--out-dir` is created when missing and never overwrites one input's output with another's.
+- `replace` without `-E` uses the replacement as written (`C:\new` stays a path).
+- `jsonl --fields` reads logfmt keys and web server log columns, not only JSON keys.
+- `replace --in-place` works with Git Bash paths like `E:/logs/x.log`.
+
 ## 0.12.0 — 2026-11-23
 
 ### One query for every structured log

@@ -1,0 +1,76 @@
+# BigText session state
+font_size=14
+dark=0
+theme=hc-light
+cvd=1
+scale=125
+backup_on_save=1
+syntax=1
+id_keys=request_id,trace_id,user.id
+filter_ctx=3|1
+show_ws=0
+code_theme=monokai
+show_ws_code=1
+level_bar=1
+status=offset,selection,time,legend,path
+gutter=1
+wrap_column=100
+ruler=120
+json_crumb=1
+log_sources=ops@build-01|kubernetes|docker|minutes|10000|90|1|0
+alert_options=101
+alert=rc|(timeout|refused) after \d+ms
+alert=w|panic=1
+tool=Open in VS Code|code -g "{file}:{line}:{col}"
+tool=jq / pretty|jq . "{file}" | less
+cmd=grep -c "level=ERROR" "{file}"
+cmd=sort | uniq -c | sort -rn
+shell=git-bash
+folder=C:\projects\магазин
+folder_open=1
+folder_expand=C:\projects\магазин\src
+folder_expand=C:\projects\магазин\logs
+update_check=1
+update_asked=1
+skip_version=0.11.0
+seen_version=0.10.0
+font=C:\Windows\Fonts\consola.ttf
+clip=SELECT * FROM users\nWHERE id = 42;
+clip=C:\\logs\\app.log
+clip=line1\r\nline2\r\n
+recovery=1
+unpack_dir=D:\unpacked
+lang=ru
+update_checked=1794580000
+recent=C:\ProgramData\App\service.conf
+recent=D:\archives\logs-2026-10.zip
+recent=D:\Отчёты\журнал_2026.log
+recent=/var/log/syslog
+recent=C:\logs\app.log
+mark=1|0|rc|user=(\w+)|uid=\d+
+mark=0|3||ERROR
+mark=1|5|cw|таймаут
+saved=Timeouts / refused|rc|0||(timeout|refused) after \d+ms
+saved=Not healthcheck|c|1|2|healthcheck=ok
+saved=Ошибки входа|w|0||login=failed
+pinned=C:\logs\app.log
+key=goto_time=ctrl+alt+T
+key=find_all=none
+key=theme.hc-dark=ctrl+shift+F12
+find=level=(ERROR|FATAL)
+find=a|b=c
+find=таймаут
+fileopt=Windows-1251|Log|fr||C:\logs\app.log
+fileopt=||w||/var/log/syslog
+fileopt=|INI / TOML|||C:\ProgramData\App\service.conf
+fileopt=||t|59/1/3e30dba4cd73d926/312.5/0:180,3:64.5|D:\Отчёты\продажи.csv
+fileopt=|TSV|t|9/0/5bfbcd10bfcb6717/0/|/srv/export/report.tsv
+fileopt=|YAML|||/etc/app/config.yml.dist
+fileopt=|C / C++|||C:\projects\магазин\src\engine.inc
+fileopt=||h||/var/log/wtmp
+tab=48213|48100|0|0,1520,48213|C:\logs\app.log
+tab=0|0|1||/var/log/syslog
+tab=9000000000|8999999950|0|9000000000|D:\Отчёты\журнал_2026.log
+tab=120|0|0||D:\archives\logs-2026-10.zipapp/server.log
+tab=0|0|0||C:\ProgramData\App\service.conf
+active=3
