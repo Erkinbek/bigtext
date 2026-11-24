@@ -21,7 +21,7 @@ T = {
                 "arar ve büyüyen bir logu izler.",
     "stats": [
         ("24 ms", "50 GB'lık bir dosyanın ilk ekranı çizilene kadar"),
-        ("> 3 GB/s", "metin arama hızı"),
+        ("> 4 GB/s", "metin arama hızı"),
         ("108 MB", "50 GB'lık dosya açıkken RAM"),
         ("< 3 ms", "indekslenirken arayüz kare süresi"),
     ],
@@ -29,9 +29,9 @@ T = {
     "features_intro": "Loglar, CSV ve SQL dökümleri, JSON dışa aktarımları ve diğer düzenleyicileri kilitleyen her metin dosyası için yapıldı.",
     "features": [
         ("Her boyutta dosyayı açar", "Yalnızca görünen kısım okunur: Windows'ta belleğe eşlenmiş pencereler üzerinden, Linux ve macOS'ta gerektikçe bloklar halinde. Arka plandaki iş geri kalanını akış olarak işler; Windows'ta ağ sürücüleri ve USB bellekler arka planda önbellekli bloklar halinde okunur, böylece yavaş bir sürücü pencereyi kilitlemez."),
-        ("Anında satıra git", "Seyrek bir satır indeksi (her 64 KB için 8 bayt) arka planda 2,5 GB/s hızla oluşturulur. "
+        ("Anında satıra git", "Seyrek bir satır indeksi (her 64 KB için 8 bayt) arka planda 4–5 GB/s hızla oluşturulur. "
          "Satıra git ve kaydırma çubuğu, indeksleme bitmeden bile hemen çalışır."),
-        ("Hızlı arama ve regex", "Düz metin 3 GB/s'nin üzerinde, düzenli ifadeler doğrusal sürede; büyük/küçük harf, tam "
+        ("Hızlı arama ve regex", "Düz metin 4 GB/s'nin üzerinde, düzenli ifadeler doğrusal sürede; büyük/küçük harf, tam "
          "sözcük ve çok satır seçenekleriyle. “Tümünü bul” bir milyona kadar sonucu listeler; F3 hemen çalışır."),
         ("Gigabaytlar boyunca değiştir", "$1 ve adlandırılmış gruplarla değiştirin. 50.000'e kadar değişiklik geri "
          "alınabilir tek bir düzenlemedir; daha büyük işler yeni bir dosyaya akış olarak yazılır: 10 GB'lık bir dosyada "
@@ -114,18 +114,18 @@ T = {
          "ReplaceFileW öznitelikleri ve izinleri korur)."),
     ],
     "perf_h2": "Ölçülen performans",
-    "perf_intro": "BigText 0.12.0'ın Windows 11'de 1 GB, 10 GB ve 50 GB'lık test dosyalarıyla yerleşik kıyaslama "
+    "perf_intro": "BigText 0.14.0'ın Windows 11'de 1 GB, 10 GB ve 50 GB'lık test dosyalarıyla yerleşik kıyaslama "
     "sonuçları (dosyalar işletim sistemi önbelleğinde). Yöntem ve ham raporlar BENCHMARKS.md'de.",
     "perf_cols": ("Görev", "Sonuç"),
     "perf": [
         ("Aç → ilk metin ekranı (1–50 GB)", "22–26 ms'de çizilir, yaklaşık 0,1 s'de ekranda"),
         ("50 GB'lık dosyada bir satıra atlama", "2 ms'nin altında"),
-        ("Satır indeksini oluşturma", "2,4–2,7 GB/s (50 GB yaklaşık 19 s'de)"),
-        ("Düz metin arama", "3,2–4,3 GB/s"),
-        ("Regex ile arama", "sabit kısımlı 2,9–4,2 GB/s"),
+        ("Satır indeksini oluşturma", "4,4–5,3 GB/s (50 GB yaklaşık 10 s'de)"),
+        ("Düz metin arama", "4,4–5,0 GB/s"),
+        ("Regex ile arama", "sabit kısımlı 4,0–4,6 GB/s"),
         ("10 GB'lık dosyada tümünü değiştir", "en fazla 47–63 MB bellek; süreyi disk belirler"),
         ("50 GB'lık dosya açıkken bellek", "108 MB"),
-        ("Başlatma → ilk kare", "138–150 ms"),
+        ("Başlatma → ilk kare", "139–157 ms"),
     ],
     "dl_h2": "BigText'i indirin",
     "dl_intro": "Kişisel ve ticari kullanım için ücretsiz. Hesap yok, telemetri yok, tek bir çalıştırılabilir dosya.",
@@ -163,8 +163,8 @@ T = {
          "olur. Kaydetme, sonucu geçici bir dosyaya yazar ve orijinalin yerine atomik olarak koyar; bir şeyler ters "
          "giderse orijinal asla zarar görmez."),
         ("Devasa dosyalarda arama ne kadar hızlı?",
-         "Düz metin 3,2–4,3 GB/s, tipik düzenli ifadeler 2,9–4,2 GB/s hızla aranır; yani 10 GB'lık bir log yaklaşık "
-         "3 saniye sürer. F3, tam bir aramayı beklemeden sonraki eşleşmeyi hemen bulur."),
+         "Düz metin 4,4–5,0 GB/s, tipik düzenli ifadeler 4,0–4,6 GB/s hızla aranır; yani 10 GB'lık bir log yaklaşık "
+         "2–3 saniye sürer. F3, tam bir aramayı beklemeden sonraki eşleşmeyi hemen bulur."),
         ("Büyüyen bir logu tail -f gibi izleyebilir mi?",
          "Evet. Görünüm → İzle, görünümü dosyanın sonunda tutar ve yeni satırları geldikçe indeksler. BigText bir dosyanın "
          "diskte değiştiğini de fark eder ve yeniden yüklemeyi önerir."),

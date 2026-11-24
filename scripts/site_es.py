@@ -21,7 +21,7 @@ T = {
                 "regular mientras llegan las coincidencias y sigue un log que crece.",
     "stats": [
         ("24 ms", "hasta dibujar la primera pantalla de un archivo de 50 GB"),
-        ("> 3 GB/s", "velocidad de búsqueda de texto"),
+        ("> 4 GB/s", "velocidad de búsqueda de texto"),
         ("108 MB", "de RAM con un archivo de 50 GB abierto"),
         ("< 3 ms", "por fotograma de la interfaz mientras indexa"),
     ],
@@ -30,9 +30,9 @@ T = {
     "features": [
         ("Abre archivos de cualquier tamaño", "Solo se lee la parte visible: en Windows a través de ventanas mapeadas en memoria, en Linux y macOS en bloques cuando hacen falta. El trabajo en segundo plano procesa el resto, y en Windows las unidades de red y las memorias USB se leen por bloques con caché desde un cargador en segundo plano, así que una unidad lenta no bloquea la ventana."),
         ("Ir a una línea al instante", "Un índice de líneas disperso (8 bytes por cada 64 KB) se construye en segundo "
-         "plano a 2,5 GB/s. Ir a la línea y la barra de desplazamiento funcionan de inmediato, incluso antes de que "
+         "plano a 4–5 GB/s. Ir a la línea y la barra de desplazamiento funcionan de inmediato, incluso antes de que "
          "termine la indexación."),
-        ("Búsqueda rápida y regex", "Texto simple a más de 3 GB/s y expresiones regulares en tiempo lineal, con opciones de "
+        ("Búsqueda rápida y regex", "Texto simple a más de 4 GB/s y expresiones regulares en tiempo lineal, con opciones de "
          "mayúsculas, palabra completa y varias líneas. «Buscar todo» lista hasta un millón de resultados; F3 funciona "
          "en el acto."),
         ("Reemplazar en gigabytes", "Reemplaza con $1 y grupos con nombre. Hasta 50.000 cambios son una sola edición que "
@@ -119,18 +119,18 @@ T = {
          "en Windows conserva atributos y permisos)."),
     ],
     "perf_h2": "Rendimiento medido",
-    "perf_intro": "Resultados de las pruebas de rendimiento integradas de BigText 0.12.0 con archivos de prueba de 1 GB, "
+    "perf_intro": "Resultados de las pruebas de rendimiento integradas de BigText 0.14.0 con archivos de prueba de 1 GB, "
     "10 GB y 50 GB en Windows 11, con los archivos en la caché del sistema. El método y los informes completos están en BENCHMARKS.md.",
     "perf_cols": ("Tarea", "Resultado"),
     "perf": [
         ("Abrir → primera pantalla de texto (1–50 GB)", "se dibuja en 22–26 ms, en pantalla en unos 0,1 s"),
         ("Saltar a una línea en un archivo de 50 GB", "menos de 2 ms"),
-        ("Construir el índice de líneas", "2,4–2,7 GB/s (50 GB en unos 19 s)"),
-        ("Búsqueda de texto simple", "3,2–4,3 GB/s"),
-        ("Búsqueda con regex", "2,9–4,2 GB/s con parte literal"),
+        ("Construir el índice de líneas", "4,4–5,3 GB/s (50 GB en unos 10 s)"),
+        ("Búsqueda de texto simple", "4,4–5,0 GB/s"),
+        ("Búsqueda con regex", "4,0–4,6 GB/s con parte literal"),
         ("Reemplazar todo en un archivo de 10 GB", "47–63 MB de memoria máxima; el tiempo depende del disco"),
         ("Memoria con un archivo de 50 GB abierto", "108 MB"),
-        ("Arranque → primer fotograma", "138–150 ms"),
+        ("Arranque → primer fotograma", "139–157 ms"),
     ],
     "dl_h2": "Descargar BigText",
     "dl_intro": "Gratis para uso personal y comercial. Sin cuenta, sin telemetría, un solo ejecutable.",
@@ -169,8 +169,8 @@ T = {
          "cualquier tamaño. Al guardar, el resultado se escribe en un archivo temporal que sustituye al original de forma "
          "atómica, de modo que el original nunca se daña si algo sale mal."),
         ("¿Qué tan rápida es la búsqueda en archivos enormes?",
-         "El texto simple se busca a 3,2–4,3 GB/s y las expresiones regulares habituales a 2,9–4,2 GB/s, así que un log "
-         "de 10 GB tarda unos 3 segundos. F3 encuentra la siguiente coincidencia al instante, sin esperar a una búsqueda "
+         "El texto simple se busca a 4,4–5,0 GB/s y las expresiones regulares habituales a 4,0–4,6 GB/s, así que un log "
+         "de 10 GB tarda 2–3 segundos. F3 encuentra la siguiente coincidencia al instante, sin esperar a una búsqueda "
          "completa."),
         ("¿Puede seguir un log que crece, como tail -f?",
          "Sí. Ver → Seguir mantiene la vista al final del archivo e indexa las líneas nuevas a medida que llegan. BigText "

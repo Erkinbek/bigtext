@@ -3,7 +3,7 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
-## Unreleased
+## 0.14.0 — 2026-11-25
 
 ### Faster (contributed by Jahongir Qurbonov)
 
@@ -21,9 +21,10 @@ All notable changes to BigText. Each release on
   in a fraction of the time and no longer stalls the window when it is applied.
 - Replace All with `$1` style replacements is about a third faster.
 - Find All, filters and `bigtext-cli` filter, grep, count and extract search a local file over
-  64 MB on up to 4 threads, with the same matches in the same order: about 1.6 times as fast
-  for case-insensitive text and regular expressions, 2.5 to 3 times in UTF-16 and Windows-1251
-  files. `BIGTEXT_SEARCH_THREADS` sets the number of threads (1 to turn it off).
+  64 MB on up to 4 threads, with the same matches in the same order: about 1.5 times as fast
+  for case-insensitive text, up to 1.3 times for regular expressions with a literal part, and
+  2.5 to 3 times in UTF-16 and Windows-1251 files. `BIGTEXT_SEARCH_THREADS` sets the number of
+  threads (1 to turn it off).
 
 ### Faster column statistics
 

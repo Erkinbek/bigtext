@@ -29,7 +29,7 @@ DOCS = ROOT / "docs"
 BASE = "https://erkinbek.github.io/bigtext/"
 REPO = "https://github.com/Erkinbek/bigtext"
 RELEASES = REPO + "/releases/latest"
-VERSION = "0.13.0"
+VERSION = "0.14.0"
 # When the demo animation (docs/img/demo.mp4) was last recorded.
 DEMO_DATE = "2026-11-12"
 
@@ -92,7 +92,7 @@ T = {
                     "regular expression while the matches come in, and follows a growing log.",
         "stats": [
             ("24 ms", "to draw the first screen of a 50 GB file"),
-            ("> 3 GB/s", "full-text search speed"),
+            ("> 4 GB/s", "full-text search speed"),
             ("108 MB", "of RAM with a 50 GB file open"),
             ("< 3 ms", "UI frame time while indexing"),
         ],
@@ -100,9 +100,9 @@ T = {
         "features_intro": "Made for logs, CSV and SQL dumps, JSON exports and any text file that makes other editors hang.",
         "features": [
             ("Opens files of any size", "Only the visible part is read: through memory-mapped windows on Windows, in blocks read on demand on Linux and macOS. Background work streams the rest, and on Windows network drives and USB sticks are read in cached blocks by a background loader, so a slow drive does not block the window."),
-            ("Instant go to line", "A sparse line index (8 bytes per 64 KB) is built in the background at 2.5 GB/s. "
+            ("Instant go to line", "A sparse line index (8 bytes per 64 KB) is built in the background at 4–5 GB/s. "
              "Go to line and the scrollbar work immediately, even before indexing finishes."),
-            ("Fast search and regex", "Plain text at over 3 GB/s and linear-time regular expressions with case, whole-word "
+            ("Fast search and regex", "Plain text at over 4 GB/s and linear-time regular expressions with case, whole-word "
              "and multiline options. Find All lists up to a million results; F3 works right away."),
             ("Replace across gigabytes", "Replace with $1 and named groups. Up to 50,000 changes are one undoable edit; "
              "bigger jobs stream to a new file: 22 million replacements in a 10 GB file used at most 63 MB of RAM."),
@@ -159,18 +159,18 @@ T = {
              "Windows keeps attributes and permissions)."),
         ],
         "perf_h2": "Measured performance",
-        "perf_intro": "Results of the built-in benchmarks of BigText 0.12.0 on 1 GB, 10 GB and 50 GB test files on "
+        "perf_intro": "Results of the built-in benchmarks of BigText 0.14.0 on 1 GB, 10 GB and 50 GB test files on "
         "Windows 11, with the files in the OS cache. The method and the raw reports are in BENCHMARKS.md.",
         "perf_cols": ("Task", "Result"),
         "perf": [
             ("Open → first screen of text (1–50 GB)", "drawn in 22–26 ms, on screen in about 0.1 s"),
             ("Jump to a line in a 50 GB file", "under 2 ms"),
-            ("Build the line index", "2.4–2.7 GB/s (50 GB in about 19 s)"),
-            ("Plain-text search", "3.2–4.3 GB/s"),
-            ("Regex search", "2.9–4.2 GB/s with a literal part"),
+            ("Build the line index", "4.4–5.3 GB/s (50 GB in about 10 s)"),
+            ("Plain-text search", "4.4–5.0 GB/s"),
+            ("Regex search", "4.0–4.6 GB/s with a literal part"),
             ("Replace All in a 10 GB file", "47–63 MB peak memory; the time is set by the drive"),
             ("Memory with a 50 GB file open", "108 MB"),
-            ("Start → first frame", "138–150 ms"),
+            ("Start → first frame", "139–157 ms"),
         ],
         "dl_h2": "Download BigText",
         "dl_intro": "Free for personal and commercial use. No account, no telemetry, one executable.",
@@ -208,8 +208,8 @@ T = {
              "streams the result to a temporary file and replaces the original atomically, so the original is never "
              "damaged if something goes wrong."),
             ("How fast is search in huge files?",
-             "Plain text is searched at 3.2–4.3 GB/s and typical regular expressions at 2.9–4.2 GB/s, so a 10 GB log takes "
-             "about 3 seconds. F3 finds the next match immediately, without waiting for a full search."),
+             "Plain text is searched at 4.4–5.0 GB/s and typical regular expressions at 4.0–4.6 GB/s, so a 10 GB log takes "
+             "about 2–3 seconds. F3 finds the next match immediately, without waiting for a full search."),
             ("Can it follow a growing log file like tail -f?",
              "Yes. View → Follow keeps the view at the end of the file and indexes new lines as they arrive. BigText "
              "also notices when a file changes on disk and offers to reload it."),
@@ -257,7 +257,7 @@ T = {
                     "регулярному выражению, пока приходят совпадения, и следит за растущим логом.",
         "stats": [
             ("24 мс", "до отрисовки первого экрана файла на 50 ГБ"),
-            ("> 3 ГБ/с", "скорость полнотекстового поиска"),
+            ("> 4 ГБ/с", "скорость полнотекстового поиска"),
             ("108 МБ", "ОЗУ с открытым файлом на 50 ГБ"),
             ("< 3 мс", "время кадра интерфейса во время индексации"),
         ],
@@ -266,8 +266,8 @@ T = {
         "features": [
             ("Файлы любого размера", "Читается только видимая часть: в Windows — через окна отображения файла в память, в Linux и macOS — блоками по запросу. Фоновые задачи читают остальное потоком, а в Windows сетевые диски и USB-флешки читаются кэшированными блоками фоновым загрузчиком, поэтому медленный диск не блокирует окно."),
             ("Мгновенный переход к строке", "Разреженный индекс строк (8 байт на 64 КБ) строится в фоне со скоростью "
-             "2,5 ГБ/с. Переход к строке и полоса прокрутки работают сразу, ещё до конца индексации."),
-            ("Быстрый поиск и регулярные выражения", "Обычный текст — больше 3 ГБ/с, регулярные выражения за линейное время, "
+             "4–5 ГБ/с. Переход к строке и полоса прокрутки работают сразу, ещё до конца индексации."),
+            ("Быстрый поиск и регулярные выражения", "Обычный текст — больше 4 ГБ/с, регулярные выражения за линейное время, "
              "учёт регистра, целые слова, многострочный режим. «Найти все» выводит до миллиона результатов, F3 "
              "работает сразу."),
             ("Замена в гигабайтах", "Замена с $1 и именованными группами. До 50 000 замен — одна отменяемая правка; "
@@ -325,18 +325,18 @@ T = {
              "в Windows сохраняет атрибуты и права доступа)."),
         ],
         "perf_h2": "Измеренная производительность",
-        "perf_intro": "Результаты встроенных бенчмарков BigText 0.12.0 на тестовых файлах 1, 10 и 50 ГБ в Windows 11, "
+        "perf_intro": "Результаты встроенных бенчмарков BigText 0.14.0 на тестовых файлах 1, 10 и 50 ГБ в Windows 11, "
         "файлы в кэше ОС. Методика и исходные отчёты — в BENCHMARKS.md.",
         "perf_cols": ("Задача", "Результат"),
         "perf": [
             ("Открытие → первый экран текста (1–50 ГБ)", "отрисовка за 22–26 мс, на экране примерно через 0,1 с"),
             ("Переход к строке в файле на 50 ГБ", "меньше 2 мс"),
-            ("Построение индекса строк", "2,4–2,7 ГБ/с (50 ГБ примерно за 19 с)"),
-            ("Поиск обычного текста", "3,2–4,3 ГБ/с"),
-            ("Поиск по регулярному выражению", "2,9–4,2 ГБ/с с литеральной частью"),
+            ("Построение индекса строк", "4,4–5,3 ГБ/с (50 ГБ примерно за 10 с)"),
+            ("Поиск обычного текста", "4,4–5,0 ГБ/с"),
+            ("Поиск по регулярному выражению", "4,0–4,6 ГБ/с с литеральной частью"),
             ("«Заменить все» в файле на 10 ГБ", "пик памяти 47–63 МБ; время зависит от диска"),
             ("Память с открытым файлом на 50 ГБ", "108 МБ"),
-            ("Запуск → первый кадр", "138–150 мс"),
+            ("Запуск → первый кадр", "139–157 мс"),
         ],
         "dl_h2": "Скачать BigText",
         "dl_intro": "Бесплатно для личного и коммерческого использования. Без аккаунта, без телеметрии, один исполняемый файл.",
@@ -374,8 +374,8 @@ T = {
              "При сохранении результат пишется во временный файл и атомарно заменяет оригинал, так что оригинал не "
              "пострадает, если что-то пойдёт не так."),
             ("Насколько быстрый поиск в огромных файлах?",
-             "Обычный текст ищется со скоростью 3,2–4,3 ГБ/с, типичные регулярные выражения — 2,9–4,2 ГБ/с, то есть лог "
-             "на 10 ГБ просматривается примерно за 3 секунды. F3 находит следующее совпадение сразу, без полного поиска."),
+             "Обычный текст ищется со скоростью 4,4–5,0 ГБ/с, типичные регулярные выражения — 4,0–4,6 ГБ/с, то есть лог "
+             "на 10 ГБ просматривается за 2–3 секунды. F3 находит следующее совпадение сразу, без полного поиска."),
             ("Можно ли следить за растущим логом, как tail -f?",
              "Да. Вид → Следить держит конец файла на экране и индексирует новые строки по мере появления. BigText "
              "также замечает изменения файла на диске и предлагает перезагрузить его."),
@@ -424,7 +424,7 @@ T = {
                     "turganda regex bilan qidiradi va o'sib borayotgan logni kuzatadi.",
         "stats": [
             ("24 ms", "50 GB faylning birinchi ekrani chizilguncha"),
-            ("> 3 GB/s", "to'liq matnli qidiruv tezligi"),
+            ("> 4 GB/s", "to'liq matnli qidiruv tezligi"),
             ("108 MB", "50 GB fayl ochiq turganda xotira"),
             ("< 3 ms", "indekslash paytida interfeys kadri"),
         ],
@@ -432,9 +432,9 @@ T = {
         "features_intro": "Loglar, CSV va SQL damplar, JSON eksportlar va boshqa muharrirlarni qotiradigan har qanday matn fayli uchun.",
         "features": [
             ("Istalgan hajmdagi fayllar", "Faqat ko'rinib turgan qism o'qiladi: Windows'da xotiraga akslantirilgan oynalar orqali, Linux va macOS'da kerak bo'lganda bloklab. Fon vazifalari qolganini oqim bilan o'qiydi, Windows'da esa tarmoq disklari va USB fleshkalar fon yuklovchisi orqali keshli bloklab o'qiladi, shuning uchun sekin disk oynani to'xtatmaydi."),
-            ("Satrga bir zumda o'tish", "Siyrak satr indeksi (har 64 KB ga 8 bayt) fonda 2,5 GB/s tezlikda quriladi. "
+            ("Satrga bir zumda o'tish", "Siyrak satr indeksi (har 64 KB ga 8 bayt) fonda 4–5 GB/s tezlikda quriladi. "
              "Satrga o'tish va aylantirish paneli indekslash tugashidan oldin ham darhol ishlaydi."),
-            ("Tezkor qidiruv va regex", "Oddiy matn 3 GB/s dan tez, chiziqli vaqtli muntazam ifodalar, katta-kichik harf, "
+            ("Tezkor qidiruv va regex", "Oddiy matn 4 GB/s dan tez, chiziqli vaqtli muntazam ifodalar, katta-kichik harf, "
              "butun so'z va ko'p satrli rejimlar. «Hammasini topish» milliongacha natijani ko'rsatadi, F3 darhol ishlaydi."),
             ("Gigabaytlab almashtirish", "$1 va nomlangan guruhlar bilan almashtirish. 50 000 tagacha o'zgarish — bitta "
              "bekor qilinadigan tahrir; kattaroq ishlar yangi faylga oqim bilan yoziladi: 10 GB faylda 22 million "
@@ -492,18 +492,18 @@ T = {
              "ReplaceFileW atributlar va ruxsatlarni saqlaydi)."),
         ],
         "perf_h2": "O'lchangan unumdorlik",
-        "perf_intro": "BigText 0.12.0 ning Windows 11 da 1, 10 va 50 GB test fayllaridagi ichki benchmark natijalari, "
+        "perf_intro": "BigText 0.14.0 ning Windows 11 da 1, 10 va 50 GB test fayllaridagi ichki benchmark natijalari, "
         "fayllar OS keshida. Usul va xom hisobotlar BENCHMARKS.md faylida.",
         "perf_cols": ("Vazifa", "Natija"),
         "perf": [
             ("Ochish → matnning birinchi ekrani (1–50 GB)", "22–26 ms da chiziladi, ekranda taxminan 0,1 soniyada"),
             ("50 GB faylda satrga o'tish", "2 ms dan kam"),
-            ("Satr indeksini qurish", "2,4–2,7 GB/s (50 GB taxminan 19 soniyada)"),
-            ("Oddiy matn qidiruvi", "3,2–4,3 GB/s"),
-            ("Regex qidiruvi", "literal qismi bilan 2,9–4,2 GB/s"),
+            ("Satr indeksini qurish", "4,4–5,3 GB/s (50 GB taxminan 10 soniyada)"),
+            ("Oddiy matn qidiruvi", "4,4–5,0 GB/s"),
+            ("Regex qidiruvi", "literal qismi bilan 4,0–4,6 GB/s"),
             ("10 GB faylda «Hammasini almashtirish»", "eng ko'pi 47–63 MB xotira; vaqti diskka bog'liq"),
             ("50 GB fayl ochiq turganda xotira", "108 MB"),
-            ("Ishga tushish → birinchi kadr", "138–150 ms"),
+            ("Ishga tushish → birinchi kadr", "139–157 ms"),
         ],
         "dl_h2": "BigText'ni yuklab olish",
         "dl_intro": "Shaxsiy va tijorat maqsadlarida bepul. Akkaunt yo'q, telemetriya yo'q, bitta ishga tushiriladigan fayl.",
@@ -541,8 +541,8 @@ T = {
              "zumda. Saqlashda natija vaqtinchalik faylga yoziladi va asl faylni atomar almashtiradi — biror narsa "
              "noto'g'ri ketsa ham asl fayl buzilmaydi."),
             ("Ulkan fayllarda qidiruv qanchalik tez?",
-             "Oddiy matn 3,2–4,3 GB/s, odatiy muntazam ifodalar 2,9–4,2 GB/s tezlikda qidiriladi — 10 GB log taxminan "
-             "3 soniyada ko'rib chiqiladi. F3 to'liq qidiruvni kutmasdan keyingi moslikni darhol topadi."),
+             "Oddiy matn 4,4–5,0 GB/s, odatiy muntazam ifodalar 4,0–4,6 GB/s tezlikda qidiriladi — 10 GB log taxminan "
+             "2–3 soniyada ko'rib chiqiladi. F3 to'liq qidiruvni kutmasdan keyingi moslikni darhol topadi."),
             ("O'sib borayotgan logni tail -f kabi kuzatsa bo'ladimi?",
              "Ha. View → Follow faylning oxirini ekranda ushlab turadi va yangi satrlarni kelishi bilan indekslaydi. "
              "BigText fayl diskda o'zgarganini ham sezadi va qayta yuklashni taklif qiladi."),
@@ -1137,7 +1137,7 @@ def build_og_image(shots, out):
     for i, line in enumerate(["Open 50 GB text", "files without waiting"]):
         d.text((64, 214 + i * 58), line, font=big, fill="#f8fafc")
     small = font(["segoeui.ttf", "DejaVuSans.ttf"], 26)
-    for i, line in enumerate(["Search at 2.5 GB/s · edit · atomic save", "~100 MB of RAM for a 10 GB file"]):
+    for i, line in enumerate(["Search at 4 GB/s · edit · atomic save", "~100 MB of RAM for a 10 GB file"]):
         d.text((64, 350 + i * 38), line, font=small, fill="#94a3b8")
     chip = font(["segoeuib.ttf", "DejaVuSans-Bold.ttf"], 22)
     x = 64

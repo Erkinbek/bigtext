@@ -21,7 +21,7 @@ T = {
                 "regular enquanto os resultados chegam e acompanha um log que cresce.",
     "stats": [
         ("24 ms", "até desenhar a primeira tela de um arquivo de 50 GB"),
-        ("> 3 GB/s", "velocidade da pesquisa de texto"),
+        ("> 4 GB/s", "velocidade da pesquisa de texto"),
         ("108 MB", "de RAM com um arquivo de 50 GB aberto"),
         ("< 3 ms", "por quadro da interface durante a indexação"),
     ],
@@ -30,8 +30,8 @@ T = {
     "features": [
         ("Abre arquivos de qualquer tamanho", "Só a parte visível é lida: no Windows por janelas mapeadas na memória, no Linux e no macOS em blocos quando necessário. O trabalho em segundo plano processa o resto, e no Windows unidades de rede e pendrives são lidos em blocos com cache por um carregador em segundo plano, então uma unidade lenta não trava a janela."),
         ("Vá para uma linha na hora", "Um índice de linhas esparso (8 bytes a cada 64 KB) é criado em segundo plano a "
-         "2,5 GB/s. Ir para a linha e a barra de rolagem funcionam de imediato, mesmo antes de a indexação terminar."),
-        ("Pesquisa rápida e regex", "Texto simples a mais de 3 GB/s e expressões regulares em tempo linear, com opções de "
+         "4–5 GB/s. Ir para a linha e a barra de rolagem funcionam de imediato, mesmo antes de a indexação terminar."),
+        ("Pesquisa rápida e regex", "Texto simples a mais de 4 GB/s e expressões regulares em tempo linear, com opções de "
          "maiúsculas, palavra inteira e várias linhas. “Localizar todos” lista até um milhão de resultados; F3 funciona "
          "na hora."),
         ("Substituir em gigabytes", "Substitua com $1 e grupos nomeados. Até 50.000 alterações são uma única edição que "
@@ -118,18 +118,18 @@ T = {
          "(ReplaceFileW no Windows mantém atributos e permissões)."),
     ],
     "perf_h2": "Desempenho medido",
-    "perf_intro": "Resultados dos benchmarks embutidos do BigText 0.12.0 com arquivos de teste de 1 GB, 10 GB e 50 GB "
+    "perf_intro": "Resultados dos benchmarks embutidos do BigText 0.14.0 com arquivos de teste de 1 GB, 10 GB e 50 GB "
     "no Windows 11, com os arquivos no cache do sistema. O método e os relatórios completos estão no BENCHMARKS.md.",
     "perf_cols": ("Tarefa", "Resultado"),
     "perf": [
         ("Abrir → primeira tela de texto (1–50 GB)", "desenhada em 22–26 ms, na tela em cerca de 0,1 s"),
         ("Pular para uma linha num arquivo de 50 GB", "menos de 2 ms"),
-        ("Criar o índice de linhas", "2,4–2,7 GB/s (50 GB em cerca de 19 s)"),
-        ("Pesquisa de texto simples", "3,2–4,3 GB/s"),
-        ("Pesquisa com regex", "2,9–4,2 GB/s com parte literal"),
+        ("Criar o índice de linhas", "4,4–5,3 GB/s (50 GB em cerca de 10 s)"),
+        ("Pesquisa de texto simples", "4,4–5,0 GB/s"),
+        ("Pesquisa com regex", "4,0–4,6 GB/s com parte literal"),
         ("Substituir tudo num arquivo de 10 GB", "47–63 MB de pico de memória; o tempo depende do disco"),
         ("Memória com um arquivo de 50 GB aberto", "108 MB"),
-        ("Início → primeiro quadro", "138–150 ms"),
+        ("Início → primeiro quadro", "139–157 ms"),
     ],
     "dl_h2": "Baixar o BigText",
     "dl_intro": "Gratuito para uso pessoal e comercial. Sem conta, sem telemetria, um único executável.",
@@ -169,8 +169,8 @@ T = {
          "tamanho. Ao salvar, o resultado é gravado num arquivo temporário que substitui o original de forma atômica, "
          "assim o original nunca é danificado se algo der errado."),
         ("Quão rápida é a pesquisa em arquivos enormes?",
-         "Texto simples é pesquisado a 3,2–4,3 GB/s e expressões regulares comuns a 2,9–4,2 GB/s, então um log de 10 GB "
-         "leva cerca de 3 segundos. F3 encontra o próximo resultado na hora, sem esperar uma pesquisa completa."),
+         "Texto simples é pesquisado a 4,4–5,0 GB/s e expressões regulares comuns a 4,0–4,6 GB/s, então um log de 10 GB "
+         "leva 2–3 segundos. F3 encontra o próximo resultado na hora, sem esperar uma pesquisa completa."),
         ("Ele acompanha um log que cresce, como o tail -f?",
          "Sim. Exibir → Acompanhar mantém a visualização no fim do arquivo e indexa as linhas novas conforme chegam. O "
          "BigText também percebe quando um arquivo muda no disco e oferece recarregá-lo."),
