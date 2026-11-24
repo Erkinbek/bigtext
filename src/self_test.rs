@@ -16,6 +16,8 @@ use egui::{Event, Key, Modifiers, MouseWheelUnit, PointerButton, Pos2, TouchPhas
 use crate::app::document::{Banner, Document};
 use crate::app::BigTextApp;
 
+pub mod demos;
+
 pub enum Step {
     Next,
     Wait,

@@ -7,6 +7,8 @@ pub mod column_chart;
 pub mod column_editor;
 pub mod columns;
 pub mod commands;
+#[cfg(test)]
+mod compat_tests;
 pub mod convert;
 pub mod copy_as;
 pub mod csv_tools;
@@ -92,7 +94,7 @@ use bigtext::file::{self, OpenMode, Source};
 use bigtext::jobs::{self, human_bytes, CancelToken, Waker};
 use bigtext::replace::Template;
 use bigtext::search::Matcher;
-use bigtext::text::Piece;
+use bigtext::text::Batch;
 
 use crate::view::{hex_view, table_view, text_view};
 use document::{Banner, DocState, Document, Restore};
@@ -156,9 +158,7 @@ pub enum Msg {
     ReplaceBatch {
         doc: u64,
         version: u64,
-        add_len: u64,
-        pieces: Vec<Piece>,
-        add: Vec<u8>,
+        batch: Batch,
         count: usize,
     },
     ReplaceTooMany {
@@ -409,6 +409,8 @@ pub struct BigTextApp {
     pub self_test: Option<crate::self_test::SelfTest>,
     exit_confirmed: bool,
     exit_after_jobs: bool,
+    /// The window title last sent to the system.
+    window_title: String,
     pub show_about: bool,
     pub recent: Vec<PathBuf>,
     /// Session state is saved and restored (off for benchmarks and the self-test).
@@ -847,6 +849,7 @@ impl BigTextApp {
             self_test: None,
             exit_confirmed: false,
             exit_after_jobs: false,
+            window_title: String::new(),
             show_about: false,
             recent: Vec::new(),
             persist,
@@ -1521,11 +1524,9 @@ impl BigTextApp {
                 Msg::ReplaceBatch {
                     doc,
                     version,
-                    add_len,
-                    pieces,
-                    add,
+                    batch,
                     count,
-                } => self.on_replace_batch(doc, version, add_len, pieces, add, count),
+                } => self.on_replace_batch(doc, version, batch, count),
                 Msg::ReplaceTooMany {
                     doc,
                     version,
@@ -2223,7 +2224,7 @@ impl BigTextApp {
                             "index {} ({:.4}% of file)  pieces {}",
                             human_bytes(d.buf.index.memory_bytes() as u64),
                             d.buf.index.memory_bytes() as f64 * 100.0 / d.buf.len().max(1) as f64,
-                            d.buf.pieces().len()
+                            d.buf.piece_count()
                         ));
                         if let (Some(o), Some(fp)) = (d.open_elapsed, d.view.first_paint) {
                             ui.monospace(format!(
@@ -3044,7 +3045,12 @@ impl eframe::App for BigTextApp {
             ),
             None => "BigText".into(),
         };
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+        // Only when it changes: every viewport command asks for another frame, so sending the
+        // title each frame kept an idle window repainting as fast as it could.
+        if title != self.window_title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.window_title = title;
+        }
 
         // Keep repainting while background work is visible in the UI.
         let busy = self.docs.iter().any(|d| {

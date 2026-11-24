@@ -1122,7 +1122,8 @@ fn split_name(stem: &str, order: u8, what: &str) -> String {
 /// returned): `stem.0-before-tables.sql` (what the dump defines before its tables),
 /// `stem.1-TABLE.sql` per table (in any order), `stem.2-after-tables.sql` (views, functions,
 /// events and the foreign keys added after the data). Each has the dump's settings when `settings`. Returns the files with
-/// their sizes, or `None` when cancelled.
+/// their sizes, or `None` when cancelled. Cancelled or failed, it removes the files it wrote: a
+/// part of a split would restore part of the dump.
 pub fn split(
     buf: &TextBuf,
     dump: &Dump,
@@ -1131,6 +1132,36 @@ pub fn split(
     settings: bool,
     cancel: &CancelToken,
     progress: Option<&Progress>,
+) -> io::Result<Option<Vec<(PathBuf, u64)>>> {
+    let mut written = Vec::new();
+    let r = split_into(
+        buf,
+        dump,
+        dir,
+        stem,
+        settings,
+        cancel,
+        progress,
+        &mut written,
+    );
+    if !matches!(r, Ok(Some(_))) {
+        for p in &written {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+    r
+}
+
+#[allow(clippy::too_many_arguments)]
+fn split_into(
+    buf: &TextBuf,
+    dump: &Dump,
+    dir: &Path,
+    stem: &str,
+    settings: bool,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+    written: &mut Vec<PathBuf>,
 ) -> io::Result<Option<Vec<(PathBuf, u64)>>> {
     let size = |parts: &[Part]| {
         parts
@@ -1156,10 +1187,12 @@ pub fn split(
             format!("{}-{n}.sql", name.trim_end_matches(".sql"))
         }
     };
-    let write =
+    let mut write =
         |name: String, middle: Vec<Part>, out: &mut Vec<(PathBuf, u64)>| -> io::Result<bool> {
             let path = dir.join(name);
-            let mut w = io::BufWriter::new(std::fs::File::create(&path)?);
+            let f = std::fs::File::create(&path)?;
+            written.push(path.clone());
+            let mut w = io::BufWriter::new(f);
             let Some(n) = write_file(
                 buf,
                 dump,

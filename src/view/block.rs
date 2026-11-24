@@ -150,8 +150,8 @@ pub fn edit_block(doc: &mut Document, b: &mut Block, e: BlockEdit) -> bool {
             }) as u64
     };
     let (anchor_row, caret_row) = (shift(b.anchor), shift(b.caret));
-    let (pieces, add) = doc.buf.build_batch(&edits);
-    let swap = doc.buf.apply_batch(pieces, &add);
+    let batch = doc.buf.build_batch(&edits);
+    let swap = doc.buf.apply_batch(batch);
     doc.record(swap, (caret, caret));
     let cell = rows::row_at(&doc.buf, caret, None)
         .and_then(|r| rows::cell_of_offset(&doc.buf, &r, caret))

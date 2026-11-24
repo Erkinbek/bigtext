@@ -465,12 +465,12 @@ impl BigTextApp {
                 continue;
             }
             e.writing = true;
-            let add = d.buf.add_bytes();
+            let add_len = d.buf.add_len();
             // Only the new typed bytes are appended; a smaller add buffer is written again.
-            let (append, delta) = if !e.rewrite && e.exists && add.len() as u64 >= e.add_written {
-                (true, add[e.add_written as usize..].to_vec())
+            let (append, delta) = if !e.rewrite && e.exists && add_len >= e.add_written {
+                (true, d.buf.add_bytes_from(e.add_written))
             } else {
-                (false, add.to_vec())
+                (false, d.buf.add_bytes_from(0))
             };
             let j = Journal {
                 id: RecoveryState::id(d.id),
@@ -479,13 +479,8 @@ impl BigTextApp {
                 len: d.buf.source.len(),
                 mtime: mtime_of(d.buf.source.modified()),
                 codec: d.buf.codec,
-                pieces: d
-                    .buf
-                    .pieces()
-                    .iter()
-                    .map(|p| (p.buf, p.start, p.len))
-                    .collect(),
-                add_len: add.len() as u64,
+                pieces: d.buf.pieces().map(|p| (p.buf, p.start, p.len)).collect(),
+                add_len,
                 saved: None,
             };
             let (doc, version, dir, tx, waker, cancel) = (

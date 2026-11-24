@@ -576,6 +576,10 @@ fn finalize_impl(temp: &Path, target: &Path, backup: bool) -> Result<(), String>
         fn GetLastError() -> u32;
     }
     fn wide(p: &Path) -> Vec<u16> {
+        // `\\?\` turns off the normalisation of `/` and `..`, so do it first (a path like
+        // E:/logs/x.log comes from Git Bash).
+        let full = std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
+        let p = full.as_path();
         let s = p.as_os_str();
         let st = s.to_string_lossy();
         let mut v: Vec<u16> = if p.is_absolute() && !st.starts_with(r"\\") {

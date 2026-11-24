@@ -64,7 +64,12 @@ pub fn command(action: ShellAction, path: &Path) -> Command {
     match action {
         ShellAction::Reveal if path.exists() => c.arg("-R").arg(path),
         ShellAction::Reveal => c.arg(folder_of(path)),
-        ShellAction::Terminal => c.args(["-a", "Terminal"]).arg(folder_of(path)),
+        // The folder as the argument opens Terminal there; the working folder is set as on the
+        // other systems.
+        ShellAction::Terminal => c
+            .args(["-a", "Terminal"])
+            .arg(folder_of(path))
+            .current_dir(folder_of(path)),
         ShellAction::Default => c.arg(path),
     };
     c

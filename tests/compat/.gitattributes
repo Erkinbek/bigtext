@@ -1,0 +1,4 @@
+# Byte-exact copies of what old releases wrote (journals' typed bytes included): no line-ending
+# conversion.
+*.txt -text
+*.add -text

@@ -4,7 +4,7 @@
 
 use bigtext::csv::{self, Dialect};
 use bigtext::jobs::{self, human_bytes, CancelToken, Progress};
-use bigtext::text::Piece;
+use bigtext::text::Batch;
 
 use super::document::Banner;
 use super::i18n::{tr, trf};
@@ -17,9 +17,7 @@ pub const IN_MEMORY_MAX: u64 = 64 * 1024 * 1024;
 pub struct ColumnsDeleted {
     pub doc: u64,
     pub version: u64,
-    pub add_len: u64,
-    pub pieces: Vec<Piece>,
-    pub add: Vec<u8>,
+    pub batch: Batch,
     pub cols: Vec<usize>,
     pub records: u64,
 }
@@ -152,13 +150,11 @@ impl BigTextApp {
             ) {
                 Ok(Some(stats)) => {
                     // The whole document becomes one new piece: a single undo step.
-                    let (pieces, add) = snap.build_batch(&[(0..snap.len(), out)]);
+                    let batch = snap.build_batch(&[(0..snap.len(), out)]);
                     Msg::ColumnsDeleted(Box::new(ColumnsDeleted {
                         doc,
                         version,
-                        add_len: snap.add_len(),
-                        pieces,
-                        add,
+                        batch,
                         cols,
                         records: stats.count,
                     }))
@@ -182,14 +178,14 @@ impl BigTextApp {
             return;
         };
         d.save_job = None;
-        if d.version != c.version || d.buf.add_len() != c.add_len {
+        if d.version != c.version || d.buf.add_len() != c.batch.add_len() {
             d.banner = Some(Banner::Info(tr("The document changed while the columns were being deleted; nothing was deleted.").into()));
             return;
         }
         // Rows get shorter, so keep the caret and the first visible row on their lines.
         let (top_line, _) = d.buf.line_of(d.view.top);
         let (caret_line, _) = d.buf.line_of(d.view.caret);
-        let swap = d.buf.apply_batch(c.pieces, &c.add);
+        let swap = d.buf.apply_batch(c.batch);
         let line_start = |line: u64| {
             d.buf
                 .line_start(line)

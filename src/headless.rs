@@ -44,8 +44,10 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         --count, each different one with how often it matched, most first.
   count [-v] [-i] [-w] [-E] PATTERN FILE
         The number of lines with a match.
-  split (--size 100MB | --lines 1000000) FILE [--out-dir DIR] [--gz|--zst|--xz|--bz2]
-        Parts name.part001.ext, … cut at line breaks (compressed: .ext.gz, …);
+  split (--size 100MB | --lines 1000000) FILE [--out-dir DIR]
+        [--gz|--zst|--xz|--bz2]
+        Parts name.part001.ext, … cut at line breaks (compressed: .ext.gz,
+        …);
         prints their paths.
   stats [--fields] FILE...
         Size, lines, encoding, line breaks by kind, the longest line, NUL and
@@ -66,7 +68,8 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         Each row of the LEFT table with the other columns of the RIGHT table's
         rows with the same key (COL: a header name or a 1-based number), as
         CSV; rows without a match get empty fields, or are left out (--inner).
-  jsonl FILE [-q QUERY] [-v] [--fields a,b.c] [--to jsonl|csv] [--count] [-o OUT]
+  jsonl FILE [-q QUERY] [-v] [--fields a,b.c] [--to jsonl|csv] [--count]
+        [-o OUT]
   query FILE -q QUERY ... (the same)
         Lines that meet a field query: JSON Lines, logfmt (key=value), or a web
         server or syslog log by its columns (.status >= 500 and .method = POST).
@@ -95,7 +98,8 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         changed. Columns pair up by header name. Exit code 0 when they are the
         same, 1 when they differ.
   csv FILE cut COLS | drop COLS | sort --by COL [--desc] | where COND... |
-           stats COL | group COL [--sum COL]  [-o OUT] [--delimiter X] [--no-header]
+           stats COL | group COL [--sum COL]
+           [-o OUT] [--delimiter X] [--no-header]
         The table view's column tools, streamed: keep or delete columns, sort
         rows (files up to 1 GB), keep the rows where every condition holds
         (col=v, col!=v, col~v contains, col>n, col<n; or col eq|ne|has|gt|lt v,
@@ -110,8 +114,10 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
   saved [--settings FILE]
         The searches saved in BigText (the search bar's star menu);
         filter, count and grep --saved NAME run one.
-  --json on filter, levels, grep, count, stats, replace and saved gives one
-  JSON record per line ({file, line, offset, text}; errors as {\"error\": …}).
+  --json on filter, levels, grep, count, stats, replace (with -o or
+  --in-place), saved and csv stats gives one JSON record per line ({file,
+  line, offset, text, context}; errors as {\"error\": …}).
+  -- ends the options: a pattern after it may start with a dash.
 
   grep [-i] [-w] [-E] PATTERN FILES... | -r DIR [--names '*.log;*.gz']
         Find in files without a window: file:line:text for every line with a
@@ -124,7 +130,8 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
   head [-n N] FILE [-o OUT]
   tail [-n N] FILE [-o OUT]
         The first or last N lines (10), read from that end only.
-  slice FILE (--lines A-B | --bytes A-B | --from TIME [--to TIME]) [--header] [-o OUT]
+  slice FILE (--lines A-B | --bytes A-B | --from TIME [--to TIME])
+        [--header] [-o OUT]
         Lines A to B (1-based, inclusive), the lines around bytes A to B, or
         the lines from one time to another (inclusive to the second; a --to
         without a date is on --from's day), found by binary search in a time-
@@ -164,8 +171,8 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         N); or one of them in full as CSV: --urls (requests, 4xx, 5xx, bytes
         and times per URL), --minutes (requests, 4xx and 5xx per minute),
         --slow (the 1,000 slowest requests with their line numbers).
-  redact FILE [-o OUT] [--ips] [--pattern RE]... [--no-tokens] [--no-urls] [--no-keys]
-          [--no-emails]
+  redact FILE [-o OUT] [--ips] [--pattern RE]... [--no-tokens] [--no-urls]
+          [--no-keys] [--no-emails]
         The file with secrets and personal data hidden, to share it: tokens,
         Authorization and Cookie headers, secrets in URLs, password= and
         \"secret\": values, e-mail addresses, with --ips IP addresses, with
@@ -173,8 +180,8 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         like <email-3f9a2c>, the same for the same value in one run. What was
         hidden is counted on stderr. The rules find common secrets, not every
         one: look at the result before you share it.
-  sqldump FILE [tables | extract TABLE[,TABLE...] | split] [-o OUT] [--out-dir DIR]
-          [--no-settings]
+  sqldump FILE [tables | extract TABLE[,TABLE...] | split] [-o OUT]
+          [--out-dir DIR] [--no-settings]
         A SQL dump (mysqldump, pg_dump's plain format, SQLite's .dump), read in
         one pass: tables lists its tables with their rows and bytes as CSV;
         extract writes those tables (CREATE, rows, keys, indexes, triggers and
@@ -194,9 +201,10 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         --path, or the first under the top object) as JSON Lines; logfmt
         (key=value) lines, and nginx / Apache, AWS load balancer (ALB, Classic),
         IIS and syslog logs, as CSV with a column per field. --from
-        json|jsonl|logfmt|log|csv when the kind is not what it looks like. The header and lines before the table
-        (sep=;, comments) are detected; --header / --no-header, --skip N and
-        --quote ' override that (also for validate).
+        json|jsonl|logfmt|log|csv when the kind is not what it looks like.
+        The header and lines before the table (sep=;, comments) are detected;
+        --header / --no-header, --skip N and --quote ' override that (also
+        for validate).
 
 -o OUT ending in .gz, .zst, .xz or .bz2 is written compressed.
 
@@ -276,14 +284,18 @@ impl Args {
         };
         let mut it = args.iter();
         while let Some(x) = it.next() {
-            if flags.contains(&x.as_str()) {
+            if x == "--" {
+                // Everything after `--` is a pattern or a file, even when it starts with `-`.
+                a.rest.extend(it.cloned());
+                break;
+            } else if flags.contains(&x.as_str()) {
                 a.flags.push(x.clone());
             } else if opts.contains(&x.as_str()) {
                 let v = it
                     .next()
                     .ok_or_else(|| Fail(format!("{x} needs a value")))?;
                 a.opts.push((x.clone(), v.clone()));
-            } else if x.starts_with('-') && x.len() > 1 {
+            } else if x.starts_with('-') && x.len() > 1 && x.parse::<f64>().is_err() {
                 return fail(format!("unknown option {x}"));
             } else {
                 a.rest.push(x.clone());
@@ -611,6 +623,9 @@ fn cmd_filter(args: &[String], out: &mut dyn Write, count_only: bool) -> Res<i32
         ]
         .concat(),
     )?;
+    if count_only && a.opt(&["-o", "--output"]).is_some() {
+        return fail("count prints a number and writes no file; redirect it instead (> FILE)");
+    }
     let mut pats: Vec<String> = a
         .all(&["-e", "--pattern"])
         .into_iter()
@@ -1751,6 +1766,11 @@ fn cmd_replace(args: &[String], out: &mut dyn Write) -> Res<i32> {
     if a.flag(&["--in-place"]) && crate::decompress::detect(path).is_some() {
         return fail("--in-place does not work on a compressed file; give -o OUT");
     }
+    if json() && !a.flag(&["--in-place"]) && a.opt(&["-o", "--output"]).is_none() {
+        return fail(
+            "--json needs -o OUT or --in-place: the replaced text would mix with the record",
+        );
+    }
     let (buf, _) = open(path)?;
     let q = query(&a, pattern);
     let m = Matcher::new(&q, buf.codec).map_err(Fail)?;
@@ -2134,7 +2154,24 @@ fn cmd_jsonl(args: &[String], out: &mut dyn Write) -> Res<i32> {
     } else {
         crate::logformat::detect(&buf)?
     };
-    let q = q.map(|q| q.for_document(format, false));
+    // A field's value: a web server or syslog log's column, a JSON key, or a logfmt key.
+    let value_of = |line: &[u8], f: &str| -> Option<String> {
+        if let Some(fmt) = &format {
+            let mut s = crate::logformat::Splitter::new(fmt);
+            if s.split(line) != crate::logformat::Split::Row {
+                return None;
+            }
+            let i = fmt.columns.iter().position(|c| c.eq_ignore_ascii_case(f))?;
+            let values = s.values(line);
+            let v = values.get(i).filter(|v| !v.is_empty())?;
+            Some(String::from_utf8_lossy(v).into_owned())
+        } else if line.trim_ascii_start().starts_with(b"{") {
+            crate::fields::find_value(line, f, crate::fields::Syntax::Json)
+        } else {
+            crate::fields::find_value(line, f, crate::fields::Syntax::Logfmt)
+        }
+    };
+    let q = q.map(|q| q.for_document(format.clone(), false));
     let quote = |s: &str| {
         if s.contains([',', '"', '\n', '\r']) {
             format!("\"{}\"", s.replace('"', "\"\""))
@@ -2171,12 +2208,7 @@ fn cmd_jsonl(args: &[String], out: &mut dyn Write) -> Res<i32> {
             } else if csv_out {
                 let row: Vec<String> = fields
                     .iter()
-                    .map(|f| {
-                        quote(
-                            &crate::fields::find_value(line, f, crate::fields::Syntax::Json)
-                                .unwrap_or_default(),
-                        )
-                    })
+                    .map(|f| quote(&value_of(line, f).unwrap_or_default()))
                     .collect();
                 writeln!(w, "{}", row.join(","))?;
             } else {
@@ -2186,9 +2218,14 @@ fn cmd_jsonl(args: &[String], out: &mut dyn Write) -> Res<i32> {
                         format!(
                             "\"{}\": {}",
                             f.replace('"', "\\\""),
-                            crate::fields::find_raw_json(line, f)
-                                .map(|v| String::from_utf8_lossy(v).into_owned())
-                                .unwrap_or_else(|| "null".into())
+                            if line.trim_ascii_start().starts_with(b"{") {
+                                crate::fields::find_raw_json(line, f)
+                                    .map(|v| String::from_utf8_lossy(v).into_owned())
+                            } else {
+                                // Text of a log column or a logfmt key, as a JSON string.
+                                value_of(line, f).map(|v| serde_json::Value::from(v).to_string())
+                            }
+                            .unwrap_or_else(|| "null".into())
                         )
                     })
                     .collect();
@@ -2775,6 +2812,10 @@ fn run_batch(cmd: &str, rest: &[String], out: &mut dyn Write, err: &mut dyn Writ
     let (mut dir, mut names, mut out_dir) = (None, None, None);
     let mut it = rest.iter();
     while let Some(x) = it.next() {
+        if x == "--" {
+            positionals.extend(it.cloned());
+            break;
+        }
         if BATCH.contains(&x.as_str()) {
             let v = it.next().cloned();
             match x.as_str() {
@@ -2787,6 +2828,9 @@ fn run_batch(cmd: &str, rest: &[String], out: &mut dyn Write, err: &mut dyn Writ
         } else if opts.contains(&x.as_str()) {
             own.push(x.clone());
             own.extend(it.next().cloned());
+        } else if x.starts_with('-') && x.len() > 1 && x.parse::<f64>().is_err() {
+            // An unknown option: the command's own parser reports it, once.
+            return None;
         } else {
             positionals.push(x.clone());
         }
@@ -2807,7 +2851,7 @@ fn run_batch(cmd: &str, rest: &[String], out: &mut dyn Write, err: &mut dyn Writ
     let files = match expand_inputs(&positionals[lead..], dir.as_deref(), names.as_deref()) {
         Ok(f) => f,
         Err(Fail(e)) => {
-            let _ = writeln!(err, "bigtext-cli {cmd}: {e}");
+            let _ = writeln!(err, "bigtext {cmd}: {e}");
             return Some(2);
         }
     };
@@ -2820,10 +2864,25 @@ fn run_batch(cmd: &str, rest: &[String], out: &mut dyn Write, err: &mut dyn Writ
         return None;
     }
     let single = if cmd == "grep" { "filter" } else { cmd };
+    let json = JSON.with(|j| j.get());
+    if files.len() > 1 && own.iter().any(|o| o == "-o" || o == "--output") {
+        let _ = writeln!(err, "bigtext {cmd}: -o writes one file; with several input files use --out-dir DIR (a NAME.filtered.EXT per file)");
+        return Some(2);
+    }
+    if let Some(d) = &out_dir {
+        if let Err(e) = std::fs::create_dir_all(d) {
+            let _ = writeln!(err, "bigtext {cmd}: {d}: {e}");
+            return Some(2);
+        }
+    }
+    let mut used_names = std::collections::HashSet::new();
     let (mut matched, mut failed, mut total) = (false, false, 0u64);
     for f in &files {
         let mut a: Vec<String> = vec![single.to_string()];
         a.extend(own.iter().cloned());
+        if json {
+            a.push("--json".into());
+        }
         if cmd == "grep" && !own.iter().any(|o| o == "-n" || o == "--line-numbers") {
             a.push("-n".into());
         }
@@ -2843,10 +2902,16 @@ fn run_batch(cmd: &str, rest: &[String], out: &mut dyn Write, err: &mut dyn Writ
                 .file_stem()
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            let name = match q.extension() {
-                Some(e) => format!("{stem}.filtered.{}", e.to_string_lossy()),
-                None => format!("{stem}.filtered"),
-            };
+            let ext = q.extension().map(|e| format!(".{}", e.to_string_lossy()));
+            let ext = ext.unwrap_or_default();
+            // Two inputs of the same name (from two folders, or x.log and x.log.gz) get
+            // NAME.filtered.EXT and NAME.filtered-2.EXT instead of one overwriting the other.
+            let mut name = format!("{stem}.filtered{ext}");
+            let mut k = 2;
+            while !used_names.insert(name.to_lowercase()) {
+                name = format!("{stem}.filtered-{k}{ext}");
+                k += 1;
+            }
             a.push("-o".into());
             a.push(Path::new(d).join(name).to_string_lossy().into_owned());
         }
@@ -2860,7 +2925,17 @@ fn run_batch(cmd: &str, rest: &[String], out: &mut dyn Write, err: &mut dyn Writ
             _ => failed = true,
         }
         let name = display_path(Path::new(f));
-        if cmd == "count" {
+        if json {
+            // The records name their file already.
+            if cmd == "count" {
+                let n = serde_json::from_slice::<serde_json::Value>(&buf)
+                    .ok()
+                    .and_then(|v| v["count"].as_u64())
+                    .unwrap_or(0);
+                total += n;
+            }
+            let _ = out.write_all(&buf);
+        } else if cmd == "count" {
             let n: u64 = String::from_utf8_lossy(&buf).trim().parse().unwrap_or(0);
             total += n;
             let _ = writeln!(out, "{name}: {n}");
@@ -2871,7 +2946,9 @@ fn run_batch(cmd: &str, rest: &[String], out: &mut dyn Write, err: &mut dyn Writ
             }
         }
     }
-    if cmd == "count" {
+    if cmd == "count" && json {
+        let _ = writeln!(out, "{}", serde_json::json!({ "total": total }));
+    } else if cmd == "count" {
         let _ = writeln!(out, "total: {total}");
     }
     Some(if failed {
@@ -2888,9 +2965,13 @@ fn run_command(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32
         let _ = write!(err, "{USAGE}");
         return 2;
     };
-    // --json anywhere: records; errors as {"error": …}.
-    // (format has a --json option of its own.)
-    let json = cmd != "format" && args.iter().any(|a| a == "--json");
+    // --json anywhere: records; errors as {"error": …}. Only for the commands that write
+    // records; for the others (format and validate have a --json option of their own) it is
+    // passed on, and a command without it says so.
+    let json = matches!(
+        cmd.as_str(),
+        "filter" | "grep" | "count" | "levels" | "stats" | "replace" | "saved" | "csv"
+    ) && args.iter().any(|a| a == "--json");
     JSON.with(|j| j.set(json));
     let mut rest: Vec<String> = args[1..]
         .iter()
@@ -2904,7 +2985,7 @@ fn run_command(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32
                 if json {
                     let _ = writeln!(out, "{}", serde_json::json!({"error": e}));
                 } else {
-                    let _ = writeln!(err, "bigtext-cli {cmd}: {e}");
+                    let _ = writeln!(err, "bigtext {cmd}: {e}");
                 }
                 return 2;
             }
@@ -3891,5 +3972,137 @@ mod tests {
         assert_eq!(parse_size("100MB"), Some(100 << 20));
         assert_eq!(parse_size("1.5g"), Some(3 << 29));
         assert_eq!(parse_size("x"), None);
+    }
+
+    /// Found by an audit of the command line before 1.0.
+    #[test]
+    fn options_json_and_several_files() {
+        let d = tempfile::tempdir().unwrap();
+        let a = file(
+            &d,
+            "a.log",
+            b"ERROR one
+-foo two
+INFO three
+",
+        );
+        let sub = d.path().join("sub");
+        std::fs::create_dir(&sub).unwrap();
+        let b = sub.join("a.log");
+        std::fs::write(
+            &b,
+            b"ERROR four
+",
+        )
+        .unwrap();
+        let b = b.to_string_lossy().into_owned();
+        // `--` ends the options: a pattern may start with a dash.
+        let (code, out, err) = run_args(&["filter", "--", "-foo", &a]);
+        assert_eq!(
+            (code, out.as_str()),
+            (
+                0,
+                "-foo two
+"
+            ),
+            "{err}"
+        );
+        // An unknown option is reported once.
+        let (code, _, err) = run_args(&["filter", "-iv", "error", &a]);
+        assert_eq!(
+            (code, err.matches("unknown option").count()),
+            (2, 1),
+            "{err}"
+        );
+        // A negative number is a value.
+        let t = file(
+            &d,
+            "t.csv",
+            b"k,qty
+x,-9
+y,3
+",
+        );
+        let (code, out, err) = run_args(&["csv", &t, "where", "qty", "lt", "-5"]);
+        assert_eq!(
+            (code, out.as_str()),
+            (
+                0,
+                "k,qty
+x,-9
+"
+            ),
+            "{err}"
+        );
+        // validate keeps its own --json (strict JSON); it is not the output mode.
+        let nj = file(
+            &d,
+            "n.txt",
+            b"not json
+",
+        );
+        assert_eq!(run_args(&["validate", &nj, "--json"]).0, 1);
+        // Several files: JSON records name their file and are not prefixed.
+        let (code, out, _) = run_args(&["filter", "ERROR", &a, &b, "--json"]);
+        assert_eq!(code, 0);
+        let recs: Vec<serde_json::Value> = out
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(recs.len(), 2, "{out}");
+        let (_, out, _) = run_args(&["count", "ERROR", &a, &b, "--json"]);
+        assert!(
+            out.ends_with(
+                "{\"total\":2}
+"
+            ),
+            "{out}"
+        );
+        // -o with several files would keep only the last one's lines.
+        let o = d.path().join("o.txt").to_string_lossy().into_owned();
+        let (code, _, err) = run_args(&["filter", "ERROR", &a, &b, "-o", &o]);
+        assert_eq!(code, 2, "{err}");
+        assert!(err.contains("--out-dir"), "{err}");
+        // --out-dir is created, and two inputs of one name get two outputs.
+        let od = d.path().join("new").join("out");
+        let ods = od.to_string_lossy().into_owned();
+        assert_eq!(
+            run_args(&["filter", "ERROR", &a, &b, "--out-dir", &ods]).0,
+            0
+        );
+        let mut names: Vec<String> = std::fs::read_dir(&od)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["a.filtered-2.log", "a.filtered.log"]);
+        // count writes no file: -o is an error, not ignored.
+        assert_eq!(run_args(&["count", "ERROR", &a, "-o", &o]).0, 2);
+        // replace --json to the console would mix the text and the record.
+        assert_eq!(run_args(&["replace", "ERROR", "E", &a, "--json"]).0, 2);
+        // --fields of logfmt lines are their keys, not JSON keys.
+        let lf = file(
+            &d,
+            "lf.log",
+            b"level=error user=ann ms=5\nlevel=info user=bob ms=1\n",
+        );
+        let (code, out, err) =
+            run_args(&["jsonl", &lf, "-q", ".level = error", "--fields", "user,ms"]);
+        assert_eq!(
+            (code, out.as_str()),
+            (0, "{\"user\": \"ann\", \"ms\": \"5\"}\n"),
+            "{err}"
+        );
+        let (_, out, _) = run_args(&[
+            "jsonl",
+            &lf,
+            "-q",
+            ".level = error",
+            "--fields",
+            "user,ms",
+            "--to",
+            "csv",
+        ]);
+        assert_eq!(out, "user,ms\nann,5\n");
     }
 }

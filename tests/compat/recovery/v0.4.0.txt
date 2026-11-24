@@ -1,0 +1,12 @@
+bigtext-journal 1
+title=сервер.log
+path=C:\logs\сервер.log
+len=162
+mtime=1793266185.123456789
+codec=UTF-8|lf|0
+add=83
+a 0 37
+o 0 61
+a 37 5
+o 66 96
+a 42 41
