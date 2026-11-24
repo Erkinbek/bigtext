@@ -5,6 +5,16 @@ All notable changes to BigText. Each release on
 
 ## Unreleased
 
+### Faster (contributed by Jahongir Qurbonov)
+
+- Counting a file's lines, which line numbers, the scrollbar and Go to line wait for, is about
+  twice as fast: newlines are counted 16 bytes at a time (SSE2 on x86-64, NEON on ARM).
+- Typing stays fast in a document with many pieces (after a large Replace All or paste) and
+  while a search runs in the background: from milliseconds to microseconds per key, and from
+  about 50 ms to about 1 µs after a 100 MB paste. A Replace All with many matches is prepared
+  in a fraction of the time and no longer stalls the window when it is applied.
+- Replace All with `$1` style replacements is about a third faster.
+
 ### Fixed
 
 - In a UTF-16 file, a regex match longer than 1 MB that ran past the end of a 16 MB search
