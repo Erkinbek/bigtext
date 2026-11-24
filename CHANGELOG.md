@@ -12,9 +12,9 @@ All notable changes to BigText. Each release on
 - A large file on a local disk has its lines counted on several threads (up to 8), in file
   order, so the top is still ready first: on Linux about three times as fast again for a file
   in the system's cache. On Windows, where the reads of one file queue up, it adds little to the
-  faster counting above. Network drives,
-  rotating disks (recognised on Linux, as are most USB hard disks), removable drives on Windows
-  and remote files keep one reader, and `BIGTEXT_INDEX_THREADS=1` turns the threads off.
+  faster counting above. Network drives, rotating disks (recognised on Linux, as are most USB
+  hard disks), removable drives on Windows and remote files keep one reader, and
+  `BIGTEXT_INDEX_THREADS=1` turns the threads off.
 - Typing stays fast in a document with many pieces (after a large Replace All or paste) and
   while a search runs in the background: from milliseconds to microseconds per key, and from
   about 50 ms to about 1 µs after a 100 MB paste. A Replace All with many matches is prepared
