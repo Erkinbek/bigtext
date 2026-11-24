@@ -565,7 +565,12 @@ fn copy_lines(
             pending.clear();
         }
     }
-    put(&pending, &mut tail)?;
+    // The other stream may still write: a last line without a break would be joined to its
+    // next line, so it gets one.
+    if !pending.is_empty() {
+        pending.push(b'\n');
+        put(&pending, &mut tail)?;
+    }
     Ok((total, tail))
 }
 
@@ -848,6 +853,35 @@ mod tests {
             buf[..p.len()].copy_from_slice(p);
             Ok(p.len())
         }
+    }
+
+    /// A last output line without a break, then an error line written after the output ended:
+    /// they stay two lines (they were joined when the output finished first).
+    #[test]
+    fn a_last_line_without_a_break_is_not_joined_to_the_other_stream() {
+        struct Late(Option<&'static [u8]>);
+        impl Read for Late {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                std::thread::sleep(Duration::from_millis(100));
+                let Some(p) = self.0.take() else {
+                    return Ok(0);
+                };
+                buf[..p.len()].copy_from_slice(p);
+                Ok(p.len())
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("x.log");
+        let c = copy_merged(
+            &b"first\nno break"[..],
+            Late(Some(b"late error\n")),
+            std::fs::File::create(&path).unwrap(),
+            None,
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(text, "first\nno break\nlate error\n");
+        assert_eq!(c.bytes, text.len() as u64);
     }
 
     #[test]
