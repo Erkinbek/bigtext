@@ -970,6 +970,10 @@ fn cmd_merge(args: &[String], out: &mut dyn Write) -> Res<i32> {
 
 /// What a file holds, from its first lines: json, jsonl, logfmt or csv.
 fn sniff_kind(buf: &TextBuf) -> &'static str {
+    // An array from its first byte: it may be one line of any length, not read as lines.
+    if crate::json::top_array(buf, &CancelToken::new()).is_some() {
+        return "json";
+    }
     let mut r = LineReader::new(buf);
     let mut lines = Vec::new();
     while lines.len() < 10 {
@@ -1048,10 +1052,24 @@ fn cmd_convert(args: &[String], out: &mut dyn Write) -> Res<i32> {
             })?;
             return Ok(0);
         }
-        // One object (per line) as a table, too.
         ("jsonl", "csv") | ("json", "csv") => {
+            // A JSON array's items (the top-level array's, or those of the one at --path),
+            // read value by value: the array may be on one line, or an item on several.
+            let array = match a.opt(&["--path"]) {
+                _ if from != "json" => None,
+                Some(p) => Some(
+                    crate::json::resolve(&buf, &crate::json::parse_path(p).map_err(Fail)?, &cancel)
+                        .map_err(Fail)?
+                        .0,
+                ),
+                None => crate::json::top_array(&buf, &cancel),
+            };
             with_output(target, out, |w| {
-                crate::json::jsonl_to_csv(&buf, &mut &mut *w, &cancel, None)?;
+                match array {
+                    Some(at) => crate::json::array_to_csv(&buf, at, &mut &mut *w, &cancel, None)?,
+                    // One object (per line) as a table, too.
+                    None => crate::json::jsonl_to_csv(&buf, &mut &mut *w, &cancel, None)?,
+                };
                 Ok(())
             })?;
             return Ok(0);
@@ -3176,6 +3194,52 @@ mod tests {
             "level,msg\ninfo,ok\nerror,bad x\n"
         );
         assert_eq!(run_args(&["convert", &f, "--to", "json"]).0, 2);
+    }
+
+    #[test]
+    fn convert_json_array_to_csv_however_it_is_laid_out() {
+        let d = tempfile::tempdir().unwrap();
+        let rows = "a,b\n1,\"x, y\"\n2,\n";
+        for (name, text) in [
+            // On one line, as tools and APIs write it; after white space or a byte order mark.
+            ("one.json", &b"[{\"a\":1,\"b\":\"x, y\"},{\"a\":2}]"[..]),
+            ("space.json", b" \n [{\"a\":1,\"b\":\"x, y\"},{\"a\":2}]\n"),
+            (
+                "bom.json",
+                b"\xEF\xBB\xBF[{\"a\":1,\"b\":\"x, y\"},{\"a\":2}]",
+            ),
+            // Pretty-printed: an item per line, or each over several.
+            (
+                "pretty.json",
+                b"[\n  {\"a\": 1, \"b\": \"x, y\"},\n  {\"a\": 2}\n]\n",
+            ),
+            (
+                "deep.json",
+                b"[\n  {\n    \"a\": 1,\n    \"b\": \"x, y\"\n  },\n  {\n    \"a\": 2\n  }\n]\n",
+            ),
+        ] {
+            let f = file(&d, name, text);
+            assert_eq!(
+                run_args(&["convert", &f, "--to", "csv"]),
+                (0, rows.into(), String::new()),
+                "{name}"
+            );
+        }
+        // The array at --path.
+        let o = file(
+            &d,
+            "o.json",
+            b"{\"n\": 2, \"events\": [{\"a\":1,\"b\":\"x, y\"},{\"a\":2}]}",
+        );
+        assert_eq!(
+            run_args(&["convert", &o, "--to", "csv", "--path", "$.events"]).1,
+            rows
+        );
+        // A broken array is an error, not an empty table.
+        let bad = file(&d, "bad.json", b"[{\"a\":1} {\"a\":2}]");
+        let (code, _, err) = run_args(&["convert", &bad, "--to", "csv"]);
+        assert_eq!(code, 2);
+        assert!(err.starts_with("bigtext convert: expected ','"), "{err}");
     }
 
     #[test]

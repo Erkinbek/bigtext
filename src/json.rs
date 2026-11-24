@@ -1,7 +1,8 @@
 //! Streaming JSON for files of any size: the direct children of an object or array, page by
 //! page; the value at a path such as `$.items[1234].id`; the path of the value at an offset;
-//! and JSON Lines (one object per line) to CSV. Values are skipped with a byte loop that
-//! tracks only strings and nesting depth, so nothing is ever held in memory as a tree.
+//! and JSON Lines (one object per line) or an array's items to CSV. Values are skipped with a
+//! byte loop that tracks only strings and nesting depth, so nothing is ever held in memory as
+//! a tree.
 //! UTF-8 (or another ASCII-compatible encoding) only.
 
 use std::io::{self, Write};
@@ -341,6 +342,40 @@ impl<'a> Reader<'a> {
             self.i += k;
         }
     }
+
+    /// Steps into the array that starts here: true when an item follows, false when the array
+    /// is empty (and stepped past).
+    fn array_open(&mut self) -> Result<bool, String> {
+        self.expect(b'[')?;
+        self.skip_ws()?;
+        if self.peek()? == Some(b']') {
+            self.bump();
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
+    /// Steps past what follows an array item: true at a `,` (another item follows), false at
+    /// the array's closing `]`.
+    fn array_next(&mut self) -> Result<bool, String> {
+        self.skip_ws()?;
+        match self.peek()? {
+            Some(b',') => {
+                self.bump();
+                Ok(true)
+            }
+            Some(b']') => {
+                self.bump();
+                Ok(false)
+            }
+            Some(c) => Err(format!(
+                "expected ',' or ']' at byte {}, found '{}'",
+                self.pos(),
+                c as char
+            )),
+            None => Err("the array does not end".into()),
+        }
+    }
 }
 
 /// Writes each item of the array at `at` (an offset from [`root`] or [`resolve`]) on a line of
@@ -362,33 +397,18 @@ pub fn array_to_lines<W: std::io::Write>(
     let mut r = Reader::new(buf, at, cancel);
     let wrap = |e: String| if e == CANCELLED { None } else { Some(e) };
     let run = (|| -> Result<u64, String> {
-        r.expect(b'[')?;
         let mut n = 0u64;
-        r.skip_ws()?;
-        if r.peek()? == Some(b']') {
-            return Ok(0);
-        }
-        loop {
+        let mut more = r.array_open()?;
+        while more {
             r.copy_value(out)?;
             out.write_all(b"\n").map_err(|e| e.to_string())?;
             n += 1;
             if let Some(p) = progress {
                 p.set_done(r.pos());
             }
-            r.skip_ws()?;
-            match r.peek()? {
-                Some(b',') => r.bump(),
-                Some(b']') => return Ok(n),
-                Some(c) => {
-                    return Err(format!(
-                        "expected ',' or ']' at byte {}, found '{}'",
-                        r.pos(),
-                        c as char
-                    ))
-                }
-                None => return Err("the array does not end".into()),
-            }
+            more = r.array_next()?;
         }
+        Ok(n)
     })();
     match run {
         Ok(n) => Ok(Some(n)),
@@ -397,6 +417,14 @@ pub fn array_to_lines<W: std::io::Write>(
             None => Ok(None),
         },
     }
+}
+
+/// The offset of the top-level value when it is an array.
+pub fn top_array(buf: &TextBuf, cancel: &CancelToken) -> Option<u64> {
+    let at = root(buf, cancel).ok()?;
+    buf.read(at..at + 1)
+        .is_some_and(|b| b.first() == Some(&b'['))
+        .then_some(at)
 }
 
 /// The array to turn into lines: the top-level value when it is an array, otherwise the first
@@ -983,6 +1011,91 @@ fn csv_field(s: &str) -> String {
     }
 }
 
+/// Where [`records_to_csv`] takes its records from: the lines of JSON Lines, or the items of a
+/// JSON array.
+trait Records {
+    /// The next record, `None` after the last.
+    fn record(&mut self) -> io::Result<Option<&[u8]>>;
+    /// How far the text has been read, for the progress.
+    fn read_to(&self) -> u64;
+}
+
+impl Records for LineReader<'_> {
+    fn record(&mut self) -> io::Result<Option<&[u8]>> {
+        Ok(self.next()?.map(|(_, l)| l))
+    }
+
+    fn read_to(&self) -> u64 {
+        self.taken()
+    }
+}
+
+/// The items of a JSON array, one at a time, each copied out without white space as
+/// [`array_to_lines`] writes it. Only one item is held, and only its first `max` bytes (a
+/// longer one is cut, as [`LineReader`] cuts a long line), so the array may be one line of any
+/// length.
+struct Items<'a> {
+    r: Reader<'a>,
+    item: Vec<u8>,
+    max: usize,
+    /// Whether another item follows (`None` before the array's `[`).
+    more: Option<bool>,
+}
+
+impl<'a> Items<'a> {
+    fn new(buf: &'a TextBuf, at: u64, cancel: &'a CancelToken, max: usize) -> Items<'a> {
+        Items {
+            r: Reader::new(buf, at, cancel),
+            item: Vec::new(),
+            max,
+            more: None,
+        }
+    }
+}
+
+impl Records for Items<'_> {
+    fn record(&mut self) -> io::Result<Option<&[u8]>> {
+        let more = match self.more {
+            Some(m) => m,
+            None => self.r.array_open().map_err(io::Error::other)?,
+        };
+        self.more = Some(more);
+        if !more {
+            return Ok(None);
+        }
+        self.item.clear();
+        let mut cut = Cut {
+            out: &mut self.item,
+            max: self.max,
+        };
+        self.r.copy_value(&mut cut).map_err(io::Error::other)?;
+        self.more = Some(self.r.array_next().map_err(io::Error::other)?);
+        Ok(Some(&self.item))
+    }
+
+    fn read_to(&self) -> u64 {
+        self.r.pos()
+    }
+}
+
+/// Keeps the first `max` bytes written to it and drops the rest.
+struct Cut<'a> {
+    out: &'a mut Vec<u8>,
+    max: usize,
+}
+
+impl Write for Cut<'_> {
+    fn write(&mut self, b: &[u8]) -> io::Result<usize> {
+        let room = self.max.saturating_sub(self.out.len());
+        self.out.extend_from_slice(&b[..b.len().min(room)]);
+        Ok(b.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 /// Writes JSON Lines as CSV: a column per key (from the first [`JSONL_SAMPLE`] lines, in the
 /// order first seen), strings unescaped, other values as written. Returns `None` if cancelled.
 pub fn jsonl_to_csv<W: Write>(
@@ -994,15 +1107,45 @@ pub fn jsonl_to_csv<W: Write>(
     if buf.codec.unit() != 1 {
         return Err(io::Error::other("JSON Lines must be UTF-8"));
     }
+    records_to_csv(buf, LineReader::new(buf), out, cancel, progress)
+}
+
+/// Writes the items of the JSON array at `at` (an offset from [`root`], [`top_array`] or
+/// [`resolve`]) as CSV, as [`jsonl_to_csv`] writes lines. The array is read value by value, so
+/// it may be on one line, pretty-printed, or with items over several lines. Returns `None` if
+/// cancelled.
+pub fn array_to_csv<W: Write>(
+    buf: &TextBuf,
+    at: u64,
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<JsonlStats>> {
+    if buf.codec.unit() != 1 {
+        return Err(io::Error::other("JSON must be UTF-8"));
+    }
+    let items = Items::new(buf, at, cancel, crate::lines::MAX_LINE);
+    match records_to_csv(buf, items, out, cancel, progress) {
+        Err(_) if cancel.is_cancelled() => Ok(None),
+        r => r,
+    }
+}
+
+fn records_to_csv<W: Write>(
+    buf: &TextBuf,
+    mut records: impl Records,
+    out: &mut W,
+    cancel: &CancelToken,
+    progress: Option<&Progress>,
+) -> io::Result<Option<JsonlStats>> {
     if let Some(p) = progress {
         p.set_total(buf.len());
     }
     let mut stats = JsonlStats::default();
-    let mut lines = LineReader::new(buf);
     let mut sample: Vec<Vec<u8>> = Vec::new();
     let mut columns: Vec<String> = Vec::new();
     while sample.len() < JSONL_SAMPLE {
-        let Some((_, l)) = lines.next()? else { break };
+        let Some(l) = records.record()? else { break };
         if let Some(fields) = object_fields(l) {
             for (k, _) in fields {
                 if !columns.contains(&k) {
@@ -1059,7 +1202,7 @@ pub fn jsonl_to_csv<W: Write>(
         write_row(out, l, &mut stats)?;
     }
     let mut n = 0u32;
-    while let Some((_, l)) = lines.next()? {
+    while let Some(l) = records.record()? {
         write_row(out, l, &mut stats)?;
         n += 1;
         if n.is_multiple_of(4096) {
@@ -1067,7 +1210,7 @@ pub fn jsonl_to_csv<W: Write>(
                 return Ok(None);
             }
             if let Some(p) = progress {
-                p.set_done(lines.taken());
+                p.set_done(records.read_to());
             }
         }
     }
@@ -1292,6 +1435,46 @@ mod tests {
                 late_keys: 0
             }
         );
+    }
+
+    #[test]
+    fn array_items_to_csv() {
+        let c = CancelToken::new();
+        // One line, an item over several lines, and an item that is not an object.
+        let (_d, b) = buf("[{\"id\":1,\"s\":\"a,] b\"},{\n  \"id\": 2,\n  \"x\": [1, 2]\n}, 7]");
+        let at = top_array(&b, &c).unwrap();
+        let mut out = Vec::new();
+        let st = array_to_csv(&b, at, &mut out, &c, None).unwrap().unwrap();
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "id,s,x\n1,\"a,] b\",\n2,,\"[1,2]\"\n"
+        );
+        assert_eq!((st.rows, st.skipped), (2, 1));
+        // Only the start of an item is held: a longer one is cut, so it is not an object.
+        let mut items = Items::new(&b, at, &c, 24);
+        assert_eq!(
+            items.record().unwrap(),
+            Some(&b"{\"id\":1,\"s\":\"a,] b\"}"[..])
+        );
+        assert_eq!(
+            items.record().unwrap(),
+            Some(&b"{\"id\":2,\"x\":[1,2]}"[..])
+        );
+        assert_eq!(items.record().unwrap(), Some(&b"7"[..]));
+        assert_eq!(items.record().unwrap(), None);
+        let mut items = Items::new(&b, at, &c, 8);
+        assert_eq!(items.record().unwrap(), Some(&b"{\"id\":1,"[..]));
+        assert_eq!(items.record().unwrap(), Some(&b"{\"id\":2,"[..]));
+        // Empty, and broken.
+        let (_e, empty) = buf(" [ ] ");
+        let mut out = Vec::new();
+        let at = top_array(&empty, &c).unwrap();
+        assert!(array_to_csv(&empty, at, &mut out, &c, None).is_ok());
+        assert_eq!(out, b"\n");
+        let (_f, bad) = buf("[{\"id\":1} {\"id\":2}]");
+        assert!(array_to_csv(&bad, 0, &mut Vec::new(), &c, None).is_err());
+        let (_g, object) = buf("{\"a\": []}");
+        assert_eq!(top_array(&object, &c), None);
     }
 
     #[test]
