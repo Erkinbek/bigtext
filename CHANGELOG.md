@@ -25,7 +25,36 @@ All notable changes to BigText. Each release on
   for case-insensitive text and regular expressions, 2.5 to 3 times in UTF-16 and Windows-1251
   files. `BIGTEXT_SEARCH_THREADS` sets the number of threads (1 to turn it off).
 
+### Faster column statistics
+
+- A CSV column's statistics (the table view's column menu, `bigtext-cli csv FILE stats COL`)
+  take less than half the time: on a 2 GB file 6.3 s instead of 14 s for a numeric column and
+  3.8 s instead of 9.7 s for a text column, with the same results.
+
 ### Fixed
+
+- Saving in another encoding says how many unreadable bytes were written as "?", and keeps the
+  choice about lone CR characters; before, they always became line breaks.
+- **Convert to LF** and **Convert to CRLF** work on a file whose line breaks are CR only (old
+  Mac files); before, the file was saved unchanged.
+- On Linux and macOS, a file only you can read is no longer readable by others while it is
+  being saved: the temporary file now has the file's permissions from the start.
+- **Make portable** moves the recovery journal of unsaved edits to the portable folder too, so
+  edits are journaled on the stick and offered from there after a crash.
+- When a save fails and another program changed the file meanwhile, the tab says the file
+  changed instead of showing your edits over the changed file.
+- A running Replace preview stops when you start another one, change the search or the
+  replacement, or edit or close the document, and an older preview no longer replaces a newer
+  one.
+- Two table comparisons started at the same moment no longer mix up each other's results.
+- A log read from a command (Docker, SSH, kubectl) no longer joins a last output line without a
+  line break to the next error line.
+- A screen of a remote (SSH) file that spans several blocks is fetched with one request, not
+  two, however the threads are scheduled.
+- `bigtext-cli convert --to csv` converts a JSON array written on one line, or with items spread
+  over several lines, at any size; before, it wrote only an empty header.
+- `bigtext-cli saved --settings FILE` says when FILE is not a BigText settings file (exit code 2)
+  instead of printing nothing.
 
 - In a UTF-16 file, a regex match longer than 1 MB that ran past the end of a 16 MB search
   window was found one character late: search showed it short, and Replace All left its first
