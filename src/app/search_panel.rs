@@ -246,19 +246,20 @@ impl BigTextApp {
             let mut count = 0usize;
             let mut throttle = Throttle::new(Duration::from_millis(50));
             let mut capped = false;
-            let end = search::search_forward(&snap, &m, range, &cancel, Some(&progress), |s, e| {
-                if count >= RESULT_CAP {
-                    capped = true;
-                    return false;
-                }
-                batch.push((s, e));
-                count += 1;
-                if batch.len() >= 4096 || throttle.ready() {
-                    data.lock().unwrap().matches.append(&mut batch);
-                    waker();
-                }
-                true
-            });
+            let end =
+                search::search_forward_par(&snap, &m, range, &cancel, Some(&progress), |s, e| {
+                    if count >= RESULT_CAP {
+                        capped = true;
+                        return false;
+                    }
+                    batch.push((s, e));
+                    count += 1;
+                    if batch.len() >= 4096 || throttle.ready() {
+                        data.lock().unwrap().matches.append(&mut batch);
+                        waker();
+                    }
+                    true
+                });
             let mut g = data.lock().unwrap();
             g.matches.append(&mut batch);
             g.capped = capped;

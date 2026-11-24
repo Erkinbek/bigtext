@@ -16,7 +16,7 @@ use crate::text::TextBuf;
 
 /// How many times more inputs to try: `BIGTEXT_FUZZ_ROUNDS=50 cargo test --lib robustness`
 /// for a longer run (1 by default).
-fn rounds(n: u64) -> u64 {
+pub(crate) fn rounds(n: u64) -> u64 {
     let k = std::env::var("BIGTEXT_FUZZ_ROUNDS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())

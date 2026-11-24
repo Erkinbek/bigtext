@@ -543,66 +543,67 @@ fn hit_lines(
     let mut stopped = false;
     let mut failed = false;
     let mut fields = Vec::new();
-    let end = search::search_forward_ctx(buf, m, from..len, cancel, progress, |s, e, hay, base| {
-        let inside = matches!(cur, Some((_, le, _, _)) if s < le);
-        if !inside {
-            let ls = line_start_in(&codec, hay, base, s).or_else(|| line_start_at(buf, s));
-            let le = line_end_in(&codec, hay, base, s).or_else(|| line_end_at(buf, s));
-            let (Some(ls), Some(le)) = (ls, le) else {
-                failed = true;
-                return false;
+    let end =
+        search::search_forward_par_ctx(buf, m, from..len, cancel, progress, |s, e, hay, base| {
+            let inside = matches!(cur, Some((_, le, _, _)) if s < le);
+            if !inside {
+                let ls = line_start_in(&codec, hay, base, s).or_else(|| line_start_at(buf, s));
+                let le = line_end_in(&codec, hay, base, s).or_else(|| line_end_at(buf, s));
+                let (Some(ls), Some(le)) = (ls, le) else {
+                    failed = true;
+                    return false;
+                };
+                // An empty match after the final line break is not a line.
+                if ls == len && len > 0 {
+                    return true;
+                }
+                let field = match spec.column {
+                    Some((d, col)) => field_range(buf, d, col, ls, le, &mut fields),
+                    None => None,
+                };
+                cur = Some((ls, le, false, field));
+            }
+            let Some((ls, le, kept, field)) = cur.as_mut() else {
+                return true;
             };
-            // An empty match after the final line break is not a line.
-            if ls == len && len > 0 {
+            if *kept {
                 return true;
             }
-            let field = match spec.column {
-                Some((d, col)) => field_range(buf, d, col, ls, le, &mut fields),
-                None => None,
+            let hit = match (&spec.column, &field) {
+                (None, _) => true,
+                (Some(_), Some(f)) => {
+                    s < f.end && (e > f.start || s == f.start) || s == e && s == f.end
+                }
+                (Some(_), None) => false,
             };
-            cur = Some((ls, le, false, field));
-        }
-        let Some((ls, le, kept, field)) = cur.as_mut() else {
-            return true;
-        };
-        if *kept {
-            return true;
-        }
-        let hit = match (&spec.column, &field) {
-            (None, _) => true,
-            (Some(_), Some(f)) => {
-                s < f.end && (e > f.start || s == f.start) || s == e && s == f.end
+            if !hit {
+                return true;
             }
-            (Some(_), None) => false,
-        };
-        if !hit {
-            return true;
-        }
-        *kept = true;
-        let (ls, le) = (*ls, *le);
-        if spec.invert {
-            if ls > cursor {
-                match each_line(buf, cursor..ls, cancel, &mut on_line) {
-                    Some(true) => {}
-                    Some(false) => {
-                        stopped = true;
-                        return false;
-                    }
-                    None => {
-                        failed = true;
-                        return false;
+            *kept = true;
+            let (ls, le) = (*ls, *le);
+            if spec.invert {
+                if ls > cursor {
+                    match each_line(buf, cursor..ls, cancel, &mut on_line) {
+                        Some(true) => {}
+                        Some(false) => {
+                            stopped = true;
+                            return false;
+                        }
+                        None => {
+                            failed = true;
+                            return false;
+                        }
                     }
                 }
+                cursor = le;
+                true
+            } else if on_line(ls, le) {
+                true
+            } else {
+                stopped = true;
+                false
             }
-            cursor = le;
-            true
-        } else if on_line(ls, le) {
-            true
-        } else {
-            stopped = true;
-            false
-        }
-    });
+        });
     if failed {
         return SearchEnd::Unavailable;
     }

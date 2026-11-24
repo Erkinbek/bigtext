@@ -20,12 +20,19 @@ All notable changes to BigText. Each release on
   about 50 ms to about 1 µs after a 100 MB paste. A Replace All with many matches is prepared
   in a fraction of the time and no longer stalls the window when it is applied.
 - Replace All with `$1` style replacements is about a third faster.
+- Find All, filters and `bigtext-cli` filter, grep, count and extract search a local file over
+  64 MB on up to 4 threads, with the same matches in the same order: about 1.6 times as fast
+  for case-insensitive text and regular expressions, 2.5 to 3 times in UTF-16 and Windows-1251
+  files. `BIGTEXT_SEARCH_THREADS` sets the number of threads (1 to turn it off).
 
 ### Fixed
 
 - In a UTF-16 file, a regex match longer than 1 MB that ran past the end of a 16 MB search
   window was found one character late: search showed it short, and Replace All left its first
   character unchanged.
+- In a UTF-16 file, a character made of two code units (an emoji, for example) that lay across
+  the edge of a 16 MB search window counted as two unknown characters, so a search could miss a
+  match there.
 
 ## 0.13.0 — 2026-11-24
 

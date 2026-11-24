@@ -99,7 +99,7 @@ src/
   text/tree.rs      the piece list: leaves of up to 512 pieces with prefix sums (edits O(P/512), O(1) clones)
   text/addbuf.rs    the add buffer in append-only chunks, so edits never copy what a snapshot shares
   text/rows.rs      bounded visual segments (64 KB soft breaks), wrap, cell math
-  search.rs         Matcher (memmem / regex-automata / decoded), windowed streaming search
+  search.rs         Matcher (memmem / regex-automata / decoded), windowed search (parallel for whole files)
   replace.rs        templates, batch edits, streaming replace-all
   save.rs           temp file + fsync + atomic replace (ReplaceFileW), EOL conversion
   diff.rs           streaming line diff (chunk compare + hashed re-synchronisation)
