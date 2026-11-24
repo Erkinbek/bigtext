@@ -170,6 +170,9 @@ pub enum Msg {
     },
     Preview {
         doc: u64,
+        version: u64,
+        /// Which preview it is (`BigTextApp::preview_seq`).
+        seq: u64,
         items: Vec<(u64, String, String)>,
         lines: Vec<u64>,
     },
@@ -419,6 +422,9 @@ pub struct BigTextApp {
     pub search: search_panel::SearchUi,
     pending_replace: Option<(u64, Arc<Matcher>, Template, std::ops::Range<u64>)>,
     preview: Option<ReplacePreview>,
+    /// The Replace preview being found, and the number of the latest one started.
+    preview_job: Option<ops::PreviewJob>,
+    preview_seq: u64,
     pub update: update::UpdateUi,
     /// The page over an empty start and the note after an update.
     pub welcome: welcome::Welcome,
@@ -864,6 +870,8 @@ impl BigTextApp {
             search: search_panel::SearchUi::default(),
             pending_replace: None,
             preview: None,
+            preview_job: None,
+            preview_seq: 0,
             update: update::UpdateUi::default(),
             welcome: welcome::Welcome::default(),
             tasks: Vec::new(),
@@ -1541,7 +1549,13 @@ impl BigTextApp {
                     template,
                     range,
                 } => self.on_replace_too_many(doc, version, matcher, template, range),
-                Msg::Preview { doc, items, lines } => self.preview = Some((doc, items, lines)),
+                Msg::Preview {
+                    doc,
+                    version,
+                    seq,
+                    items,
+                    lines,
+                } => self.on_preview(doc, version, seq, items, lines),
                 Msg::LowSpace(l) => self.on_low_space(*l),
                 Msg::Journaled {
                     doc,
@@ -2620,6 +2634,7 @@ impl eframe::App for BigTextApp {
         }
         self.journal_tick();
         self.apply_pending_journal();
+        self.preview_tick();
         if let Some(s) = self.diff.as_mut().and_then(|r| r.side.as_mut()) {
             s.doc.tick();
         }

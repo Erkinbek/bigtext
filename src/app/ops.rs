@@ -32,6 +32,17 @@ pub struct SaveJob {
     pub label: String,
 }
 
+/// A Replace preview being found: for one version of a document, with the search and the
+/// replacement as they were when it started.
+pub struct PreviewJob {
+    seq: u64,
+    doc: u64,
+    version: u64,
+    query: bigtext::search::Query,
+    with: String,
+    cancel: CancelToken,
+}
+
 #[derive(Clone)]
 pub enum WriteSpec {
     Identity,
@@ -772,22 +783,91 @@ impl BigTextApp {
         let Some((id, m, tpl, range)) = self.replace_setup() else {
             return;
         };
-        let snap = self.docs[self.active].buf.snapshot();
+        // One preview at a time: the one running (a slow regex over a huge file can take a
+        // while) is not wanted any more.
+        self.cancel_preview();
+        self.preview_seq += 1;
+        let d = &self.docs[self.active];
+        let (snap, version, seq, cancel) = (
+            d.buf.snapshot(),
+            d.version,
+            self.preview_seq,
+            CancelToken::new(),
+        );
+        self.preview_job = Some(PreviewJob {
+            seq,
+            doc: id,
+            version,
+            query: self.search.query.clone(),
+            with: self.search.replace_with.clone(),
+            cancel: cancel.clone(),
+        });
         let tx = self.tx.clone();
         let waker = self.waker.clone();
         jobs::spawn("replace-preview", move || {
-            let items = replace::preview(&snap, &m, &tpl, range, 200, &CancelToken::new());
+            let items = replace::preview(&snap, &m, &tpl, range, 200, &cancel);
+            if cancel.is_cancelled() {
+                return;
+            }
             let lines = items
                 .iter()
                 .map(|(off, _, _)| snap.line_of(*off).0 + 1)
                 .collect();
             let _ = tx.send(Msg::Preview {
                 doc: id,
+                version,
+                seq,
                 items,
                 lines,
             });
             waker();
         });
+    }
+
+    fn cancel_preview(&mut self) {
+        if let Some(j) = self.preview_job.take() {
+            j.cancel.cancel();
+        }
+    }
+
+    /// Stops the preview running when it is no longer wanted: its document was closed or
+    /// changed, or the search or the replacement was edited (every frame).
+    pub(super) fn preview_tick(&mut self) {
+        let Some(j) = &self.preview_job else {
+            return;
+        };
+        let wanted = self
+            .docs
+            .iter()
+            .any(|d| d.id == j.doc && d.version == j.version)
+            && j.query == self.search.query
+            && j.with == self.search.replace_with;
+        if !wanted {
+            self.cancel_preview();
+        }
+    }
+
+    /// Shows a preview that is the latest one started, for its document as it still is; an
+    /// older one arriving late is dropped.
+    pub(super) fn on_preview(
+        &mut self,
+        doc: u64,
+        version: u64,
+        seq: u64,
+        items: Vec<(u64, String, String)>,
+        lines: Vec<u64>,
+    ) {
+        if self.preview_job.as_ref().map(|j| j.seq) != Some(seq) {
+            return;
+        }
+        self.preview_job = None;
+        if self
+            .docs
+            .iter()
+            .any(|d| d.id == doc && d.version == version)
+        {
+            self.preview = Some((doc, items, lines));
+        }
     }
 }
 
@@ -884,5 +964,88 @@ mod tests {
         assert!(matches!(state, DocState::Failed(_)), "{state:?} {text:?}");
         // The typed text is still there, for the journal.
         assert_eq!(typed, b"HELLO");
+    }
+
+    /// An app whose document is "one two one" with Replace "one" → `with` filled in.
+    fn preview_app(with: &str) -> BigTextApp {
+        let mut app = crate::app::test_app();
+        let d = &mut app.docs[app.active];
+        d.edit(0..0, b"one two one\n", EditKind::Other);
+        app.search.query.pattern = "one".into();
+        app.search.replace_with = with.into();
+        app
+    }
+
+    fn preview_token(app: &BigTextApp) -> CancelToken {
+        app.preview_job.as_ref().unwrap().cancel.clone()
+    }
+
+    /// Polls for 200 ms, and until no preview is running.
+    fn settle_previews(app: &mut BigTextApp) {
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(200)
+            || (app.preview_job.is_some() && start.elapsed() < Duration::from_secs(30))
+        {
+            app.poll_messages();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn a_new_replace_preview_cancels_the_running_one_and_drops_its_result() {
+        let mut app = preview_app("1");
+        app.replace_preview();
+        let (first, first_seq) = (preview_token(&app), app.preview_seq);
+        app.search.replace_with = "uno".into();
+        app.replace_preview();
+        assert!(first.is_cancelled());
+        // What the first one found before it saw the cancel arrives late, after the second.
+        let d = &app.docs[app.active];
+        let late = Msg::Preview {
+            doc: d.id,
+            version: d.version,
+            seq: first_seq,
+            items: vec![(0, "one".into(), "1".into())],
+            lines: vec![1],
+        };
+        settle_previews(&mut app);
+        app.tx.send(late).unwrap();
+        settle_previews(&mut app);
+        let (_, items, _) = app.preview.as_ref().expect("no preview");
+        let after: Vec<&str> = items.iter().map(|i| i.2.as_str()).collect();
+        assert_eq!(after, ["uno", "uno"]);
+    }
+
+    #[test]
+    fn a_running_replace_preview_stops_when_it_is_no_longer_wanted() {
+        let mut app = preview_app("1");
+        // The search changes.
+        app.replace_preview();
+        let token = preview_token(&app);
+        app.search.query.pattern = "two".into();
+        app.preview_tick();
+        assert!(token.is_cancelled());
+        // The replacement changes.
+        app.replace_preview();
+        let token = preview_token(&app);
+        app.search.replace_with = "2".into();
+        app.preview_tick();
+        assert!(token.is_cancelled());
+        // The document changes.
+        app.replace_preview();
+        let token = preview_token(&app);
+        app.docs[app.active].edit(0..0, b"x", EditKind::Other);
+        app.preview_tick();
+        assert!(token.is_cancelled());
+        // The document closes.
+        app.replace_preview();
+        let token = preview_token(&app);
+        let doc = app.docs[app.active].id;
+        app.close_tab(doc, true);
+        app.preview_tick();
+        assert!(token.is_cancelled());
+        // None of them shows up.
+        settle_previews(&mut app);
+        assert!(app.preview.is_none());
     }
 }
