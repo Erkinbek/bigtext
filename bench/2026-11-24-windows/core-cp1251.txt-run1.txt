@@ -1,0 +1,16 @@
+file: testdata\cp1251.txt
+private memory at start: 556.00 KB
+private memory right after open (mapping created, nothing read): 684.00 KB
+size: 64.00 MB (67108880 bytes), backing: mmap, encoding: Windows-1251, line endings: CRLF
+open + detect: 5.59 ms
+first screen (60 rows, 3343 chars): 0.054 ms  => open-to-first-screen 5.64 ms
+go-to line before indexing (estimate + layout of 50 rows): avg 0.020 ms, max 0.084 ms
+index: 0.01 s (4402 MB/s), 1091711 lines, index memory 8.12 KB (0.0124% of file)
+private memory with file open + index: 1.47 MB
+go-to line after indexing (exact=true, + layout of 50 rows): avg 0.029 ms, max 0.087 ms
+literal "timeout connection": 0 matches in 0.02 s = 3500 MB/s (3.42 GB/s) [memmem] [4 threads]
+literal (ignore case) "timeout connection": 0 matches in 0.05 s = 1366 MB/s (1.33 GB/s) [regex] [4 threads]
+regex "id=99\\d{4} ": 0 matches in 0.04 s = 1435 MB/s (1.40 GB/s) [regex] [4 threads]
+regex "ERROR\\] id=\\d+ timeout": 0 matches in 0.04 s = 1439 MB/s (1.41 GB/s) [regex] [4 threads]
+replace all "timeout" -> "TIMEOUT!": 0 replacements, wrote 64.00 MB in 0.16 s = 397 MB/s (incl. fsync); private memory before 1.01 MB peak 41.15 MB
+private memory at end (file open, idle): 1.01 MB

@@ -73,6 +73,15 @@ and `--not PAT`. `filter` and `levels` take `-A N` / `-B N` / `-C N` (lines afte
 `--` between groups like grep, and `--from TIME` / `--to TIME` (only the lines between two
 times). Exit codes: 0 done, 1 nothing matched, 2 error.
 
+## Environment variables
+
+| Variable | Effect |
+| --- | --- |
+| `BIGTEXT_INDEX_THREADS` | Threads that count a large local file's lines (1 to 64; default: the cores, at most 8). `1` reads with one thread, which can be faster on a spinning disk Windows does not report as one. |
+| `BIGTEXT_SEARCH_THREADS` | Threads for Find All, filters and the `bigtext-cli` searches of a local file over 64 MB (1 to 16; default: the cores, at most 4). `1` searches with one thread and less memory. |
+
+Network and removable drives (and, on Linux, spinning disks) always use one thread.
+
 ## Keyboard shortcuts
 
 | Shortcut | Action |

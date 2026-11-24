@@ -4,8 +4,9 @@ How BigText's speed and memory numbers are measured, so that anyone can repeat t
 them. The numbers in the README's [Measured performance](README.md#measured-performance) section
 come from here.
 
-Latest run: **BigText 0.12.0 on Windows 11, 23 November 2026, files in the OS cache.** Raw reports:
-[`bench/2026-11-23-windows/`](bench/2026-11-23-windows/).
+Latest run: **BigText 0.14.0 on Windows 11, 24 November 2026 (evening, PC idle), files in the OS
+cache.** Raw reports: [`bench/2026-11-24-windows/`](bench/2026-11-24-windows/). The run before it
+(0.12.0, 23 November) is in [Earlier runs](#earlier-runs).
 
 ## Summary
 
@@ -13,15 +14,35 @@ Each figure is the range over 3 runs (lowest to highest), unless a row says othe
 
 | What | 1 GB | 10 GB | 50 GB |
 |---|---|---|---|
-| Open → first screen of text drawn (GUI) | 24.5–25.5 ms | 21.9–23.2 ms | 23.9–24.4 ms |
-| UI frame while scrolling during indexing (GUI), avg / max | 1.16–1.20 / 1.95 ms | 1.09 / 1.90 ms | 1.10–1.13 / 2.05 ms |
-| Go to line before the index is done (GUI frame), avg / max | 1.42–1.48 / 2.16 ms | 1.53–1.72 / 2.49 ms | 1.51–1.59 / 2.17 ms |
-| Background line index | 0.41–0.42 s | 3.77–3.90 s | 18.6–19.3 s |
+| Open → first screen of text drawn (GUI) | 24.2–25.4 ms | 24.3–24.6 ms | 22.8–24.4 ms |
+| UI frame while scrolling during indexing (GUI), avg / max | 1.15–1.19 / 1.68 ms (48–66 frames) | 1.05–1.07 / 2.15 ms | 1.07–1.08 / 2.31 ms |
+| Go to line before the index is done (GUI frame), avg / max | 1.33–1.42 / 1.86 ms | 1.42–1.48 / 1.93 ms | 1.43–1.46 / 1.84 ms |
+| Background line index | 0.22 s | 1.90–1.91 s | 9.7–9.9 s |
 | Index memory | 130 KB | 2.03 MB | 8.12 MB |
-| Literal search, whole file | 3.19–3.47 GB/s | 3.58–4.11 GB/s | 3.72–4.32 GB/s |
-| Regex `id=99\d{4} ` | 3.15–3.45 GB/s | 3.46–3.98 GB/s | 3.35–4.17 GB/s |
-| Idle private memory, file open and indexed (GUI) | 98–100 MB | 101–104 MB | 108 MB |
-| Replace All, 22.2 M replacements, peak private memory | | 46.5–62.5 MB | |
+| Literal search, whole file | 4.43–4.51 GB/s | 4.88–4.99 GB/s | 4.85–4.94 GB/s |
+| Regex `id=99\d{4} ` | 4.05–4.22 GB/s | 4.41–4.50 GB/s | 4.51–4.58 GB/s |
+| Case-insensitive literal | 4.14–4.18 GB/s | 4.39–4.46 GB/s | 4.55–4.62 GB/s |
+| Idle private memory, file open and indexed (GUI) | 98–100 MB | 103 MB | 107–108 MB |
+| Replace All, 22.2 M replacements, peak private memory | | 46.6 MB | |
+
+- **What changed since 0.13.0**: the line index counts newlines 16 bytes at a time and on up to
+  8 threads, and whole-file searches run on up to 4 threads (contributed by Jahongir Qurbonov,
+  see the CHANGELOG). 0.13.0, built the same way from its release commit, ran the core benchmark
+  three times right after this run
+  ([`bench/2026-11-24-windows/v0.13.0/`](bench/2026-11-24-windows/v0.13.0/)):
+
+  | | 0.13.0 | 0.14.0 |
+  |---|---|---|
+  | Background line index, 50 GB | 17.8–18.0 s (2.8 GB/s) | 9.7–9.9 s (5.1–5.2 GB/s) |
+  | Literal search, 10 GB | 4.16–4.35 GB/s | 4.88–4.99 GB/s |
+  | Case-insensitive literal, 10 GB | 2.81–2.89 GB/s | 4.39–4.46 GB/s |
+  | Regex `id=99\d{4} `, 10 GB | 3.90–4.19 GB/s | 4.41–4.50 GB/s |
+  | Regex `ERROR\] id=\d+ timeout`, 10 GB | 3.66–3.78 GB/s | 4.40–4.49 GB/s |
+  | Regex `id=99\d{4} `, UTF-16 (64 MB) | 0.62–0.64 GB/s | 1.59–1.60 GB/s |
+  | Case-insensitive literal, UTF-16 (64 MB) | 0.42–0.43 GB/s | 1.20–1.23 GB/s |
+
+  Regular expressions with a literal part were already close to the speed of reading the file on
+  one thread, so they gain less from the threads than case-insensitive text does.
 
 - **"First screen drawn" is the time to paint, not to the monitor.** The measurement stops when
   the text has been laid out and painted, before the frame is presented. On this PC the first
@@ -29,11 +50,14 @@ Each figure is the range over 3 runs (lowest to highest), unless a row says othe
   10 November 2026 with a `glFinish` after the buffer swap; the wait is inside that first swap and
   its cause is not known yet), so text appears on the monitor about 0.1 s after the open
   request. A second file opened as a new tab paints in about 10 ms.
-- Startup (process start → end of the first frame): 138–150 ms.
-- Replace All on 10 GB took 16.8–28.9 s (354–611 MB/s including fsync). That is the speed of the
-  drive at the time, not of BigText: writing the same 10 GB with `dd … conv=fsync` right after took
-  14.7 s and 31.7 s (732 and 338 MB/s). The drive was 81 % full and had just written the 64 GB of
-  test files. The memory figure is the one that depends on BigText.
+- **The first screen time depends on what else the PC is doing.** An afternoon run the same day,
+  with other programs busy, measured 26.5–30.6 ms; the published 0.12.0 and 0.13.0 binaries
+  measured the same then (26.6–29.4 ms on the 10 GB file), so the difference was the PC's
+  state, not the code. This evening run, with the PC idle, is back at the 23 November level.
+- Startup (process start → end of the first frame): 139–157 ms.
+- Replace All on 10 GB took 17.1–19.2 s (533–600 MB/s including fsync). As in the earlier run,
+  that is the speed of the drive (now 91 % full), not of BigText; the memory figure is the one
+  that depends on BigText.
 
 ## Machine and build
 
@@ -42,9 +66,9 @@ Each figure is the range over 3 runs (lowest to highest), unless a row says othe
 | CPU | Intel Core Ultra 9 285, 24 cores |
 | RAM | 191 GB |
 | OS | Windows 11 Pro 10.0.26300 |
-| Drive | Samsung MZVL81T0HELB (NVMe SSD, 1 TB, NTFS), 81 % full |
+| Drive | Samsung MZVL81T0HELB (NVMe SSD, 1 TB, NTFS), 91 % full |
 | GPU / display | NVIDIA RTX 5090, 120 Hz (only matters for the GUI numbers) |
-| BigText | 0.12.0, commit `74397fd` (the v0.12.0 tag plus text changes only) |
+| BigText | 0.14.0, built from `4f675d9` with the version number changed (the release commit) |
 | Rust | 1.100.0, `cargo build --release --bins` (opt-level 3, thin LTO, codegen-units 4) |
 
 Only the Windows code path was measured: Windows reads files through memory-mapped views. Linux
@@ -76,8 +100,8 @@ per second.
 
 ## Cache state
 
-All numbers are **warm**: the files were written just before the run and the machine's 191 GB of
-RAM holds all of them in the OS page cache, so the drive is not read at all. This measures
+All numbers are **warm**: the machine's 191 GB of RAM holds the test files in the OS page cache
+(each file was read once right before the run), so the drive is not read. This measures
 BigText's own work.
 
 A cold start (file not in memory, read from the drive) was **not measured**: this PC cannot evict
@@ -102,14 +126,15 @@ measure it elsewhere, empty the cache before each run:
   it out. Before the index is done the line's position is estimated, and corrected when the index
   arrives.
 - **Background line index** (`bigtext-bench`): the sparse index of the whole file, one 8-byte
-  checkpoint per 64 KB, built on a worker thread while the window stays usable.
+  checkpoint per 64 KB, built in the background while the window stays usable. Since 0.14.0 a
+  large local file is counted on up to 8 threads, in file order (`BIGTEXT_INDEX_THREADS=1` for
+  one); network and removable drives keep one reader.
 - **Search** (`bigtext-bench`): one pass over the whole file counting every match, in bytes of the
   file per second. The file is searched in 16 MB windows; case-sensitive literal text uses
   `memchr::memmem` on the raw bytes, everything else the `regex` crate, with a 1 MB overlap between
-  windows so a match on a window edge is not missed. In builds after 0.13.0 (not released yet)
-  the windows of a local file over 64 MB are searched on up to 4 threads
-  (`BIGTEXT_SEARCH_THREADS=1` for one), and the line says how many; the numbers here are from
-  0.12.0, on one thread.
+  windows so a match on a window edge is not missed. Since 0.14.0 the windows of a local file
+  over 64 MB are searched on up to 4 threads (`BIGTEXT_SEARCH_THREADS=1` for one), and each
+  report line says how many; the chunked reading path stays on one thread.
 - **Replace All** (`bigtext-bench`): `timeout` → `TIMEOUT!` streamed into a new temporary file in
   the same folder, then fsync; wall time and the peak private memory sampled every 20 ms. The
   output is deleted afterwards.
@@ -135,16 +160,19 @@ target/release/bigtext --bench-ui FILE --scenario close-search --report r.txt
 
 ## Other results of this run
 
-- **2 GB single line**: first screen drawn 24.4–26.0 ms; Page Down frames while indexing avg
-  1.98–2.07 ms, max 3.70 ms; literal search 3.10–4.25 GB/s.
-- **Encodings**: UTF-16 LE literal 2.07–2.33 GB/s and regex 0.69–0.72 GB/s; Windows-1251 literal
-  2.67–2.68 GB/s and regex 0.50–0.52 GB/s (decoded text). Case-insensitive search on UTF-8
-  2.38–2.85 GB/s.
+- **2 GB single line**: first screen drawn 25.5–28.3 ms; Page Down frames while indexing avg
+  1.84–1.87 ms, max 2.21 ms (the third run drew 486 frames instead of 113–131, at 0.25 ms on
+  average); index 0.40–0.41 s; literal search 4.72–4.79 GB/s.
+- **Encodings** (64 MB files, so the 4 search threads have few windows each): UTF-16 LE literal
+  3.17–3.30 GB/s, regex 1.59–1.61 GB/s, case-insensitive 1.20–1.23 GB/s; Windows-1251 literal
+  2.49–3.46 GB/s, regex 1.38–1.42 GB/s, case-insensitive 1.31–1.35 GB/s (decoded text). With
+  0.12.0 these regexes ran at 0.50–0.72 GB/s.
 - **Chunked reading** (forced on the 1 GB file; used on Windows for network, removable and optical
-  drives): first screen 1.43–1.48 ms in the core, literal search 3.27–3.61 GB/s, 63–68 MB private
-  memory (64 MB block cache).
-- **Find All through the window** (one run each): 10 GB, 432,862 matches in 3.31 s (3.1 GB/s). On
-  50 GB the list stops at its cap of 1,000,000 results, reached after 7.2 s.
+  drives): first screen 1.4 ms in the core, index 0.20–0.21 s, literal search 3.57–3.66 GB/s on
+  one thread, 67 MB private memory (64 MB block cache).
+- **Find All through the window** (one run each): 10 GB, 432,862 matches in 2.37 s (4.2 GB/s;
+  3.31 s with 0.12.0). On 50 GB the list stops at its cap of 1,000,000 results, reached after
+  4.9 s (7.2 s with 0.12.0).
 - **Closing during work** (10 GB, at 5 % of a Find All and of a Replace All on disk): the program
   exits at once (each whole run, start included, took about 1 s), the file is unchanged and no
   temporary file is left.
@@ -172,9 +200,10 @@ what a user's PC does.
   out, no window), not the GUI's "drawn" time in the summary above.
 - **The 10 GB file does not fit in the macOS arm64 runner's 7 GB of memory**, so its 10 GB
   searches read the disk; the Intel runner's disk made its 10 GB runs vary from 28.7 to 180 s.
-- **On 4 cores the background index is the slowest part**: 0.42–0.48 GB/s on the Windows runner
-  and about 1 GB/s on Linux, against 2.4–2.7 GB/s on the 24-core PC above (50 GB would take from
-  about 50 s to 2 minutes there). Scrolling and Go to line do not wait for it.
+- **On 4 cores the background index was the slowest part**: 0.42–0.48 GB/s on the Windows runner
+  and about 1 GB/s on Linux with 0.12.0, against 2.4–2.7 GB/s on the 24-core PC then (50 GB would
+  take from about 50 s to 2 minutes there). Scrolling and Go to line do not wait for it. 0.14.0
+  counts on several threads; these runners are to be measured again with its published binaries.
 - **Memory** is not measured on macOS (`n/a` in the reports), and on Linux the figure changed
   from 1 MB to 71 MB between identical runs, so it is left out.
 - **Intel Macs**: this is the first time the macOS x64 build ran on an Intel processor. The core
@@ -182,17 +211,20 @@ what a user's PC does.
 
 ## Earlier runs
 
-| | 0.1.0, 24 Oct 2026 | 0.12.0, 23 Nov 2026 |
-|---|---|---|
-| Open → first screen drawn, 1–50 GB | 41–46 ms | 21.9–25.5 ms |
-| Literal search, 10 and 50 GB | 2.4–2.5 GB/s | 3.58–4.32 GB/s |
-| Index throughput | 2.2–2.7 GB/s | 2.4–2.7 GB/s |
-| Idle memory, 50 GB open (GUI) | 107 MB | 108 MB |
-| Startup → first frame | 159–185 ms | 138–150 ms |
-| Replace All, 10 GB | 11.3 s, 46 MB peak | 16.8–28.9 s (drive-bound, see above), 46.5–62.5 MB peak |
+| | 0.1.0, 24 Oct 2026 | 0.12.0, 23 Nov 2026 | 0.14.0, 24 Nov 2026 |
+|---|---|---|---|
+| Open → first screen drawn, 1–50 GB | 41–46 ms | 21.9–25.5 ms | 22.8–25.4 ms |
+| Literal search, 10 and 50 GB | 2.4–2.5 GB/s | 3.58–4.32 GB/s | 4.85–4.99 GB/s |
+| Case-insensitive search, 1–50 GB | | 2.38–2.85 GB/s | 4.14–4.62 GB/s |
+| Index throughput | 2.2–2.7 GB/s | 2.4–2.7 GB/s | 4.4–5.3 GB/s |
+| Background index, 50 GB | | 18.6–19.3 s | 9.7–9.9 s |
+| Idle memory, 50 GB open (GUI) | 107 MB | 108 MB | 107–108 MB |
+| Startup → first frame | 159–185 ms | 138–150 ms | 139–157 ms |
+| Replace All, 10 GB | 11.3 s, 46 MB peak | 16.8–28.9 s (drive-bound), 46.5–62.5 MB peak | 17.1–19.2 s (drive-bound), 46.6 MB peak |
 
-Both on the same PC, in the same way. The 0.1.0 reports were not kept; from this run on they are in
-`bench/`.
+All on the same PC, in the same way. The 0.1.0 reports were not kept; the others are in
+[`bench/2026-11-23-windows/`](bench/2026-11-23-windows/) and
+[`bench/2026-11-24-windows/`](bench/2026-11-24-windows/).
 
 ## Comparing with other editors
 
@@ -220,7 +252,8 @@ private memory of all its processes then.
   replace by loading the whole file (Notepad++). Timing when text first appears needs a screen
   recording of each editor: capturing windows was tried and is not reliable (BigText's OpenGL
   window comes out blank, half-painted windows fool a pixel test), so no first-screen times are
-  published for other editors, and the summary's 22–26 ms stays BigText's own measurement.
+  published for other editors, and the summary's first-screen times are BigText's own
+  measurement.
 - **VS Code and Notepad++ were left at their defaults.** VS Code's limit can be raised and
   Notepad++'s warning answered; then they load the file into memory, which these runs did not
   measure. VS Code's memory above is its own, with the file not loaded.
