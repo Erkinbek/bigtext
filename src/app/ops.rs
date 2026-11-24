@@ -46,10 +46,11 @@ pub enum WriteSpec {
         dialect: Dialect,
         cols: Vec<usize>,
     },
+    /// Saved in another encoding; with `eol`, line breaks converted as in `Eol`.
     Transcode {
         enc: Encoding,
         bom: bool,
-        eol: Option<LineEnding>,
+        eol: Option<(LineEnding, bool)>,
     },
     Csv {
         dialect: Dialect,
@@ -119,7 +120,11 @@ pub struct Finalized {
 /// What a save writes: the text as it is, with other line breaks, or in another encoding.
 fn save_spec(d: &super::document::Document, encoding: Option<(Encoding, bool)>) -> WriteSpec {
     match (encoding, d.eol_on_save) {
-        (Some((enc, bom)), eol) => WriteSpec::Transcode { enc, bom, eol },
+        (Some((enc, bom)), eol) => WriteSpec::Transcode {
+            enc,
+            bom,
+            eol: eol.map(|le| (le, d.eol_lone_cr)),
+        },
         (None, Some(le)) => WriteSpec::Eol(le, d.eol_lone_cr),
         (None, None) => WriteSpec::Identity,
     }
@@ -769,5 +774,36 @@ impl BigTextApp {
             });
             waker();
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A save in another encoding converts line breaks as the document's choices say, the
+    /// lone-CR one included.
+    #[test]
+    fn save_in_another_encoding_keeps_the_line_break_choices() {
+        let mut d = super::super::document::Document::loading(1, PathBuf::from("t.txt"));
+        d.eol_on_save = Some(LineEnding::CrLf);
+        d.eol_lone_cr = true;
+        assert!(matches!(
+            save_spec(&d, Some((Encoding::Utf16Le, true))),
+            WriteSpec::Transcode {
+                enc: Encoding::Utf16Le,
+                bom: true,
+                eol: Some((LineEnding::CrLf, true)),
+            }
+        ));
+        assert!(matches!(
+            save_spec(&d, None),
+            WriteSpec::Eol(LineEnding::CrLf, true)
+        ));
+        d.eol_on_save = None;
+        assert!(matches!(
+            save_spec(&d, Some((Encoding::Utf8, false))),
+            WriteSpec::Transcode { eol: None, .. }
+        ));
     }
 }

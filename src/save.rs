@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::csv::{self, Dialect};
-use crate::encoding::{Codec, Encoding, LineEnding, NlByte};
+use crate::encoding::{Codec, Encoding, LineEnding, NlByte, REPLACEMENT};
 use crate::jobs::{CancelToken, Progress};
 use crate::replace::{self, ReplaceStats, Template};
 use crate::search::Matcher;
@@ -37,12 +37,13 @@ pub enum Transform<'a> {
         cols: &'a [usize],
     },
     /// Re-encode into `enc` (with a byte order mark if `bom`), optionally converting line
-    /// breaks. `ReplaceStats::count` is the number of characters `enc` cannot represent
-    /// (written as '?').
+    /// breaks (the `bool` as in [`Transform::Eol`]). `ReplaceStats::count` is the number of
+    /// characters `enc` cannot represent and of sequences not valid in the document's own
+    /// encoding (both written as '?').
     Transcode {
         enc: Encoding,
         bom: bool,
-        eol: Option<LineEnding>,
+        eol: Option<(LineEnding, bool)>,
     },
     /// Sort rows, swap or select columns of a CSV document.
     Csv {
@@ -75,11 +76,15 @@ const TRANSCODE_STEP: u64 = 4 * 1024 * 1024;
 
 /// Streams `buf` re-encoded into `enc`. Pieces are cut at character boundaries, and a CR at
 /// the end of a piece waits for the next one so a CRLF is never split.
+///
+/// With `eol`, line breaks become that style; with its `true`, a CR not followed by LF (in a
+/// file whose line breaks are LF) becomes a line break too instead of staying as it is, as
+/// [`Transform::Eol`] does. In a file whose line breaks are CR every CR is a line break.
 pub fn transcode_to<W: Write>(
     buf: &TextBuf,
     enc: Encoding,
     bom: bool,
-    eol: Option<LineEnding>,
+    eol: Option<(LineEnding, bool)>,
     out: &mut W,
     cancel: &CancelToken,
     progress: Option<&Progress>,
@@ -98,7 +103,8 @@ pub fn transcode_to<W: Write>(
     if bom {
         emit(enc.bom(), &mut stats)?;
     }
-    let breaks = eol.map(|e| target.line_break(e));
+    let breaks =
+        eol.map(|(e, lone_cr)| (target.line_break(e), lone_cr || buf.codec.nl == NlByte::Cr));
     let mut pending_cr = false;
     let mut pos = buf.codec.bom_len as u64;
     while pos < len {
@@ -112,8 +118,9 @@ pub fn transcode_to<W: Write>(
         let raw = buf
             .read(pos..end)
             .ok_or_else(|| io::Error::other("Could not read the document"))?;
-        let mut text = buf.codec.decode_lossy(&raw);
-        if let Some(nl) = &breaks {
+        let (mut text, invalid) = decode_marking_invalid(&buf.codec, &raw);
+        stats.count += invalid;
+        if let Some((nl, lone_breaks)) = &breaks {
             if pending_cr {
                 text.insert(0, '\r');
             }
@@ -121,7 +128,10 @@ pub fn transcode_to<W: Write>(
             if pending_cr {
                 text.pop();
             }
-            let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+            let mut normalized = text.replace("\r\n", "\n");
+            if *lone_breaks {
+                normalized = normalized.replace('\r', "\n");
+            }
             let encoded = count_and_encode(&target, &normalized, &mut stats);
             if nl.as_slice() == target.encode("\n").as_slice() {
                 emit(&encoded, &mut stats)?;
@@ -146,11 +156,47 @@ pub fn transcode_to<W: Write>(
         pos = end;
     }
     if pending_cr {
-        if let Some(nl) = &breaks {
+        if let Some((nl, _)) = &breaks {
             emit(nl, &mut stats)?;
         }
     }
     Ok(Some(stats))
+}
+
+/// Decodes `raw`, writing each sequence that is not valid in `codec` (which the view shows as
+/// U+FFFD) as '?', and returns the text with how many such sequences there were. A U+FFFD that
+/// is really in the text stays one.
+fn decode_marking_invalid(codec: &Codec, raw: &[u8]) -> (String, u64) {
+    let text = codec.decode_lossy(raw);
+    if !text.contains(REPLACEMENT) {
+        return (text, 0);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut invalid = 0;
+    if codec.enc == Encoding::Utf8 {
+        for chunk in raw.utf8_chunks() {
+            out.push_str(chunk.valid());
+            if !chunk.invalid().is_empty() {
+                out.push('?');
+                invalid += 1;
+            }
+        }
+    } else {
+        let literal = codec.encode(&REPLACEMENT.to_string());
+        let mut i = 0;
+        while i < raw.len() {
+            let (c, l) = codec.decode_char(&raw[i..]);
+            let l = l.min(raw.len() - i);
+            if c == REPLACEMENT && raw[i..i + l] != literal[..] {
+                out.push('?');
+                invalid += 1;
+            } else {
+                out.push(c);
+            }
+            i += l;
+        }
+    }
+    (out, invalid)
 }
 
 fn count_and_encode(target: &Codec, text: &str, stats: &mut ReplaceStats) -> Vec<u8> {
@@ -683,7 +729,6 @@ fn finalize_impl(temp: &Path, target: &Path, backup: bool) -> Result<(), String>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encoding::{Encoding, LineEnding};
     use crate::file::{OpenMode, Source};
     use crate::index;
     use crate::search::Query;
@@ -896,7 +941,7 @@ mod tests {
             run(Encoding::Utf8, false, None),
             ("Привет\r\nмир € 😀\r\n".as_bytes().to_vec(), 0)
         );
-        let (with_bom, _) = run(Encoding::Utf8, true, Some(LineEnding::Lf));
+        let (with_bom, _) = run(Encoding::Utf8, true, Some((LineEnding::Lf, false)));
         assert_eq!(
             with_bom,
             [&[0xEF, 0xBB, 0xBF][..], "Привет\nмир € 😀\n".as_bytes()].concat()
@@ -915,7 +960,7 @@ mod tests {
             Transform::Transcode {
                 enc: Encoding::Utf16Be,
                 bom: true,
-                eol: Some(LineEnding::CrLf),
+                eol: Some((LineEnding::CrLf, false)),
             },
             &CancelToken::new(),
             &Progress::default(),
@@ -938,7 +983,7 @@ mod tests {
             &t2,
             Encoding::Utf8,
             false,
-            Some(LineEnding::Lf),
+            Some((LineEnding::Lf, false)),
             &mut out,
             &CancelToken::new(),
             None,
@@ -947,6 +992,128 @@ mod tests {
         .unwrap();
         assert_eq!(&out[out.len() - 3..], b"a\nz");
         assert_eq!(out.len(), big.len() - 1);
+    }
+
+    /// Bytes not valid in the document's encoding (shown as U+FFFD) are written as '?' and
+    /// counted with the characters the target lacks; a U+FFFD really in the text is neither.
+    #[test]
+    fn transcode_counts_invalid_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.txt");
+        // Two stray bytes, a cut-off sequence and a real U+FFFD.
+        fs::write(&path, b"ok \xFF\xFE end \xC3( \xEF\xBF\xBD").unwrap();
+        let t = open(&path, Codec::utf8());
+        let run = |t: &TextBuf, enc| {
+            let mut out = Vec::new();
+            let s = transcode_to(t, enc, false, None, &mut out, &CancelToken::new(), None)
+                .unwrap()
+                .unwrap();
+            (Codec::new(enc, NlByte::Lf, 0).decode_lossy(&out), s.count)
+        };
+        assert_eq!(
+            run(&t, Encoding::Utf16Le),
+            ("ok ?? end ?( \u{FFFD}".to_string(), 3)
+        );
+        assert_eq!(
+            run(&t, Encoding::Utf8),
+            ("ok ?? end ?( \u{FFFD}".to_string(), 3)
+        );
+        // Windows-1251 has no U+FFFD either: four '?', each counted once.
+        assert_eq!(
+            run(&t, Encoding::Windows1251),
+            ("ok ?? end ?( ?".to_string(), 4)
+        );
+        // A lone surrogate in UTF-16.
+        let u16c = Codec::new(Encoding::Utf16Le, NlByte::Lf, 0);
+        let p2 = dir.path().join("bad16.txt");
+        fs::write(
+            &p2,
+            [u16c.encode("a"), vec![0x00, 0xD8], u16c.encode("b\u{FFFD}")].concat(),
+        )
+        .unwrap();
+        let t2 = open(&p2, u16c);
+        assert_eq!(run(&t2, Encoding::Utf8), ("a?b\u{FFFD}".to_string(), 1));
+        // Through the save protocol.
+        let (temp, stats) = write_temp(
+            &t,
+            &path,
+            Transform::Transcode {
+                enc: Encoding::Utf16Be,
+                bom: false,
+                eol: None,
+            },
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
+        assert_eq!(stats.count, 3);
+        fs::remove_file(temp).unwrap();
+    }
+
+    /// The line-break choices of a save apply when it changes the encoding too: a lone CR in
+    /// an LF file stays unless asked, and in a CR file every CR is a line break.
+    #[test]
+    fn transcode_converts_line_breaks_like_a_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mixed.txt");
+        fs::write(&path, b"a\r\nb\nc\rd\r\n").unwrap();
+        let t = open(&path, Codec::utf8());
+        let u16c = Codec::new(Encoding::Utf16Le, NlByte::Lf, 0);
+        let run = |t: &TextBuf, eol| {
+            let mut out = Vec::new();
+            transcode_to(
+                t,
+                Encoding::Utf16Le,
+                false,
+                Some(eol),
+                &mut out,
+                &CancelToken::new(),
+                None,
+            )
+            .unwrap()
+            .unwrap();
+            u16c.decode_lossy(&out)
+        };
+        assert_eq!(run(&t, (LineEnding::Lf, false)), "a\nb\nc\rd\n");
+        assert_eq!(run(&t, (LineEnding::CrLf, false)), "a\r\nb\r\nc\rd\r\n");
+        assert_eq!(run(&t, (LineEnding::Lf, true)), "a\nb\nc\nd\n");
+        assert_eq!(run(&t, (LineEnding::CrLf, true)), "a\r\nb\r\nc\r\nd\r\n");
+        // The same as a save that keeps the encoding.
+        let (temp, _) = write_temp(
+            &t,
+            &path,
+            Transform::Eol(LineEnding::CrLf, false),
+            &CancelToken::new(),
+            &Progress::default(),
+        )
+        .unwrap();
+        assert_eq!(fs::read(&temp).unwrap(), b"a\r\nb\r\nc\rd\r\n");
+        fs::remove_file(temp).unwrap();
+        // A file whose line breaks are CR.
+        let p2 = dir.path().join("mac.txt");
+        fs::write(&p2, b"x\ry\rz").unwrap();
+        let mac = open(&p2, Codec::new(Encoding::Utf8, NlByte::Cr, 0));
+        assert_eq!(run(&mac, (LineEnding::CrLf, false)), "x\r\ny\r\nz");
+        // A lone CR at the end of a step waits for the next one and stays a CR.
+        let p3 = dir.path().join("step.txt");
+        let mut big = vec![b'a'; TRANSCODE_STEP as usize - 1];
+        big.extend_from_slice(b"\rz\n");
+        fs::write(&p3, &big).unwrap();
+        let t3 = open(&p3, Codec::utf8());
+        let mut out = Vec::new();
+        transcode_to(
+            &t3,
+            Encoding::Utf8,
+            false,
+            Some((LineEnding::CrLf, false)),
+            &mut out,
+            &CancelToken::new(),
+            None,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(&out[out.len() - 5..], b"a\rz\r\n");
+        assert_eq!(out.len(), big.len() + 1);
     }
 
     #[test]
