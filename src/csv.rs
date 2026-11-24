@@ -5,11 +5,13 @@
 //! quote, `""` inside it is a literal quote, and delimiters and line breaks inside the quotes
 //! belong to the field. A quote anywhere else is an ordinary character, as in spreadsheets.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::ops::Range;
 
 use crate::encoding::{Codec, Encoding, NlByte};
+use crate::file::Bytes;
 use crate::jobs::{CancelToken, Progress};
 use crate::replace::ReplaceStats;
 use crate::text::TextBuf;
@@ -156,6 +158,20 @@ pub fn field_value(codec: &Codec, d: Dialect, raw: &[u8]) -> String {
         }
     }
     out
+}
+
+/// [`field_value`] without a copy when it can: an unquoted field of plain text (ASCII in any
+/// single-byte encoding, or valid UTF-8 in a UTF-8 document) is borrowed as it is.
+pub fn field_str<'a>(codec: &Codec, d: Dialect, raw: &'a [u8]) -> Cow<'a, str> {
+    if raw.first() != Some(&d.quote)
+        && !codec.enc.is_utf16()
+        && (codec.enc == Encoding::Utf8 || raw.is_ascii())
+    {
+        if let Ok(s) = std::str::from_utf8(raw) {
+            return Cow::Borrowed(s);
+        }
+    }
+    Cow::Owned(field_value(codec, d, raw))
 }
 
 /// The rows of `sample` as (start, content without the line break, where the next starts):
@@ -658,6 +674,22 @@ pub struct Record<'a> {
     pub content: Range<u64>,
     pub next: u64,
     pub fields: &'a [Range<u64>],
+    /// The scanner's current chunk and where it starts in the document (see [`Record::bytes`]).
+    chunk: &'a [u8],
+    chunk_base: u64,
+}
+
+impl Record<'_> {
+    /// The bytes of `r` (a field or the content): taken from the chunk the scanner is reading
+    /// when they lie in it, so a per-record callback does not look them up in the document again.
+    pub fn bytes<'b>(&'b self, buf: &'b TextBuf, r: &Range<u64>) -> Option<Bytes<'b>> {
+        let end = self.chunk_base + self.chunk.len() as u64;
+        if r.start >= self.chunk_base && r.end <= end && r.start <= r.end {
+            let (a, b) = (r.start - self.chunk_base, r.end - self.chunk_base);
+            return Some(Bytes::borrowed(&self.chunk[a as usize..b as usize]));
+        }
+        buf.read(r.clone())
+    }
 }
 
 /// Calls `f` for every record in order, until it returns false. Streams over the document, so
@@ -702,6 +734,23 @@ pub fn for_each_record_in(
         }
         let mut i = 0;
         while i + unit <= chunk.len() {
+            if unit == 1 {
+                // Inside a field only a few bytes matter: skip the others in one go. Each
+                // skipped byte would be `Step::Inside` and leave the state as it is.
+                let rest = &chunk[i..];
+                let k = match st {
+                    State::Unquoted => memchr::memchr2(d.delim, nl as u8, rest),
+                    State::Quoted => memchr::memchr(d.quote, rest),
+                    State::FieldStart | State::QuoteInQuoted => Some(0),
+                }
+                .unwrap_or(rest.len());
+                if k > 0 {
+                    i += k;
+                    empty = false;
+                    prev_cr = chunk[i - 1] == cr as u8;
+                    continue;
+                }
+            }
             let c = unit_at(codec.enc, chunk, i);
             let p = base + i as u64;
             let step = st.step(c, d, nl);
@@ -724,6 +773,8 @@ pub fn for_each_record_in(
                         content: rec_start..content_end,
                         next: p + unit as u64,
                         fields: &fields,
+                        chunk,
+                        chunk_base: base,
                     }) {
                         end = ScanEnd::Stopped;
                         return false;
@@ -753,6 +804,8 @@ pub fn for_each_record_in(
             content: rec_start..len,
             next: len,
             fields: &fields,
+            chunk: &[],
+            chunk_base: 0,
         }) {
             return ScanEnd::Stopped;
         }
@@ -822,23 +875,27 @@ pub fn column_stats(
         col,
         ..Default::default()
     };
-    let mut counts: HashMap<String, u64> = HashMap::new();
+    let mut counts: HashMap<String, u64, foldhash::fast::RandomState> = HashMap::default();
     let mut first = header;
     let mut failed = false;
     let end = for_each_record(buf, d, cancel, progress, |r| {
+        let raw;
         let value = match r.fields.get(col) {
-            Some(f) => match buf.read(f.clone()) {
-                Some(b) => field_value(&codec, d, &b),
+            Some(f) => match r.bytes(buf, f) {
+                Some(b) => {
+                    raw = b;
+                    field_str(&codec, d, &raw)
+                }
                 None => {
                     failed = true;
                     return false;
                 }
             },
-            None => String::new(),
+            None => Cow::Borrowed(""),
         };
         if first {
             first = false;
-            s.name = value;
+            s.name = value.into_owned();
             return true;
         }
         // A blank line at the very end is not a row.
@@ -857,11 +914,16 @@ pub fn column_stats(
             s.min = Some(s.min.map_or(n, |m| m.min(n)));
             s.max = Some(s.max.map_or(n, |m| m.max(n)));
         }
-        let key: String = value.chars().take(200).collect();
-        if let Some(c) = counts.get_mut(&key) {
+        // Values are told apart by their first 200 characters; a new one is copied only when
+        // it is counted for the first time.
+        let key = match value.char_indices().nth(200) {
+            Some((i, _)) => &value[..i],
+            None => &value[..],
+        };
+        if let Some(c) = counts.get_mut(key) {
             *c += 1;
         } else if counts.len() < DISTINCT_MAX {
-            counts.insert(key, 1);
+            counts.insert(key.to_owned(), 1);
         } else {
             s.distinct_capped = true;
         }
@@ -1474,6 +1536,104 @@ mod tests {
         let mut t = TextBuf::new(src, idx, codec);
         t.blocking = true;
         (f, t)
+    }
+
+    /// The scan skips the bytes inside a field in single-byte text. On random text full of
+    /// quotes, delimiters and line breaks it must find exactly the records and fields that the
+    /// unit-by-unit scan of the same text in UTF-16 finds, and `Record::bytes` must give what
+    /// reading the document gives.
+    #[test]
+    fn skipping_inside_fields_finds_the_same_records() {
+        let mut rng = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = move || {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            rng
+        };
+        let parts = [
+            "a", "bc", "1.5", ",", ";", "\"", "\"\"", "\n", "\r\n", "\r", " ", "é", "x\"y",
+        ];
+        let d = Dialect::new(b',');
+        let rounds = crate::robustness::rounds(400);
+        for round in 0..rounds {
+            let n = (next() % 80) as usize;
+            let text: String = (0..n)
+                .map(|_| parts[(next() % parts.len() as u64) as usize])
+                .collect();
+            for nl in [NlByte::Lf, NlByte::Cr] {
+                let records = |enc: Encoding| -> Vec<Vec<String>> {
+                    let codec = Codec::new(enc, nl, 0);
+                    let (_f, t) = buf_with(&codec.encode(&text), codec);
+                    let mut out = Vec::new();
+                    for_each_record(&t, d, &CancelToken::new(), None, |r| {
+                        let mut row = Vec::new();
+                        for f in r.fields {
+                            let read = t.read(f.clone()).unwrap();
+                            assert_eq!(&*r.bytes(&t, f).unwrap(), &*read, "round {round}");
+                            let value = field_value(&codec, d, &read);
+                            assert_eq!(field_str(&codec, d, &read), value, "round {round}");
+                            row.push(value);
+                        }
+                        out.push(row);
+                        true
+                    });
+                    out
+                };
+                assert_eq!(
+                    records(Encoding::Utf8),
+                    records(Encoding::Utf16Le),
+                    "round {round} {nl:?} {text:?}"
+                );
+            }
+        }
+    }
+
+    /// `BIGTEXT_CSV_BENCH=FILE cargo test --release --lib bench_csv_scan -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn bench_csv_scan() {
+        use std::time::Instant;
+        let path = std::env::var("BIGTEXT_CSV_BENCH").expect("BIGTEXT_CSV_BENCH=FILE");
+        let src = Arc::new(Source::open(std::path::Path::new(&path), OpenMode::Auto).unwrap());
+        let codec = Codec::utf8();
+        let mut t = TextBuf::new(src.clone(), crate::index::LineIndex::new(src.len()), codec);
+        t.blocking = true;
+        let d = Dialect::new(b',');
+        let mb = t.len() as f64 / 1048576.0;
+        let cancel = CancelToken::new();
+        let at = Instant::now();
+        let mut n = 0u64;
+        for_each_record(&t, d, &cancel, None, |_| {
+            n += 1;
+            true
+        });
+        let s = at.elapsed().as_secs_f64();
+        eprintln!("scan only: {n} records, {s:.2} s, {:.0} MB/s", mb / s);
+        let at = Instant::now();
+        let mut total = 0usize;
+        for_each_record(&t, d, &cancel, None, |r| {
+            if let Some(f) = r.fields.get(6) {
+                total += t.read(f.clone()).map_or(0, |b| b.len());
+            }
+            true
+        });
+        let s = at.elapsed().as_secs_f64();
+        eprintln!(
+            "scan + read one field: {total} bytes, {s:.2} s, {:.0} MB/s",
+            mb / s
+        );
+        for col in [6usize, 3, 2] {
+            let at = Instant::now();
+            let st = column_stats(&t, d, col, true, &cancel, None).unwrap();
+            let s = at.elapsed().as_secs_f64();
+            eprintln!(
+                "column_stats {col} ({}): {s:.2} s, {:.0} MB/s, distinct {}",
+                st.name,
+                mb / s,
+                st.distinct
+            );
+        }
     }
 
     fn delete_bytes(data: &[u8], codec: Codec, delim: u8, cols: &[usize]) -> Vec<u8> {

@@ -38,6 +38,8 @@ name = "bigtext-cli"
 path = "src/bin/cli.rs"
 
 [dependencies]
+# Hashing for the distinct values of CSV column statistics (already used by egui's hashbrown).
+foldhash = "0.2"
 memmap2 = "0.9"
 memchr = "2.7"
 regex-automata = { version = "0.4", features = ["syntax", "meta", "perf", "unicode"] }

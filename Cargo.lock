@@ -396,6 +396,7 @@ dependencies = [
  "egui",
  "encoding_rs",
  "flate2",
+ "foldhash",
  "libc",
  "lzma-rust2",
  "memchr",
