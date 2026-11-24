@@ -625,6 +625,10 @@ impl Chunked {
 fn loader_loop(inner: Arc<ChunkedInner>, rx: Receiver<u64>) {
     // Exits when the owning `Source` is dropped (sender closed), releasing the file handle.
     while let Ok(b) = rx.recv() {
+        // A reader sends all the blocks it misses while it holds `pending`. Wait for it to
+        // finish, or the first block can be taken alone and its neighbours loaded with a
+        // second request (the channel is unbounded, so the reader never waits for us).
+        drop(inner.pending.lock().unwrap());
         let mut batch = vec![b];
         while let Ok(more) = rx.try_recv() {
             batch.push(more);
@@ -1038,6 +1042,40 @@ mod tests {
         let s = Source::remote(Box::new(Counting(data, asked.clone())), 3 << 20, None);
         // A screen that straddles four blocks.
         let r = REMOTE_BLOCK / 2..REMOTE_BLOCK * 3 + 10;
+        for _ in 0..400 {
+            if s.try_read(r.clone()).is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let asked = asked.lock().unwrap();
+        assert_eq!(
+            (asked.len(), asked.first().cloned()),
+            (1, Some(0..REMOTE_BLOCK * 4))
+        );
+    }
+
+    /// The loader takes its queue only once the reader that queued blocks has sent them all, so
+    /// a screen's blocks load with one request however the two threads are scheduled (CI once
+    /// saw block 0 taken alone and its neighbours fetched with a second request).
+    #[test]
+    fn loader_waits_for_a_reader_to_queue_all_its_blocks() {
+        let data = vec![7u8; 3 << 20];
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let s = Source::remote(Box::new(Counting(data, asked.clone())), 3 << 20, None);
+        let Backing::Chunked(c) = &s.backing else {
+            panic!("a remote source is chunked");
+        };
+        {
+            // What `try_read` does, with time for the loader to wake between two sends.
+            let mut pending = c.inner.pending.lock().unwrap();
+            for b in 0..4u64 {
+                pending.insert(b);
+                c.tx.send(b).unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+        }
+        let r = 0..REMOTE_BLOCK * 4;
         for _ in 0..400 {
             if s.try_read(r.clone()).is_some() {
                 break;
