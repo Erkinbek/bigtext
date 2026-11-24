@@ -19,7 +19,7 @@ use bigtext::save::{self, SaveError, Transform};
 use bigtext::search::Matcher;
 use bigtext::text::Batch;
 
-use super::document::{Banner, DocState};
+use super::document::{Banner, DocState, FileStamp};
 use super::i18n::{tr, trf};
 use super::{open_worker, same_path, BigTextApp, Confirm, ConfirmAction, Msg, Opened};
 
@@ -115,6 +115,8 @@ pub struct Finalized {
     pub stats: ReplaceStats,
     pub kind: WriteKind,
     pub elapsed: Duration,
+    /// The document's file as it was opened, which a failed save puts the edits back on.
+    pub opened: FileStamp,
 }
 
 /// What a save writes: the text as it is, with other line breaks, or in another encoding.
@@ -403,6 +405,7 @@ impl BigTextApp {
         // Release everything that maps the old file, keeping the edits for a failure rollback.
         d.cancel_jobs();
         d.watch_cancel.cancel();
+        let opened = FileStamp::of(&d.buf.source);
         let weak: Weak<Source> = Arc::downgrade(&d.buf.source);
         d.buf = d
             .buf
@@ -453,6 +456,7 @@ impl BigTextApp {
                 stats: tw.stats,
                 kind: tw.kind,
                 elapsed: tw.elapsed,
+                opened,
             })));
             waker();
         });
@@ -535,8 +539,18 @@ impl BigTextApp {
                 super::watch(d, self.tx.clone(), waker);
             }
             Err((msg, reopened)) => {
-                match reopened {
-                    Ok(o) => d.rebind(o.source, waker.clone()),
+                // Only on the file as it was: if another program wrote to it meanwhile, the
+                // unedited text would be other bytes. The document then fails as when the file
+                // cannot be reopened, and its last journal stays (see `journal_tick`).
+                let reattached = reopened.and_then(|o| {
+                    if d.rebind(o.source, f.opened, waker.clone()) {
+                        Ok(())
+                    } else {
+                        Err(tr("The file changed on disk.").to_string())
+                    }
+                });
+                match reattached {
+                    Ok(()) => {}
                     // Text that is all typed (an untitled document) needs no file: it stays
                     // editable, so the user can save it somewhere else.
                     Err(_) if d.buf.pieces().all(|p| p.buf == bigtext::text::Buf::Add) => {
@@ -805,5 +819,70 @@ mod tests {
             save_spec(&d, Some((Encoding::Utf8, false))),
             WriteSpec::Transcode { eol: None, .. }
         ));
+    }
+
+    use crate::app::document::{Document, EditKind};
+
+    /// Saves "HELLO world" over a file of "hello world" where the final replace fails (the
+    /// temporary file is gone), after `appended` was written to the file by another program.
+    /// Gives the document's state, its text when it has one, and its typed bytes.
+    fn failed_save(appended: &str) -> (DocState, Option<Vec<u8>>, Vec<u8>) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.txt");
+        std::fs::write(&path, "hello world\n").unwrap();
+        let mut app = crate::app::test_app();
+        let o = open_worker(&path, None, file::OpenMode::Auto).unwrap();
+        let mut d = Document::loading(99, o.path.clone());
+        d.install(o.source, o.detected, None, app.waker.clone());
+        d.edit(0..5, b"HELLO", EditKind::Other);
+        app.docs.push(d);
+        if !appended.is_empty() {
+            use std::io::Write;
+            let mut f = std::fs::File::options().append(true).open(&path).unwrap();
+            f.write_all(appended.as_bytes()).unwrap();
+        }
+        app.on_temp_written(TempWritten {
+            doc: 99,
+            temp: dir.path().join("gone.tmp"),
+            target: path.clone(),
+            backup: false,
+            prefix: None,
+            stats: ReplaceStats::default(),
+            kind: WriteKind::Save,
+            elapsed: Duration::ZERO,
+        });
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            app.poll_messages();
+            let d = app.docs.iter().find(|d| d.id == 99).unwrap();
+            if !matches!(d.state, DocState::Finalizing(_)) {
+                break;
+            }
+            assert!(Instant::now() < deadline, "the save did not end");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let d = app.docs.iter().find(|d| d.id == 99).unwrap();
+        let snap = d.buf.snapshot();
+        let text = d
+            .is_ready()
+            .then(|| snap.read(0..snap.len()).unwrap().to_vec());
+        (d.state.clone(), text, d.buf.add_bytes_from(0))
+    }
+
+    #[test]
+    fn a_failed_save_puts_the_edits_back_on_the_file_as_it_was() {
+        let (state, text, _) = failed_save("");
+        assert_eq!(state, DocState::Ready);
+        assert_eq!(text.as_deref(), Some(&b"HELLO world\n"[..]));
+    }
+
+    /// The edits are offsets into the file as it was opened: over a file another program wrote
+    /// to meanwhile they would show (and save) other bytes, so they are not put back on it.
+    #[test]
+    fn a_failed_save_does_not_put_the_edits_on_a_file_that_changed() {
+        let (state, text, typed) = failed_save("written by another program\n");
+        assert!(matches!(state, DocState::Failed(_)), "{state:?} {text:?}");
+        // The typed text is still there, for the journal.
+        assert_eq!(typed, b"HELLO");
     }
 }

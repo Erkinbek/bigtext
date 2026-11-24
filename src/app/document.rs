@@ -303,6 +303,29 @@ pub struct Restore {
     pub filter: Option<super::sessions::SavedFilter>,
 }
 
+/// A file's length and change time when it was opened: a file with others is not the one a
+/// document's unedited text points into.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FileStamp {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+}
+
+impl FileStamp {
+    pub fn of(source: &Source) -> FileStamp {
+        FileStamp {
+            len: source.len(),
+            modified: source.modified(),
+        }
+    }
+
+    /// Whether `source` is the file as it was (only the length is compared when the change
+    /// time was not known).
+    pub fn matches(&self, source: &Source) -> bool {
+        source.len() == self.len && (self.modified.is_none() || source.modified() == self.modified)
+    }
+}
+
 /// Scroll state of the secondary split pane.
 #[derive(Clone, Debug, Default)]
 pub struct PaneView {
@@ -605,8 +628,14 @@ impl Document {
         }
     }
 
-    /// Re-attaches the buffer (keeping all edits) to a byte-identical reopened source.
-    pub fn rebind(&mut self, source: Arc<Source>, waker: Waker) {
+    /// Re-attaches the buffer (keeping all edits) to the reopened file, when it is still the
+    /// file as it was opened (`opened`): the unedited text is offsets into it, and over a file
+    /// that changed since (another program wrote it) they would show, and later save, other
+    /// bytes. Returns whether it did; otherwise the document is left as it is.
+    pub fn rebind(&mut self, source: Arc<Source>, opened: FileStamp, waker: Waker) -> bool {
+        if !opened.matches(&source) {
+            return false;
+        }
         self.index_cancel = CancelToken::new();
         source.set_waker(waker.clone());
         let index = LineIndex::new(source.len());
@@ -622,6 +651,7 @@ impl Document {
         self.buf = self.buf.with_source(source, index);
         self.last_indexed = 0;
         self.state = DocState::Ready;
+        true
     }
 
     pub fn min_caret(&self) -> u64 {
@@ -1310,6 +1340,25 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_stamp_tells_a_rewritten_file_apart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.txt");
+        std::fs::write(&path, "hello world").unwrap();
+        let open = || Source::open(&path, bigtext::file::OpenMode::Auto).unwrap();
+        let stamp = FileStamp::of(&open());
+        assert!(stamp.matches(&open()));
+        // As long, other bytes, written later.
+        let then = std::fs::metadata(&path).unwrap().modified().unwrap();
+        std::fs::write(&path, "jello world").unwrap();
+        let f = std::fs::File::options().write(true).open(&path).unwrap();
+        f.set_modified(then + Duration::from_secs(10)).unwrap();
+        drop(f);
+        assert!(!stamp.matches(&open()));
+        std::fs::write(&path, "hello world!").unwrap();
+        assert!(!stamp.matches(&open()));
+    }
 
     fn doc(bytes: &[u8]) -> (tempfile::TempDir, Document) {
         let dir = tempfile::tempdir().unwrap();
