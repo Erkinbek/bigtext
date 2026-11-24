@@ -180,6 +180,8 @@ pub struct Source {
     len: u64,
     backing: Backing,
     modified: Option<SystemTime>,
+    /// On a network file system or a rotating disk ([`slow_device`]).
+    slow_device: bool,
 }
 
 impl Source {
@@ -190,6 +192,7 @@ impl Source {
             len: 0,
             backing: Backing::Empty,
             modified: None,
+            slow_device: false,
         }
     }
 
@@ -208,6 +211,7 @@ impl Source {
                 len,
                 backing: Backing::Empty,
                 modified,
+                slow_device: false,
             });
         }
         let force_chunked = mode == OpenMode::Chunked
@@ -220,6 +224,7 @@ impl Source {
         // block reads anywhere (to compare them with the mapping).
         let pread = cfg!(unix) || std::env::var_os("BIGTEXT_FORCE_PREAD").is_some();
         if !force_chunked && pread {
+            let slow_device = slow_device(&file, &meta);
             return Ok(Source {
                 path: path_buf,
                 len,
@@ -231,6 +236,7 @@ impl Source {
                     true,
                 )),
                 modified,
+                slow_device,
             });
         }
         if !force_chunked {
@@ -248,6 +254,7 @@ impl Source {
                         len,
                         backing: Backing::Mapped(m),
                         modified,
+                        slow_device: false,
                     })
                 }
                 Err(_) => {
@@ -262,6 +269,7 @@ impl Source {
                             false,
                         )),
                         modified,
+                        slow_device: false,
                     })
                 }
             }
@@ -271,6 +279,7 @@ impl Source {
             len,
             backing: Backing::Chunked(Chunked::new(Box::new(file), len, CHUNK_BLOCK, false, false)),
             modified,
+            slow_device: false,
         })
     }
 
@@ -287,6 +296,7 @@ impl Source {
             len,
             backing,
             modified,
+            slow_device: false,
         }
     }
 
@@ -336,6 +346,14 @@ impl Source {
     /// A local file read in blocks filled on the calling thread (Unix instead of a mapping).
     pub fn is_pread(&self) -> bool {
         matches!(&self.backing, Backing::Chunked(c) if c.inner.sync)
+    }
+
+    /// True when several threads reading the file at once are likely to be faster than one: a
+    /// local file (mapped or read in blocks) that is not on a network file system or a rotating
+    /// disk. Chunked sources (network and removable drives on Windows, remote files) and slow
+    /// devices are better read by one thread, front to back.
+    pub fn parallel_reads(&self) -> bool {
+        (self.is_mmap() || self.is_pread()) && !self.slow_device
     }
 
     /// Registers the function used to wake the UI when queued chunked reads complete.
@@ -767,6 +785,93 @@ fn prefers_chunked(_path: &Path) -> bool {
     false
 }
 
+/// A file on a network file system or a rotating disk, where reads from several threads at once
+/// compete for one link or one disk head and are slower than one reader going front to back.
+/// Asked once, when the file is opened (Linux: the file system type and the disk's
+/// `queue/rotational`; macOS: the file system type).
+#[cfg(target_os = "linux")]
+fn slow_device(file: &File, meta: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    use std::os::unix::io::AsRawFd;
+    // SAFETY: `statfs` is plain data; fstatfs fills it for an open descriptor.
+    let mut st: libc::statfs = unsafe { std::mem::zeroed() };
+    let ok = unsafe { libc::fstatfs(file.as_raw_fd(), &mut st) } == 0;
+    // f_type is a signed or an unsigned word depending on the platform; the magic numbers are
+    // 32-bit.
+    if ok && network_fs_magic(st.f_type as u32) {
+        return true;
+    }
+    rotational_disk(meta.dev())
+}
+
+#[cfg(target_os = "macos")]
+fn slow_device(file: &File, _meta: &std::fs::Metadata) -> bool {
+    use std::os::unix::io::AsRawFd;
+    // SAFETY: `statfs` is plain data; fstatfs fills it for an open descriptor.
+    let mut st: libc::statfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstatfs(file.as_raw_fd(), &mut st) } != 0 {
+        return false;
+    }
+    let name: Vec<u8> = st
+        .f_fstypename
+        .iter()
+        .take_while(|&&c| c != 0)
+        .map(|&c| c as u8)
+        .collect();
+    network_fs_name(&name)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn slow_device(_file: &File, _meta: &std::fs::Metadata) -> bool {
+    false
+}
+
+/// Linux `statfs.f_type` of network and FUSE file systems (`linux/magic.h`). FUSE covers sshfs,
+/// rclone and similar mounts; a local disk mounted through FUSE (ntfs-3g) is read by one thread
+/// too.
+#[cfg(any(target_os = "linux", test))]
+fn network_fs_magic(f_type: u32) -> bool {
+    matches!(
+        f_type,
+        0x6969 // NFS
+            | 0x517B // SMB
+            | 0xFF53_4D42 // CIFS
+            | 0xFE53_4D42 // SMB2
+            | 0x6573_5546 // FUSE
+            | 0x0102_1997 // 9P (WSL2 Windows drives, VM shared folders)
+            | 0x00C3_6400 // Ceph
+            | 0x5346_414F // AFS
+            | 0x6B41_4653 // kAFS
+            | 0x7375_7245 // Coda
+            | 0x564C // NCP
+            | 0x786F_4256 // VirtualBox shared folders
+    )
+}
+
+/// macOS `statfs.f_fstypename` of network and FUSE file systems.
+#[cfg(any(target_os = "macos", test))]
+fn network_fs_name(name: &[u8]) -> bool {
+    matches!(
+        name,
+        b"nfs" | b"smbfs" | b"afpfs" | b"webdav" | b"cifs" | b"ftp" | b"osxfuse" | b"macfuse"
+    )
+}
+
+/// True if the block device `dev` (or the disk the partition `dev` is on) says it rotates.
+/// Devices without a `/sys/dev/block` entry (btrfs subvolumes, tmpfs, overlays) count as not
+/// rotating.
+#[cfg(target_os = "linux")]
+fn rotational_disk(dev: u64) -> bool {
+    let base = format!("/sys/dev/block/{}:{}", libc::major(dev), libc::minor(dev));
+    // A partition has no queue of its own: it uses its disk's, one level up.
+    for queue in ["queue/rotational", "../queue/rotational"] {
+        if let Ok(s) = std::fs::read_to_string(format!("{base}/{queue}")) {
+            return s.trim() == "1";
+        }
+    }
+    false
+}
+
 /// Strips the `\\?\` verbatim prefix for display.
 pub fn display_path(path: &Path) -> String {
     let s = path.to_string_lossy();
@@ -952,5 +1057,42 @@ mod tests {
         let s = Source::open(f.path(), OpenMode::Auto).unwrap();
         assert_eq!(s.len(), 0);
         assert_eq!(s.read(0..10).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn network_file_systems_are_recognised() {
+        for nfs in [
+            0x6969,
+            0x517B,
+            0xFF53_4D42,
+            0xFE53_4D42,
+            0x6573_5546,
+            0x0102_1997,
+        ] {
+            assert!(network_fs_magic(nfs), "{nfs:#x}");
+        }
+        // ext4, btrfs, xfs, tmpfs, overlayfs
+        for local in [0xEF53, 0x9123_683E, 0x5846_5342, 0x0102_1994, 0x794C_7630] {
+            assert!(!network_fs_magic(local), "{local:#x}");
+        }
+        for name in ["nfs", "smbfs", "afpfs", "webdav", "macfuse", "osxfuse"] {
+            assert!(network_fs_name(name.as_bytes()), "{name}");
+        }
+        for name in ["apfs", "hfs", "msdos", "exfat", ""] {
+            assert!(!network_fs_name(name.as_bytes()), "{name}");
+        }
+        // Remote and chunked sources are read by one thread; the answer for a local file
+        // depends on the drive the temp folder is on.
+        let remote = Source::remote(
+            Box::new(Counting(vec![0; 10], Default::default())),
+            10,
+            None,
+        );
+        assert!(!remote.parallel_reads());
+        let f = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(f.path(), b"x\n").unwrap();
+        assert!(!Source::open(f.path(), OpenMode::Chunked)
+            .unwrap()
+            .parallel_reads());
     }
 }
