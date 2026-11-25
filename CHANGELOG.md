@@ -13,6 +13,11 @@ before 2.0. The renamed options below keep their old names until 2.0, hidden fro
 - `--json` always means one JSON record per line now. `format` takes `--style pretty|minify`
   (was `--json pretty|minify`) and `validate` takes `--as csv|json|jsonl` (was `--json` and
   `--lines`).
+- Options BigText invented have one name and meaning each: `convert --kind` (was `--from`, which
+  elsewhere is a time), `slice --with-header` (was `--header`, which elsewhere says a table has
+  one) and `diff-table --on COL` / `--left-on COL --right-on COL` as in `join` (was `--key` and
+  `--key-b`). Options known from grep, diff and sort (`-n`, `-w`, `-v`, `-i`, `-q`, `-U`, `-r`,
+  `-u`) keep their meaning in each command.
 
 ## 0.14.0 — 2026-11-25
 

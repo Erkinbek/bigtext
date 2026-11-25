@@ -41,10 +41,10 @@ bigtext-cli grep [-i] [-w] [-E] PATTERN FILES... | -r DIR      find in files (fi
 bigtext-cli head [-n N] FILE / tail [-n N] FILE                the first / last N lines
 bigtext-cli replace [-E] PATTERN REPLACEMENT FILE [--in-place [--bak]]   Replace All, streamed
 bigtext-cli saved / filter --saved NAME [--settings FILE]     searches saved in the app
-bigtext-cli slice FILE --lines A-B | --bytes A-B | --from T --to T   a part, by binary search
+bigtext-cli slice FILE --lines A-B | --bytes A-B | --from T --to T [--with-header]   a part, by binary search
 bigtext-cli diff A B [-w] [-i] [-t] [--mask RE] [-U N] [-q]    a unified diff
 bigtext-cli only-in A B [-t] [--mask RE]                       lines of A nowhere in B
-bigtext-cli diff-table A B --key COL                           tables compared by key
+bigtext-cli diff-table A B --on COL                            tables compared by key
 bigtext-cli sort [-r] [-n] [-i] [-u] FILE / uniq [-c] FILE     any size, through temp runs
 bigtext-cli transform --op upper|lower|trim|tabs FILE          text operations, streamed
 bigtext-cli format FILE [--style pretty|minify]                JSON formatting, streamed

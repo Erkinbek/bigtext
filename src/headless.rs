@@ -91,8 +91,9 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         The lines of A that occur nowhere in B, whatever their order, in A's
         order (files of any size); -w, -i, -t and --mask as for diff; --count
         prints how many. Exit code 0 when there are none, 1 when there are.
-  diff-table A B --key COL [--key-b COL] [--all] [-o OUT]
-        Two tables compared by a key column whatever their row order, as CSV:
+  diff-table A B (--on COL | --left-on COL --right-on COL) [--all] [-o OUT]
+        Two tables compared by a key column (COL: a header name or a 1-based
+        number; --right-on when B's differs) whatever their row order, as CSV:
         status (changed, removed, added; same with --all), the key, the
         changed columns, and A's columns with \"old → new\" where a value
         changed. Columns pair up by header name. Exit code 0 when they are the
@@ -132,12 +133,12 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
   tail [-n N] FILE [-o OUT]
         The first or last N lines (10), read from that end only.
   slice FILE (--lines A-B | --bytes A-B | --from TIME [--to TIME])
-        [--header] [-o OUT]
+        [--with-header] [-o OUT]
         Lines A to B (1-based, inclusive), the lines around bytes A to B, or
         the lines from one time to another (inclusive to the second; a --to
         without a date is on --from's day), found by binary search in a time-
-        ordered log; --header puts line 1 first. Exit code 1 when nothing is
-        in the range.
+        ordered log; --with-header puts line 1 first. Exit code 1 when nothing
+        is in the range.
   sort [-r] [-n] [-i] [-u] FILE [-o OUT]
         The lines sorted (-r reversed, -n by the number at their start, -i
         ignoring case, -u each once), of a file of any size (temporary runs
@@ -196,12 +197,12 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         The values of a JSON Lines or logfmt (key=value) field with how many
         lines have each and their first and last time, as CSV, most frequent
         first. Nested JSON keys: user.id.
-  convert FILE --to json|jsonl|md|xlsx|csv [--from KIND] [--path $.a] [-o OUT]
+  convert FILE --to json|jsonl|md|xlsx|csv [--kind KIND] [--path $.a] [-o OUT]
         A CSV / TSV table as JSON, JSON Lines, Markdown or Excel (.xlsx needs
         -o); JSON Lines as CSV or one JSON array; a JSON array (or the one at
         --path, or the first under the top object) as JSON Lines; logfmt
         (key=value) lines, and nginx / Apache, AWS load balancer (ALB, Classic),
-        IIS and syslog logs, as CSV with a column per field. --from
+        IIS and syslog logs, as CSV with a column per field. --kind
         json|jsonl|logfmt|log|csv when the kind is not what it looks like.
         The header and lines before the table (sep=;, comments) are detected;
         --header / --no-header, --skip N and --quote ' override that (also
@@ -1017,7 +1018,7 @@ fn cmd_convert(args: &[String], out: &mut dyn Write) -> Res<i32> {
         args,
         &["--no-header", "--header"],
         &[
-            "--to", "--from", "--path", "-o", "--output", "--skip", "--quote",
+            "--to", "--kind", "--from", "--path", "-o", "--output", "--skip", "--quote",
         ],
     )?;
     let [file] = &a.rest[..] else {
@@ -1030,7 +1031,8 @@ fn cmd_convert(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let target = a.opt(&["-o", "--output"]);
     let (buf, _) = open(Path::new(file))?;
     let cancel = CancelToken::new();
-    let from = match a.opt(&["--from"]) {
+    // `--from` is the name before 0.15, kept until 2.0.
+    let from = match a.opt(&["--kind", "--from"]) {
         Some(f) => f.to_ascii_lowercase(),
         None => sniff_kind(&buf).to_string(),
     };
@@ -1927,9 +1929,11 @@ fn cmd_head_tail(args: &[String], out: &mut dyn Write, head: bool) -> Res<i32> {
 }
 
 fn cmd_slice(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    // `--header` is the name before 0.15 (the table commands' --header says a table has one),
+    // kept until 2.0.
     let a = Args::parse(
         args,
-        &["--header"],
+        &["--with-header", "--header"],
         &["--lines", "--bytes", "--from", "--to", "-o", "--output"],
     )?;
     let [file] = &a.rest[..] else {
@@ -1993,7 +1997,7 @@ fn cmd_slice(args: &[String], out: &mut dyn Write) -> Res<i32> {
     write_slice(
         &buf,
         range,
-        a.flag(&["--header"]),
+        a.flag(&["--with-header", "--header"]),
         a.opt(&["-o", "--output"]),
         out,
     )
@@ -2095,15 +2099,27 @@ fn cmd_diff_table(args: &[String], out: &mut dyn Write) -> Res<i32> {
     let a = Args::parse(
         args,
         &["--all", "--no-header", "--header"],
-        &["--key", "--key-b", "-o", "--output", "--skip", "--quote"],
+        &[
+            "--on",
+            "--left-on",
+            "--right-on",
+            "--key",
+            "--key-b",
+            "-o",
+            "--output",
+            "--skip",
+            "--quote",
+        ],
     )?;
     let [fa, fb] = &a.rest[..] else {
         return fail("needs A and B");
     };
-    let Some(ka) = a.opt(&["--key"]) else {
-        return fail("give --key COL (a header name or a 1-based number)");
+    // The key columns are named as for join; `--key` and `--key-b` are the names before 0.15,
+    // kept until 2.0.
+    let Some(ka) = a.opt(&["--on", "--left-on", "--key"]) else {
+        return fail("give --on COL (a header name or a 1-based number)");
     };
-    let kb = a.opt(&["--key-b"]).unwrap_or(ka);
+    let kb = a.opt(&["--right-on", "--key-b"]).unwrap_or(ka);
     let (ta, _) = open(Path::new(fa))?;
     let (tb, _) = open(Path::new(fb))?;
     let (ga, gb) = (table_of(&ta, fa, &a)?, table_of(&tb, fb, &a)?);
@@ -3201,6 +3217,13 @@ mod tests {
             "level,msg\ninfo,ok\nerror,bad x\n"
         );
         assert_eq!(run_args(&["convert", &f, "--to", "json"]).0, 2);
+        // --kind reads it as another kind; --from is the name before 0.15.
+        let as_csv = run_args(&["convert", &f, "--to", "jsonl", "--kind", "csv"]);
+        assert_eq!(as_csv.0, 0);
+        assert_eq!(
+            as_csv,
+            run_args(&["convert", &f, "--to", "jsonl", "--from", "csv"])
+        );
     }
 
     #[test]
@@ -3468,7 +3491,7 @@ mod tests {
             b"qty,name,id\n6,apple,1\n7,banana,2\n1,fig,9\n",
         );
         assert_eq!(
-            run_args(&["diff-table", &a, &b, "--key", "id"]),
+            run_args(&["diff-table", &a, &b, "--on", "id"]),
             (
                 1,
                 "status,id,changed,name,qty\nchanged,1,qty,apple,5 → 6\nadded,9,,fig,1\n".into(),
@@ -3476,11 +3499,35 @@ mod tests {
             )
         );
         assert_eq!(
-            run_args(&["diff-table", &a, &b, "--key", "1", "--key-b", "3", "--all"])
-                .1
-                .lines()
-                .nth(2),
+            run_args(&[
+                "diff-table",
+                &a,
+                &b,
+                "--left-on",
+                "1",
+                "--right-on",
+                "3",
+                "--all"
+            ])
+            .1
+            .lines()
+            .nth(2),
             Some("same,2,,banana,7")
+        );
+        // The names before 0.15 still work.
+        assert_eq!(
+            run_args(&["diff-table", &a, &b, "--key", "1", "--key-b", "3", "--all"]).1,
+            run_args(&[
+                "diff-table",
+                &a,
+                &b,
+                "--on",
+                "1",
+                "--right-on",
+                "3",
+                "--all"
+            ])
+            .1
         );
         assert_eq!(run_args(&["diff-table", &a, &a, "--key", "id"]).0, 0);
         assert_eq!(run_args(&["diff-table", &a, &b]).0, 2);
@@ -3806,6 +3853,11 @@ mod tests {
             1
         );
         let csv = file(&d, "t.csv", b"id,v\n1,a\n2,b\n3,c\n");
+        assert_eq!(
+            run_args(&["slice", &csv, "--lines", "3-3", "--with-header"]).1,
+            "id,v\n2,b\n"
+        );
+        // The name before 0.15 still works.
         assert_eq!(
             run_args(&["slice", &csv, "--lines", "3-3", "--header"]).1,
             "id,v\n2,b\n"

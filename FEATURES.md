@@ -402,7 +402,7 @@ keyboard shortcuts.
 - **Compare tables by key** (a column's menu → Compare table by this column…): two tables paired
   by a key whatever their row order; the rows changed (with the changed columns and
   `old → new` values), removed and added open as a new table. Columns pair up by header name;
-  any size, through hash buckets on disk (`bigtext-cli diff-table A B --key id`).
+  any size, through hash buckets on disk (`bigtext-cli diff-table A B --on id`).
 - **Pivot tables** (a column's menu → Pivot by this column…): rows by one column (or by hour, day
   or month), columns by another, counts or sums in the cells (`bigtext-cli pivot`).
 - **Add column…** from an expression over the row (`{price} * {qty}`, `substr({ts}, 0, 10)`,
