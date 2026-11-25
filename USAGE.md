@@ -47,7 +47,7 @@ bigtext-cli only-in A B [-t] [--mask RE]                       lines of A nowher
 bigtext-cli diff-table A B --key COL                           tables compared by key
 bigtext-cli sort [-r] [-n] [-i] [-u] FILE / uniq [-c] FILE     any size, through temp runs
 bigtext-cli transform --op upper|lower|trim|tabs FILE          text operations, streamed
-bigtext-cli format FILE --json pretty|minify                   JSON formatting, streamed
+bigtext-cli format FILE [--style pretty|minify]                JSON formatting, streamed
 bigtext-cli stats FILE...                                      size, lines, encoding, first/last time
 bigtext-cli merge FILE FILE... [-o OUT]                        logs merged by time
 bigtext-cli convert FILE --to json|jsonl|md|xlsx|csv [-o OUT]  tables (JSON Lines, logfmt, web and syslog logs → CSV)
@@ -55,7 +55,7 @@ bigtext-cli query FILE -q '.status >= 500 and .method = POST'   lines that meet 
 bigtext-cli report FILE [--urls | --minutes | --slow] [--top N]  web log: top URLs, 5xx per minute, slowest
 bigtext-cli redact FILE [-o OUT] [--ips] [--pattern RE]...    secrets and e-mails hidden, to share it
 bigtext-cli sqldump FILE [tables | extract TABLE[,TABLE] | split] [-o OUT] [--out-dir DIR]  SQL dump tables
-bigtext-cli validate FILE [--no-header] [--numeric 3,5]        malformed CSV / TSV rows
+bigtext-cli validate FILE [--as csv|json|jsonl] [--numeric 3,5]  malformed CSV / TSV rows, JSON
 bigtext-cli csv FILE cut|drop COLS | sort --by COL | where COND... | stats COL | group COL
 bigtext-cli values FIELD FILE [-o OUT]                         a JSON Lines / logfmt field's values
 bigtext-cli gaps FILE [--min 30s]                              time gaps, with line numbers

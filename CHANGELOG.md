@@ -3,6 +3,17 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
+## Unreleased
+
+### `bigtext-cli` made consistent before 1.0
+
+From 1.0 on, the commands, options, exit codes and machine-readable output will not change
+before 2.0. The renamed options below keep their old names until 2.0, hidden from the help.
+
+- `--json` always means one JSON record per line now. `format` takes `--style pretty|minify`
+  (was `--json pretty|minify`) and `validate` takes `--as csv|json|jsonl` (was `--json` and
+  `--lines`).
+
 ## 0.14.0 — 2026-11-25
 
 ### Faster (contributed by Jahongir Qurbonov)

@@ -147,10 +147,10 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
   transform --op upper|lower|trim|tabs|untabs FILE [-o OUT]
         The file in UPPERCASE or lowercase, with trailing white space trimmed,
         tabs as spaces or leading spaces as tabs (width 4), streamed.
-  format FILE --json pretty|minify [-o OUT]
-        JSON (or JSON Lines, a value per line) indented by two spaces or with
-        all insignificant white space removed; key order, numbers and escapes
-        stay as written.
+  format FILE [--style pretty|minify] [-o OUT]
+        JSON (or JSON Lines, a value per line) indented by two spaces (pretty,
+        the default) or with all insignificant white space removed (minify);
+        key order, numbers and escapes stay as written.
   derive FILE --name NAME --expr EXPR [-o OUT]
         The table with a new last column computed per row, like {price} * {qty},
         substr({ts}, 0, 10) or if({status} = \"ok\", 1, 0).
@@ -159,12 +159,12 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         A pivot table as CSV: a row per value of --rows (or per hour, day or
         month of a time column), a column per value of --cols, row counts or
         the aggregated --value in the cells, and a Total column.
-  validate FILE [--no-header] [--numeric 3,5] [--json | --lines]
+  validate FILE [--as csv|json|jsonl] [--no-header] [--numeric 3,5]
         Checks a CSV / TSV table: rows with another field count, stray or
         unclosed quotes, control characters, and (--numeric) text in number
-        columns (1-based). JSON files (or --json) are checked strictly as
-        one value, JSON Lines (or --lines) line by line. Prints
-        line: problem; exit code 1 when any.
+        columns (1-based). A JSON file is checked strictly as one value, a
+        JSON Lines file line by line; --as gives the kind when the file does
+        not look like it. Prints line: problem; exit code 1 when any.
   report FILE [--urls | --minutes | --slow] [--top N] [-o OUT]
         Reports of a web server log (nginx / Apache, AWS ALB or Classic ELB,
         IIS): requests by status, the top URLs, the minutes with the most 5xx
@@ -2077,14 +2077,16 @@ fn cmd_transform(args: &[String], out: &mut dyn Write) -> Res<i32> {
 
 fn cmd_format(args: &[String], out: &mut dyn Write) -> Res<i32> {
     use crate::textops::Op;
-    let a = Args::parse(args, &[], &["--json", "-o", "--output"])?;
+    // `--json pretty|minify` is the name before 0.15, kept until 2.0 (`--json` is otherwise
+    // the output format of the commands that write records).
+    let a = Args::parse(args, &[], &["--style", "--json", "-o", "--output"])?;
     let [file] = &a.rest[..] else {
         return fail("needs FILE");
     };
-    let op = match a.opt(&["--json"]) {
+    let op = match a.opt(&["--style", "--json"]) {
         Some("pretty") | None => Op::JsonPretty,
         Some("minify") => Op::JsonMinify,
-        Some(o) => return fail(format!("unknown --json {o} (pretty, minify)")),
+        Some(o) => return fail(format!("unknown --style {o} (pretty, minify)")),
     };
     text_op(file, op, a.opt(&["-o", "--output"]), out)
 }
@@ -2525,22 +2527,26 @@ fn cmd_pivot(args: &[String], out: &mut dyn Write) -> Res<i32> {
 }
 
 fn cmd_validate(args: &[String], out: &mut dyn Write) -> Res<i32> {
+    // `--json` and `--lines` are the names before 0.15 (`--as json`, `--as jsonl`), kept until
+    // 2.0.
     let a = Args::parse(
         args,
         &["--no-header", "--header", "--json", "--lines"],
-        &["--numeric", "--skip", "--quote"],
+        &["--as", "--numeric", "--skip", "--quote"],
     )?;
     let [file] = &a.rest[..] else {
         return fail("needs FILE");
     };
     // JSON: as one document, or as JSON Lines.
     let (jbuf, _) = open(Path::new(file))?;
-    let kind = if a.flag(&["--lines"]) {
-        "jsonl"
-    } else if a.flag(&["--json"]) {
-        "json"
-    } else {
-        sniff_kind(&jbuf)
+    let kind = match a.opt(&["--as"]).map(str::to_ascii_lowercase).as_deref() {
+        Some("json") => "json",
+        Some("jsonl") => "jsonl",
+        Some("csv") => "csv",
+        Some(o) => return fail(format!("unknown --as {o} (json, jsonl, csv)")),
+        None if a.flag(&["--lines"]) => "jsonl",
+        None if a.flag(&["--json"]) => "json",
+        None => sniff_kind(&jbuf),
     };
     if kind == "json" || kind == "jsonl" {
         let cancel = CancelToken::new();
@@ -3842,9 +3848,15 @@ mod tests {
         assert_eq!(run_args(&["transform", "--op", "sort", &t]).0, 2);
         let j = file(&d, "j.json", b"{\"a\": [1, {\"b\": null}]}\n");
         assert_eq!(
+            run_args(&["format", &j, "--style", "minify"]).1,
+            "{\"a\":[1,{\"b\":null}]}\n"
+        );
+        // The name before 0.15 still works.
+        assert_eq!(
             run_args(&["format", &j, "--json", "minify"]).1,
             "{\"a\":[1,{\"b\":null}]}\n"
         );
+        assert_eq!(run_args(&["format", &j, "--style", "tight"]).0, 2);
         assert_eq!(
             run_args(&["format", &j]).1,
             "{\n  \"a\": [\n    1,\n    {\n      \"b\": null\n    }\n  ]\n}\n"
@@ -3885,6 +3897,19 @@ mod tests {
         );
         let ok = file(&d, "ok.json", b"[1, {\"x\": null}]");
         assert_eq!(run_args(&["validate", &ok]).0, 0);
+        // --as gives the kind; --lines and --json are the names before 0.15.
+        let t = file(&d, "lines.txt", b"{\"a\":1}\n{\"a\":}\n");
+        let jsonl_problem = "2: byte 13: a value is missing after the key\n";
+        assert_eq!(
+            run_args(&["validate", &t, "--as", "jsonl"]).1,
+            jsonl_problem
+        );
+        assert_eq!(run_args(&["validate", &t, "--lines"]).1, jsonl_problem);
+        assert_eq!(run_args(&["validate", &t, "--as", "json"]).0, 1);
+        let braces = file(&d, "braces.csv", b"{a},b\n1,2\n");
+        assert_eq!(run_args(&["validate", &braces]).0, 1);
+        assert_eq!(run_args(&["validate", &braces, "--as", "csv"]).0, 0);
+        assert_eq!(run_args(&["validate", &ok, "--as", "xml"]).0, 2);
     }
 
     #[test]
