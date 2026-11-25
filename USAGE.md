@@ -71,7 +71,20 @@ or `--out-dir DIR` for one output per input; compressed inputs are unpacked on t
 and `--not PAT`. `filter` and `levels` take `-A N` / `-B N` / `-C N` (lines after / before / around each match),
 `--entries` (whole log entries) and `-n` (line numbers, `12:` a match and `13-` context), with
 `--` between groups like grep, and `--from TIME` / `--to TIME` (only the lines between two
-times). Exit codes: 0 done, 1 nothing matched, 2 error.
+times).
+
+### Exit codes
+
+| Code | Meaning | Commands |
+| --- | --- | --- |
+| 0 | Done: something was found, or the files are the same | all |
+| 1 | Nothing was found | `filter`, `grep`, `count`, `levels`, `extract`, `jsonl` / `query`, `values`, `gaps`, `report` (no requests), `csv … where`, `head`, `tail`, `slice`, `replace`, `saved`, `sqldump tables` and `sqldump split` (no tables), `split` (an empty file) |
+| 1 | The files differ, or the check found problems | `diff`, `only-in` (lines only in A), `jsondiff`, `diff-table`, `validate` |
+| 2 | An error: a wrong option, a file that cannot be read or written; with several files, any of them | all |
+
+The commands that write a converted or reordered file (`convert`, `sort`, `uniq`, `transform`,
+`format`, `derive`, `pivot`, `join`, `merge`, `redact`, `patterns`, `stats`, `csv … cut`, `drop`,
+`sort`, `stats` and `group`, `sqldump extract`) exit with 0 even when the result is empty.
 
 ## Environment variables
 

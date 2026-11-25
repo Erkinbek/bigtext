@@ -18,6 +18,9 @@ before 2.0. The renamed options below keep their old names until 2.0, hidden fro
   one) and `diff-table --on COL` / `--left-on COL --right-on COL` as in `join` (was `--key` and
   `--key-b`). Options known from grep, diff and sort (`-n`, `-w`, `-v`, `-i`, `-q`, `-U`, `-r`,
   `-u`) keep their meaning in each command.
+- The exit codes are listed per command in USAGE.md: 0 done, 1 nothing found (for the diff
+  commands and `validate`: the files differ, or there are problems), 2 an error. `split` of an
+  empty file now exits with 1, as it writes no parts.
 
 ## 0.14.0 — 2026-11-25
 

@@ -1,8 +1,9 @@
 //! BigText's tools for scripts, without a window: `bigtext-cli COMMAND …` (or `bigtext --COMMAND
 //! …`). They stream like the editor does, so they work on files of any size.
 //!
-//! Exit codes: 0 done (for `filter`, `levels` and `count`: some line matched), 1 nothing
-//! matched, 2 an error.
+//! Exit codes: 0 done (for the commands that search: something was found), 1 nothing found
+//! (for the diff family and `validate`: the files differ, or there are problems), 2 an error.
+//! USAGE.md has the table per command; it does not change before 2.0 once 1.0 is out.
 
 use std::io::{self, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -210,7 +211,8 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
 
 -o OUT ending in .gz, .zst, .xz or .bz2 is written compressed.
 
-Exit codes: 0 done, 1 nothing matched, 2 error.
+Exit codes: 0 done, 1 nothing found (for diff, only-in, jsondiff, diff-table
+and validate: the files differ, or there are problems), 2 error.
 ";
 
 const COMMANDS: [&str; 35] = [
@@ -832,10 +834,11 @@ fn cmd_split(args: &[String], out: &mut dyn Write) -> Res<i32> {
         &Progress::default(),
     )?
     .unwrap_or_default();
-    for p in parts {
-        writeln!(out, "{}", display_path(&p))?;
+    for p in &parts {
+        writeln!(out, "{}", display_path(p))?;
     }
-    Ok(0)
+    // No parts (an empty file): 1, like the commands that find nothing.
+    Ok(if parts.is_empty() { 1 } else { 0 })
 }
 
 fn cmd_stats(args: &[String], out: &mut dyn Write) -> Res<i32> {
@@ -4146,6 +4149,12 @@ mod tests {
             &log,
         ]);
         assert!(out.lines().all(|l| l.ends_with(".log.gz")), "{out}");
+        // An empty file has no parts: exit code 1, like the other commands that find nothing.
+        let empty = file(&d, "empty.log", b"");
+        assert_eq!(
+            run_args(&["split", "--lines", "2", &empty]),
+            (1, String::new(), String::new())
+        );
         // -o with a compressed name compresses.
         let gz = d.path().join("two.log.gz").to_string_lossy().into_owned();
         assert_eq!(run_args(&["filter", "two", &log, "-o", &gz]).0, 0);
