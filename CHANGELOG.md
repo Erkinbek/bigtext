@@ -34,6 +34,9 @@ before 2.0. The renamed options below keep their old names until 2.0, hidden fro
 - USAGE.md says what scripts can rely on from 1.0 until 2.0 (commands, options, exit codes, CSV
   headers and columns, JSON fields, the encoding and line breaks of `-o` files) and what can
   change in any release (text written for people, help and error messages, speed).
+- The windowed `bigtext` runs a script command only with two dashes (`bigtext --sort FILE`), so
+  `bigtext sort` opens a file named `sort`. `bigtext-cli` takes both forms, and `bigtext --help`
+  points to `bigtext-cli --help` for all commands instead of listing eight.
 
 ## 0.14.0 — 2026-11-25
 

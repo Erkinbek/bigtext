@@ -253,9 +253,11 @@ const COMMANDS: [&str; 35] = [
     "csv",
 ];
 
-/// Whether `arg` starts a command (`filter` or `--filter`).
+/// Whether `arg` starts a command of the windowed program: `--filter`. A bare `filter` is a
+/// file name there, so a file named like a command opens; `bigtext-cli` takes both forms.
 pub fn is_command(arg: &str) -> bool {
-    COMMANDS.contains(&arg.trim_start_matches('-'))
+    arg.strip_prefix("--")
+        .is_some_and(|name| COMMANDS.contains(&name))
 }
 
 struct Fail(String);
@@ -3116,6 +3118,21 @@ mod tests {
     }
 
     #[test]
+    fn the_windowed_program_takes_commands_with_two_dashes() {
+        assert!(is_command("--filter"));
+        assert!(is_command("--diff-table"));
+        // A bare name is a file there (`bigtext sort` opens a file named sort).
+        assert!(!is_command("sort"));
+        assert!(!is_command("-sort"));
+        assert!(!is_command("--nope"));
+        // bigtext-cli takes both.
+        let d = tempfile::tempdir().unwrap();
+        let f = file(&d, "a.log", b"b\na\n");
+        assert_eq!(run_args(&["sort", &f]).1, "a\nb\n");
+        assert_eq!(run_args(&["--sort", &f]).1, "a\nb\n");
+    }
+
+    #[test]
     fn filter_count_and_exit_codes() {
         let d = tempfile::tempdir().unwrap();
         let log = file(
@@ -3156,7 +3173,7 @@ mod tests {
         assert_eq!(run_args(&["filter", "--bogus", "x", &log]).0, 2);
         assert_eq!(run_args(&["frobnicate"]).0, 2);
         assert_eq!(run_args(&["filter", "-E", "(", &log]).0, 2);
-        assert!(is_command("--stats") && is_command("merge") && !is_command("--follow"));
+        assert!(is_command("--stats") && !is_command("merge") && !is_command("--follow"));
     }
 
     #[test]

@@ -27,8 +27,8 @@ bigtext [OPTIONS] [FILE[:LINE] ...]
 
 ## Commands for scripts
 
-For scripts, **`bigtext-cli`** (in every download; `bigtext --filter …` works too) runs the
-same streaming code without a window:
+For scripts, **`bigtext-cli`** (in every download; `bigtext --filter …` works too, with the two
+dashes: a bare name is a file for `bigtext`) runs the same streaming code without a window:
 
 ```
 bigtext-cli filter [-v] [-i] [-w] [-E] PATTERN FILE [-o OUT]   lines with (-v: without) a match

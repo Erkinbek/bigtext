@@ -26,10 +26,9 @@ Usage: bigtext [OPTIONS] [FILE[:LINE] ...]
                    BigText already running)
   -h, --help       show this help
 
-Script commands, without a window (bigtext-cli runs the same; on Windows use it in
-scripts, since bigtext.exe is a windowed program):
-  --filter, --levels, --count, --split, --stats, --merge, --convert, --report
-                   see  bigtext-cli --help
+Script commands run without a window as  bigtext --COMMAND …  (bigtext-cli COMMAND …
+in scripts on Windows, where bigtext.exe is a windowed program); all commands:
+  bigtext-cli --help
 ";
 
 #[derive(Debug, Default, PartialEq)]
