@@ -3,7 +3,7 @@
 All notable changes to BigText. Each release on
 [GitHub](https://github.com/Erkinbek/bigtext/releases) has the full notes and the downloads.
 
-## Unreleased
+## 0.15.0 — 2026-11-26
 
 ### `bigtext-cli` made consistent before 1.0
 
