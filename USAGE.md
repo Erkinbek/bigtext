@@ -86,6 +86,21 @@ The commands that write a converted or reordered file (`convert`, `sort`, `uniq`
 `format`, `derive`, `pivot`, `join`, `merge`, `redact`, `patterns`, `stats`, `csv … cut`, `drop`,
 `sort`, `stats` and `group`, `sqldump extract`) exit with 0 even when the result is empty.
 
+### What scripts can rely on
+
+From 1.0 until 2.0, these do not change; an option that gets a better name keeps its old name
+working until 2.0:
+
+- the command names, their options and what each option means;
+- the exit codes above;
+- CSV headers and the order of their columns, and the fields of JSON records;
+- that a file written with `-o` keeps the input's encoding and line breaks.
+
+These can change in any release: text written for people (the output of `stats`, `report`,
+`merge`, `gaps`, `jsondiff` and `validate`, and the `file:` in front of each line when several
+files are searched), help and error messages (errors from the system come in its language), and
+speed. Until 1.0 the list above can still change, as it did in 0.15.
+
 ## Environment variables
 
 | Variable | Effect |

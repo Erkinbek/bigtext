@@ -31,6 +31,9 @@ before 2.0. The renamed options below keep their old names until 2.0, hidden fro
 - `values` and `gaps` write times as the file writes them (`2024-05-01T10:00:00.120Z`,
   `10/Oct/2000:13:55:36 -0700`), as log → CSV already did; they were reformatted as
   `2024-05-01 10:00:00`. The app's export of a field's values does the same.
+- USAGE.md says what scripts can rely on from 1.0 until 2.0 (commands, options, exit codes, CSV
+  headers and columns, JSON fields, the encoding and line breaks of `-o` files) and what can
+  change in any release (text written for people, help and error messages, speed).
 
 ## 0.14.0 — 2026-11-25
 
