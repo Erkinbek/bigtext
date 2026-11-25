@@ -535,6 +535,12 @@ impl BigTextApp {
                         }
                         super::i18n::trf("Rewrote all {n} lines; wrote {size} in {secs}s.", &[("n", &f.stats.count.to_string()), ("size", &human_bytes(f.stats.bytes_out)), ("secs", &format!("{secs:.2}"))])
                     }
+                    // A Unicode target counts the unreadable bytes, written as U+FFFD; another
+                    // counts the characters it lacks, written as '?' (see Transform::Transcode).
+                    WriteKind::Transcode(enc) if f.stats.count > 0 && enc.is_unicode() => super::i18n::trf(
+                        "Saved as {enc} ({size}). The file had {n} unreadable characters; they were written as “�”.",
+                        &[("enc", enc.name()), ("size", &human_bytes(f.stats.bytes_out)), ("n", &f.stats.count.to_string())],
+                    ),
                     WriteKind::Transcode(enc) if f.stats.count > 0 => super::i18n::trf(
                         "Saved as {enc} ({size}). {n} characters do not exist in {enc} and were written as “?”.",
                         &[("enc", enc.name()), ("size", &human_bytes(f.stats.bytes_out)), ("n", &f.stats.count.to_string())],

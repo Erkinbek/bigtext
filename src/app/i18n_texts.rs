@@ -272,6 +272,7 @@ pub static TEXTS: &[[&str; 3]] = &[
     ["Saved {size} in {secs}s.", "Сохранено {size} за {secs} с.", "{size} {secs} s da saqlandi."],
     ["Rewrote all {n} lines; wrote {size} in {secs}s.", "Перезаписаны все {n} строк; записано {size} за {secs} с.", "Barcha {n} satr qayta yozildi; {size} {secs} s da yozildi."],
     ["Saved as {enc} ({size}). {n} characters do not exist in {enc} and were written as “?”.", "Сохранено в {enc} ({size}). Символов, которых нет в {enc}, записанных как «?»: {n}.", "{enc} da saqlandi ({size}). {enc} da yo'q {n} ta belgi «?» bo'lib yozildi."],
+    ["Saved as {enc} ({size}). The file had {n} unreadable characters; they were written as “�”.", "Сохранено в {enc} ({size}). Нечитаемых символов в файле: {n}; они записаны как «�».", "{enc} da saqlandi ({size}). Faylda o'qib bo'lmaydigan {n} ta belgi bor edi, ular «�» bo'lib yozildi."],
     ["Saved as {enc} ({size}) in {secs}s.", "Сохранено в {enc} ({size}) за {secs} с.", "{enc} da saqlandi ({size}), {secs} s."],
     ["Cancelled. The file on disk was not modified.", "Отменено. Файл на диске не изменён.", "Bekor qilindi. Diskdagi fayl o'zgarmadi."],
     ["Document is read-only", "Документ только для чтения", "Hujjat faqat o'qish uchun"],

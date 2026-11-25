@@ -258,6 +258,7 @@ pub static ZH: &[(&str, &str)] = &[
     ("Saved {size} in {secs}s.", "已保存 {size}，用时 {secs} 秒。"),
     ("Rewrote all {n} lines; wrote {size} in {secs}s.", "已重写全部 {n} 行；写入 {size}，用时 {secs} 秒。"),
     ("Saved as {enc} ({size}). {n} characters do not exist in {enc} and were written as “?”.", "已保存为 {enc}（{size}）。{n} 个字符在 {enc} 中不存在，已写为“?”。"),
+    ("Saved as {enc} ({size}). The file had {n} unreadable characters; they were written as “�”.", "已保存为 {enc}（{size}）。文件中有 {n} 个无法读取的字符，已写为“�”。"),
     ("Saved as {enc} ({size}) in {secs}s.", "已保存为 {enc}（{size}），用时 {secs} 秒。"),
     ("Cancelled. The file on disk was not modified.", "已取消。磁盘上的文件未被修改。"),
     ("Document is read-only", "文档为只读"),

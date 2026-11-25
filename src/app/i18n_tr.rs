@@ -261,6 +261,7 @@ pub static TR: &[(&str, &str)] = &[
     ("Saved {size} in {secs}s.", "{secs} sn'de {size} kaydedildi."),
     ("Rewrote all {n} lines; wrote {size} in {secs}s.", "{n} satırın tümü yeniden yazıldı; {secs} sn'de {size} yazıldı."),
     ("Saved as {enc} ({size}). {n} characters do not exist in {enc} and were written as “?”.", "{enc} olarak kaydedildi ({size}). {n} karakter {enc} içinde bulunmuyor ve “?” olarak yazıldı."),
+    ("Saved as {enc} ({size}). The file had {n} unreadable characters; they were written as “�”.", "{enc} olarak kaydedildi ({size}). Dosyada okunamayan {n} karakter vardı; “�” olarak yazıldı."),
     ("Saved as {enc} ({size}) in {secs}s.", "{secs} sn'de {enc} olarak kaydedildi ({size})."),
     ("Cancelled. The file on disk was not modified.", "İptal edildi. Diskteki dosya değiştirilmedi."),
     ("Document is read-only", "Belge salt okunur"),

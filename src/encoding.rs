@@ -58,6 +58,11 @@ impl Encoding {
         )
     }
 
+    /// UTF-8 or UTF-16: every character, U+FFFD included, can be written.
+    pub fn is_unicode(self) -> bool {
+        !self.is_single_byte()
+    }
+
     pub fn bom(self) -> &'static [u8] {
         match self {
             Encoding::Utf8 => &[0xEF, 0xBB, 0xBF],

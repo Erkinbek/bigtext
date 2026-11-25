@@ -38,9 +38,10 @@ pub enum Transform<'a> {
         cols: &'a [usize],
     },
     /// Re-encode into `enc` (with a byte order mark if `bom`), optionally converting line
-    /// breaks (the `bool` as in [`Transform::Eol`]). `ReplaceStats::count` is the number of
-    /// characters `enc` cannot represent and of sequences not valid in the document's own
-    /// encoding (both written as '?').
+    /// breaks (the `bool` as in [`Transform::Eol`]). Sequences not valid in the document's own
+    /// encoding are written as U+FFFD, as the view shows them. `ReplaceStats::count` is, for a
+    /// Unicode `enc`, the number of those sequences; for another `enc`, which has no U+FFFD, the
+    /// number of characters it cannot represent, those sequences included (written as '?').
     Transcode {
         enc: Encoding,
         bom: bool,
@@ -119,8 +120,12 @@ pub fn transcode_to<W: Write>(
         let raw = buf
             .read(pos..end)
             .ok_or_else(|| io::Error::other("Could not read the document"))?;
-        let (mut text, invalid) = decode_marking_invalid(&buf.codec, &raw);
-        stats.count += invalid;
+        let (mut text, invalid) = decode_counting_invalid(&buf.codec, &raw);
+        // A Unicode target writes them as U+FFFD; another counts them below with the
+        // characters it lacks.
+        if enc.is_unicode() {
+            stats.count += invalid;
+        }
         if let Some((nl, lone_breaks)) = &breaks {
             if pending_cr {
                 text.insert(0, '\r');
@@ -164,10 +169,10 @@ pub fn transcode_to<W: Write>(
     Ok(Some(stats))
 }
 
-/// Decodes `raw`, writing each sequence that is not valid in `codec` (which the view shows as
-/// U+FFFD) as '?', and returns the text with how many such sequences there were. A U+FFFD that
-/// is really in the text stays one.
-fn decode_marking_invalid(codec: &Codec, raw: &[u8]) -> (String, u64) {
+/// Decodes `raw`, each sequence that is not valid in `codec` becoming U+FFFD (as the view shows
+/// it), and returns the text with how many such sequences there were; a U+FFFD that is really
+/// in the text is not counted.
+fn decode_counting_invalid(codec: &Codec, raw: &[u8]) -> (String, u64) {
     let text = codec.decode_lossy(raw);
     if !text.contains(REPLACEMENT) {
         return (text, 0);
@@ -178,7 +183,7 @@ fn decode_marking_invalid(codec: &Codec, raw: &[u8]) -> (String, u64) {
         for chunk in raw.utf8_chunks() {
             out.push_str(chunk.valid());
             if !chunk.invalid().is_empty() {
-                out.push('?');
+                out.push(REPLACEMENT);
                 invalid += 1;
             }
         }
@@ -189,7 +194,7 @@ fn decode_marking_invalid(codec: &Codec, raw: &[u8]) -> (String, u64) {
             let (c, l) = codec.decode_char(&raw[i..]);
             let l = l.min(raw.len() - i);
             if c == REPLACEMENT && raw[i..i + l] != literal[..] {
-                out.push('?');
+                out.push(REPLACEMENT);
                 invalid += 1;
             } else {
                 out.push(c);
@@ -1066,8 +1071,9 @@ mod tests {
         assert_eq!(out.len(), big.len() - 1);
     }
 
-    /// Bytes not valid in the document's encoding (shown as U+FFFD) are written as '?' and
-    /// counted with the characters the target lacks; a U+FFFD really in the text is neither.
+    /// Bytes not valid in the document's encoding are written as U+FFFD, as the view shows
+    /// them, and counted; a U+FFFD really in the text is not counted. A target without U+FFFD
+    /// writes both as '?', counted with the characters it lacks.
     #[test]
     fn transcode_counts_invalid_bytes() {
         let dir = tempfile::tempdir().unwrap();
@@ -1084,11 +1090,11 @@ mod tests {
         };
         assert_eq!(
             run(&t, Encoding::Utf16Le),
-            ("ok ?? end ?( \u{FFFD}".to_string(), 3)
+            ("ok \u{FFFD}\u{FFFD} end \u{FFFD}( \u{FFFD}".to_string(), 3)
         );
         assert_eq!(
             run(&t, Encoding::Utf8),
-            ("ok ?? end ?( \u{FFFD}".to_string(), 3)
+            ("ok \u{FFFD}\u{FFFD} end \u{FFFD}( \u{FFFD}".to_string(), 3)
         );
         // Windows-1251 has no U+FFFD either: four '?', each counted once.
         assert_eq!(
@@ -1104,7 +1110,10 @@ mod tests {
         )
         .unwrap();
         let t2 = open(&p2, u16c);
-        assert_eq!(run(&t2, Encoding::Utf8), ("a?b\u{FFFD}".to_string(), 1));
+        assert_eq!(
+            run(&t2, Encoding::Utf8),
+            ("a\u{FFFD}b\u{FFFD}".to_string(), 1)
+        );
         // Through the save protocol.
         let (temp, stats) = write_temp(
             &t,

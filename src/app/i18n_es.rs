@@ -261,6 +261,7 @@ pub static ES: &[(&str, &str)] = &[
     ("Saved {size} in {secs}s.", "Se guardaron {size} en {secs} s."),
     ("Rewrote all {n} lines; wrote {size} in {secs}s.", "Se reescribieron las {n} líneas; se escribieron {size} en {secs} s."),
     ("Saved as {enc} ({size}). {n} characters do not exist in {enc} and were written as “?”.", "Guardado como {enc} ({size}). {n} caracteres no existen en {enc} y se escribieron como “?”."),
+    ("Saved as {enc} ({size}). The file had {n} unreadable characters; they were written as “�”.", "Guardado como {enc} ({size}). El archivo tenía {n} caracteres ilegibles; se escribieron como “�”."),
     ("Saved as {enc} ({size}) in {secs}s.", "Guardado como {enc} ({size}) en {secs} s."),
     ("Cancelled. The file on disk was not modified.", "Cancelado. El archivo en disco no se modificó."),
     ("Document is read-only", "El documento es de solo lectura"),

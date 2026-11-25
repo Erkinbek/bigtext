@@ -41,6 +41,14 @@ before 2.0. The renamed options below keep their old names until 2.0, hidden fro
   (`100MB` is 100 × 1,048,576 bytes). `gaps --min 1M` is an error rather than a minute, since `M`
   could be a month: minutes are `m` or `min`.
 
+### Changed
+
+- Saving in UTF-8 or UTF-16 writes the characters that could not be read in the file's encoding
+  as “�”, as the editor shows them, and says how many there were. 0.14.0 wrote them as “?”, which
+  cannot be told from a real question mark afterwards. Windows-1251, Windows-1252 and ISO-8859-1
+  have no “�”: saving in them still writes “?” and counts those characters with the ones the
+  encoding lacks.
+
 ## 0.14.0 — 2026-11-25
 
 ### Faster (contributed by Jahongir Qurbonov)
