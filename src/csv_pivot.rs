@@ -266,7 +266,7 @@ pub fn pivot_to_csv<W: Write>(p: &Pivot, agg: Agg, out: &mut W) -> io::Result<()
             })
         )?;
     }
-    writeln!(out, ",Total")?;
+    writeln!(out, ",total")?;
     for &r in &rows {
         write!(out, "{}", q(&p.rows[r]))?;
         for &c in &cols {
@@ -321,7 +321,7 @@ mod tests {
         };
         assert_eq!(
             csv_of(SALES, spec),
-            "city,rice,tea,Total\nTashkent,1,2,3\nBukhara,0,1,1\n"
+            "city,rice,tea,total\nTashkent,1,2,3\nBukhara,0,1,1\n"
         );
         let sum = PivotSpec {
             value: Some(2),
@@ -330,7 +330,7 @@ mod tests {
         };
         assert_eq!(
             csv_of(SALES, sum),
-            "city,rice,tea,Total\nTashkent,7,4,11\nBukhara,,5,5\n"
+            "city,rice,tea,total\nTashkent,7,4,11\nBukhara,,5,5\n"
         );
         let max = PivotSpec {
             value: Some(2),
@@ -339,7 +339,7 @@ mod tests {
         };
         assert_eq!(
             csv_of(SALES, max),
-            "city,rice,tea,Total\nTashkent,7,3,7\nBukhara,,5,5\n"
+            "city,rice,tea,total\nTashkent,7,3,7\nBukhara,,5,5\n"
         );
     }
 
@@ -355,7 +355,7 @@ mod tests {
         };
         assert_eq!(
             csv_of(SALES, by_day),
-            "ts,Bukhara,Tashkent,Total\n2024-05-01,5,3,8\n2024-05-02,,8,8\n"
+            "ts,Bukhara,Tashkent,total\n2024-05-01,5,3,8\n2024-05-02,,8,8\n"
         );
         let by_hour = PivotSpec {
             bucket: Bucket::Hour,

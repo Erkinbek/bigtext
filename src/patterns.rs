@@ -395,7 +395,7 @@ pub fn to_csv<W: Write>(p: &[Template], out: &mut W) -> io::Result<()> {
             s.to_string()
         }
     };
-    writeln!(out, "lines,level,template,first offset,last offset")?;
+    writeln!(out, "lines,level,template,first_offset,last_offset")?;
     for t in p {
         writeln!(
             out,
@@ -565,6 +565,6 @@ mod tests {
         assert_eq!((only.lines, only.templates.len()), (1, 1));
         let mut csv = Vec::new();
         to_csv(&p.templates, &mut csv).unwrap();
-        assert!(String::from_utf8(csv).unwrap().starts_with("lines,level,template,first offset,last offset\n6,INFO,INFO request <n> done in <n> ms,0,"));
+        assert!(String::from_utf8(csv).unwrap().starts_with("lines,level,template,first_offset,last_offset\n6,INFO,INFO request <n> done in <n> ms,0,"));
     }
 }

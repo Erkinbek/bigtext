@@ -315,13 +315,15 @@ pub fn export<W: Write + Seek>(
                     let obj: Vec<String> = values
                         .iter()
                         .enumerate()
-                        .map(|(i, v)| format!("{}: {}", json_string(&name(i)), json_string(v)))
+                        .map(|(i, v)| format!("{}:{}", json_string(&name(i)), json_string(v)))
                         .collect();
+                    // Records without spaces, as every JSON record bigtext writes; an array
+                    // has one per line, as JSON Lines → JSON writes it.
                     if format == Format::Json {
-                        w.write_all(if stats.rows == 0 { b"\n  " } else { b",\n  " })?;
-                        write!(w, "{{{}}}", obj.join(", "))?;
+                        w.write_all(if stats.rows == 0 { b"\n" } else { b",\n" })?;
+                        write!(w, "{{{}}}", obj.join(","))?;
                     } else {
-                        writeln!(w, "{{{}}}", obj.join(", "))?;
+                        writeln!(w, "{{{}}}", obj.join(","))?;
                     }
                     stats.rows += 1;
                 }
@@ -393,17 +395,17 @@ mod tests {
     #[test]
     fn json_and_lines() {
         let (j, st) = run(T, None, true, Format::Json);
-        assert_eq!(String::from_utf8(j).unwrap(), "[\n  {\"name\": \"Ann\", \"qty\": \"007\", \"note\": \"a|b\"},\n  {\"name\": \"Bob\", \"qty\": \"12.5\", \"note\": \"x\\\"y\"}\n]\n");
+        assert_eq!(String::from_utf8(j).unwrap(), "[\n{\"name\":\"Ann\",\"qty\":\"007\",\"note\":\"a|b\"},\n{\"name\":\"Bob\",\"qty\":\"12.5\",\"note\":\"x\\\"y\"}\n]\n");
         assert_eq!(st.rows, 2);
         let (l, _) = run(T, Some(&[1, 0]), true, Format::JsonLines);
         assert_eq!(
             String::from_utf8(l).unwrap(),
-            "{\"qty\": \"007\", \"name\": \"Ann\"}\n{\"qty\": \"12.5\", \"name\": \"Bob\"}\n"
+            "{\"qty\":\"007\",\"name\":\"Ann\"}\n{\"qty\":\"12.5\",\"name\":\"Bob\"}\n"
         );
         let (n, st) = run("1,2\n", None, false, Format::JsonLines);
         assert_eq!(
             (String::from_utf8(n).unwrap().as_str(), st.rows),
-            ("{\"column1\": \"1\", \"column2\": \"2\"}\n", 1)
+            ("{\"column1\":\"1\",\"column2\":\"2\"}\n", 1)
         );
         let (e, _) = run("a,b\n", None, true, Format::Json);
         assert_eq!(String::from_utf8(e).unwrap(), "[]\n");

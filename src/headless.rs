@@ -160,7 +160,7 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         [--by hour|day|month] [-o OUT]
         A pivot table as CSV: a row per value of --rows (or per hour, day or
         month of a time column), a column per value of --cols, row counts or
-        the aggregated --value in the cells, and a Total column.
+        the aggregated --value in the cells, and a total column.
   validate FILE [--as csv|json|jsonl] [--no-header] [--numeric 3,5]
         Checks a CSV / TSV table: rows with another field count, stray or
         unclosed quotes, control characters, and (--numeric) text in number
@@ -2253,8 +2253,8 @@ fn cmd_jsonl(args: &[String], out: &mut dyn Write) -> Res<i32> {
                     .iter()
                     .map(|f| {
                         format!(
-                            "\"{}\": {}",
-                            f.replace('"', "\\\""),
+                            "{}:{}",
+                            serde_json::Value::from(f.as_str()),
                             if line.trim_ascii_start().starts_with(b"{") {
                                 crate::fields::find_raw_json(line, f)
                                     .map(|v| String::from_utf8_lossy(v).into_owned())
@@ -2266,7 +2266,7 @@ fn cmd_jsonl(args: &[String], out: &mut dyn Write) -> Res<i32> {
                         )
                     })
                     .collect();
-                writeln!(w, "{{{}}}", parts.join(", "))?;
+                writeln!(w, "{{{}}}", parts.join(","))?;
             }
         }
         if a.flag(&["--count"]) {
@@ -3281,24 +3281,24 @@ mod tests {
         let t = file(&d, "t.csv", b"sep=;\n# note\nk;v\nx;1\n");
         assert_eq!(
             run_args(&["convert", &t, "--to", "jsonl"]).1,
-            "{\"k\": \"x\", \"v\": \"1\"}\n"
+            "{\"k\":\"x\",\"v\":\"1\"}\n"
         );
         let n = file(&d, "n.csv", b"1,2\n3,4\n5,6\n");
         assert_eq!(
             run_args(&["convert", &n, "--to", "jsonl"]).1.lines().next(),
-            Some("{\"column1\": \"1\", \"column2\": \"2\"}")
+            Some("{\"column1\":\"1\",\"column2\":\"2\"}")
         );
         assert_eq!(
             run_args(&["convert", &n, "--to", "jsonl", "--header"])
                 .1
                 .lines()
                 .next(),
-            Some("{\"1\": \"3\", \"2\": \"4\"}")
+            Some("{\"1\":\"3\",\"2\":\"4\"}")
         );
         let q = file(&d, "q.csv", b"a,b\n'x,y',2\n");
         assert_eq!(
             run_args(&["convert", &q, "--to", "jsonl", "--quote", "'"]).1,
-            "{\"a\": \"x,y\", \"b\": \"2\"}\n"
+            "{\"a\":\"x,y\",\"b\":\"2\"}\n"
         );
     }
 
@@ -3325,7 +3325,7 @@ mod tests {
                 "level,ms"
             ])
             .1,
-            "{\"level\": \"info\", \"ms\": 20}\n"
+            "{\"level\":\"info\",\"ms\":20}\n"
         );
         assert_eq!(
             run_args(&["jsonl", &f, "--fields", "ms,u.id,msg", "--to", "csv"]).1,
@@ -3359,11 +3359,11 @@ mod tests {
         );
         assert_eq!(
             run_args(&["pivot", &t, "--rows", "city", "--cols", "product"]).1,
-            "city,rice,tea,Total\nT,1,1,2\nB,0,1,1\n"
+            "city,rice,tea,total\nT,1,1,2\nB,0,1,1\n"
         );
         assert_eq!(
             run_args(&["pivot", &t, "--rows", "1", "--cols", "2", "--value", "qty"]).1,
-            "city,rice,tea,Total\nT,7,3,10\nB,,5,5\n"
+            "city,rice,tea,total\nT,7,3,10\nB,,5,5\n"
         );
         assert_eq!(
             run_args(&["pivot", &t, "--rows", "city", "--cols", "product", "--agg", "mean"]).0,
@@ -4191,7 +4191,7 @@ mod tests {
         let csv_path = file(&d, "t.csv", b"k,v\nx,1\n");
         assert_eq!(
             run_args(&["convert", &csv_path, "--to", "jsonl"]).1,
-            "{\"k\": \"x\", \"v\": \"1\"}\n"
+            "{\"k\":\"x\",\"v\":\"1\"}\n"
         );
         assert_eq!(run_args(&["convert", &csv_path, "--to", "xlsx"]).0, 2);
         let jl = file(&d, "e.jsonl", b"{\"a\": 1}\n");
@@ -4317,7 +4317,7 @@ x,-9
             run_args(&["jsonl", &lf, "-q", ".level = error", "--fields", "user,ms"]);
         assert_eq!(
             (code, out.as_str()),
-            (0, "{\"user\": \"ann\", \"ms\": \"5\"}\n"),
+            (0, "{\"user\":\"ann\",\"ms\":\"5\"}\n"),
             "{err}"
         );
         let (_, out, _) = run_args(&[

@@ -21,6 +21,13 @@ before 2.0. The renamed options below keep their old names until 2.0, hidden fro
 - The exit codes are listed per command in USAGE.md: 0 done, 1 nothing found (for the diff
   commands and `validate`: the files differ, or there are problems), 2 an error. `split` of an
   empty file now exits with 1, as it writes no parts.
+- CSV headers are all snake_case: `patterns` writes `first_offset` and `last_offset` (were
+  `first offset`, `last offset`), `csv … group --sum COL` writes `sum_COL`, `mean_COL`, `min_COL`
+  and `max_COL` (were `sum of COL` and so on), and `pivot` ends with a `total` column (was
+  `Total`). The same headers are in the app's exports.
+- JSON records have no spaces, as `filter --json` always wrote them: `jsonl --fields` and CSV →
+  JSON Lines write `{"a":"1","b":"2"}` (were `{"a": "1", "b": "2"}`), and CSV → JSON writes one
+  record per line, as JSON Lines → JSON does.
 
 ## 0.14.0 — 2026-11-25
 

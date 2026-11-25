@@ -7393,7 +7393,7 @@ impl SelfTest {
                         };
                     }
                     let t = text(app);
-                    if t != "city,3,5,7,Total\nTashkent,1,0,1,2\nBukhara,0,1,0,1\n" {
+                    if t != "city,3,5,7,total\nTashkent,1,0,1,2\nBukhara,0,1,0,1\n" {
                         return Step::Fail(format!("text {t:?}"));
                     }
                     c.key(Key::W, CTRL);

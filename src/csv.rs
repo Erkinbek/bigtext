@@ -1082,10 +1082,10 @@ pub fn groups_to_csv<W: Write>(g: &Groups, out: &mut W) -> io::Result<()> {
                 out,
                 "{},rows,{},{},{},{}",
                 q(&key),
-                q(&format!("sum of {v}")),
-                q(&format!("mean of {v}")),
-                q(&format!("min of {v}")),
-                q(&format!("max of {v}"))
+                q(&format!("sum_{v}")),
+                q(&format!("mean_{v}")),
+                q(&format!("min_{v}")),
+                q(&format!("max_{v}"))
             )?;
             for x in &g.groups {
                 writeln!(
@@ -1976,7 +1976,10 @@ mod group_tests {
         assert_eq!((g.groups[1].key.as_str(), g.groups[1].rows), ("Bukhara", 1));
         let mut out = Vec::new();
         groups_to_csv(&g, &mut out).unwrap();
-        assert_eq!(String::from_utf8(out).unwrap(), "city,rows,sum of qty,mean of qty,min of qty,max of qty\nTashkent,3,10,5,3,7\nBukhara,1,5,5,5,5\n");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "city,rows,sum_qty,mean_qty,min_qty,max_qty\nTashkent,3,10,5,3,7\nBukhara,1,5,5,5,5\n"
+        );
         let g = group_by(
             &b,
             Dialect::new(b','),
