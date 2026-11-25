@@ -1,0 +1,7 @@
+BigText v0.14.0, release binaries (bigtext-windows-x64.zip)
+runner: windows-latest (Windows X64), image win25-vs2026 20261116.315.1
+date: 2026-11-25 01:01 UTC
+CPU: AMD EPYC 7763 64-Core Processor                , 4 logical
+RAM: 16 GiB
+D:              150G  3.1G  147G   3% /d
+free disk after the small files: 143 GB

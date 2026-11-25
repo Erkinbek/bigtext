@@ -1,0 +1,16 @@
+file: testdata/utf16le.txt
+private memory at start: n/a
+private memory right after open (mapping created, nothing read): n/a
+size: 64.00 MB (67108884 bytes), backing: pread, encoding: UTF-16 LE, line endings: CRLF
+open + detect: 2.73 ms
+first screen (60 rows, 2844 chars): 0.221 ms  => open-to-first-screen 2.95 ms
+go-to line before indexing (estimate + layout of 50 rows): avg 0.643 ms, max 2.563 ms
+index: 0.02 s (2821 MB/s), 690320 lines, index memory 8.12 KB (0.0124% of file)
+private memory with file open + index: n/a
+go-to line after indexing (exact=true, + layout of 50 rows): avg 0.187 ms, max 0.659 ms
+literal "timeout connection": 350 matches in 0.01 s = 5095 MB/s (4.98 GB/s) [memmem] [3 threads]
+literal (ignore case) "timeout connection": 350 matches in 0.10 s = 641 MB/s (0.63 GB/s) [regex] [3 threads]
+regex "id=99\\d{4} ": 0 matches in 0.07 s = 899 MB/s (0.88 GB/s) [regex] [3 threads]
+regex "ERROR\\] id=\\d+ timeout": 0 matches in 0.08 s = 840 MB/s (0.82 GB/s) [regex] [3 threads]
+replace all "timeout" -> "TIMEOUT!": 40427 replacements, wrote 64.08 MB in 0.04 s = 1497 MB/s (incl. fsync); private memory before 0 B peak 0 B
+private memory at end (file open, idle): n/a

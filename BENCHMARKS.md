@@ -180,34 +180,51 @@ target/release/bigtext --bench-ui FILE --scenario close-search --report r.txt
 ## Linux, macOS and Windows on GitHub runners
 
 The [bench workflow](.github/workflows/bench.yml) ran the core benchmark (`bigtext-bench`, no
-window) with the published 0.12.0 binaries on four GitHub-hosted runners, 3 runs each, on
-23 November 2026. Raw reports: [`bench/2026-11-23-ci/`](bench/2026-11-23-ci/). Runners are shared
-virtual machines with 3–4 cores, so the numbers vary between runs (the ranges are wide) and are
-lower than a desktop's. They show how the Linux and macOS reading path (`pread`) behaves, not
-what a user's PC does.
+window) with the published 0.14.0 binaries on four GitHub-hosted runners, 3 runs each, on
+25 November 2026. Raw reports: [`bench/2026-11-25-ci/`](bench/2026-11-25-ci/); the 0.12.0 run of
+23 November is in [`bench/2026-11-23-ci/`](bench/2026-11-23-ci/). Runners are shared virtual
+machines with 3–4 cores, so the numbers vary between runs (the ranges are wide) and are lower
+than a desktop's. They show how the Linux and macOS reading path (`pread`) behaves, not what a
+user's PC does.
 
 | | Linux x64 | macOS arm64 | macOS x64 (Intel) | Windows x64 |
 |---|---|---|---|---|
-| Runner | AMD EPYC 7763, 4 vCPU, 16 GB | Apple M1 (virtual), 3 cores, 7 GB | Intel i7-8700B, 4 cores, 14 GB | Intel Xeon 6973P-C, 4 vCPU, 16 GB |
-| Open → first screen laid out (core), 1 / 10 GB | 3.0 / 2.9–3.9 ms | 5.4–8.8 / 12.5–17.1 ms | 9.4–19.0 / 5.8–47.1 ms | 2.5–3.0 / 2.5–3.0 ms |
-| Background line index, 1 GB | 0.84–0.87 s | 1.18–1.76 s | 2.37–5.03 s | 2.34–2.38 s |
-| Background line index, 10 GB | 10.1–10.9 s | 11.5–12.9 s | 28.7–180 s | 21.3–24.5 s |
-| Literal search, 1 / 10 GB | 2.07–2.11 / 2.22 GB/s | 1.10–4.29 / 0.85–1.25 GB/s | 1.32–2.53 / 0.15–0.74 GB/s | 3.05–3.61 / 3.26–3.59 GB/s |
-| Regex `id=99\d{4} `, 1 / 10 GB | 1.94–2.04 / 2.05–2.09 GB/s | 3.42–3.92 / 0.82–1.37 GB/s | 2.01–2.92 / 0.38–0.88 GB/s | 2.98–3.63 / 3.33–3.70 GB/s |
-| Replace All, 1 GB (2.2 M replacements, with fsync) | 3.62–4.02 s | 0.80–1.66 s | 3.12–8.65 s | 4.40–6.20 s, 43.4–43.7 MB peak |
+| Runner | AMD EPYC 7763, 4 vCPU, 16 GB | Apple M1 (virtual), 3 cores, 7 GB | Intel i7-8700B, 4 cores, 14 GB | AMD EPYC 7763, 4 vCPU, 16 GB |
+| Open → first screen laid out (core), 1 / 10 GB | 2.6–2.7 / 2.7–3.8 ms | 3.6–5.3 / 8.7–17.7 ms | 5.5–13.5 / 46.5–48.5 ms | 3.0–5.0 / 3.2–3.4 ms |
+| Background line index, 1 GB | 0.40–0.41 s | 0.88–1.10 s | 1.01–2.31 s | 2.35–3.80 s |
+| Background line index, 10 GB | 6.6–7.2 s | 9.3–10.0 s | 11.1–14.6 s | 21.2–26.1 s |
+| Literal search, 1 / 10 GB | 3.76–4.08 / 4.35–4.37 GB/s | 1.59–3.95 / 1.38–1.83 GB/s | 1.81–4.51 / 0.20–0.79 GB/s | 4.96–5.36 / 5.54–6.21 GB/s |
+| Case-insensitive search, 1 / 10 GB | 2.96–3.12 / 3.20–3.23 GB/s | 3.20–4.59 / 0.72–1.75 GB/s | 1.73–3.33 / 0.85–1.51 GB/s | 3.92–4.25 / 4.63–4.95 GB/s |
+| Regex `id=99\d{4} `, 1 / 10 GB | 3.56–7.39 / 7.39–8.74 GB/s | 6.91–8.66 / 1.16–1.64 GB/s | 3.49–5.09 / 0.66–1.52 GB/s | 4.62–5.66 / 5.34–5.74 GB/s |
+| Replace All, 1 GB (2.2 M replacements, with fsync) | 3.48–3.93 s | 0.80–1.19 s | 2.27–3.54 s | 2.91–4.00 s, 43.4–43.8 MB peak |
 
 - **"Open → first screen" here is the core figure** (the text of the first screen read and laid
   out, no window), not the GUI's "drawn" time in the summary above.
+- **0.12.0 → 0.14.0 on the Linux runner**, which had the same processor model both days:
+  - background index, 1 GB: 0.84–0.87 → 0.40–0.41 s;
+  - background index, 10 GB: 10.1–10.9 → 6.6–7.2 s (about 1.0 → 1.4–1.6 GB/s);
+  - on 10 GB, literal search 2.22 → 4.35–4.37 GB/s, case-insensitive 1.41–1.45 → 3.20–3.23 GB/s
+    and the regex 2.05–2.09 → 7.39–8.74 GB/s;
+  - regex in UTF-16: 0.28–0.29 → 0.61–0.64 GB/s; in Windows-1251: 0.24 → 0.56–0.63 GB/s.
+
+  Replace All stayed at the drive's speed (3.62–4.02 → 3.48–3.93 s).
+- **On the Linux runner the regular expressions ran faster than the literal search** on 10 GB in
+  every run (7.4–8.7 against 4.4 GB/s). On the PC the literal search is the faster one. The cause
+  is not known yet.
+- **The Windows runner had a different processor than on 23 November** (AMD EPYC 7763 instead of
+  Intel Xeon 6973P-C), so its numbers are not compared with 0.12.0's. Its background index stayed
+  at 0.27–0.48 GB/s (50 GB would take about 2 minutes there): on Windows the reads of one file
+  queue up, so counting on several threads adds little. Scrolling and Go to line do not wait for
+  the index.
 - **The 10 GB file does not fit in the macOS arm64 runner's 7 GB of memory**, so its 10 GB
-  searches read the disk; the Intel runner's disk made its 10 GB runs vary from 28.7 to 180 s.
-- **On 4 cores the background index was the slowest part**: 0.42–0.48 GB/s on the Windows runner
-  and about 1 GB/s on Linux with 0.12.0, against 2.4–2.7 GB/s on the 24-core PC then (50 GB would
-  take from about 50 s to 2 minutes there). Scrolling and Go to line do not wait for it. 0.14.0
-  counts on several threads; these runners are to be measured again with its published binaries.
-- **Memory** is not measured on macOS (`n/a` in the reports), and on Linux the figure changed
-  from 1 MB to 71 MB between identical runs, so it is left out.
-- **Intel Macs**: this is the first time the macOS x64 build ran on an Intel processor. The core
-  benchmark ran on every test file; the window itself was not tested there.
+  searches read the disk.
+- **The macOS runners indexed faster than with 0.12.0.** 10 GB took 9.3–10.0 s instead of
+  11.5–12.9 s on Apple M1, and 11.1–14.6 s instead of 28.7–180 s on Intel. Their disks vary from
+  day to day, so the gain is not measured cleanly.
+- **Memory** is not measured on macOS (`n/a` in the reports), and on Linux the figure at the end
+  changed from 10 MB to 161 MB between identical runs, so it is left out.
+- **Intel Macs**: the macOS x64 build ran the core benchmark on every test file; the window itself
+  was not tested there.
 
 ## Earlier runs
 

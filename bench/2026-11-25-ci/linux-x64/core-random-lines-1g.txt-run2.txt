@@ -1,0 +1,16 @@
+file: testdata/random-lines-1g.txt
+private memory at start: 360.00 KB
+private memory right after open (mapping created, nothing read): 388.00 KB
+size: 1.00 GB (1073741834 bytes), backing: pread, encoding: UTF-8, line endings: LF
+open + detect: 2.23 ms
+first screen (60 rows, 6919 chars): 0.395 ms  => open-to-first-screen 2.63 ms
+go-to line before indexing (estimate + layout of 50 rows): avg 0.312 ms, max 0.386 ms
+index: 0.40 s (2540 MB/s), 9069553 lines, index memory 130.00 KB (0.0124% of file)
+private memory with file open + index: 63.78 MB
+go-to line after indexing (exact=true, + layout of 50 rows): avg 0.228 ms, max 0.378 ms
+literal "timeout connection": 43615 matches in 0.26 s = 4007 MB/s (3.91 GB/s) [memmem] [4 threads]
+literal (ignore case) "timeout connection": 43615 matches in 0.34 s = 3027 MB/s (2.96 GB/s) [regex] [4 threads]
+regex "id=99\\d{4} ": 90628 matches in 0.14 s = 7569 MB/s (7.39 GB/s) [regex] [4 threads]
+regex "ERROR\\] id=\\d+ timeout": 36705 matches in 0.14 s = 7268 MB/s (7.10 GB/s) [regex] [4 threads]
+replace all "timeout" -> "TIMEOUT!": 2219157 replacements, wrote 1.00 GB in 3.48 s = 294 MB/s (incl. fsync); private memory before 137.37 MB peak 176.94 MB
+private memory at end (file open, idle): 10.88 MB
