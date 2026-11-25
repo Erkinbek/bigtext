@@ -275,6 +275,12 @@ pub struct ValueCount {
     pub last: Option<i64>,
     /// Offset of its first line.
     pub first_off: u64,
+    /// Starts of its first and last line with a timestamp, and those timestamps as the lines
+    /// write them (for the CSV, which keeps the file's format).
+    pub first_at: Option<u64>,
+    pub last_at: Option<u64>,
+    pub first_text: Option<String>,
+    pub last_text: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -339,11 +345,14 @@ pub fn value_counts(
         } else {
             v
         };
+        let at = t.map(|_| off);
         if let Some(c) = map.get_mut(&v) {
             c.lines += 1;
             if t.is_some() {
                 c.first = c.first.or(t);
+                c.first_at = c.first_at.or(at);
                 c.last = t;
+                c.last_at = at;
             }
         } else if map.len() < VALUES_MAX {
             map.insert(
@@ -354,6 +363,10 @@ pub fn value_counts(
                     first: t,
                     last: t,
                     first_off: off,
+                    first_at: at,
+                    last_at: at,
+                    first_text: None,
+                    last_text: None,
                 },
             );
         } else {
@@ -362,6 +375,10 @@ pub fn value_counts(
     }
     out.dated = dated.unwrap_or(false);
     out.values = map.into_values().collect();
+    for v in &mut out.values {
+        v.first_text = v.first_at.and_then(|o| timestamp::stamp_text_at(buf, o));
+        v.last_text = v.last_at.and_then(|o| timestamp::stamp_text_at(buf, o));
+    }
     out.values.sort_by(|a, b| {
         b.lines
             .cmp(&a.lines)
@@ -451,8 +468,11 @@ pub fn counts_to_csv<W: Write>(c: &ValueCounts, key: &str, out: &mut W) -> io::R
             s.to_string()
         }
     };
-    let time = |k: Option<i64>| {
-        k.map(|k| timestamp::format_key(k, c.dated, true))
+    // The times as the file writes them; a formatted key only if the text could not be read.
+    let time = |text: &Option<String>, k: Option<i64>| {
+        text.clone()
+            .or_else(|| k.map(|k| timestamp::format_key(k, c.dated, true)))
+            .map(|t| q(&t))
             .unwrap_or_default()
     };
     writeln!(out, "{},lines,percent,first,last", q(key))?;
@@ -467,8 +487,8 @@ pub fn counts_to_csv<W: Write>(c: &ValueCounts, key: &str, out: &mut W) -> io::R
             "{},{},{pct:.2},{},{}",
             q(&v.value),
             v.lines,
-            time(v.first),
-            time(v.last)
+            time(&v.first_text, v.first),
+            time(&v.last_text, v.last)
         )?;
     }
     Ok(())

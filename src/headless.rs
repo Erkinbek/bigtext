@@ -2748,13 +2748,17 @@ fn cmd_gaps(args: &[String], out: &mut dyn Write) -> Res<i32> {
     };
     for x in &g.gaps {
         let (a1, a2) = (line_of(x.before)?, line_of(x.after)?);
-        let key = |k| timestamp::format_key(k, g.dated, true);
+        // The times as the file writes them, as values and log → CSV give them.
+        let time = |at, k| {
+            timestamp::stamp_text_at(&buf, at)
+                .unwrap_or_else(|| timestamp::format_key(k, g.dated, true))
+        };
         writeln!(
             out,
             "{a1}-{a2}: {} ({} -> {})",
             timestamp::format_delta(x.ms()),
-            key(x.from),
-            key(x.to)
+            time(x.before, x.from),
+            time(x.after, x.to)
         )?;
     }
     Ok(if g.gaps.is_empty() { 1 } else { 0 })
@@ -4095,9 +4099,20 @@ mod tests {
             "a.log",
             b"ts=2024-05-01T10:00:00Z status=200\nts=2024-05-01T10:00:09Z status=200\n",
         );
+        // The times as the file writes them.
         assert_eq!(
             run_args(&["values", "status", &lf]).1.lines().nth(1),
-            Some("200,2,100.00,2024-05-01 10:00:00,2024-05-01 10:00:09")
+            Some("200,2,100.00,2024-05-01T10:00:00Z,2024-05-01T10:00:09Z")
+        );
+        // A time with a comma is quoted.
+        let comma = file(
+            &d,
+            "c.log",
+            b"2024-05-01 10:00:00,250 status=500\n2024-05-01 10:00:01,500 status=500\n",
+        );
+        assert_eq!(
+            run_args(&["values", "status", &comma]).1.lines().nth(1),
+            Some("500,2,100.00,\"2024-05-01 10:00:00,250\",\"2024-05-01 10:00:01,500\"")
         );
         assert_eq!(run_args(&["values", "nope", &lf]).0, 1);
     }
@@ -4120,6 +4135,16 @@ mod tests {
         );
         assert_eq!(run_args(&["gaps", "--min", "5m", &log]).0, 1);
         assert_eq!(run_args(&["gaps", "--min", "soon", &log]).0, 2);
+        // The times as the file writes them.
+        let iso = file(
+            &d,
+            "iso.log",
+            b"2024-05-01T10:00:00.120Z a\n2024-05-01T10:01:00.120Z b\n",
+        );
+        assert_eq!(
+            run_args(&["gaps", &iso]).1,
+            "1-2: +1 m 00.000 s (2024-05-01T10:00:00.120Z -> 2024-05-01T10:01:00.120Z)\n"
+        );
     }
 
     #[test]

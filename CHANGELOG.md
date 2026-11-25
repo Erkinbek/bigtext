@@ -28,6 +28,9 @@ before 2.0. The renamed options below keep their old names until 2.0, hidden fro
 - JSON records have no spaces, as `filter --json` always wrote them: `jsonl --fields` and CSV →
   JSON Lines write `{"a":"1","b":"2"}` (were `{"a": "1", "b": "2"}`), and CSV → JSON writes one
   record per line, as JSON Lines → JSON does.
+- `values` and `gaps` write times as the file writes them (`2024-05-01T10:00:00.120Z`,
+  `10/Oct/2000:13:55:36 -0700`), as log → CSV already did; they were reformatted as
+  `2024-05-01 10:00:00`. The app's export of a field's values does the same.
 
 ## 0.14.0 — 2026-11-25
 

@@ -104,7 +104,8 @@ fn valid(y: i64, m: i64, d: i64) -> Option<(i64, i64, i64)> {
 /// `YYYY/M/D`, `YYYY.MM.DD`, `DD.MM.YYYY`, `D-M-YYYY`, `DD/MM/YYYY` or `M/D/YYYY` (slashes are
 /// month-first unless that cannot be a month), `DD/Mon/YYYY` (Apache), `Mon D, YYYY` (Java)
 /// and syslog's `Mon DD` (no year: 2000 is used, so only the order within one file matters).
-fn date_before(b: &[u8]) -> Option<((i64, i64, i64), bool)> {
+/// The last value is where the date starts in `b`.
+fn date_before(b: &[u8]) -> Option<((i64, i64, i64), bool, usize)> {
     let n = b.len();
     let sep = |c: u8| matches!(c, b'-' | b'/' | b'.');
     // Start of the run of digits that ends at `end`.
@@ -130,7 +131,7 @@ fn date_before(b: &[u8]) -> Option<((i64, i64, i64), bool)> {
                 }
                 let (a, mid, c) = (num(f3)?, num(f2)?, num(f1)?);
                 if f3.len() == 4 && f2.len() <= 2 && f1.len() <= 2 {
-                    return valid(a, mid, c).map(|d| (d, true));
+                    return valid(a, mid, c).map(|d| (d, true, s3));
                 }
                 if f1.len() == 4 && f3.len() <= 2 && f2.len() <= 2 {
                     let d = if sp == b'/' && a <= 12 {
@@ -138,7 +139,7 @@ fn date_before(b: &[u8]) -> Option<((i64, i64, i64), bool)> {
                     } else {
                         valid(c, mid, a)
                     };
-                    return d.map(|d| (d, true));
+                    return d.map(|d| (d, true, s3));
                 }
             }
         }
@@ -148,7 +149,7 @@ fn date_before(b: &[u8]) -> Option<((i64, i64, i64), bool)> {
         if t[2] == b'/' && t[6] == b'/' {
             if let (Some(d), Some(m), Some(y)) = (num(&t[..2]), month_name(&t[3..6]), num(&t[7..]))
             {
-                return valid(y, m, d).map(|x| (x, true));
+                return valid(y, m, d).map(|x| (x, true, n - 11));
             }
         }
     }
@@ -161,7 +162,7 @@ fn date_before(b: &[u8]) -> Option<((i64, i64, i64), bool)> {
                 num(&b[ds..s1 - 2]),
                 num(&b[s1..]),
             ) {
-                return valid(y, m, d).map(|x| (x, true));
+                return valid(y, m, d).map(|x| (x, true, ds - 4));
             }
         }
     }
@@ -174,7 +175,7 @@ fn date_before(b: &[u8]) -> Option<((i64, i64, i64), bool)> {
             .map(|r| r.strip_suffix(b" ").unwrap_or(r))?;
         if rest.len() >= 3 && (rest.len() == 3 || !rest[rest.len() - 4].is_ascii_alphabetic()) {
             let m = month_name(&rest[rest.len() - 3..])?;
-            return valid(2000, m, num(&b[s1..])?).map(|x| (x, false));
+            return valid(2000, m, num(&b[s1..])?).map(|x| (x, false, rest.len() - 3));
         }
     }
     None
@@ -182,13 +183,28 @@ fn date_before(b: &[u8]) -> Option<((i64, i64, i64), bool)> {
 
 /// The first timestamp in `text` (looking at its first characters only).
 pub fn parse(text: &str) -> Option<Stamp> {
+    let (b, n) = ascii_head(text);
+    parse_span(&b[..n]).map(|(st, _, _)| st)
+}
+
+/// Like [`parse`], with the timestamp's text as the line writes it ("2024-05-01T10:00:00.123Z",
+/// "10/Oct/2000:13:55:36 -0700", "1714557600"): the scripts' output keeps the file's format.
+pub fn parse_text(text: &str) -> Option<(Stamp, String)> {
+    let (b, n) = ascii_head(text);
+    // One byte of `b` per character of `text`, so the span counts characters.
+    let (st, s, e) = parse_span(&b[..n])?;
+    Some((st, text.chars().skip(s).take(e - s).collect()))
+}
+
+/// The first characters of `text` as ASCII bytes, others replaced by '?', and how many.
+fn ascii_head(text: &str) -> ([u8; LOOK], usize) {
     let mut b = [0u8; LOOK];
     let mut n = 0;
     for c in text.chars().take(LOOK) {
         b[n] = if c.is_ascii() { c as u8 } else { b'?' };
         n += 1;
     }
-    parse_ascii(&b[..n])
+    (b, n)
 }
 
 /// A time someone typed: anything [`parse`] reads, and also one without seconds (`14:30`), a
@@ -215,12 +231,17 @@ pub fn parse_input(text: &str) -> Option<Stamp> {
 /// Like [`parse`], for the bytes of a line in an ASCII-compatible encoding (UTF-8, the Windows
 /// and ISO code pages), without decoding it.
 pub fn parse_bytes(line: &[u8]) -> Option<Stamp> {
+    parse_bytes_span(line).map(|(st, _, _)| st)
+}
+
+/// [`parse_bytes`] with where the timestamp's bytes start and end in `line`.
+fn parse_bytes_span(line: &[u8]) -> Option<(Stamp, usize, usize)> {
     let mut b = [0u8; LOOK];
     let n = line.len().min(LOOK);
     for (d, &c) in b.iter_mut().zip(&line[..n]) {
         *d = if c.is_ascii() { c } else { b'?' };
     }
-    parse_ascii(&b[..n])
+    parse_span(&b[..n])
 }
 
 /// Keys that hold a Unix time in JSON and key=value logs.
@@ -242,8 +263,8 @@ fn unix_epoch_days() -> i64 {
 }
 
 /// A Unix time at `i`: 10 digits of seconds (with an optional fraction), or 13, 16 or 19 digits
-/// of milliseconds, microseconds or nanoseconds, between the years 2000 and 2100.
-fn epoch_at(b: &[u8], i: usize) -> Option<Stamp> {
+/// of milliseconds, microseconds or nanoseconds, between the years 2000 and 2100; and its end.
+fn epoch_at(b: &[u8], i: usize) -> Option<(Stamp, usize)> {
     let digits = b
         .get(i..)?
         .iter()
@@ -280,21 +301,25 @@ fn epoch_at(b: &[u8], i: usize) -> Option<Stamp> {
     {
         return None;
     }
-    Some(Stamp {
-        ms: unix_epoch_days() * DAY + ms,
-        has_date: true,
-        tz: Some(0),
-    })
+    Some((
+        Stamp {
+            ms: unix_epoch_days() * DAY + ms,
+            has_date: true,
+            tz: Some(0),
+        },
+        end,
+    ))
 }
 
-/// A Unix time as the line's first word, or as the value of a time key (`"ts":`, `time=`).
-fn epoch(b: &[u8]) -> Option<Stamp> {
+/// A Unix time as the line's first word, or as the value of a time key (`"ts":`, `time=`), with
+/// its start and end.
+fn epoch(b: &[u8]) -> Option<(Stamp, usize, usize)> {
     let first = b
         .iter()
         .take_while(|c| matches!(c, b' ' | b'\t' | b'['))
         .count();
-    if let Some(st) = epoch_at(b, first) {
-        return Some(st);
+    if let Some((st, end)) = epoch_at(b, first) {
+        return Some((st, first, end));
     }
     for key in EPOCH_KEYS {
         if let Some(p) = b.windows(key.len()).position(|w| w == key) {
@@ -303,8 +328,8 @@ fn epoch(b: &[u8]) -> Option<Stamp> {
                 .iter()
                 .take_while(|c| matches!(c, b' ' | b'"'))
                 .count();
-            if let Some(st) = epoch_at(b, k) {
-                return Some(st);
+            if let Some((st, end)) = epoch_at(b, k) {
+                return Some((st, k, end));
             }
         }
     }
@@ -337,10 +362,11 @@ fn zone_at(b: &[u8], i: usize) -> Option<(i16, usize)> {
         .then_some(((sign * (hh * 60 + mm)) as i16, end))
 }
 
-/// The first timestamp in `b` (ASCII; other characters replaced by '?').
-fn parse_ascii(b: &[u8]) -> Option<Stamp> {
-    if let Some(st) = epoch(b) {
-        return Some(st);
+/// The first timestamp in `b` (ASCII; other characters replaced by '?'), with where its text
+/// starts and ends.
+fn parse_span(b: &[u8]) -> Option<(Stamp, usize, usize)> {
+    if let Some(found) = epoch(b) {
+        return Some(found);
     }
     let mut i = 0;
     while i + 7 <= b.len() {
@@ -402,24 +428,31 @@ fn parse_ascii(b: &[u8]) -> Option<Stamp> {
                         .unwrap_or(before);
                     let trimmed = trimmed.strip_suffix(b" ").unwrap_or(trimmed);
                     return Some(match date_before(trimmed) {
-                        Some(((y, mo, d), year_known)) => {
+                        Some(((y, mo, d), year_known, start)) => {
                             // "Wed May 01 10:00:00 UTC 2024": the year comes after the time.
                             let (y, zone) = if year_known {
                                 (y, None)
+                            } else if let Some((y, zone, e)) = year_after(b, end) {
+                                end = e;
+                                (y, zone)
                             } else {
-                                year_after(b, end).unwrap_or((y, None))
+                                (y, None)
                             };
-                            Stamp {
+                            let st = Stamp {
                                 ms: days_from_civil(y, mo, d) * DAY + ms,
                                 has_date: true,
                                 tz: tz.or(zone),
-                            }
+                            };
+                            (st, start, end)
                         }
-                        None => Stamp {
-                            ms,
-                            has_date: false,
-                            tz,
-                        },
+                        None => {
+                            let st = Stamp {
+                                ms,
+                                has_date: false,
+                                tz,
+                            };
+                            (st, i, end)
+                        }
                     });
                 }
             }
@@ -429,29 +462,33 @@ fn parse_ascii(b: &[u8]) -> Option<Stamp> {
     None
 }
 
-/// " 2024" or " UTC 2024" at `i`: the year, and the offset of UTC or GMT.
-fn year_after(b: &[u8], i: usize) -> Option<(i64, Option<i16>)> {
+/// " 2024" or " UTC 2024" at `i`: the year, the offset of UTC or GMT, and the end.
+fn year_after(b: &[u8], i: usize) -> Option<(i64, Option<i16>, usize)> {
     let rest = b.get(i..)?.strip_prefix(b" ")?;
     let letters = rest.iter().take_while(|c| c.is_ascii_uppercase()).count();
-    let (zone, rest) = if (3..=4).contains(&letters) && rest.get(letters) == Some(&b' ') {
+    let (zone, rest, at) = if (3..=4).contains(&letters) && rest.get(letters) == Some(&b' ') {
         let name = &rest[..letters];
         (
             (name == b"UTC" || name == b"GMT").then_some(0),
             &rest[letters + 1..],
+            i + 1 + letters + 1,
         )
     } else {
-        (None, rest)
+        (None, rest, i + 1)
     };
     let y = num(rest.get(..4)?)?;
-    (!rest.get(4).is_some_and(u8::is_ascii_digit) && (1970..=2100).contains(&y))
-        .then_some((y, zone))
+    (!rest.get(4).is_some_and(u8::is_ascii_digit) && (1970..=2100).contains(&y)).then_some((
+        y,
+        zone,
+        at + 4,
+    ))
 }
 
 /// "2024-05-01 10:00:00.123 UTC" for a Unix time in seconds (10 digits, optional fraction) or
 /// milliseconds (13 digits); `None` for other text.
 pub fn epoch_text(text: &str) -> Option<String> {
     let b = text.trim().as_bytes();
-    let st = epoch_at(b, 0)?;
+    let (st, _) = epoch_at(b, 0)?;
     let end = b
         .iter()
         .take_while(|c| c.is_ascii_digit() || **c == b'.')
@@ -529,6 +566,21 @@ pub fn format_key(key: i64, dated: bool, seconds: bool) -> String {
     } else {
         time
     }
+}
+
+/// The timestamp of the line starting at `ls` as the line writes it (see [`parse_text`]), read
+/// as the scans read it: the bytes of a one-byte encoding, the decoded text of UTF-16.
+pub fn stamp_text_at(buf: &TextBuf, ls: u64) -> Option<String> {
+    let start = ls.max(buf.codec.bom_len as u64).min(buf.len());
+    let b = buf.read(start..(start + LINE_HEAD).min(buf.len()))?;
+    let cut = buf.codec.find_nl(&b, start).unwrap_or(b.len());
+    let cut = cut - cut % buf.codec.unit();
+    if buf.codec.unit() == 1 {
+        // A timestamp is ASCII, so its bytes are its text in every one-byte encoding.
+        let (_, s, e) = parse_bytes_span(&b[..cut])?;
+        return Some(String::from_utf8_lossy(&b[s..e]).into_owned());
+    }
+    parse_text(&buf.codec.decode_lossy(&b[..cut])).map(|(_, t)| t)
 }
 
 /// The timestamp of the line starting at `ls`.
@@ -679,6 +731,48 @@ pub fn find_time_utc(buf: &TextBuf, target: Stamp, cancel: &CancelToken) -> Resu
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_text_of_a_timestamp_as_written() {
+        let text = |l: &str| super::parse_text(l).map(|(_, t)| t);
+        for (line, want) in [
+            (
+                "2024-05-01T10:00:00.123Z INFO up",
+                "2024-05-01T10:00:00.123Z",
+            ),
+            (
+                "[2024-05-01 10:00:00,250] WARN x",
+                "2024-05-01 10:00:00,250",
+            ),
+            (
+                "1.2.3.4 - - [10/Oct/2000:13:55:36 -0700] \"GET / HTTP/1.1\" 200 5",
+                "10/Oct/2000:13:55:36 -0700",
+            ),
+            ("Oct 11 22:14:15 host app[1]: up", "Oct 11 22:14:15"),
+            (
+                "Wed May 01 10:00:00 UTC 2024 boot",
+                "May 01 10:00:00 UTC 2024",
+            ),
+            (
+                "May 1, 2024 3:04:05 PM org.x Main",
+                "May 1, 2024 3:04:05 PM",
+            ),
+            ("01.05.2024 10:00:00 ok", "01.05.2024 10:00:00"),
+            ("10:00:00 only a time", "10:00:00"),
+            ("{\"ts\": 1714557600, \"msg\": \"x\"}", "1714557600"),
+            ("1714557600123 started", "1714557600123"),
+            ("ünïcode 2024-05-01 10:00:00 ok", "2024-05-01 10:00:00"),
+        ] {
+            assert_eq!(text(line).as_deref(), Some(want), "{line}");
+            // The same time as parse reads.
+            assert_eq!(
+                super::parse_text(line).map(|x| x.0),
+                super::parse(line),
+                "{line}"
+            );
+        }
+        assert_eq!(text("no time here"), None);
+    }
+
     #[test]
     fn typed_times_without_seconds_or_time() {
         let t = super::parse_input("14:30").unwrap();
