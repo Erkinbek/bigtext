@@ -142,6 +142,10 @@ pub fn scan(
 
 /// "30s", "5m", "1h", "500ms", "2d" or a number of seconds, in milliseconds.
 pub fn parse_duration(s: &str) -> Option<i64> {
+    // "1M" reads as a month as easily as a minute: minutes are m or min only.
+    if s.trim().ends_with('M') {
+        return None;
+    }
     let t = s.trim().to_ascii_lowercase();
     let split = t
         .find(|c: char| !(c.is_ascii_digit() || c == '.'))
@@ -228,5 +232,9 @@ mod tests {
         assert_eq!(parse_duration("45"), Some(45_000));
         assert_eq!(parse_duration("x"), None);
         assert_eq!(parse_duration("0s"), None);
+        // Minutes are m or min; M could be a month.
+        assert_eq!(parse_duration("5min"), Some(300_000));
+        assert_eq!(parse_duration("5MIN"), Some(300_000));
+        assert_eq!(parse_duration("1M"), None);
     }
 }

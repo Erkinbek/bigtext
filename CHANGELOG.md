@@ -37,6 +37,9 @@ before 2.0. The renamed options below keep their old names until 2.0, hidden fro
 - The windowed `bigtext` runs a script command only with two dashes (`bigtext --sort FILE`), so
   `bigtext sort` opens a file named `sort`. `bigtext-cli` takes both forms, and `bigtext --help`
   points to `bigtext-cli --help` for all commands instead of listing eight.
+- `split --size` takes `MiB`, `GiB` and the like too; the help says that sizes are binary
+  (`100MB` is 100 × 1,048,576 bytes). `gaps --min 1M` is an error rather than a minute, since `M`
+  could be a month: minutes are `m` or `min`.
 
 ## 0.14.0 — 2026-11-25
 

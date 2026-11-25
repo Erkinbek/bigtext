@@ -48,8 +48,8 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
   split (--size 100MB | --lines 1000000) FILE [--out-dir DIR]
         [--gz|--zst|--xz|--bz2]
         Parts name.part001.ext, … cut at line breaks (compressed: .ext.gz,
-        …);
-        prints their paths.
+        …); prints their paths. Sizes are binary: 100MB (or 100M, 100MiB) is
+        100 × 1,048,576 bytes; KB, GB and TB likewise.
   stats [--fields] FILE...
         Size, lines, encoding, line breaks by kind, the longest line, NUL and
         non-UTF-8 bytes, and the first and last times;
@@ -59,7 +59,8 @@ bigtext-cli: BigText's tools for scripts (bigtext --COMMAND works too)
         Log lines of all files in time order, each labelled with its file.
   gaps FILE [--min 30s]
         Places where the next timestamp is at least that much later (or
-        earlier: the clock went back), with line numbers. Exit code 1 when
+        earlier: the clock went back), with line numbers; --min in ms, s, m
+        or min, h or d (not M, which could be a month). Exit code 1 when
         there are none.
   patterns FILE [--top N] [--rare] [-o OUT]
         The log's message templates (numbers, ids, IPs and paths replaced by
@@ -766,9 +767,11 @@ fn cmd_levels(args: &[String], out: &mut dyn Write) -> Res<i32> {
 }
 
 /// "100MB", "1.5G", "500k" or a number of bytes.
+/// "100MB", "100M" or "100MiB" (all 100 × 1,048,576 bytes; KB, GB and TB likewise).
 fn parse_size(s: &str) -> Option<u64> {
     let t = s.trim().to_ascii_lowercase();
     let t = t.trim_end_matches('b');
+    let t = t.strip_suffix('i').unwrap_or(t);
     let (num, mul) = match t.chars().last()? {
         'k' => (&t[..t.len() - 1], 1u64 << 10),
         'm' => (&t[..t.len() - 1], 1 << 20),
@@ -2734,7 +2737,7 @@ fn cmd_gaps(args: &[String], out: &mut dyn Write) -> Res<i32> {
     };
     let min = a.opt(&["--min"]).unwrap_or("30s");
     let min_ms = crate::gaps::parse_duration(min)
-        .ok_or_else(|| Fail(format!("not a duration: {min} (30s, 5m, 1h)")))?;
+        .ok_or_else(|| Fail(format!("not a duration: {min} (30s, 5m or 5min, 1h)")))?;
     let (buf, _) = open(Path::new(file))?;
     let g = crate::gaps::scan(&buf, min_ms, &CancelToken::new(), None, |_| {})?.unwrap_or_default();
     // Line numbers, counted forward from gap to gap.
@@ -3115,6 +3118,18 @@ mod tests {
         let p = dir.path().join(name);
         std::fs::write(&p, text).unwrap();
         p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn sizes_are_binary_with_or_without_i() {
+        assert_eq!(parse_size("100MB"), Some(100 << 20));
+        assert_eq!(parse_size("100M"), Some(100 << 20));
+        assert_eq!(parse_size("100MiB"), Some(100 << 20));
+        assert_eq!(parse_size("1.5GiB"), Some(3 << 29));
+        assert_eq!(parse_size("64kib"), Some(64 << 10));
+        assert_eq!(parse_size("512"), Some(512));
+        assert_eq!(parse_size("MiB"), None);
+        assert_eq!(parse_size("0MB"), None);
     }
 
     #[test]
@@ -4152,6 +4167,9 @@ mod tests {
         );
         assert_eq!(run_args(&["gaps", "--min", "5m", &log]).0, 1);
         assert_eq!(run_args(&["gaps", "--min", "soon", &log]).0, 2);
+        // M could be a month: minutes are m or min.
+        assert_eq!(run_args(&["gaps", "--min", "1M", &log]).0, 2);
+        assert_eq!(run_args(&["gaps", "--min", "1min", &log]).0, 0);
         // The times as the file writes them.
         let iso = file(
             &d,
